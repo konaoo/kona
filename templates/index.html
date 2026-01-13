@@ -1308,6 +1308,7 @@
             console.log('切换前 currentCategory:', currentCategory);
             console.log('切换前 portfolioData keys:', Object.keys(portfolioData));
             currentCategory = type;
+            console.log('切换后 currentCategory:', currentCategory);
 
             document.querySelectorAll('.tab-item').forEach(tab => {
                 tab.classList.remove('active');
@@ -1315,7 +1316,13 @@
                     tab.classList.add('active');
                 }
             });
- 
+
+            portfolioData = {};
+            forceRenderFull = true;
+            console.log('调用 refreshAll...');
+            refreshAll();
+        }
+
         setInterval(refreshAll, 60000);
 
         window.onload = () => {

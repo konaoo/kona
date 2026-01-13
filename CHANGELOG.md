@@ -1,5 +1,11 @@
 # 版本更新记录
 
+## v10.9.3 (2026-01-13)
+- 修复：switchCategory函数被截断
+  - 之前的编辑操作导致switchCategory函数体丢失
+  - 恢复了完整的switchCategory函数代码
+  - 包括清空portfolioData、设置forceRenderFull、调用refreshAll等逻辑
+
 ## v10.9.2 (2026-01-13)
 - 修复：JavaScript语法错误导致页面无法加载
   - script 标签未正确关闭
