@@ -30,7 +30,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
 
 # 应用版本号，用于强制刷新缓存
-APP_VERSION = "v11.0"
+APP_VERSION = "v10.9.1"
 
 # 初始化数据库（从CSV导入备份数据）
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
@@ -245,7 +245,10 @@ def get_portfolio():
     logger.info(f"API: get_portfolio called with type={asset_type}")
     data = db.get_portfolio(asset_type)
     logger.info(f"API: returning {len(data)} records")
-    return jsonify(data)
+    response = jsonify(data)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    return response
 
 
 @app.route('/api/portfolio/add', methods=['POST'])
