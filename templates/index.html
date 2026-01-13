@@ -953,9 +953,10 @@
                 console.log('currentCategory:', currentCategory);
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
                 const cacheBreaker = `t=${timestamp}_${Math.random().toString(36).substring(7)}`;
+                const fullUrl = currentCategory === 'all' ? `${apiUrl}?${cacheBreaker}` : `${apiUrl}&${cacheBreaker}`;
                 console.log('apiUrl:', apiUrl);
-                console.log('fullUrl:', `${apiUrl}?${cacheBreaker}`);
-                const data = await (await fetch(`${apiUrl}?${cacheBreaker}`)).json();
+                console.log('fullUrl:', fullUrl);
+                const data = await (await fetch(fullUrl)).json();
                 console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
                 console.log('持仓数据:', data);
 

@@ -1,23 +1,18 @@
-2026-01-13 20:26:47,124 - core.db - INFO - Database initialized successfully
-2026-01-13 20:26:47,127 - __main__ - INFO - Starting Portfolio Management System v10.0...
-2026-01-13 20:26:47,127 - __main__ - INFO - Database: /Users/kona/Desktop/tool/portfolio.db
-2026-01-13 20:26:47,127 - __main__ - INFO - Server: http://127.0.0.1:5003
+2026-01-13 20:29:20,608 - core.db - INFO - Database initialized successfully
+2026-01-13 20:29:20,610 - __main__ - INFO - Starting Portfolio Management System v10.0...
+2026-01-13 20:29:20,610 - __main__ - INFO - Database: /Users/kona/Desktop/tool/portfolio.db
+2026-01-13 20:29:20,611 - __main__ - INFO - Server: http://127.0.0.1:5003
  * Serving Flask app 'app'
  * Debug mode: off
-2026-01-13 20:26:47,132 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-01-13 20:29:20,615 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on http://127.0.0.1:5003
-2026-01-13 20:26:47,132 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
-2026-01-13 20:26:48,985 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:26:48] "GET / HTTP/1.1" 200 -
-2026-01-13 20:27:09,947 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:27:09] "GET / HTTP/1.1" 200 -
-2026-01-13 20:27:25,574 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:27:25] "GET /api/rates?t=1768307245506 HTTP/1.1" 200 -
-2026-01-13 20:27:25,688 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:27:25] "POST /api/prices/batch?t=1768307245506 HTTP/1.1" 200 -
-2026-01-13 20:27:25,699 - __main__ - INFO - API: get_portfolio called with type=stock_us?t=1768307245506
-2026-01-13 20:27:25,700 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_us?t=1768307245506
-2026-01-13 20:27:25,700 - __main__ - INFO - All request args: {'type': 'stock_us?t=1768307245506'}
-2026-01-13 20:27:25,701 - core.db - INFO - get_portfolio called with asset_type: stock_us?t=1768307245506
-2026-01-13 20:27:25,702 - core.db - INFO - get_portfolio returned 21 records for type stock_us?t=1768307245506
-2026-01-13 20:27:25,703 - __main__ - INFO - API: returning 21 records
-2026-01-13 20:27:25,703 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK', '159201', '159655']
-2026-01-13 20:27:25,703 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:27:25] "GET /api/portfolio?type=stock_us?t=1768307245506 HTTP/1.1" 200 -
-2026-01-13 20:27:26,225 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
-2026-01-13 20:27:27,663 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:27:27] "POST /api/prices/batch?t=1768307245506 HTTP/1.1" 200 -
+2026-01-13 20:29:20,615 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-01-13 20:29:22,329 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:29:22] "GET / HTTP/1.1" 200 -
+2026-01-13 20:29:24,228 - __main__ - INFO - API: get_portfolio called with type=stock_cn
+2026-01-13 20:29:24,229 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_cn&nocache=1768307364
+2026-01-13 20:29:24,229 - __main__ - INFO - All request args: {'type': 'stock_cn', 'nocache': '1768307364'}
+2026-01-13 20:29:24,229 - core.db - INFO - get_portfolio called with asset_type: stock_cn
+2026-01-13 20:29:24,230 - core.db - INFO - get_portfolio returned 12 records for type stock_cn
+2026-01-13 20:29:24,230 - __main__ - INFO - API: returning 12 records
+2026-01-13 20:29:24,230 - __main__ - INFO - Sample codes: ['159201', '159655', '512890', '513130', '513530']
+2026-01-13 20:29:24,231 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 20:29:24] "GET /api/portfolio?type=stock_cn&nocache=1768307364 HTTP/1.1" 200 -
