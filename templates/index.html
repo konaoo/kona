@@ -949,10 +949,14 @@
 
             try {
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
+                const cacheBreaker = `t=${timestamp}_${Math.random().toString(36).substring(7)}`;
+                const fullUrl = `${apiUrl}&${cacheBreaker}`;
                 console.log('%c=== 请求持仓数据 ===', 'font-weight: bold; color: #e91e63;');
                 console.log('currentCategory:', currentCategory);
                 console.log('apiUrl:', apiUrl);
-                const data = await (await fetch(`${apiUrl}?t=${timestamp}_${Math.random().toString(36).substring(7)}`)).json();
+                console.log('cacheBreaker:', cacheBreaker);
+                console.log('fullUrl:', fullUrl);
+                const data = await (await fetch(fullUrl)).json();
                 console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
                 console.log('持仓数据:', data);
 
@@ -1305,7 +1309,7 @@
 
             portfolioData = {};
             forceRenderFull = true;
-            console.log('调用 refreshAll...');
+            console.log('已清空portfolioData并设置forceRenderFull=true，准备调用refreshAll...');
             refreshAll();
         }
 

@@ -1,5 +1,12 @@
 # 版本更新记录
 
+## v10.9.8 (2026-01-13)
+- 修复：添加更详细的调试日志和更强的缓存控制
+  - 前端：显示完整的fetch URL和cache-breaking参数
+  - 前端：在switchCategory中添加更详细的日志
+  - 后端：添加Vary头和更严格的Cache-Control（max-age=0, private）
+  - 便于准确定位分类切换问题
+
 ## v10.9.7 (2026-01-13)
 - 修复：回退到v10.9并添加简单的cache-breaking参数
   - 避免复杂的URL拼接逻辑导致的代码错误
