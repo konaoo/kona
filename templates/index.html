@@ -1283,15 +1283,18 @@
 
         function switchCategory(type) {
             console.log('切换分类:', type);
+            console.log('当前portfolioData keys:', Object.keys(portfolioData));
             currentCategory = type;
-            
+
             document.querySelectorAll('.tab-item').forEach(tab => {
                 tab.classList.remove('active');
                 if (tab.dataset.type === type) {
                     tab.classList.add('active');
                 }
             });
-            
+
+            portfolioData = {};
+            isFirstLoad = false;
             refreshAll();
         }
 
