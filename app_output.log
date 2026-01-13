@@ -20,3 +20,130 @@
 2026-01-13 21:08:47,667 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:08:47] "GET /api/portfolio?t=1768309727527_6is27f HTTP/1.1" 200 -
 2026-01-13 21:08:48,052 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
 2026-01-13 21:08:49,110 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:08:49] "POST /api/prices/batch?t=1768309727527_31kq6n HTTP/1.1" 200 -
+2026-01-13 21:08:58,552 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:08:58] "GET /api/rates?t=1768309738494 HTTP/1.1" 200 -
+2026-01-13 21:08:58,574 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:08:58] "POST /api/prices/batch?t=1768309738494 HTTP/1.1" 200 -
+2026-01-13 21:08:58,579 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:08:58] "[33mGET /api/portfolio&t=1768309738494_3wa0i HTTP/1.1[0m" 404 -
+2026-01-13 21:09:36,544 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:36] "GET /api/rates?t=1768309776493 HTTP/1.1" 200 -
+2026-01-13 21:09:36,554 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:36] "POST /api/prices/batch?t=1768309776493 HTTP/1.1" 200 -
+2026-01-13 21:09:36,561 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768309776493_59ogxn, timestamp=None
+2026-01-13 21:09:36,562 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=fund?t=1768309776493_59ogxn
+2026-01-13 21:09:36,562 - __main__ - INFO - All request args: {'type': 'fund?t=1768309776493_59ogxn'}
+2026-01-13 21:09:36,563 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768309776493_59ogxn
+2026-01-13 21:09:36,564 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768309776493_59ogxn
+2026-01-13 21:09:36,564 - __main__ - INFO - API: returning 21 records
+2026-01-13 21:09:36,565 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK', '159201', '159655']
+2026-01-13 21:09:36,565 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:36] "GET /api/portfolio?type=fund?t=1768309776493_59ogxn HTTP/1.1" 200 -
+2026-01-13 21:09:36,573 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:36] "POST /api/prices/batch?t=1768309776493_1hzpaf HTTP/1.1" 200 -
+2026-01-13 21:09:47,524 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:47] "GET /api/rates?t=1768309787410 HTTP/1.1" 200 -
+2026-01-13 21:09:47,530 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:47] "POST /api/prices/batch?t=1768309787410 HTTP/1.1" 200 -
+2026-01-13 21:09:47,533 - __main__ - INFO - API: get_portfolio called with type=all, timestamp=1768309787410_citr2
+2026-01-13 21:09:47,533 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?t=1768309787410_citr2
+2026-01-13 21:09:47,534 - __main__ - INFO - All request args: {'t': '1768309787410_citr2'}
+2026-01-13 21:09:47,534 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 21:09:47,535 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 21:09:47,535 - __main__ - INFO - API: returning 21 records
+2026-01-13 21:09:47,535 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK', '159201', '159655']
+2026-01-13 21:09:47,536 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:47] "GET /api/portfolio?t=1768309787410_citr2 HTTP/1.1" 200 -
+2026-01-13 21:09:47,540 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:47] "POST /api/prices/batch?t=1768309787410_6jj7l HTTP/1.1" 200 -
+2026-01-13 21:09:52,619 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "[33mGET /api/portfolio&nocache=1768309792 HTTP/1.1[0m" 404 -
+2026-01-13 21:09:52,653 - __main__ - INFO - API: get_portfolio called with type=stock_cn, timestamp=None
+2026-01-13 21:09:52,653 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_cn&nocache=1768309792
+2026-01-13 21:09:52,653 - __main__ - INFO - All request args: {'type': 'stock_cn', 'nocache': '1768309792'}
+2026-01-13 21:09:52,653 - core.db - INFO - get_portfolio called with asset_type: stock_cn
+2026-01-13 21:09:52,653 - core.db - INFO - get_portfolio returned 12 records for type stock_cn
+2026-01-13 21:09:52,653 - __main__ - INFO - API: returning 12 records
+2026-01-13 21:09:52,653 - __main__ - INFO - Sample codes: ['159201', '159655', '512890', '513130', '513530']
+2026-01-13 21:09:52,653 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "GET /api/portfolio?type=stock_cn&nocache=1768309792 HTTP/1.1" 200 -
+2026-01-13 21:09:52,671 - __main__ - INFO - API: get_portfolio called with type=fund, timestamp=None
+2026-01-13 21:09:52,672 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=fund&nocache=1768309792
+2026-01-13 21:09:52,672 - __main__ - INFO - All request args: {'type': 'fund', 'nocache': '1768309792'}
+2026-01-13 21:09:52,672 - core.db - INFO - get_portfolio called with asset_type: fund
+2026-01-13 21:09:52,672 - core.db - INFO - get_portfolio returned 4 records for type fund
+2026-01-13 21:09:52,672 - __main__ - INFO - API: returning 4 records
+2026-01-13 21:09:52,672 - __main__ - INFO - Sample codes: ['f_110017', 'f_968048', 'f_968163', 'ft_LU1116320737']
+2026-01-13 21:09:52,672 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "GET /api/portfolio?type=fund&nocache=1768309792 HTTP/1.1" 200 -
+2026-01-13 21:09:52,691 - __main__ - INFO - API: get_portfolio called with type=stock_hk, timestamp=None
+2026-01-13 21:09:52,691 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_hk&nocache=1768309792
+2026-01-13 21:09:52,691 - __main__ - INFO - All request args: {'type': 'stock_hk', 'nocache': '1768309792'}
+2026-01-13 21:09:52,691 - core.db - INFO - get_portfolio called with asset_type: stock_hk
+2026-01-13 21:09:52,691 - core.db - INFO - Querying HK stocks
+2026-01-13 21:09:52,692 - core.db - INFO - get_portfolio returned 3 records for type stock_hk
+2026-01-13 21:09:52,692 - __main__ - INFO - API: returning 3 records
+2026-01-13 21:09:52,692 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK']
+2026-01-13 21:09:52,692 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "GET /api/portfolio?type=stock_hk&nocache=1768309792 HTTP/1.1" 200 -
+2026-01-13 21:09:52,895 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "GET /api/rates?t=1768309792858 HTTP/1.1" 200 -
+2026-01-13 21:09:52,968 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "POST /api/prices/batch?t=1768309792858 HTTP/1.1" 200 -
+2026-01-13 21:09:52,972 - __main__ - INFO - API: get_portfolio called with type=stock_cn, timestamp=1768309792858_6mlc4d
+2026-01-13 21:09:52,972 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_cn&t=1768309792858_6mlc4d
+2026-01-13 21:09:52,972 - __main__ - INFO - All request args: {'type': 'stock_cn', 't': '1768309792858_6mlc4d'}
+2026-01-13 21:09:52,972 - core.db - INFO - get_portfolio called with asset_type: stock_cn
+2026-01-13 21:09:52,972 - core.db - INFO - get_portfolio returned 12 records for type stock_cn
+2026-01-13 21:09:52,972 - __main__ - INFO - API: returning 12 records
+2026-01-13 21:09:52,972 - __main__ - INFO - Sample codes: ['159201', '159655', '512890', '513130', '513530']
+2026-01-13 21:09:52,973 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:52] "GET /api/portfolio?type=stock_cn&t=1768309792858_6mlc4d HTTP/1.1" 200 -
+2026-01-13 21:09:53,050 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:53] "POST /api/prices/batch?t=1768309792858_t4b5z HTTP/1.1" 200 -
+2026-01-13 21:09:57,630 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:57] "GET /api/rates?t=1768309797592 HTTP/1.1" 200 -
+2026-01-13 21:09:57,633 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:57] "POST /api/prices/batch?t=1768309797592 HTTP/1.1" 200 -
+2026-01-13 21:09:57,635 - __main__ - INFO - API: get_portfolio called with type=fund, timestamp=1768309797592_m50xe3
+2026-01-13 21:09:57,635 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=fund&t=1768309797592_m50xe3
+2026-01-13 21:09:57,635 - __main__ - INFO - All request args: {'type': 'fund', 't': '1768309797592_m50xe3'}
+2026-01-13 21:09:57,635 - core.db - INFO - get_portfolio called with asset_type: fund
+2026-01-13 21:09:57,636 - core.db - INFO - get_portfolio returned 4 records for type fund
+2026-01-13 21:09:57,636 - __main__ - INFO - API: returning 4 records
+2026-01-13 21:09:57,636 - __main__ - INFO - Sample codes: ['f_110017', 'f_968048', 'f_968163', 'ft_LU1116320737']
+2026-01-13 21:09:57,636 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:57] "GET /api/portfolio?type=fund&t=1768309797592_m50xe3 HTTP/1.1" 200 -
+2026-01-13 21:09:57,882 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 21:09:58,534 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:58] "GET /api/rates?t=1768309798493 HTTP/1.1" 200 -
+2026-01-13 21:09:58,544 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:58] "POST /api/prices/batch?t=1768309798493 HTTP/1.1" 200 -
+2026-01-13 21:09:58,554 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:58] "[33mGET /api/portfolio&t=1768309798493_iee757 HTTP/1.1[0m" 404 -
+2026-01-13 21:09:59,083 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:09:59] "POST /api/prices/batch?t=1768309797592_k6ei5 HTTP/1.1" 200 -
+2026-01-13 21:10:01,648 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:01] "GET /api/rates?t=1768309801607 HTTP/1.1" 200 -
+2026-01-13 21:10:01,653 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:01] "POST /api/prices/batch?t=1768309801607 HTTP/1.1" 200 -
+2026-01-13 21:10:01,656 - __main__ - INFO - API: get_portfolio called with type=stock_us, timestamp=1768309801607_itv1e
+2026-01-13 21:10:01,656 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_us&t=1768309801607_itv1e
+2026-01-13 21:10:01,656 - __main__ - INFO - All request args: {'type': 'stock_us', 't': '1768309801607_itv1e'}
+2026-01-13 21:10:01,656 - core.db - INFO - get_portfolio called with asset_type: stock_us
+2026-01-13 21:10:01,657 - core.db - INFO - get_portfolio returned 2 records for type stock_us
+2026-01-13 21:10:01,657 - __main__ - INFO - API: returning 2 records
+2026-01-13 21:10:01,657 - __main__ - INFO - Sample codes: ['BILI', 'SE']
+2026-01-13 21:10:01,657 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:01] "GET /api/portfolio?type=stock_us&t=1768309801607_itv1e HTTP/1.1" 200 -
+2026-01-13 21:10:01,994 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:01] "POST /api/prices/batch?t=1768309801607_ka2hom HTTP/1.1" 200 -
+2026-01-13 21:10:07,011 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:07] "GET /api/rates?t=1768309806959 HTTP/1.1" 200 -
+2026-01-13 21:10:07,019 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:07] "POST /api/prices/batch?t=1768309806959 HTTP/1.1" 200 -
+2026-01-13 21:10:07,023 - __main__ - INFO - API: get_portfolio called with type=stock_hk, timestamp=1768309806959_69wzhn
+2026-01-13 21:10:07,023 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_hk&t=1768309806959_69wzhn
+2026-01-13 21:10:07,023 - __main__ - INFO - All request args: {'type': 'stock_hk', 't': '1768309806959_69wzhn'}
+2026-01-13 21:10:07,023 - core.db - INFO - get_portfolio called with asset_type: stock_hk
+2026-01-13 21:10:07,023 - core.db - INFO - Querying HK stocks
+2026-01-13 21:10:07,023 - core.db - INFO - get_portfolio returned 3 records for type stock_hk
+2026-01-13 21:10:07,024 - __main__ - INFO - API: returning 3 records
+2026-01-13 21:10:07,024 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK']
+2026-01-13 21:10:07,024 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:07] "GET /api/portfolio?type=stock_hk&t=1768309806959_69wzhn HTTP/1.1" 200 -
+2026-01-13 21:10:07,068 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:07] "POST /api/prices/batch?t=1768309806959_98n1qo HTTP/1.1" 200 -
+2026-01-13 21:10:16,752 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:16] "[33mGET /api/portfolio&nocache=1768309816 HTTP/1.1[0m" 404 -
+2026-01-13 21:10:37,561 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:37] "GET /api/rates?t=1768309837495 HTTP/1.1" 200 -
+2026-01-13 21:10:37,571 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:37] "POST /api/prices/batch?t=1768309837495 HTTP/1.1" 200 -
+2026-01-13 21:10:37,580 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768309837495_3ya9dsa, timestamp=None
+2026-01-13 21:10:37,581 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=fund?t=1768309837495_3ya9dsa
+2026-01-13 21:10:37,582 - __main__ - INFO - All request args: {'type': 'fund?t=1768309837495_3ya9dsa'}
+2026-01-13 21:10:37,597 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768309837495_3ya9dsa
+2026-01-13 21:10:37,598 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768309837495_3ya9dsa
+2026-01-13 21:10:37,599 - __main__ - INFO - API: returning 21 records
+2026-01-13 21:10:37,599 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK', '159201', '159655']
+2026-01-13 21:10:37,599 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:37] "GET /api/portfolio?type=fund?t=1768309837495_3ya9dsa HTTP/1.1" 200 -
+2026-01-13 21:10:37,606 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:37] "POST /api/prices/batch?t=1768309837495_0ygj0l HTTP/1.1" 200 -
+2026-01-13 21:10:47,493 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:47] "GET /api/rates?t=1768309847410 HTTP/1.1" 200 -
+2026-01-13 21:10:47,496 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:47] "POST /api/prices/batch?t=1768309847410 HTTP/1.1" 200 -
+2026-01-13 21:10:47,499 - __main__ - INFO - API: get_portfolio called with type=stock_hk, timestamp=1768309847410_ei5an
+2026-01-13 21:10:47,499 - __main__ - INFO - Full request URL: http://127.0.0.1:5003/api/portfolio?type=stock_hk&t=1768309847410_ei5an
+2026-01-13 21:10:47,499 - __main__ - INFO - All request args: {'type': 'stock_hk', 't': '1768309847410_ei5an'}
+2026-01-13 21:10:47,500 - core.db - INFO - get_portfolio called with asset_type: stock_hk
+2026-01-13 21:10:47,500 - core.db - INFO - Querying HK stocks
+2026-01-13 21:10:47,500 - core.db - INFO - get_portfolio returned 3 records for type stock_hk
+2026-01-13 21:10:47,500 - __main__ - INFO - API: returning 3 records
+2026-01-13 21:10:47,500 - __main__ - INFO - Sample codes: ['00175.HK', '01810.HK', '03988.HK']
+2026-01-13 21:10:47,500 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:47] "GET /api/portfolio?type=stock_hk&t=1768309847410_ei5an HTTP/1.1" 200 -
+2026-01-13 21:10:47,503 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:47] "POST /api/prices/batch?t=1768309847410_akq9y8 HTTP/1.1" 200 -
+2026-01-13 21:10:58,541 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:58] "GET /api/rates?t=1768309858494 HTTP/1.1" 200 -
+2026-01-13 21:10:58,606 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:58] "POST /api/prices/batch?t=1768309858494 HTTP/1.1" 200 -
+2026-01-13 21:10:58,613 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 21:10:58] "[33mGET /api/portfolio&t=1768309858494_f7807a HTTP/1.1[0m" 404 -
