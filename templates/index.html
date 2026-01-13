@@ -997,9 +997,17 @@
                 const codesChanged = new Set([...newCodes].filter(c => !oldCodes.has(c)));
                 const codesRemoved = new Set([...oldCodes].filter(c => !newCodes.has(c)));
 
+                console.log('%c=== 判断渲染方式 ===', 'font-weight: bold; color: #9c27b0;');
+                console.log('isFirstLoad:', isFirstLoad);
+                console.log('forceRenderFull:', forceRenderFull);
+                console.log('codesChanged.size:', codesChanged.size);
+                console.log('codesRemoved.size:', codesRemoved.size);
+
                 if (isFirstLoad || forceRenderFull || codesChanged.size > 0 || codesRemoved.size > 0) {
+                    console.log('%c>>> 调用 renderFullTable <<<', 'font-weight: bold; color: #ff4d4f;');
                     renderFullTable(newData);
                 } else {
+                    console.log('%c>>> 调用 updateTableValues <<<', 'font-weight: bold; color: #00d26a;');
                     updateTableValues(newData);
                 }
 
@@ -1029,9 +1037,13 @@
         }
 
         function renderFullTable(dataMap) {
+            console.log('%c=== renderFullTable 被调用 ===', 'font-weight: bold; color: #e91e63;');
+            console.log('dataMap keys:', Object.keys(dataMap));
+            console.log('dataMap count:', Object.keys(dataMap).length);
+
             const body = document.getElementById('assetBody');
             body.innerHTML = '';
-            
+
             for (let code in dataMap) {
                 const {s, qty, cost, curPrice, mv, day, dayPnlRate, totPnl, totPnlRate} = dataMap[code];
                 const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
@@ -1074,6 +1086,8 @@
                     </td>`;
                 body.appendChild(tr);
             }
+
+            console.log('表格渲染完成，当前行数:', body.children.length);
         }
 
         function updateTableValues(newDataMap) {
@@ -1294,13 +1308,23 @@
             console.log('切换前 currentCategory:', currentCategory);
             console.log('切换前 portfolioData keys:', Object.keys(portfolioData));
             currentCategory = type;
-            console.log('切换后 currentCategory:', currentCategory);
 
             document.querySelectorAll('.tab-item').forEach(tab => {
                 tab.classList.remove('active');
                 if (tab.dataset.type === type) {
                     tab.classList.add('active');
                 }
+            });
+
+            const body = document.getElementById('assetBody');
+            body.innerHTML = '';
+            console.log('表格已手动清空');
+
+            portfolioData = {};
+            forceRenderFull = true;
+            console.log('调用 refreshAll...');
+            refreshAll();
+        }
             });
 
             portfolioData = {};
