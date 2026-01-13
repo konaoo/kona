@@ -949,7 +949,12 @@
 
             try {
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
+                console.log('%c=== 请求持仓数据 ===', 'font-weight: bold; color: #e91e63;');
+                console.log('currentCategory:', currentCategory);
+                console.log('apiUrl:', apiUrl);
                 const data = await (await fetch(`${apiUrl}?t=${timestamp}`)).json();
+                console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
+                console.log('持仓数据:', data);
 
                 let tMV = 0, tCost = 0, tDay = 0, gFloat = 0;
                 const prices = data.length > 0 ? await (await fetch(`/api/prices/batch?t=${timestamp}`, {
@@ -1284,9 +1289,12 @@
         }
 
         function switchCategory(type) {
-            console.log('切换分类:', type);
-            console.log('当前portfolioData keys:', Object.keys(portfolioData));
+            console.log('%c========== 切换分类 ==========', 'font-weight: bold; color: #e91e63;');
+            console.log('切换到:', type);
+            console.log('切换前 currentCategory:', currentCategory);
+            console.log('切换前 portfolioData keys:', Object.keys(portfolioData));
             currentCategory = type;
+            console.log('切换后 currentCategory:', currentCategory);
 
             document.querySelectorAll('.tab-item').forEach(tab => {
                 tab.classList.remove('active');
@@ -1295,7 +1303,9 @@
                 }
             });
 
+            portfolioData = {};
             forceRenderFull = true;
+            console.log('调用 refreshAll...');
             refreshAll();
         }
 

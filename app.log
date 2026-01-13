@@ -9735,3 +9735,218 @@ ImportError: cannot import name 'HEADERS' from 'config' (/Users/kona/Desktop/too
 2026-01-13 19:41:05,748 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
 2026-01-13 19:41:06,833 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:41:06] "POST /api/prices/batch?t=1768304465106 HTTP/1.1" 200 -
 2026-01-13 19:41:06,892 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:41:06] "POST /api/prices/batch?t=1768304465469 HTTP/1.1" 200 -
+2026-01-13 19:42:05,141 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "GET /api/rates?t=1768304524972 HTTP/1.1" 200 -
+2026-01-13 19:42:05,148 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "POST /api/prices/batch?t=1768304524972 HTTP/1.1" 200 -
+2026-01-13 19:42:05,151 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:42:05,152 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:42:05,153 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:42:05,154 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:05,154 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "GET /api/portfolio?t=1768304524972 HTTP/1.1" 200 -
+2026-01-13 19:42:05,160 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "POST /api/prices/batch?t=1768304524972 HTTP/1.1" 200 -
+2026-01-13 19:42:05,510 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "GET /api/rates?t=1768304525469 HTTP/1.1" 200 -
+2026-01-13 19:42:05,581 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "POST /api/prices/batch?t=1768304525469 HTTP/1.1" 200 -
+2026-01-13 19:42:05,587 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:42:05,587 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:42:05,587 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:42:05,587 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:05,588 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "GET /api/portfolio?t=1768304525469 HTTP/1.1" 200 -
+2026-01-13 19:42:05,691 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:05] "POST /api/prices/batch?t=1768304525469 HTTP/1.1" 200 -
+2026-01-13 19:42:54,989 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:54] "GET /api/rates?t=1768304574924 HTTP/1.1" 200 -
+2026-01-13 19:42:54,996 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:54] "POST /api/prices/batch?t=1768304574924 HTTP/1.1" 200 -
+2026-01-13 19:42:55,000 - __main__ - INFO - API: get_portfolio called with type=stock_cn?t=1768304574924
+2026-01-13 19:42:55,001 - core.db - INFO - get_portfolio called with asset_type: stock_cn?t=1768304574924
+2026-01-13 19:42:55,002 - core.db - INFO - get_portfolio returned 21 records for type stock_cn?t=1768304574924
+2026-01-13 19:42:55,002 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:55,003 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:55] "GET /api/portfolio?type=stock_cn?t=1768304574924 HTTP/1.1" 200 -
+2026-01-13 19:42:55,341 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:42:55,865 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:55] "GET /api/rates?t=1768304575835 HTTP/1.1" 200 -
+2026-01-13 19:42:55,868 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:55] "POST /api/prices/batch?t=1768304575835 HTTP/1.1" 200 -
+2026-01-13 19:42:55,870 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768304575835
+2026-01-13 19:42:55,870 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768304575835
+2026-01-13 19:42:55,871 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768304575835
+2026-01-13 19:42:55,871 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:55,871 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:55] "GET /api/portfolio?type=fund?t=1768304575835 HTTP/1.1" 200 -
+2026-01-13 19:42:55,989 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:42:56,438 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "POST /api/prices/batch?t=1768304574924 HTTP/1.1" 200 -
+2026-01-13 19:42:56,477 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "GET /api/rates?t=1768304576452 HTTP/1.1" 200 -
+2026-01-13 19:42:56,480 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "POST /api/prices/batch?t=1768304576452 HTTP/1.1" 200 -
+2026-01-13 19:42:56,481 - __main__ - INFO - API: get_portfolio called with type=stock_us?t=1768304576452
+2026-01-13 19:42:56,482 - core.db - INFO - get_portfolio called with asset_type: stock_us?t=1768304576452
+2026-01-13 19:42:56,482 - core.db - INFO - get_portfolio returned 21 records for type stock_us?t=1768304576452
+2026-01-13 19:42:56,482 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:56,482 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "GET /api/portfolio?type=stock_us?t=1768304576452 HTTP/1.1" 200 -
+2026-01-13 19:42:56,484 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "POST /api/prices/batch?t=1768304576452 HTTP/1.1" 200 -
+2026-01-13 19:42:56,991 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "GET /api/rates?t=1768304576959 HTTP/1.1" 200 -
+2026-01-13 19:42:56,994 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "POST /api/prices/batch?t=1768304576959 HTTP/1.1" 200 -
+2026-01-13 19:42:56,996 - __main__ - INFO - API: get_portfolio called with type=stock_hk?t=1768304576959
+2026-01-13 19:42:56,997 - core.db - INFO - get_portfolio called with asset_type: stock_hk?t=1768304576959
+2026-01-13 19:42:56,997 - core.db - INFO - get_portfolio returned 21 records for type stock_hk?t=1768304576959
+2026-01-13 19:42:56,998 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:42:56,998 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:56] "GET /api/portfolio?type=stock_hk?t=1768304576959 HTTP/1.1" 200 -
+2026-01-13 19:42:57,001 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:57] "POST /api/prices/batch?t=1768304576959 HTTP/1.1" 200 -
+2026-01-13 19:42:57,243 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:42:57] "POST /api/prices/batch?t=1768304575835 HTTP/1.1" 200 -
+2026-01-13 19:43:04,216 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:04] "GET / HTTP/1.1" 200 -
+2026-01-13 19:43:04,342 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:04] "GET /api/rates?t=1768304584282 HTTP/1.1" 200 -
+2026-01-13 19:43:04,345 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:04] "POST /api/prices/batch?t=1768304584282 HTTP/1.1" 200 -
+2026-01-13 19:43:04,347 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:43:04,348 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:43:04,349 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:43:04,349 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:04,349 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:04] "GET /api/portfolio?t=1768304584282 HTTP/1.1" 200 -
+2026-01-13 19:43:04,354 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:04] "POST /api/prices/batch?t=1768304584282 HTTP/1.1" 200 -
+2026-01-13 19:43:05,618 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:05] "GET /api/rates?t=1768304585471 HTTP/1.1" 200 -
+2026-01-13 19:43:05,818 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:05] "POST /api/prices/batch?t=1768304585471 HTTP/1.1" 200 -
+2026-01-13 19:43:05,828 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:43:05,829 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:43:05,830 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:43:05,830 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:05,830 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:05] "GET /api/portfolio?t=1768304585471 HTTP/1.1" 200 -
+2026-01-13 19:43:05,943 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:05] "POST /api/prices/batch?t=1768304585471 HTTP/1.1" 200 -
+2026-01-13 19:43:29,731 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:29] "GET /api/rates?t=1768304609690 HTTP/1.1" 200 -
+2026-01-13 19:43:29,736 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:29] "POST /api/prices/batch?t=1768304609690 HTTP/1.1" 200 -
+2026-01-13 19:43:29,738 - __main__ - INFO - API: get_portfolio called with type=stock_hk?t=1768304609690
+2026-01-13 19:43:29,739 - core.db - INFO - get_portfolio called with asset_type: stock_hk?t=1768304609690
+2026-01-13 19:43:29,740 - core.db - INFO - get_portfolio returned 21 records for type stock_hk?t=1768304609690
+2026-01-13 19:43:29,740 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:29,740 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:29] "GET /api/portfolio?type=stock_hk?t=1768304609690 HTTP/1.1" 200 -
+2026-01-13 19:43:29,744 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:29] "POST /api/prices/batch?t=1768304609690 HTTP/1.1" 200 -
+2026-01-13 19:43:30,291 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "GET /api/rates?t=1768304610235 HTTP/1.1" 200 -
+2026-01-13 19:43:30,295 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "POST /api/prices/batch?t=1768304610235 HTTP/1.1" 200 -
+2026-01-13 19:43:30,297 - __main__ - INFO - API: get_portfolio called with type=stock_us?t=1768304610235
+2026-01-13 19:43:30,298 - core.db - INFO - get_portfolio called with asset_type: stock_us?t=1768304610235
+2026-01-13 19:43:30,298 - core.db - INFO - get_portfolio returned 21 records for type stock_us?t=1768304610235
+2026-01-13 19:43:30,298 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:30,299 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "GET /api/portfolio?type=stock_us?t=1768304610235 HTTP/1.1" 200 -
+2026-01-13 19:43:30,302 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "POST /api/prices/batch?t=1768304610235 HTTP/1.1" 200 -
+2026-01-13 19:43:30,780 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "GET /api/rates?t=1768304610710 HTTP/1.1" 200 -
+2026-01-13 19:43:30,784 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "POST /api/prices/batch?t=1768304610710 HTTP/1.1" 200 -
+2026-01-13 19:43:30,786 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768304610710
+2026-01-13 19:43:30,786 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768304610710
+2026-01-13 19:43:30,787 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768304610710
+2026-01-13 19:43:30,787 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:30,787 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "GET /api/portfolio?type=fund?t=1768304610710 HTTP/1.1" 200 -
+2026-01-13 19:43:30,793 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:30] "POST /api/prices/batch?t=1768304610710 HTTP/1.1" 200 -
+2026-01-13 19:43:31,235 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "GET /api/rates?t=1768304611185 HTTP/1.1" 200 -
+2026-01-13 19:43:31,240 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "POST /api/prices/batch?t=1768304611185 HTTP/1.1" 200 -
+2026-01-13 19:43:31,243 - __main__ - INFO - API: get_portfolio called with type=stock_cn?t=1768304611185
+2026-01-13 19:43:31,244 - core.db - INFO - get_portfolio called with asset_type: stock_cn?t=1768304611185
+2026-01-13 19:43:31,244 - core.db - INFO - get_portfolio returned 21 records for type stock_cn?t=1768304611185
+2026-01-13 19:43:31,244 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:31,244 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "GET /api/portfolio?type=stock_cn?t=1768304611185 HTTP/1.1" 200 -
+2026-01-13 19:43:31,248 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "POST /api/prices/batch?t=1768304611185 HTTP/1.1" 200 -
+2026-01-13 19:43:31,657 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "GET /api/rates?t=1768304611626 HTTP/1.1" 200 -
+2026-01-13 19:43:31,661 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "POST /api/prices/batch?t=1768304611626 HTTP/1.1" 200 -
+2026-01-13 19:43:31,663 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:43:31,663 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:43:31,664 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:43:31,664 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:31,664 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "GET /api/portfolio?t=1768304611626 HTTP/1.1" 200 -
+2026-01-13 19:43:31,669 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:31] "POST /api/prices/batch?t=1768304611626 HTTP/1.1" 200 -
+2026-01-13 19:43:38,018 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:38] "GET / HTTP/1.1" 200 -
+2026-01-13 19:43:39,254 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:39] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-01-13 19:43:39,289 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:39] "GET /api/rates?t=1768304619247 HTTP/1.1" 200 -
+2026-01-13 19:43:39,293 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:39] "POST /api/prices/batch?t=1768304619247 HTTP/1.1" 200 -
+2026-01-13 19:43:39,294 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:43:39,295 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:43:39,296 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:43:39,296 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:43:39,297 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:39] "GET /api/portfolio?t=1768304619247 HTTP/1.1" 200 -
+2026-01-13 19:43:39,301 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:43:39] "POST /api/prices/batch?t=1768304619247 HTTP/1.1" 200 -
+2026-01-13 19:44:05,522 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:05] "GET /api/rates?t=1768304645471 HTTP/1.1" 200 -
+2026-01-13 19:44:05,529 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:05] "POST /api/prices/batch?t=1768304645471 HTTP/1.1" 200 -
+2026-01-13 19:44:05,535 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:44:05,535 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:44:05,537 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:44:05,537 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:44:05,537 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:05] "GET /api/portfolio?t=1768304645471 HTTP/1.1" 200 -
+2026-01-13 19:44:05,891 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:44:07,021 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:07] "POST /api/prices/batch?t=1768304645471 HTTP/1.1" 200 -
+2026-01-13 19:44:39,269 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:39] "GET /api/rates?t=1768304679200 HTTP/1.1" 200 -
+2026-01-13 19:44:39,459 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:39] "POST /api/prices/batch?t=1768304679200 HTTP/1.1" 200 -
+2026-01-13 19:44:39,466 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:44:39,467 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:44:39,468 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:44:39,469 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:44:39,469 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:39] "GET /api/portfolio?t=1768304679200 HTTP/1.1" 200 -
+2026-01-13 19:44:39,582 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:39] "POST /api/prices/batch?t=1768304679200 HTTP/1.1" 200 -
+2026-01-13 19:44:48,423 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:48] "GET /api/rates?t=1768304688381 HTTP/1.1" 200 -
+2026-01-13 19:44:48,427 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:48] "POST /api/prices/batch?t=1768304688381 HTTP/1.1" 200 -
+2026-01-13 19:44:48,429 - __main__ - INFO - API: get_portfolio called with type=stock_cn?t=1768304688381
+2026-01-13 19:44:48,430 - core.db - INFO - get_portfolio called with asset_type: stock_cn?t=1768304688381
+2026-01-13 19:44:48,431 - core.db - INFO - get_portfolio returned 21 records for type stock_cn?t=1768304688381
+2026-01-13 19:44:48,431 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:44:48,431 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:48] "GET /api/portfolio?type=stock_cn?t=1768304688381 HTTP/1.1" 200 -
+2026-01-13 19:44:48,435 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:48] "POST /api/prices/batch?t=1768304688381 HTTP/1.1" 200 -
+2026-01-13 19:44:49,095 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:49] "GET /api/rates?t=1768304689058 HTTP/1.1" 200 -
+2026-01-13 19:44:49,100 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:49] "POST /api/prices/batch?t=1768304689058 HTTP/1.1" 200 -
+2026-01-13 19:44:49,102 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768304689058
+2026-01-13 19:44:49,102 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768304689058
+2026-01-13 19:44:49,103 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768304689058
+2026-01-13 19:44:49,103 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:44:49,103 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:49] "GET /api/portfolio?type=fund?t=1768304689058 HTTP/1.1" 200 -
+2026-01-13 19:44:49,107 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:44:49] "POST /api/prices/batch?t=1768304689058 HTTP/1.1" 200 -
+2026-01-13 19:45:06,526 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:06] "GET /api/rates?t=1768304706473 HTTP/1.1" 200 -
+2026-01-13 19:45:06,537 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:06] "POST /api/prices/batch?t=1768304706473 HTTP/1.1" 200 -
+2026-01-13 19:45:06,543 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:45:06,544 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:45:06,545 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:45:06,545 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:45:06,545 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:06] "GET /api/portfolio?t=1768304706473 HTTP/1.1" 200 -
+2026-01-13 19:45:06,954 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:06] "POST /api/prices/batch?t=1768304706473 HTTP/1.1" 200 -
+2026-01-13 19:45:16,861 - __main__ - INFO - API: get_portfolio called with type=stock_cn
+2026-01-13 19:45:16,862 - core.db - INFO - get_portfolio called with asset_type: stock_cn
+2026-01-13 19:45:16,863 - core.db - INFO - get_portfolio returned 12 records for type stock_cn
+2026-01-13 19:45:16,863 - __main__ - INFO - API: returning 12 records
+2026-01-13 19:45:16,863 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:16] "GET /api/portfolio?type=stock_cn HTTP/1.1" 200 -
+2026-01-13 19:45:39,287 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:39] "GET /api/rates?t=1768304739200 HTTP/1.1" 200 -
+2026-01-13 19:45:39,292 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:39] "POST /api/prices/batch?t=1768304739200 HTTP/1.1" 200 -
+2026-01-13 19:45:39,294 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768304739200
+2026-01-13 19:45:39,295 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768304739200
+2026-01-13 19:45:39,296 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768304739200
+2026-01-13 19:45:39,296 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:45:39,296 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:39] "GET /api/portfolio?type=fund?t=1768304739200 HTTP/1.1" 200 -
+2026-01-13 19:45:39,437 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:45:40,735 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:45:40] "POST /api/prices/batch?t=1768304739200 HTTP/1.1" 200 -
+2026-01-13 19:46:07,526 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:07] "GET /api/rates?t=1768304767472 HTTP/1.1" 200 -
+2026-01-13 19:46:07,621 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:07] "POST /api/prices/batch?t=1768304767472 HTTP/1.1" 200 -
+2026-01-13 19:46:07,629 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:46:07,630 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:46:07,631 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:46:07,631 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:46:07,631 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:07] "GET /api/portfolio?t=1768304767472 HTTP/1.1" 200 -
+2026-01-13 19:46:07,990 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:07] "POST /api/prices/batch?t=1768304767472 HTTP/1.1" 200 -
+2026-01-13 19:46:24,567 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:24] "GET / HTTP/1.1" 200 -
+2026-01-13 19:46:39,292 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:39] "GET /api/rates?t=1768304799201 HTTP/1.1" 200 -
+2026-01-13 19:46:39,304 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:39] "POST /api/prices/batch?t=1768304799201 HTTP/1.1" 200 -
+2026-01-13 19:46:39,310 - __main__ - INFO - API: get_portfolio called with type=fund?t=1768304799201
+2026-01-13 19:46:39,311 - core.db - INFO - get_portfolio called with asset_type: fund?t=1768304799201
+2026-01-13 19:46:39,312 - core.db - INFO - get_portfolio returned 21 records for type fund?t=1768304799201
+2026-01-13 19:46:39,312 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:46:39,313 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:39] "GET /api/portfolio?type=fund?t=1768304799201 HTTP/1.1" 200 -
+2026-01-13 19:46:39,319 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:46:39] "POST /api/prices/batch?t=1768304799201 HTTP/1.1" 200 -
+2026-01-13 19:47:08,512 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:08] "GET /api/rates?t=1768304828472 HTTP/1.1" 200 -
+2026-01-13 19:47:08,584 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:08] "POST /api/prices/batch?t=1768304828472 HTTP/1.1" 200 -
+2026-01-13 19:47:08,589 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:47:08,590 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:47:08,590 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:47:08,590 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:47:08,590 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:08] "GET /api/portfolio?t=1768304828472 HTTP/1.1" 200 -
+2026-01-13 19:47:08,857 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:47:11,031 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:11] "POST /api/prices/batch?t=1768304828472 HTTP/1.1" 200 -
+2026-01-13 19:47:21,382 - core.db - INFO - Database initialized successfully
+2026-01-13 19:47:21,384 - __main__ - INFO - Starting Portfolio Management System v10.0...
+2026-01-13 19:47:21,384 - __main__ - INFO - Database: /Users/kona/Desktop/tool/portfolio.db
+2026-01-13 19:47:21,384 - __main__ - INFO - Server: http://127.0.0.1:5003
+2026-01-13 19:47:21,393 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5003
+2026-01-13 19:47:21,393 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-01-13 19:47:23,603 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:23] "GET / HTTP/1.1" 200 -
+2026-01-13 19:47:24,353 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:24] "GET /api/rates?t=1768304844247 HTTP/1.1" 200 -
+2026-01-13 19:47:24,424 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:24] "POST /api/prices/batch?t=1768304844247 HTTP/1.1" 200 -
+2026-01-13 19:47:24,428 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:47:24,429 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:47:24,429 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:47:24,429 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:47:24,429 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:24] "GET /api/portfolio?t=1768304844247 HTTP/1.1" 200 -
+2026-01-13 19:47:24,702 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:47:25,881 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:47:25] "POST /api/prices/batch?t=1768304844247 HTTP/1.1" 200 -
