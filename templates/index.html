@@ -1315,40 +1315,12 @@
                     tab.classList.add('active');
                 }
             });
-
-            const body = document.getElementById('assetBody');
-            body.innerHTML = '';
-            console.log('表格已手动清空');
-
-            portfolioData = {};
-            forceRenderFull = true;
-            console.log('调用 refreshAll...');
-            refreshAll();
-        }
-            });
-
-            portfolioData = {};
-            forceRenderFull = true;
-            console.log('调用 refreshAll...');
-            refreshAll();
-        }
-
+ 
         setInterval(refreshAll, 60000);
 
         window.onload = () => {
             refreshAll();
         };
-
-        // 添加全局缓存破坏函数
-         function fetchWithCache(url, options = {}) {
-            if (!url.includes('?')) {
-                url += '?';
-            } else {
-                url += '&';
-            }
-            url += `t=${Date.now()}`;
-            return fetch(url, options);
-        }
 </script>
 </body>
 </html>

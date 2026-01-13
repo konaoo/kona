@@ -1,5 +1,11 @@
 # 版本更新记录
 
+## v10.9.2 (2026-01-13)
+- 修复：JavaScript语法错误导致页面无法加载
+  - script 标签未正确关闭
+  - 导致整个JavaScript无法执行
+  - 已修复script标签结构
+
 ## v10.9.1 (2026-01-13)
 - 修复：浏览器缓存导致分类切换问题
   - 在 /api/portfolio 端点添加 Cache-Control 和 Pragma 头
