@@ -1,5 +1,11 @@
 # 版本更新记录
 
+## v10.9.7 (2026-01-13)
+- 修复：回退到v10.9并添加简单的cache-breaking参数
+  - 避免复杂的URL拼接逻辑导致的代码错误
+  - 只在fetch调用添加随机参数（`${timestamp}_${random}`）
+  - 保持代码简洁性
+
 ## v10.9.6 (2026-01-13)
 - 修复：API URL拼接错误导致type参数被cache-breaking参数覆盖
   - cache-breaking参数（t=...）被拼接到type参数后面

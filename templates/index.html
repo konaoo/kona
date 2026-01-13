@@ -5,7 +5,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Portfolio v10.9.3 - Fixed</title>
+    <title>Portfolio v10.4 - Cache Busted</title>
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="-1">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -951,17 +951,13 @@
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
                 console.log('%c=== 请求持仓数据 ===', 'font-weight: bold; color: #e91e63;');
                 console.log('currentCategory:', currentCategory);
-                const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
-                const cacheBreaker = `t=${timestamp}_${Math.random().toString(36).substring(7)}`;
-                const fullUrl = currentCategory === 'all' ? `${apiUrl}?${cacheBreaker}` : `${apiUrl}&${cacheBreaker}`;
                 console.log('apiUrl:', apiUrl);
-                console.log('fullUrl:', fullUrl);
-                const data = await (await fetch(fullUrl)).json();
+                const data = await (await fetch(`${apiUrl}?t=${timestamp}_${Math.random().toString(36).substring(7)}`)).json();
                 console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
                 console.log('持仓数据:', data);
 
                 let tMV = 0, tCost = 0, tDay = 0, gFloat = 0;
-                const prices = data.length > 0 ? await (await fetch(`/api/prices/batch?t=${timestamp}`, {
+                const prices = data.length > 0 ? await (await fetch(`/api/prices/batch?t=${timestamp}_${Math.random().toString(36).substring(7)}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({codes: data.map(s => s.code)})
@@ -1001,17 +997,9 @@
                 const codesChanged = new Set([...newCodes].filter(c => !oldCodes.has(c)));
                 const codesRemoved = new Set([...oldCodes].filter(c => !newCodes.has(c)));
 
-                console.log('%c=== 判断渲染方式 ===', 'font-weight: bold; color: #9c27b0;');
-                console.log('isFirstLoad:', isFirstLoad);
-                console.log('forceRenderFull:', forceRenderFull);
-                console.log('codesChanged.size:', codesChanged.size);
-                console.log('codesRemoved.size:', codesRemoved.size);
-
                 if (isFirstLoad || forceRenderFull || codesChanged.size > 0 || codesRemoved.size > 0) {
-                    console.log('%c>>> 调用 renderFullTable <<<', 'font-weight: bold; color: #ff4d4f;');
                     renderFullTable(newData);
                 } else {
-                    console.log('%c>>> 调用 updateTableValues <<<', 'font-weight: bold; color: #00d26a;');
                     updateTableValues(newData);
                 }
 
@@ -1041,13 +1029,9 @@
         }
 
         function renderFullTable(dataMap) {
-            console.log('%c=== renderFullTable 被调用 ===', 'font-weight: bold; color: #e91e63;');
-            console.log('dataMap keys:', Object.keys(dataMap));
-            console.log('dataMap count:', Object.keys(dataMap).length);
-
             const body = document.getElementById('assetBody');
             body.innerHTML = '';
-
+            
             for (let code in dataMap) {
                 const {s, qty, cost, curPrice, mv, day, dayPnlRate, totPnl, totPnlRate} = dataMap[code];
                 const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
@@ -1090,8 +1074,6 @@
                     </td>`;
                 body.appendChild(tr);
             }
-
-            console.log('表格渲染完成，当前行数:', body.children.length);
         }
 
         function updateTableValues(newDataMap) {
@@ -1332,6 +1314,17 @@
         window.onload = () => {
             refreshAll();
         };
+
+        // 添加全局缓存破坏函数
+         function fetchWithCache(url, options = {}) {
+            if (!url.includes('?')) {
+                url += '?';
+            } else {
+                url += '&';
+            }
+            url += `t=${Date.now()}`;
+            return fetch(url, options);
+        }
 </script>
 </body>
 </html>
