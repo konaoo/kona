@@ -841,6 +841,7 @@
         let currentCategory = 'all';
         let portfolioData = {};
         let isFirstLoad = true;
+        let forceRenderFull = false;
         const syms = { USD: '$', HKD: 'HK$', CNY: '¥' };
 
         function togglePrivacy() { 
@@ -991,7 +992,7 @@
                 const codesChanged = new Set([...newCodes].filter(c => !oldCodes.has(c)));
                 const codesRemoved = new Set([...oldCodes].filter(c => !newCodes.has(c)));
 
-                if (isFirstLoad || codesChanged.size > 0 || codesRemoved.size > 0) {
+                if (isFirstLoad || forceRenderFull || codesChanged.size > 0 || codesRemoved.size > 0) {
                     renderFullTable(newData);
                 } else {
                     updateTableValues(newData);
@@ -999,6 +1000,7 @@
 
                 portfolioData = newData;
                 isFirstLoad = false;
+                forceRenderFull = false;
 
                 document.getElementById('totalMV').innerText = isPrivacyMode ? '****' : `¥ ${tMV.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
                 
@@ -1293,8 +1295,7 @@
                 }
             });
 
-            portfolioData = {};
-            isFirstLoad = false;
+            forceRenderFull = true;
             refreshAll();
         }
 
