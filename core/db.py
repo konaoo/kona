@@ -1,0 +1,582 @@
+"""
+数据库管理模块
+使用SQLite替代CSV文件，提供高效的数据存储和查询
+"""
+import sqlite3
+import logging
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class DatabaseManager:
+    """数据库管理类"""
+    
+    VALID_FIELDS = {'code', 'name', 'qty', 'price', 'curr', 'adjustment'}
+    
+    def __init__(self, db_path: str):
+        """
+        初始化数据库连接
+        
+        Args:
+            db_path: 数据库文件路径
+        """
+        self.db_path = db_path
+        self.init_database()
+    
+    def get_connection(self) -> sqlite3.Connection:
+        """获取数据库连接"""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    def __enter__(self):
+        self._conn = self.get_connection()
+        return self._conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._conn:
+            self._conn.close()
+    
+    def init_database(self):
+        """初始化数据库表结构"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # 创建持仓表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                qty REAL NOT NULL,
+                price REAL NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                adjustment REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建交易记录表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                time TEXT NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                price REAL NOT NULL,
+                qty REAL NOT NULL,
+                amount REAL NOT NULL,
+                pnl REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建现金资产表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cash_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建其他资产表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS other_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建索引
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_code ON portfolio(code)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_time ON transactions(time)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cash_assets_id ON cash_assets(id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_other_assets_id ON other_assets(id)')
+        
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized successfully")
+    
+    def get_portfolio(self, asset_type: str = 'all') -> List[Dict[str, Any]]:
+        """获取持仓数据，支持按类型筛选"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        logger.info(f"get_portfolio called with asset_type: {asset_type}")
+
+        if asset_type == 'all':
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                ORDER BY code
+            ''')
+        elif asset_type == 'stock_cn':
+            # A股: sh/sz/bj开头 或 ETF代码
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
+                   OR code IN ('159201', '159655', '512890', '513130', '513530')
+                ORDER BY code
+            ''')
+        elif asset_type == 'stock_us':
+            # 美股: gb_开头 或 纯字母（不含下划线和点）
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code LIKE 'gb_%' 
+                   OR (code NOT LIKE 'f_%' 
+                       AND code NOT LIKE 'ft_%' 
+                       AND code NOT LIKE 'gb_%'
+                       AND code NOT LIKE 'sh%' 
+                       AND code NOT LIKE 'sz%' 
+                       AND code NOT LIKE 'hk%' 
+                       AND code NOT LIKE 'bj%'
+                       AND code NOT LIKE '%.%' 
+                       AND code GLOB '[A-Za-z][A-Za-z]*')
+                ORDER BY code
+            ''')
+        elif asset_type == 'stock_hk':
+            # 港股: hk开头 或 .HK结尾
+            logger.info("Querying HK stocks")
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code LIKE 'hk%' OR code LIKE '%.HK' OR code LIKE '%.hk'
+                ORDER BY code
+            ''')
+        elif asset_type == 'fund':
+            # 基金: f_ 或 ft_ 开头
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code LIKE 'f_%' OR code LIKE 'ft_%'
+                ORDER BY code
+            ''')
+        else:
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                ORDER BY code
+            ''')
+        
+        data = []
+        for row in cursor.fetchall():
+            data.append({
+                'code': row['code'],
+                'name': row['name'],
+                'qty': float(row['qty']),
+                'price': float(row['price']),
+                'curr': row['curr'],
+                'adjustment': float(row['adjustment'])
+            })
+
+        logger.info(f"get_portfolio returned {len(data)} records for type {asset_type}")
+
+        conn.close()
+        return data
+    
+    def get_asset(self, code: str) -> Optional[Dict[str, Any]]:
+        """获取单个资产信息"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT code, name, qty, price, curr, adjustment
+            FROM portfolio
+            WHERE code = ?
+        ''', (code,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'code': row['code'],
+                'name': row['name'],
+                'qty': float(row['qty']),
+                'price': float(row['price']),
+                'curr': row['curr'],
+                'adjustment': float(row['adjustment'])
+            }
+        return None
+    
+    def add_asset(self, data: Dict[str, Any]) -> bool:
+        """添加或更新资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (
+                data['code'],
+                data['name'],
+                data['qty'],
+                data['price'],
+                data.get('curr', 'CNY'),
+                data.get('adjustment', 0.0)
+            ))
+            
+            conn.commit()
+            logger.info(f"Asset added/updated: {data['code']}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def update_asset(self, code: str, field: str, value: float) -> bool:
+        """更新资产字段"""
+        if field not in self.VALID_FIELDS:
+            logger.error(f"Invalid field name: {field}")
+            return False
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # 对于 adjustment 字段，需要累加
+            if field == 'adjustment':
+                cursor.execute('''
+                    UPDATE portfolio SET adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ?
+                ''', (value, code))
+            else:
+                cursor.execute(f'''
+                    UPDATE portfolio SET {field} = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ?
+                ''', (value, code))
+            
+            if cursor.rowcount > 0:
+                conn.commit()
+                logger.info(f"Asset updated: {code}, {field} = {value}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to update asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def delete_asset(self, code: str) -> bool:
+        """删除资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM portfolio WHERE code = ?', (code,))
+            conn.commit()
+            logger.info(f"Asset deleted: {code}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def buy_asset(self, code: str, price: float, qty: float) -> bool:
+        """加仓"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # 获取当前持仓
+            cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ?', (code,))
+            row = cursor.fetchone()
+            
+            if not row:
+                conn.close()
+                return False
+            
+            name, old_qty, old_price, curr = row
+            
+            # 计算加权平均成本
+            new_qty = old_qty + qty
+            new_price = (old_qty * old_price + qty * price) / new_qty if new_qty > 0 else 0
+            
+            # 更新持仓
+            cursor.execute('''
+                UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE code = ?
+            ''', (new_qty, new_price, code))
+            
+            # 记录交易
+            cursor.execute('''
+                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl)
+                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0)
+            ''', (
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                code,
+                name,
+                price,
+                qty,
+                price * qty
+            ))
+            
+            conn.commit()
+            logger.info(f"Buy: {code}, qty={qty}, price={price}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to buy asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def sell_asset(self, code: str, price: float, qty: float) -> bool:
+        """减仓"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # 获取当前持仓
+            cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ?', (code,))
+            row = cursor.fetchone()
+            
+            if not row:
+                conn.close()
+                return False
+            
+            name, old_qty, old_price, curr, old_adj = row
+            
+            if qty > old_qty:
+                conn.close()
+                logger.warning(f"Oversell: {code}")
+                return False
+            
+            # 计算实现盈亏
+            pnl = (price - old_price) * qty
+            
+            # 更新持仓或删除
+            new_qty = old_qty - qty
+            if new_qty < 0.001:
+                cursor.execute('DELETE FROM portfolio WHERE code = ?', (code,))
+            else:
+                cursor.execute('''
+                    UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ?
+                ''', (new_qty, pnl, code))
+            
+            # 记录交易
+            cursor.execute('''
+                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl)
+                VALUES (?, ?, ?, '减仓', ?, ?, ?, ?)
+            ''', (
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                code,
+                name,
+                price,
+                qty,
+                price * qty,
+                pnl
+            ))
+            
+            conn.commit()
+            logger.info(f"Sell: {code}, qty={qty}, price={price}, pnl={pnl}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to sell asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def get_transactions(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """获取交易记录"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT time, code, name, type, price, qty, amount, pnl
+            FROM transactions
+            ORDER BY time DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        data = []
+        for row in cursor.fetchall():
+            data.append({
+                'time': row['time'],
+                'code': row['code'],
+                'name': row['name'],
+                'type': row['type'],
+                'price': float(row['price']),
+                'qty': float(row['qty']),
+                'amount': float(row['amount']),
+                'pnl': float(row['pnl'])
+            })
+        
+        conn.close()
+        return data
+    
+    def backup_from_csv(self, csv_path: str) -> bool:
+        """从CSV备份数据导入数据库"""
+        try:
+            import pandas as pd
+            
+            df = pd.read_csv(csv_path)
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            for _, row in df.iterrows():
+                code = row['code']
+                name = row['name']
+                qty = row['qty']
+                price = row['price']
+                curr = row.get('curr', 'CNY')
+                adjustment = row.get('adjustment', 0.0)
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (code, name, qty, price, curr, adjustment))
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Backup imported from CSV: {csv_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to backup from CSV: {e}")
+            return False
+    
+    def get_cash_assets(self) -> List[Dict[str, Any]]:
+        """获取所有现金资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, amount, curr
+            FROM cash_assets
+            ORDER BY id
+        ''')
+        
+        data = []
+        for row in cursor.fetchall():
+            data.append({
+                'id': row['id'],
+                'name': row['name'],
+                'amount': float(row['amount']),
+                'curr': row['curr']
+            })
+        
+        conn.close()
+        return data
+    
+    def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """添加现金资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO cash_assets (name, amount, curr)
+                VALUES (?, ?, ?)
+            ''', (name, amount, curr))
+            
+            conn.commit()
+            logger.info(f"Cash asset added: {name}, amount={amount}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add cash asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def delete_cash_asset(self, asset_id: int) -> bool:
+        """删除现金资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM cash_assets WHERE id = ?', (asset_id,))
+            conn.commit()
+            logger.info(f"Cash asset deleted: {asset_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete cash asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def get_other_assets(self) -> List[Dict[str, Any]]:
+        """获取所有其他资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, amount, curr
+            FROM other_assets
+            ORDER BY id
+        ''')
+        
+        data = []
+        for row in cursor.fetchall():
+            data.append({
+                'id': row['id'],
+                'name': row['name'],
+                'amount': float(row['amount']),
+                'curr': row['curr']
+            })
+        
+        conn.close()
+        return data
+    
+    def add_other_asset(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """添加其他资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO other_assets (name, amount, curr)
+                VALUES (?, ?, ?)
+            ''', (name, amount, curr))
+            
+            conn.commit()
+            logger.info(f"Other asset added: {name}, amount={amount}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add other asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def delete_other_asset(self, asset_id: int) -> bool:
+        """删除其他资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM other_assets WHERE id = ?', (asset_id,))
+            conn.commit()
+            logger.info(f"Other asset deleted: {asset_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete other asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()

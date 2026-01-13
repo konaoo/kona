@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>主页面对比测试</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+        .test-section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        .code-box { background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; margin: 10px 0; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        button.active { background: #007bff; color: white; }
+        #result { background: #f9f9f9; padding: 15px; border-radius: 4px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>主页面JavaScript测试</h1>
+
+    <div class="test-section">
+        <h2>步骤1: 检查页面标题</h2>
+        <p>当前页面标题: <strong id="pageTitle">-</strong></p>
+        <p>应该显示: Portfolio v10.4</p>
+    </div>
+
+    <div class="test-section">
+        <h2>步骤2: 测试分类切换</h2>
+        <div>
+            <button onclick="switchCategory('all')" id="btn-all" class="active">全部</button>
+            <button onclick="switchCategory('stock_cn')" id="btn-stock_cn">A股</button>
+            <button onclick="switchCategory('stock_hk')" id="btn-stock_hk">港股</button>
+            <button onclick="switchCategory('stock_us')" id="btn-stock_us">美股</button>
+            <button onclick="switchCategory('fund')" id="btn-fund">基金</button>
+        </div>
+        <div class="code-box" id="debugLog">
+            点击按钮查看调试信息...
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>步骤3: 测试API</h2>
+        <p>当前分类: <strong id="currentCat">all</strong></p>
+        <button onclick="testAPI()">测试当前分类API</button>
+        <div id="result">点击按钮测试API...</div>
+    </div>
+
+    <script>
+        // 从主页面复制的代码
+        let currentCategory = 'all';
+
+        function log(message) {
+            const logEl = document.getElementById('debugLog');
+            logEl.innerHTML = message + '\n' + logEl.innerHTML;
+        }
+
+        function switchCategory(type) {
+            log('=== 切换分类 ===');
+            log('从: ' + currentCategory);
+            log('到: ' + type);
+            currentCategory = type;
+            log('设置后, currentCategory=' + currentCategory);
+            
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + type).classList.add('active');
+            
+            document.getElementById('currentCat').innerText = currentCategory;
+        }
+
+        async function testAPI() {
+            const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
+            const resultEl = document.getElementById('result');
+            
+            resultEl.innerHTML = '请求: ' + apiUrl + '\n等待...';
+            
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                resultEl.innerHTML = 
+                    '<strong>API URL:</strong> ' + apiUrl + '\n' +
+                    '<strong>返回数据数量:</strong> ' + data.length + '条\n' +
+                    '<strong>数据:</strong>\n' + 
+                    data.map(item => '  - ' + item.code + ': ' + item.name).join('\n');
+            } catch (error) {
+                resultEl.innerHTML = '错误: ' + error;
+            }
+        }
+
+        window.onload = function() {
+            document.getElementById('pageTitle').innerText = document.title;
+            log('页面加载完成');
+            log('currentCategory = ' + currentCategory);
+        };
+    </script>
+</body>
+</html>

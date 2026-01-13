@@ -1,0 +1,170 @@
+[
+  {
+    "code": "ft_LU1116320737",
+    "name": "汇丰贝莱德基金",
+    "qty": 3043.93,
+    "price": 8.7182,
+    "curr": "USD",
+    "adjustment": 648.4355400000006
+  },
+  {
+    "code": "gb_bili",
+    "name": "哔哩哔哩",
+    "qty": 70.0,
+    "price": 79.0,
+    "curr": "USD",
+    "adjustment": 1625.0
+  },
+  {
+    "code": "sh513530",
+    "name": "港股通红利ETF",
+    "qty": 26500.0,
+    "price": 1.689,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh600941",
+    "name": "中国移动",
+    "qty": 200.0,
+    "price": 105.716,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sz159655",
+    "name": "标普ETF",
+    "qty": 8400.0,
+    "price": 1.783,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh600900",
+    "name": "长江电力",
+    "qty": 900.0,
+    "price": 28.469,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh512890",
+    "name": "红利低波ETF",
+    "qty": 69000.0,
+    "price": 1.184,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh513130",
+    "name": "恒生科技",
+    "qty": 38500.0,
+    "price": 0.747,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh601088",
+    "name": "中国神华",
+    "qty": 200.0,
+    "price": 40.44,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh601398",
+    "name": "工商银行",
+    "qty": 13300.0,
+    "price": 6.731,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sz002594",
+    "name": "比亚迪",
+    "qty": 100.0,
+    "price": 100.89,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh601166",
+    "name": "兴业银行",
+    "qty": 500.0,
+    "price": 20.671,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sz159201",
+    "name": "自由现金流ETF",
+    "qty": 10000.0,
+    "price": 1.169,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sh600036",
+    "name": "招商银行",
+    "qty": 500.0,
+    "price": 35.151,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "f_968163",
+    "name": "摩根亚洲总收益",
+    "qty": 4665.88,
+    "price": 10.61,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "f_968048",
+    "name": "摩根亚洲股息",
+    "qty": 5867.0,
+    "price": 16.63,
+    "curr": "CNY",
+    "adjustment": 0.0
+  },
+  {
+    "code": "hk00175",
+    "name": "吉利汽车",
+    "qty": 1000.0,
+    "price": 32.66,
+    "curr": "HKD",
+    "adjustment": 0.0
+  },
+  {
+    "code": "hk03988",
+    "name": "中国银行",
+    "qty": 2000.0,
+    "price": 3.742,
+    "curr": "HKD",
+    "adjustment": 0.0
+  },
+  {
+    "code": "hk01810",
+    "name": "小米集团-Ｗ",
+    "qty": 200.0,
+    "price": 43.583,
+    "curr": "HKD",
+    "adjustment": 0.0
+  },
+  {
+    "code": "gb_se",
+    "name": "Sea Ltd.",
+    "qty": 10.0,
+    "price": 160.0,
+    "curr": "USD",
+    "adjustment": 0.0
+  },
+  {
+    "code": "sz110017",
+    "name": "易方达增强回报债券A",
+    "qty": 411639.0,
+    "price": 1.409,
+    "curr": "CNY",
+    "adjustment": 0.0
+  }
+]

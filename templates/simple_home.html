@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Portfolio - 简易渲染</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background:#0a0e27; color:#fff; }
+    table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+    th, td { border:1px solid rgba(255,255,255,.25); padding:8px 12px; text-align:left; }
+    th { background: rgba(255,255,255,.08); }
+  </style>
+</head>
+<body>
+  <h2>简易数据渲染</h2>
+  <table aria-label="资产表">
+    <thead><tr><th>代码</th><th>名称</th><th>数量</th><th>价格</th><th>货币</th></tr></thead>
+    <tbody id="simpleBody"></tbody>
+  </table>
+  <script>
+    async function loadStockCN(){
+      try {
+        const res = await fetch('/api/portfolio?type=stock_cn');
+        const data = await res.json();
+        const body = document.getElementById('simpleBody');
+        if (body) body.innerHTML = data.map(d => `<tr><td>${d.code}</td><td>${d.name}</td><td>${d.qty}</td><td>${d.price}</td><td>${d.curr}</td></tr>`).join('');
+      } catch (e) {
+        console.error('render error', e);
+      }
+    }
+    window.addEventListener('load', loadStockCN);
+  </script>
+</body>
+</html>
