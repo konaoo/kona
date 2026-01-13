@@ -30,7 +30,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
 
 # 应用版本号，用于强制刷新缓存
-APP_VERSION = "v10.9.3"
+APP_VERSION = "v10.9.5"
 
 # 初始化数据库（从CSV导入备份数据）
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
@@ -243,11 +243,15 @@ def get_portfolio():
     """获取持仓数据，支持按类型筛选"""
     asset_type = request.args.get('type', 'all')
     logger.info(f"API: get_portfolio called with type={asset_type}")
+    logger.info(f"Full request URL: {request.url}")
+    logger.info(f"All request args: {dict(request.args)}")
     data = db.get_portfolio(asset_type)
     logger.info(f"API: returning {len(data)} records")
+    logger.info(f"Sample codes: {[d['code'] for d in data[:5]]}")
     response = jsonify(data)
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
     return response
 
 

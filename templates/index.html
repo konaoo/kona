@@ -5,7 +5,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Portfolio v10.4 - Cache Busted</title>
+    <title>Portfolio v10.9.3 - Fixed</title>
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="-1">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -951,8 +951,11 @@
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
                 console.log('%c=== 请求持仓数据 ===', 'font-weight: bold; color: #e91e63;');
                 console.log('currentCategory:', currentCategory);
+                const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
+                const cacheBreaker = `t=${timestamp}_${Math.random().toString(36).substring(7)}`;
                 console.log('apiUrl:', apiUrl);
-                const data = await (await fetch(`${apiUrl}?t=${timestamp}`)).json();
+                console.log('fullUrl:', `${apiUrl}?${cacheBreaker}`);
+                const data = await (await fetch(`${apiUrl}?${cacheBreaker}`)).json();
                 console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
                 console.log('持仓数据:', data);
 
