@@ -841,8 +841,6 @@
         let FX = { USD: 7.25, HKD: 0.93, CNY: 1.00 };
         let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
         let currentCategory = 'all';
-        let portfolioData = {};
-        let isFirstLoad = true;
         const syms = { USD: '$', HKD: 'HK$', CNY: '¥' };
 
         function togglePrivacy() { 
@@ -910,12 +908,22 @@
         }
         
         async function refreshAll() {
+            console.log('%c═════════════════════════════════════════', 'color: #9c27b0; font-weight: bold;');
+            console.log('%c   refreshAll函数开始执行', 'color: #9c27b0; font-weight: bold;');
+            console.log('%c═════════════════════════════════════════', 'color: #9c27b0; font-weight: bold;');
+            
+            console.log('window.currentCategory:', window.currentCategory);
+            console.log('currentCategory:', currentCategory);
+            
+            document.getElementById('eyeIcon').innerText = isPrivacyMode ? '🙈' : '👁️'; 
+
+            // 添加时间戳防止缓存
             const timestamp = Date.now();
-            document.getElementById('eyeIcon').innerText = isPrivacyMode ? '🙈' : '👁️';
 
             try { FX = await (await fetch(`/api/rates?t=${timestamp}`)).json(); } catch(e) {}
-
+            
             const idxs = ['s_sh000001', 'rt_hkHSTECH', 'gb_ixic'];
+
             try {
                 const idxPrices = await (await fetch(`/api/prices/batch?t=${timestamp}`, {
                     method: 'POST',
@@ -939,69 +947,126 @@
                         const val = data.price > 0 ? data.price : data.yclose;
                         if (val > 0) {
                             el.innerText = val.toFixed(2);
+                            
                             const color = data.chg >= 0 ? 'up' : 'down';
                             chgEl.className = `idx-change ${color}`;
                             chgEl.innerText = `${data.chg >= 0 ? '+' : ''}${data.chg.toFixed(2)}%`;
+                            
+                            // 绘制折线图
                             drawMiniChart(`chart-${info.id}`, data.chg);
                         }
                     }
                 }
-            } catch (e) { }
+            } catch (e) { console.error('Index error:', e); }
 
             try {
-                const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
-                const data = await (await fetch(`${apiUrl}?t=${timestamp}`)).json();
+                // 使用GET请求并添加随机参数避免缓存
+                const randomParam = Math.random().toString(36).substring(7);
+                const apiUrl = currentCategory === 'all' ? '/api/portfolio?r=' + randomParam : `/api/portfolio?type=${currentCategory}&r=${randomParam}`;
+                
+                console.log('%c=== API请求 ===', 'font-weight: bold; color: #e91e63;');
+                console.log('currentCategory:', currentCategory);
+                console.log('apiUrl:', apiUrl);
+                
+                const data = await (await fetch(apiUrl)).json();
+                
+                console.log('%cAPI返回数据:', 'font-weight: bold; color: #4caf50;', data.length, '条');
+                
+                const body = document.getElementById('assetBody');
+                body.innerHTML = '';
 
                 let tMV = 0, tCost = 0, tDay = 0, gFloat = 0;
-                const prices = data.length > 0 ? await (await fetch(`/api/prices/batch?t=${timestamp}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({codes: data.map(s => s.code)})
-                })).json() : {};
 
-                const newData = {};
-                const newCodes = new Set();
+                if (data.length > 0) {
+                    const codes = data.map(s => s.code);
+                    const prices = await (await fetch(`/api/prices/batch?t=${timestamp}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({codes: codes})
+                    })).json();
+                    console.log('Prices data:', prices);
+
+                    for (let s of data) {
+                        let d = prices[s.code] || {price: 0, yclose: 0, chg: 0};
+                        
+                        const qty = parseFloat(s.qty);
+                        const cost = parseFloat(s.price);
+                        const adj = parseFloat(s.adjustment) || 0;
+                        
+                        let curPrice;
+                        let dayPnlRate = 0;
+                        let totalPnlRate = 0;
+                        
+                        if (d.price > 0) {
+                            curPrice = d.price;
+                            dayPnlRate = d.chg || 0;
+                        } else if (d.yclose > 0) {
+                            curPrice = d.yclose;
+                        } else {
+                            curPrice = cost;
+                        }
+                        
+                        const mv = curPrice * qty;
+                        
+                        const ycloseRef = d.yclose || cost;
+                        const day = (curPrice - ycloseRef) * qty;
+                        
+                        if (ycloseRef > 0 && d.chg === 0) {
+                            dayPnlRate = ((curPrice - ycloseRef) / ycloseRef) * 100;
+                        } else {
+                            dayPnlRate = d.chg || 0;
+                        }
+                        
+                        const totPnl = (curPrice - cost) * qty + adj;
+                        const rate = FX[s.curr] || 1;
+                        
+                        tMV += mv * rate;
+                        tCost += cost * qty * rate;
+                        tDay += day * rate;
+                        gFloat += (mv - cost * qty) * rate;
+                        
+                        const tr = document.createElement('tr');
+                        const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
+                        const displayCode = s.code.replace(/^(f_|ft_|gb_|sh|sz|hk|bj)/i, '');
+                        
+                        const priceCell = isPrivacyMode ? '--' : 
+                            `<div class="price-cell">
+                                <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
+                                <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
+                            </div>`;
+                        
+                        const dayPnlClass = day >= 0 ? 'up' : 'down';
+                        const dayPnlCell = isPrivacyMode ? '--' : 
+                            `<div class="pnl-cell ${dayPnlClass}">
+                                <span class="pnl-value">${syms[s.curr] || ''}${day.toFixed(2)}</span>
+                                <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
+                            </div>`;
+                        
+                        const totPnlClass = totPnl >= 0 ? 'up' : 'down';
+                        const totPnlRate = (cost * qty > 0 ? (totPnl / (cost * qty) * 100) : 0);
+                        const totPnlCell = isPrivacyMode ? '--' : 
+                            `<div class="pnl-cell ${totPnlClass}">
+                                <span class="pnl-value">${syms[s.curr] || ''}${totPnl.toFixed(2)}</span>
+                                <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
+                            </div>`;
+                        
+                        tr.innerHTML = `
+                            <td class="code-cell">${displayCode}</td>
+                            <td style="font-weight: 500;">${s.name}</td>
+                            <td>${qty.toLocaleString()}</td>
+                            <td>${priceCell}</td>
+                            <td>${syms[s.curr] || ''}${mv.toFixed(2)}</td>
+                            <td>${dayPnlCell}</td>
+                            <td>${totPnlCell}</td>
+                            <td style="text-align: right;">
+                                <button class="action-btn" onclick="openTradeModal('buy','${s.code}','${s.name}','${curPrice}')" title="加仓">➕</button>
+                                <button class="action-btn" onclick="openTradeModal('sell','${s.code}','${s.name}','${curPrice}')" title="减仓">➖</button>
+                                <button class="action-btn" onclick="deleteStock('${s.code}')" title="删除">🗑️</button>
+                            </td>`;
+                        body.appendChild(tr);
+                    }
+                }
                 
-                for (let s of data) {
-                    const d = prices[s.code] || {price: 0, yclose: 0, chg: 0};
-                    const qty = parseFloat(s.qty);
-                    const cost = parseFloat(s.price);
-                    const adj = parseFloat(s.adjustment) || 0;
-                    
-                    let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : cost);
-                    const mv = curPrice * qty;
-                    const ycloseRef = d.yclose || cost;
-                    const day = (curPrice - ycloseRef) * qty;
-                    const dayPnlRate = ycloseRef > 0 && d.chg === 0 ? ((curPrice - ycloseRef) / ycloseRef * 100) : (d.chg || 0);
-                    const totPnl = (curPrice - cost) * qty + adj;
-                    const rate = FX[s.curr] || 1;
-                    const totPnlRate = cost * qty > 0 ? (totPnl / (cost * qty) * 100) : 0;
-
-                    tMV += mv * rate;
-                    tCost += cost * qty * rate;
-                    tDay += day * rate;
-                    gFloat += (mv - cost * qty) * rate;
-
-                    newData[s.code] = {
-                        s, d, qty, cost, adj, curPrice, mv, day,
-                        dayPnlRate, totPnl, totPnlRate, rate
-                    };
-                    newCodes.add(s.code);
-                }
-
-                const oldCodes = new Set(Object.keys(portfolioData));
-                const codesChanged = new Set([...newCodes].filter(c => !oldCodes.has(c)));
-                const codesRemoved = new Set([...oldCodes].filter(c => !newCodes.has(c)));
-
-                if (isFirstLoad || codesChanged.size > 0 || codesRemoved.size > 0) {
-                    renderFullTable(newData);
-                } else {
-                    updateTableValues(newData);
-                }
-
-                portfolioData = newData;
-                isFirstLoad = false;
-
                 document.getElementById('totalMV').innerText = isPrivacyMode ? '****' : `¥ ${tMV.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
                 
                 const updateStat = (id, val, base) => {
@@ -1020,90 +1085,7 @@
 
             } catch (err) {
                 console.error('Portfolio error:', err);
-            }
-        }
-
-        function renderFullTable(dataMap) {
-            const body = document.getElementById('assetBody');
-            body.innerHTML = '';
-            
-            for (let code in dataMap) {
-                const {s, qty, cost, curPrice, mv, day, dayPnlRate, totPnl, totPnlRate} = dataMap[code];
-                const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
-                const displayCode = s.code.replace(/^(f_|ft_|gb_|sh|sz|hk|bj)/i, '');
-                const dayPnlClass = day >= 0 ? 'up' : 'down';
-                const totPnlClass = totPnl >= 0 ? 'up' : 'down';
-
-                const priceCell = isPrivacyMode ? '--' : 
-                    `<div class="price-cell">
-                        <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
-                        <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
-                    </div>`;
-                
-                const dayPnlCell = isPrivacyMode ? '--' : 
-                    `<div class="pnl-cell ${dayPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${day.toFixed(2)}</span>
-                        <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
-                    </div>`;
-                
-                const totPnlCell = isPrivacyMode ? '--' : 
-                    `<div class="pnl-cell ${totPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${totPnl.toFixed(2)}</span>
-                        <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
-                    </div>`;
-
-                const tr = document.createElement('tr');
-                tr.id = `row-${s.code}`;
-                tr.innerHTML = `
-                    <td class="code-cell">${displayCode}</td>
-                    <td style="font-weight: 500;">${s.name}</td>
-                    <td>${qty.toLocaleString()}</td>
-                    <td>${priceCell}</td>
-                    <td>${syms[s.curr] || ''}${mv.toFixed(2)}</td>
-                    <td>${dayPnlCell}</td>
-                    <td>${totPnlCell}</td>
-                    <td style="text-align: right;">
-                        <button class="action-btn" onclick="openTradeModal('buy','${s.code}','${s.name}','${curPrice}')" title="加仓">➕</button>
-                        <button class="action-btn" onclick="openTradeModal('sell','${s.code}','${s.name}','${curPrice}')" title="减仓">➖</button>
-                        <button class="action-btn" onclick="deleteStock('${s.code}')" title="删除">🗑️</button>
-                    </td>`;
-                body.appendChild(tr);
-            }
-        }
-
-        function updateTableValues(newDataMap) {
-            for (let code in newDataMap) {
-                const {s, qty, cost, curPrice, mv, day, dayPnlRate, totPnl, totPnlRate} = newDataMap[code];
-                const tr = document.getElementById(`row-${code}`);
-                if (!tr) continue;
-
-                const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
-                const dayPnlClass = day >= 0 ? 'up' : 'down';
-                const totPnlClass = totPnl >= 0 ? 'up' : 'down';
-
-                const cells = tr.querySelectorAll('td');
-                
-                if (!isPrivacyMode) {
-                    const priceCell = cells[3];
-                    priceCell.innerHTML = `<div class="price-cell">
-                        <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
-                        <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
-                    </div>`;
-                    
-                    cells[4].innerText = `${syms[s.curr] || ''}${mv.toFixed(2)}`;
-                    cells[5].innerHTML = `<div class="pnl-cell ${dayPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${day.toFixed(2)}</span>
-                        <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
-                    </div>`;
-                    cells[6].innerHTML = `<div class="pnl-cell ${totPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${totPnl.toFixed(2)}</span>
-                        <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
-                    </div>`;
-                    
-                    const btns = cells[7].querySelectorAll('.action-btn');
-                    btns[0].onclick = () => openTradeModal('buy', s.code, s.name, curPrice);
-                    btns[1].onclick = () => openTradeModal('sell', s.code, s.name, curPrice);
-                }
+                console.error('Error stack:', err.stack);
             }
         }
 

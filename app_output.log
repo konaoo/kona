@@ -1,47 +1,19 @@
-2026-01-13 19:13:17,485 - core.db - INFO - Database initialized successfully
-2026-01-13 19:13:17,489 - __main__ - INFO - Starting Portfolio Management System v10.0...
-2026-01-13 19:13:17,489 - __main__ - INFO - Database: /Users/kona/Desktop/tool/portfolio.db
-2026-01-13 19:13:17,489 - __main__ - INFO - Server: http://127.0.0.1:5003
+2026-01-13 19:26:33,483 - core.db - INFO - Database initialized successfully
+2026-01-13 19:26:33,486 - __main__ - INFO - Starting Portfolio Management System v10.0...
+2026-01-13 19:26:33,486 - __main__ - INFO - Database: /Users/kona/Desktop/tool/portfolio.db
+2026-01-13 19:26:33,486 - __main__ - INFO - Server: http://127.0.0.1:5003
  * Serving Flask app 'app'
  * Debug mode: off
-2026-01-13 19:13:17,495 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-01-13 19:26:33,491 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on http://127.0.0.1:5003
-2026-01-13 19:13:17,495 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
-2026-01-13 19:13:19,425 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:19] "GET / HTTP/1.1" 200 -
-2026-01-13 19:13:20,036 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:20] "GET /api/rates?t=1768302799980 HTTP/1.1" 200 -
-2026-01-13 19:13:20,104 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:20] "POST /api/prices/batch?t=1768302799980 HTTP/1.1" 200 -
-2026-01-13 19:13:20,108 - __main__ - INFO - API: get_portfolio called with type=all
-2026-01-13 19:13:20,109 - core.db - INFO - get_portfolio called with asset_type: all
-2026-01-13 19:13:20,109 - core.db - INFO - get_portfolio returned 21 records for type all
-2026-01-13 19:13:20,109 - __main__ - INFO - API: returning 21 records
-2026-01-13 19:13:20,109 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:20] "GET /api/portfolio?r=se4o2 HTTP/1.1" 200 -
-2026-01-13 19:13:20,438 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
-2026-01-13 19:13:21,281 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:21] "GET /api/price?code=SE HTTP/1.1" 200 -
-2026-01-13 19:13:21,312 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:21] "GET /api/price?code=BILI HTTP/1.1" 200 -
-2026-01-13 19:13:21,583 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:21] "POST /api/prices/batch?t=1768302799980 HTTP/1.1" 200 -
-2026-01-13 19:13:38,475 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:13:38] "POST /api/prices/batch HTTP/1.1" 200 -
-2026-01-13 19:14:19,875 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:14:19] "GET /api/rates?t=1768302859814 HTTP/1.1" 200 -
-2026-01-13 19:14:19,879 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:14:19] "POST /api/prices/batch?t=1768302859814 HTTP/1.1" 200 -
-2026-01-13 19:14:19,881 - __main__ - INFO - API: get_portfolio called with type=all
-2026-01-13 19:14:19,882 - core.db - INFO - get_portfolio called with asset_type: all
-2026-01-13 19:14:19,882 - core.db - INFO - get_portfolio returned 21 records for type all
-2026-01-13 19:14:19,882 - __main__ - INFO - API: returning 21 records
-2026-01-13 19:14:19,883 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:14:19] "GET /api/portfolio?r=2atco HTTP/1.1" 200 -
-2026-01-13 19:14:19,888 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:14:19] "POST /api/prices/batch?t=1768302859814 HTTP/1.1" 200 -
-2026-01-13 19:15:19,861 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:15:19] "GET /api/rates?t=1768302919815 HTTP/1.1" 200 -
-2026-01-13 19:15:20,035 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:15:20] "POST /api/prices/batch?t=1768302919815 HTTP/1.1" 200 -
-2026-01-13 19:15:20,043 - __main__ - INFO - API: get_portfolio called with type=all
-2026-01-13 19:15:20,043 - core.db - INFO - get_portfolio called with asset_type: all
-2026-01-13 19:15:20,044 - core.db - INFO - get_portfolio returned 21 records for type all
-2026-01-13 19:15:20,044 - __main__ - INFO - API: returning 21 records
-2026-01-13 19:15:20,045 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:15:20] "GET /api/portfolio?r=25v0df HTTP/1.1" 200 -
-2026-01-13 19:15:20,364 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
-2026-01-13 19:15:21,645 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:15:21] "POST /api/prices/batch?t=1768302919815 HTTP/1.1" 200 -
-2026-01-13 19:16:19,878 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:16:19] "GET /api/rates?t=1768302979815 HTTP/1.1" 200 -
-2026-01-13 19:16:19,885 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:16:19] "POST /api/prices/batch?t=1768302979815 HTTP/1.1" 200 -
-2026-01-13 19:16:19,889 - __main__ - INFO - API: get_portfolio called with type=all
-2026-01-13 19:16:19,890 - core.db - INFO - get_portfolio called with asset_type: all
-2026-01-13 19:16:19,890 - core.db - INFO - get_portfolio returned 21 records for type all
-2026-01-13 19:16:19,890 - __main__ - INFO - API: returning 21 records
-2026-01-13 19:16:19,891 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:16:19] "GET /api/portfolio?r=xmolxf HTTP/1.1" 200 -
-2026-01-13 19:16:19,898 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:16:19] "POST /api/prices/batch?t=1768302979815 HTTP/1.1" 200 -
+2026-01-13 19:26:33,491 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-01-13 19:26:35,511 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:26:35] "GET / HTTP/1.1" 200 -
+2026-01-13 19:26:36,104 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:26:36] "GET /api/rates?t=1768303596056 HTTP/1.1" 200 -
+2026-01-13 19:26:36,183 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:26:36] "POST /api/prices/batch?t=1768303596056 HTTP/1.1" 200 -
+2026-01-13 19:26:36,187 - __main__ - INFO - API: get_portfolio called with type=all
+2026-01-13 19:26:36,187 - core.db - INFO - get_portfolio called with asset_type: all
+2026-01-13 19:26:36,188 - core.db - INFO - get_portfolio returned 21 records for type all
+2026-01-13 19:26:36,188 - __main__ - INFO - API: returning 21 records
+2026-01-13 19:26:36,188 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:26:36] "GET /api/portfolio?t=1768303596056 HTTP/1.1" 200 -
+2026-01-13 19:26:36,581 - core.fund - WARNING - Tiantian fund API error for f_968163: Expecting value: line 1 column 1 (char 0)
+2026-01-13 19:26:37,744 - werkzeug - INFO - 127.0.0.1 - - [13/Jan/2026 19:26:37] "POST /api/prices/batch?t=1768303596056 HTTP/1.1" 200 -
