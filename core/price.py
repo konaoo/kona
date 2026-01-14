@@ -170,7 +170,7 @@ def get_forex_rates() -> Dict[str, float]:
 
 def search_stocks(query: str) -> list:
     """
-    搜索股票
+    搜索股票（支持A股、港股、美股、基金）
     
     Args:
         query: 搜索关键词
@@ -181,25 +181,96 @@ def search_stocks(query: str) -> list:
     import requests
     
     results = []
+    seen_codes = set()
     
-    try:
-        url = config.API_ENDPOINTS["sina_search"].format(query=query, timestamp=time.time())
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
-        
-        if r.status_code == 200:
-            content = r.text
-            if '"' in content:
-                items = content.split('"')[1].split(';')
-                for item in items:
+    def parse_sina_response(content, type_code):
+        """解析新浪搜索响应"""
+        items = []
+        if '"' in content:
+            data = content.split('"')[1]
+            if data:
+                for item in data.split(';'):
                     parts = item.split(',')
                     if len(parts) > 4:
-                        results.append({
-                            'code': parts[3],
-                            'name': parts[4],
-                            'type_name': '股票',
-                            'currency': 'CNY'
-                        })
+                        code = parts[3]
+                        name = parts[4]
+                        if code and name:
+                            # 根据type确定类型和货币
+                            if type_code == '11':  # A股
+                                type_name = 'A股'
+                                currency = 'CNY'
+                            elif type_code == '31':  # 港股
+                                type_name = '港股'
+                                currency = 'HKD'
+                                code = code + '.HK' if not code.endswith('.HK') else code
+                            elif type_code == '41':  # 美股
+                                type_name = '美股'
+                                currency = 'USD'
+                                code = 'gb_' + code.lower() if not code.startswith('gb_') else code
+                            else:
+                                type_name = '股票'
+                                currency = 'CNY'
+                            items.append({
+                                'code': code,
+                                'name': name,
+                                'type_name': type_name,
+                                'currency': currency
+                            })
+        return items
+    
+    try:
+        # 1. 搜索A股 (type=11,12,13,14,15)
+        url = config.API_ENDPOINTS["sina_search"].format(query=query, timestamp=time.time())
+        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r.encoding = 'gbk'
+        if r.status_code == 200:
+            for item in parse_sina_response(r.text, '11'):
+                if item['code'] not in seen_codes:
+                    seen_codes.add(item['code'])
+                    results.append(item)
+        
+        # 2. 搜索港股 (type=31)
+        url = f"http://suggest3.sinajs.cn/suggest/type=31&key={query}&name=suggestdata_{int(time.time())}"
+        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r.encoding = 'gbk'
+        if r.status_code == 200:
+            for item in parse_sina_response(r.text, '31'):
+                if item['code'] not in seen_codes:
+                    seen_codes.add(item['code'])
+                    results.append(item)
+        
+        # 3. 搜索美股 (type=41)
+        url = f"http://suggest3.sinajs.cn/suggest/type=41&key={query}&name=suggestdata_{int(time.time())}"
+        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r.encoding = 'gbk'
+        if r.status_code == 200:
+            for item in parse_sina_response(r.text, '41'):
+                if item['code'] not in seen_codes:
+                    seen_codes.add(item['code'])
+                    results.append(item)
+        
+        # 4. 搜索基金（东方财富）
+        fund_url = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx'
+        r = requests.get(fund_url, params={'m': 1, 'key': query}, timeout=config.API_TIMEOUT)
+        if r.status_code == 200:
+            try:
+                data = r.json()
+                if data.get('Datas'):
+                    for fund in data['Datas'][:5]:
+                        code = 'f_' + fund.get('CODE', '')
+                        name = fund.get('NAME', '')
+                        if code and name and code not in seen_codes:
+                            seen_codes.add(code)
+                            results.append({
+                                'code': code,
+                                'name': name,
+                                'type_name': '基金',
+                                'currency': 'CNY'
+                            })
+            except:
+                pass
+                
     except Exception as e:
         logger.warning(f"Failed to search stocks: {e}")
     
-    return results[:10]
+    return results[:15]

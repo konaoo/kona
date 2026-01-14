@@ -51,7 +51,8 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     
     # 港股
     elif '.HK' in code.upper():
-        code = 'hk' + code.upper().replace('.HK', '')
+        # 保持 00175.HK 格式
+        code = code.upper()
         if not curr:
             curr = 'HKD'
     
@@ -63,7 +64,7 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     
     # 默认货币推断
     if not curr:
-        if 'hk' in code:
+        if '.HK' in code.upper() or 'hk' in code.lower():
             curr = 'HKD'
         elif 'gb_' in code or 'ft_' in code:
             curr = 'USD'

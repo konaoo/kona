@@ -100,12 +100,25 @@ class DatabaseManager:
             )
         ''')
         
+        # 创建负债表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS liabilities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                amount REAL NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # 创建索引
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_code ON portfolio(code)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_time ON transactions(time)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_cash_assets_id ON cash_assets(id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_other_assets_id ON other_assets(id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_liabilities_id ON liabilities(id)')
         
         conn.commit()
         conn.close()
@@ -277,6 +290,30 @@ class DatabaseManager:
         finally:
             conn.close()
     
+    def modify_asset(self, code: str, qty: float, price: float, adjustment: float) -> bool:
+        """修正资产数据（数量、成本、调整值）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE portfolio 
+                SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE code = ?
+            ''', (qty, price, adjustment, code))
+            
+            if cursor.rowcount > 0:
+                conn.commit()
+                logger.info(f"Asset modified: {code}, qty={qty}, price={price}, adj={adjustment}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to modify asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
     def delete_asset(self, code: str) -> bool:
         """删除资产"""
         conn = self.get_connection()
@@ -576,6 +613,130 @@ class DatabaseManager:
             return True
         except Exception as e:
             logger.error(f"Failed to delete other asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def update_cash_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """更新现金资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (name, amount, curr, asset_id))
+            
+            conn.commit()
+            logger.info(f"Cash asset updated: {asset_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update cash asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def update_other_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """更新其他资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (name, amount, curr, asset_id))
+            
+            conn.commit()
+            logger.info(f"Other asset updated: {asset_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update other asset: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def get_liabilities(self) -> List[Dict[str, Any]]:
+        """获取所有负债"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, amount, curr
+            FROM liabilities
+            ORDER BY id
+        ''')
+        
+        data = []
+        for row in cursor.fetchall():
+            data.append({
+                'id': row['id'],
+                'name': row['name'],
+                'amount': float(row['amount']),
+                'curr': row['curr']
+            })
+        
+        conn.close()
+        return data
+    
+    def add_liability(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """添加负债"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO liabilities (name, amount, curr)
+                VALUES (?, ?, ?)
+            ''', (name, amount, curr))
+            
+            conn.commit()
+            logger.info(f"Liability added: {name}, amount={amount}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add liability: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def delete_liability(self, liability_id: int) -> bool:
+        """删除负债"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM liabilities WHERE id = ?', (liability_id,))
+            conn.commit()
+            logger.info(f"Liability deleted: {liability_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete liability: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def update_liability(self, liability_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+        """更新负债"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (name, amount, curr, liability_id))
+            
+            conn.commit()
+            logger.info(f"Liability updated: {liability_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update liability: {e}")
             conn.rollback()
             return False
         finally:

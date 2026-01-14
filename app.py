@@ -30,7 +30,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
 
 # 应用版本号，用于强制刷新缓存
-APP_VERSION = "v10.9.10"
+APP_VERSION = "v11.0.2"
 
 # 初始化数据库（从CSV导入备份数据）
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
@@ -46,8 +46,19 @@ def open_browser():
 
 @app.route('/')
 def index():
-    """主页"""
+    """主页 - 我的投资"""
     response = make_response(render_template('index.html', version=APP_VERSION))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    response.headers['X-App-Version'] = APP_VERSION
+    return response
+
+
+@app.route('/assets')
+def assets():
+    """我的资产页面"""
+    response = make_response(render_template('assets.html', version=APP_VERSION))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -301,6 +312,29 @@ def update_asset():
         return jsonify({"error": "Invalid value"}), 400
 
 
+@app.route('/api/portfolio/modify', methods=['POST'])
+def modify_asset():
+    """修正资产（数量、成本、调整值）"""
+    data = request.json
+    
+    if not data or 'code' not in data or 'qty' not in data or 'price' not in data or 'adjustment' not in data:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    try:
+        qty = float(data['qty'])
+        price = float(data['price'])
+        adjustment = float(data['adjustment'])
+        
+        success = db.modify_asset(data['code'], qty, price, adjustment)
+        
+        if success:
+            return jsonify({"status": "ok"})
+        else:
+            return jsonify({"error": "Asset not found"}), 404
+    except ValueError:
+        return jsonify({"error": "Invalid value"}), 400
+
+
 @app.route('/api/portfolio/delete', methods=['POST'])
 def delete_asset():
     """删除资产"""
@@ -390,6 +424,11 @@ def delete_cash_asset():
     """删除现金资产"""
     return _handle_asset_delete(db.delete_cash_asset, "cash asset")
 
+@app.route('/api/cash_assets/update', methods=['POST'])
+def update_cash_asset():
+    """更新现金资产"""
+    return _handle_asset_update(db.update_cash_asset, "cash asset")
+
 @app.route('/api/other_assets', methods=['GET'])
 def get_other_assets():
     """获取其他资产"""
@@ -405,6 +444,32 @@ def add_other_asset():
 def delete_other_asset():
     """删除其他资产"""
     return _handle_asset_delete(db.delete_other_asset, "other asset")
+
+@app.route('/api/other_assets/update', methods=['POST'])
+def update_other_asset():
+    """更新其他资产"""
+    return _handle_asset_update(db.update_other_asset, "other asset")
+
+@app.route('/api/liabilities', methods=['GET'])
+def get_liabilities():
+    """获取负债"""
+    data = db.get_liabilities()
+    return jsonify(data)
+
+@app.route('/api/liabilities/add', methods=['POST'])
+def add_liability():
+    """添加负债"""
+    return _handle_asset_add(db.add_liability, "liability")
+
+@app.route('/api/liabilities/delete', methods=['POST'])
+def delete_liability():
+    """删除负债"""
+    return _handle_asset_delete(db.delete_liability, "liability")
+
+@app.route('/api/liabilities/update', methods=['POST'])
+def update_liability():
+    """更新负债"""
+    return _handle_asset_update(db.update_liability, "liability")
 
 
 def _handle_asset_add(add_func, asset_type):
@@ -435,6 +500,22 @@ def _handle_asset_delete(delete_func, asset_type):
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to delete {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid id"}), 400
+
+
+def _handle_asset_update(update_func, asset_type):
+    """处理资产更新的通用函数"""
+    data = request.json
+    
+    if not data or 'id' not in data or 'name' not in data or 'amount' not in data:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    try:
+        asset_id = int(data['id'])
+        amount = float(data['amount'])
+        success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'))
+        return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to update {asset_type}"}), 500
+    except ValueError:
+        return jsonify({"error": "Invalid value"}), 400
 
 
 @app.route('/health')

@@ -81,6 +81,7 @@
             font-weight: 500;
             color: var(--text-secondary);
             margin-bottom: 4px;
+            text-decoration: none;
         }
         
         .menu-item:hover {
@@ -164,7 +165,20 @@
              transition: all 0.3s ease;
              display: flex;
              flex-direction: column;
+             border: 2px solid var(--border);
+             position: relative;
+             overflow: hidden;
+             min-height: 120px;
          }
+        
+        .idx-card .idx-chart-bg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            opacity: 0.3;
+        }
         
         .idx-card:hover {
             background: var(--bg-secondary);
@@ -176,37 +190,33 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
-            height: 34px;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
         }
         
         .idx-name {
             font-size: 14px;
             color: var(--text-secondary);
             font-weight: 500;
-            flex: 1;
         }
         
-        .idx-chart {
-            width: 80px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+        .idx-content {
+            position: relative;
+            z-index: 2;
         }
         
         .idx-value {
-            font-size: 30px;
+            font-size: 28px;
             font-weight: 700;
             color: var(--text-primary);
-            margin-bottom: 8px;
+            margin-bottom: 4px;
             font-variant-numeric: tabular-nums;
         }
         
         .idx-change {
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
         }
         
         .idx-change.up {
@@ -245,6 +255,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-variant-numeric: tabular-nums;
+            user-select: none;
         }
         
         .pnl-stats {
@@ -262,6 +273,7 @@
              min-width: 180px;
              text-align: left;
              transition: all 0.3s ease;
+             border: 2px solid var(--border);
          }
         
         .pnl-stat-item:hover {
@@ -394,6 +406,14 @@
         .price-value {
             font-variant-numeric: tabular-nums;
         }
+
+        .name-cell {
+            max-width: 120px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-weight: 500;
+        }
         
         .pnl-cell {
             display: flex;
@@ -404,11 +424,15 @@
         
         .pnl-value {
             font-variant-numeric: tabular-nums;
+            font-size: 15px;
+            font-weight: 600;
         }
         
         .pnl-rate {
-            font-size: 12px;
+            font-size: 13px;
+            font-weight: 500;
             font-variant-numeric: tabular-nums;
+            opacity: 0.9;
         }
         
         .pnl-cell.up .pnl-value,
@@ -480,6 +504,78 @@
             transform: scale(1.1);
         }
         
+        /* 下拉菜单样式 */
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: var(--bg-secondary);
+            min-width: 140px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            z-index: 100;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            margin-top: 4px;
+            padding: 4px;
+        }
+
+        .dropdown-content button {
+            color: var(--text-primary);
+            padding: 10px 12px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            border-radius: 8px;
+        }
+
+        .dropdown-content button:hover {
+            background-color: var(--bg-tertiary);
+        }
+
+        .dropdown-content button.delete-btn {
+            color: #ef4444;
+        }
+        
+        .dropdown-content button.delete-btn:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+        
+        .show {
+            display: block;
+        }
+        
+        .more-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 20px;
+            line-height: 1;
+            transition: all 0.2s;
+        }
+        
+        .more-btn:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
         .overlay {
             position: fixed;
             top: 0;
@@ -679,17 +775,21 @@
             <span>📊</span>
             <span>Portfolio</span>
         </div>
-        <div class="menu-item active">
+        <a href="/assets" class="menu-item">
+            <span>💰</span>
+            <span>我的资产</span>
+        </a>
+        <a href="/" class="menu-item active">
             <span>💼</span>
             <span>我的投资</span>
+        </a>
+        <div class="menu-item" onclick="alert('功能开发中')">
+            <span>📊</span>
+            <span>资产分析</span>
         </div>
         <div class="menu-item" onclick="alert('功能开发中')">
             <span>📈</span>
             <span>市场分析</span>
-        </div>
-        <div class="menu-item" onclick="alert('功能开发中')">
-            <span>📰</span>
-            <span>资讯</span>
         </div>
         <div class="menu-item" onclick="alert('功能开发中')">
             <span>⚙️</span>
@@ -699,7 +799,7 @@
      
      <div class="main-content" id="capture-area">
          <div class="fab-group" data-html2canvas-ignore="true">
-             <button class="fab-btn" onclick="forceReload()">🔄</button>
+             <button class="fab-btn" id="privacyBtn" onclick="togglePrivacy()">👁️</button>
              <button class="fab-btn" onclick="saveAsImage()">📸</button>
          </div>
          
@@ -708,26 +808,32 @@
                 <div class="idx-card" id="card-sh000001">
                     <div class="idx-header">
                         <div class="idx-name">上证指数</div>
-                        <canvas class="idx-chart" id="chart-sh000001"></canvas>
                     </div>
-                    <div class="idx-value" id="val-sh000001">--</div>
-                    <div class="idx-change" id="chg-sh000001">--</div>
+                    <div class="idx-content">
+                        <div class="idx-value" id="val-sh000001">--</div>
+                        <div class="idx-change" id="chg-sh000001">--</div>
+                    </div>
+                    <canvas class="idx-chart-bg" id="chart-sh000001"></canvas>
                 </div>
                 <div class="idx-card" id="card-hstech">
                     <div class="idx-header">
                         <div class="idx-name">恒生科技</div>
-                        <canvas class="idx-chart" id="chart-hstech"></canvas>
                     </div>
-                    <div class="idx-value" id="val-hstech">--</div>
-                    <div class="idx-change" id="chg-hstech">--</div>
+                    <div class="idx-content">
+                        <div class="idx-value" id="val-hstech">--</div>
+                        <div class="idx-change" id="chg-hstech">--</div>
+                    </div>
+                    <canvas class="idx-chart-bg" id="chart-hstech"></canvas>
                 </div>
                 <div class="idx-card" id="card-nasdaq">
                     <div class="idx-header">
                         <div class="idx-name">纳斯达克</div>
-                        <canvas class="idx-chart" id="chart-nasdaq"></canvas>
                     </div>
-                    <div class="idx-value" id="val-nasdaq">--</div>
-                    <div class="idx-change" id="chg-nasdaq">--</div>
+                    <div class="idx-content">
+                        <div class="idx-value" id="val-nasdaq">--</div>
+                        <div class="idx-change" id="chg-nasdaq">--</div>
+                    </div>
+                    <canvas class="idx-chart-bg" id="chart-nasdaq"></canvas>
                 </div>
             </div>
         </div>
@@ -738,7 +844,6 @@
                     <div style="text-align: left;">
                         <div class="total-mv-label">
                             总持有市值 (CNY) 
-                            <span onclick="togglePrivacy()" id="eyeIcon" style="cursor: pointer; margin-left: 8px;">👁️</span>
                         </div>
                         <div class="main-mv" id="totalMV">¥ 0</div>
                     </div>
@@ -806,6 +911,9 @@
                     <label class="input-label">资产代码</label>
                     <div style="position: relative;">
                         <input type="text" id="mCode" class="modal-input" placeholder="输入代码" autocomplete="off">
+                        <input type="hidden" id="mRealCode">
+                        <input type="hidden" id="mCurrency">
+                        <input type="hidden" id="mName">
                         <div id="suggest"></div>
                     </div>
                 </div>
@@ -832,6 +940,27 @@
                 </div>
                 <button id="tradeSubmitBtn" class="btn-primary" style="width: 100%;">确认</button>
             </div>
+            
+            <div id="editForm" style="display: none;">
+                <input type="hidden" id="eCode">
+                <p id="eNameDisplay" style="margin-bottom: 20px; color: var(--text-secondary); font-weight: 500;"></p>
+                <div class="input-group">
+                    <label class="input-label">持仓数量</label>
+                    <input type="number" id="eQty" class="modal-input" placeholder="0">
+                    <div class="help-text" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">修正当前持有的实际股数</div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">平均成本</label>
+                    <input type="number" id="ePrice" class="modal-input" placeholder="0.00">
+                    <div class="help-text" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">修正持仓平均成本单价</div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">累计盈亏校准 (调整值)</label>
+                    <input type="number" id="eAdj" class="modal-input" placeholder="0.00">
+                    <div class="help-text" style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">用于记录分红、已实现盈亏等。正数增加盈亏，负数减少。</div>
+                </div>
+                <button onclick="submitEdit()" class="btn-primary" style="width: 100%;">保存修正</button>
+            </div>
         </div>
     </div>
     
@@ -844,27 +973,53 @@
         let forceRenderFull = false;
         const syms = { USD: '$', HKD: 'HK$', CNY: '¥' };
 
+        // 格式化显示代码
+        function formatDisplayCode(code) {
+            const lowerCode = code.toLowerCase();
+            // 港股: 00175.HK -> 00175.HK (保持原样，大写)
+            if (lowerCode.endsWith('.hk')) {
+                return code.toUpperCase();
+            }
+            // A股: sh601088 -> 601088, sz000001 -> 000001
+            if (lowerCode.startsWith('sh') || lowerCode.startsWith('sz') || lowerCode.startsWith('bj')) {
+                return code.substring(2);
+            }
+            // 美股: gb_aapl -> AAPL
+            if (lowerCode.startsWith('gb_')) {
+                return code.substring(3).toUpperCase();
+            }
+            // 基金: f_110011 -> 110011, ft_xxx -> xxx
+            if (lowerCode.startsWith('f_')) {
+                return code.substring(2);
+            }
+            if (lowerCode.startsWith('ft_')) {
+                return code.substring(3);
+            }
+            // 其他保持原样
+            return code;
+        }
+
         function togglePrivacy() { 
             isPrivacyMode = !isPrivacyMode; 
             localStorage.setItem('privacy_mode', isPrivacyMode); 
             refreshAll(); 
         }
         
-        // 绘制微型折线图
+        // 绘制背景趋势图
         function drawMiniChart(canvasId, change) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width = 80;
-            const height = canvas.height = 30;
+            const parent = canvas.parentElement;
+            const width = canvas.width = parent.offsetWidth;
+            const height = canvas.height = 60;
 
-            // 清除画布
+            const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, width, height);
 
             // 生成符合趋势的模拟数据
             const points = [];
-            const pointCount = 30;
+            const pointCount = 50;
             const baseValue = 100;
             const isUp = change >= 0;
             const trendStrength = Math.min(Math.abs(change) / 2, 5);
@@ -885,32 +1040,51 @@
             }
 
             const color = change >= 0 ? '#ff4d4f' : '#00d26a';
-
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-
             const min = Math.min(...points);
             const max = Math.max(...points);
             const range = max - min || 1;
 
+            // 绘制填充区域
+            ctx.beginPath();
             points.forEach((point, i) => {
                 const x = (i / (points.length - 1)) * width;
-                const y = height - ((point - min) / range) * height * 0.8 - height * 0.1;
-
+                const y = height - ((point - min) / range) * height * 0.85 - height * 0.05;
                 if (i === 0) {
                     ctx.moveTo(x, y);
                 } else {
                     ctx.lineTo(x, y);
                 }
             });
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.closePath();
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, color + '40');
+            gradient.addColorStop(1, color + '05');
+            ctx.fillStyle = gradient;
+            ctx.fill();
 
+            // 绘制线条
+            ctx.beginPath();
+            points.forEach((point, i) => {
+                const x = (i / (points.length - 1)) * width;
+                const y = height - ((point - min) / range) * height * 0.85 - height * 0.05;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
             ctx.stroke();
         }
         
         async function refreshAll() {
             const timestamp = Date.now();
-            document.getElementById('eyeIcon').innerText = isPrivacyMode ? '🙈' : '👁️';
+            const btn = document.getElementById('privacyBtn');
+            if(btn) btn.innerText = isPrivacyMode ? '🙈' : '👁️';
 
             try { FX = await (await fetch(`/api/rates?t=${timestamp}`)).json(); } catch(e) {}
 
@@ -962,15 +1136,15 @@
                 console.log('%c持仓数据返回:', 'font-weight: bold; color: #4caf50;', data.length, '条');
                 console.log('持仓数据:', data);
 
-                let tMV = 0, tCost = 0, tDay = 0, gFloat = 0;
-                const prices = data.length > 0 ? await (await fetch(`/api/prices/batch?t=${timestamp}_${Math.random().toString(36).substring(7)}`, {
+                const prices = await (await fetch('/api/prices/batch?t=' + timestamp, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({codes: data.map(s => s.code)})
-                })).json() : {};
+                })).json();
 
                 const newData = {};
                 const newCodes = new Set();
+                let tMV = 0, tCost = 0, tDay = 0, gFloat = 0, gTotal = 0;
                 
                 for (let s of data) {
                     const d = prices[s.code] || {price: 0, yclose: 0, chg: 0};
@@ -991,6 +1165,7 @@
                     tCost += cost * qty * rate;
                     tDay += day * rate;
                     gFloat += (mv - cost * qty) * rate;
+                    gTotal += totPnl * rate;
 
                     newData[s.code] = {
                         s, d, qty, cost, adj, curPrice, mv, day,
@@ -1025,9 +1200,9 @@
                     rateEl.className = 'pnl-rate ' + (rate >= 0 ? 'up' : 'down');
                 };
                 
-                updateStat('todayPnl', tDay, tMV);
+                updateStat('todayPnl', tDay, tMV - tDay);
                 updateStat('floatPnl', gFloat, tCost);
-                updateStat('totalPnl', gFloat, tCost);
+                updateStat('totalPnl', gTotal, tCost);
 
             } catch (err) {
                 console.error('Portfolio error:', err);
@@ -1041,25 +1216,25 @@
             for (let code in dataMap) {
                 const {s, qty, cost, curPrice, mv, day, dayPnlRate, totPnl, totPnlRate} = dataMap[code];
                 const prec = (s.code.startsWith('f_') || s.code.startsWith('ft_')) ? 4 : 3;
-                const displayCode = s.code.replace(/^(f_|ft_|gb_|sh|sz|hk|bj)/i, '');
+                const displayCode = formatDisplayCode(s.code);
                 const dayPnlClass = day >= 0 ? 'up' : 'down';
                 const totPnlClass = totPnl >= 0 ? 'up' : 'down';
 
-                const priceCell = isPrivacyMode ? '--' : 
+                const priceCell = 
                     `<div class="price-cell">
                         <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
                         <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
                     </div>`;
                 
-                const dayPnlCell = isPrivacyMode ? '--' : 
+                const dayPnlCell = 
                     `<div class="pnl-cell ${dayPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${day.toFixed(2)}</span>
+                        <span class="pnl-value">${isPrivacyMode ? '****' : (syms[s.curr] || '') + day.toFixed(2)}</span>
                         <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
                     </div>`;
                 
-                const totPnlCell = isPrivacyMode ? '--' : 
+                const totPnlCell = 
                     `<div class="pnl-cell ${totPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${totPnl.toFixed(2)}</span>
+                        <span class="pnl-value">${isPrivacyMode ? '****' : (syms[s.curr] || '') + totPnl.toFixed(2)}</span>
                         <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
                     </div>`;
 
@@ -1067,16 +1242,24 @@
                 tr.id = `row-${s.code}`;
                 tr.innerHTML = `
                     <td class="code-cell">${displayCode}</td>
-                    <td style="font-weight: 500;">${s.name}</td>
-                    <td>${qty.toLocaleString()}</td>
+                    <td class="name-cell" title="${s.name}">${s.name}</td>
+                    <td>${isPrivacyMode ? '****' : qty.toLocaleString()}</td>
                     <td>${priceCell}</td>
-                    <td>${syms[s.curr] || ''}${mv.toFixed(2)}</td>
+                    <td>${isPrivacyMode ? '****' : (syms[s.curr] || '') + mv.toFixed(2)}</td>
                     <td>${dayPnlCell}</td>
                     <td>${totPnlCell}</td>
-                    <td style="text-align: right;">
-                        <button class="action-btn" onclick="openTradeModal('buy','${s.code}','${s.name}','${curPrice}')" title="加仓">➕</button>
-                        <button class="action-btn" onclick="openTradeModal('sell','${s.code}','${s.name}','${curPrice}')" title="减仓">➖</button>
-                        <button class="action-btn" onclick="deleteStock('${s.code}')" title="删除">🗑️</button>
+                    <td style="text-align: right; overflow: visible;">
+                        <div class="dropdown">
+                            <button class="more-btn" onclick="toggleDropdown('${s.code}')" title="更多操作">⋮</button>
+                            <div id="dropdown-${s.code}" class="dropdown-content">
+                                <button onclick="openTradeModal('buy','${s.code}','${s.name}','${curPrice}')">➕ 加仓</button>
+                                <button onclick="openTradeModal('sell','${s.code}','${s.name}','${curPrice}')">➖ 减仓</button>
+                                <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
+                                <button onclick="openEditModal('${s.code}','${s.name}',${qty},${cost},${s.adjustment})">📝 修正持仓</button>
+                                <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
+                                <button class="delete-btn" onclick="deleteStock('${s.code}')">🗑️ 删除</button>
+                            </div>
+                        </div>
                     </td>`;
                 body.appendChild(tr);
             }
@@ -1094,27 +1277,43 @@
 
                 const cells = tr.querySelectorAll('td');
                 
-                if (!isPrivacyMode) {
-                    const priceCell = cells[3];
-                    priceCell.innerHTML = `<div class="price-cell">
-                        <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
-                        <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
+                // 持有数量
+                cells[2].innerText = isPrivacyMode ? '****' : qty.toLocaleString();
+
+                // 价格 (始终显示)
+                cells[3].innerHTML = `<div class="price-cell">
+                    <span class="price-value">${syms[s.curr] || ''}${cost.toFixed(prec)}</span>
+                    <span class="price-value" style="font-size: 13px; color: var(--text-secondary);">${syms[s.curr] || ''}${curPrice.toFixed(prec)}</span>
+                </div>`;
+                
+                // 市值
+                cells[4].innerText = isPrivacyMode ? '****' : `${syms[s.curr] || ''}${mv.toFixed(2)}`;
+
+                // 当日盈亏 (隐藏金额，保留百分比)
+                cells[5].innerHTML = `<div class="pnl-cell ${dayPnlClass}">
+                    <span class="pnl-value">${isPrivacyMode ? '****' : (syms[s.curr] || '') + day.toFixed(2)}</span>
+                    <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
+                </div>`;
+
+                // 累计盈亏 (隐藏金额，保留百分比)
+                cells[6].innerHTML = `<div class="pnl-cell ${totPnlClass}">
+                    <span class="pnl-value">${isPrivacyMode ? '****' : (syms[s.curr] || '') + totPnl.toFixed(2)}</span>
+                    <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
+                </div>`;
+                
+                cells[7].style.overflow = 'visible';
+                cells[7].innerHTML = `
+                    <div class="dropdown">
+                        <button class="more-btn" onclick="toggleDropdown('${s.code}')" title="更多操作">⋮</button>
+                        <div id="dropdown-${s.code}" class="dropdown-content">
+                            <button onclick="openTradeModal('buy','${s.code}','${s.name}','${curPrice}')">➕ 加仓</button>
+                            <button onclick="openTradeModal('sell','${s.code}','${s.name}','${curPrice}')">➖ 减仓</button>
+                            <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
+                            <button onclick="openEditModal('${s.code}','${s.name}',${qty},${cost},${s.adjustment})">📝 修正持仓</button>
+                            <div style="height: 1px; background: var(--border); margin: 2px 0;"></div>
+                            <button class="delete-btn" onclick="deleteStock('${s.code}')">🗑️ 删除</button>
+                        </div>
                     </div>`;
-                    
-                    cells[4].innerText = `${syms[s.curr] || ''}${mv.toFixed(2)}`;
-                    cells[5].innerHTML = `<div class="pnl-cell ${dayPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${day.toFixed(2)}</span>
-                        <span class="pnl-rate">${dayPnlRate >= 0 ? '+' : ''}${dayPnlRate.toFixed(2)}%</span>
-                    </div>`;
-                    cells[6].innerHTML = `<div class="pnl-cell ${totPnlClass}">
-                        <span class="pnl-value">${syms[s.curr] || ''}${totPnl.toFixed(2)}</span>
-                        <span class="pnl-rate">${totPnlRate >= 0 ? '+' : ''}${totPnlRate.toFixed(2)}%</span>
-                    </div>`;
-                    
-                    const btns = cells[7].querySelectorAll('.action-btn');
-                    btns[0].onclick = () => openTradeModal('buy', s.code, s.name, curPrice);
-                    btns[1].onclick = () => openTradeModal('sell', s.code, s.name, curPrice);
-                }
             }
         }
 
@@ -1156,6 +1355,7 @@
             document.getElementById('overlay').style.display = 'block'; 
             document.getElementById('addForm').style.display = 'block'; 
             document.getElementById('tradeForm').style.display = 'none'; 
+            document.getElementById('editForm').style.display = 'none';
             document.getElementById('modalTitle').innerText = '添加资产'; 
             document.getElementById('mCode').value = ''; 
             document.getElementById('mPrice').value = ''; 
@@ -1167,6 +1367,8 @@
             document.getElementById('overlay').style.display = 'block'; 
             document.getElementById('addForm').style.display = 'none'; 
             document.getElementById('tradeForm').style.display = 'block'; 
+            document.getElementById('editForm').style.display = 'none';
+            document.getElementById('modalTitle').innerText = type === 'buy' ? '加仓' : '减仓';
             document.getElementById('tCode').value = c; 
             document.getElementById('tNameDisplay').innerText = `${n} ${type === 'buy' ? '加仓' : '减仓'}`; 
             document.getElementById('tPrice').value = p; 
@@ -1178,31 +1380,51 @@
         }
         
         async function saveAsset() {
+            const realCode = document.getElementById('mRealCode').value.trim();
+            const savedCurrency = document.getElementById('mCurrency').value.trim();
+            const savedName = document.getElementById('mName').value.trim();
             let code = document.getElementById('mCode').value.trim();
             const price = document.getElementById('mPrice').value;
             const qty = document.getElementById('mQty').value;
             
-            if (/^\d+$/.test(code)) {
-                if (code.startsWith('11')) code = 'f_' + code;
-                else if (code.startsWith('6') || code.startsWith('5') || code.startsWith('9')) code = 'sh' + code;
-                else if (code.startsWith('0') || code.startsWith('3') || code.startsWith('1') || code.startsWith('2')) code = 'sz' + code;
-                else if (code.startsWith('4') || code.startsWith('8')) code = 'bj' + code;
-            } else if (code.toUpperCase().endsWith('.HK')) {
-                code = 'hk' + code.toUpperCase().replace('.HK', '');
-            } else if (/^[a-zA-Z]+$/.test(code)) {
-                code = 'gb_' + code.toLowerCase();
+            // 如果有从搜索结果选中的代码，直接使用
+            if (realCode) {
+                code = realCode;
+            } else {
+                // 否则解析手动输入的代码
+                if (/^\d+$/.test(code)) {
+                    if (code.startsWith('11')) code = 'f_' + code;
+                    else if (code.startsWith('6') || code.startsWith('5') || code.startsWith('9')) code = 'sh' + code;
+                    else if (code.startsWith('0') || code.startsWith('3') || code.startsWith('1') || code.startsWith('2')) code = 'sz' + code;
+                    else if (code.startsWith('4') || code.startsWith('8')) code = 'bj' + code;
+                } else if (code.toUpperCase().endsWith('.HK')) {
+                    // 港股保持.HK格式
+                    code = code.toUpperCase();
+                } else if (/^[a-zA-Z]+$/.test(code)) {
+                    code = 'gb_' + code.toLowerCase();
+                }
             }
 
-            let curr = 'CNY'; 
-            if (code.startsWith('gb_') || code.startsWith('ft_')) curr = 'USD';
-            if (code.startsWith('hk')) curr = 'HKD';
+            // 使用保存的货币，或根据代码推断
+            let curr = savedCurrency || 'CNY';
+            if (!savedCurrency) {
+                if (code.startsWith('gb_') || code.startsWith('ft_')) curr = 'USD';
+                else if (code.toUpperCase().endsWith('.HK')) curr = 'HKD';
+            }
+            
+            // 使用保存的名称，或使用代码
+            const name = savedName || code;
             
             await fetch(`/api/portfolio/add?t=${Date.now()}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({code, name: code, qty, price, curr, adjustment: 0})
+                body: JSON.stringify({code, name, qty, price, curr, adjustment: 0})
             });
-            document.getElementById('overlay').style.display = 'none'; 
+            document.getElementById('overlay').style.display = 'none';
+            // 清空隐藏字段
+            document.getElementById('mRealCode').value = '';
+            document.getElementById('mCurrency').value = '';
+            document.getElementById('mName').value = '';
             refreshAll();
         }
 
@@ -1229,6 +1451,66 @@
                 refreshAll(); 
             } 
         }
+
+        // 修正持仓弹窗
+        function openEditModal(code, name, qty, cost, adj) {
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('addForm').style.display = 'none';
+            document.getElementById('tradeForm').style.display = 'none';
+            document.getElementById('editForm').style.display = 'block';
+            
+            document.getElementById('modalTitle').innerText = '修正持仓';
+            document.getElementById('eCode').value = code;
+            document.getElementById('eNameDisplay').innerText = `${name} (${formatDisplayCode(code)})`;
+            document.getElementById('eQty').value = qty;
+            document.getElementById('ePrice').value = cost;
+            document.getElementById('eAdj').value = adj;
+        }
+
+        // 提交修正
+        async function submitEdit() {
+            const code = document.getElementById('eCode').value;
+            const qty = document.getElementById('eQty').value;
+            const price = document.getElementById('ePrice').value;
+            const adjustment = document.getElementById('eAdj').value || 0;
+            
+            await fetch(`/api/portfolio/modify?t=${Date.now()}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code, qty, price, adjustment})
+            });
+            document.getElementById('overlay').style.display = 'none';
+            refreshAll();
+        }
+
+        // 下拉菜单控制
+        function toggleDropdown(code) {
+            const dropdown = document.getElementById(`dropdown-${code}`);
+            // 关闭其他所有菜单
+            const dropdowns = document.getElementsByClassName("dropdown-content");
+            for (let i = 0; i < dropdowns.length; i++) {
+                if (dropdowns[i].id !== `dropdown-${code}`) {
+                    dropdowns[i].classList.remove('show');
+                }
+            }
+            dropdown.classList.toggle("show");
+            
+            // 阻止冒泡
+            event.stopPropagation();
+        }
+
+        // 点击窗口其他地方关闭菜单
+        window.onclick = function(event) {
+            if (!event.target.matches('.more-btn')) {
+                const dropdowns = document.getElementsByClassName("dropdown-content");
+                for (let i = 0; i < dropdowns.length; i++) {
+                    const openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
         
         let searchTimeout;
         document.getElementById('mCode').addEventListener('input', (e) => { 
@@ -1247,26 +1529,31 @@
                         let typeIcon = '❓';
                         let typeColor = '#666';
                         const code = s.code.toLowerCase();
+                        let displayCode = s.code;
 
                         if (code.startsWith('sh') || code.startsWith('sz') || code.startsWith('bj')) {
                             typeIcon = '🇨🇳 A股';
                             typeColor = '#3b82f6';
-                        } else if (code.startsWith('hk')) {
+                            displayCode = s.code.replace(/^(sh|sz|bj)/i, '');
+                        } else if (code.endsWith('.hk')) {
                             typeIcon = '🇭🇰 港股';
                             typeColor = '#f59e0b';
+                            displayCode = s.code.toUpperCase();
                         } else if (code.startsWith('gb_')) {
                             typeIcon = '🇺🇸 美股';
                             typeColor = '#8b5cf6';
+                            displayCode = s.code.replace(/^gb_/i, '').toUpperCase();
                         } else if (code.startsWith('f_') || code.startsWith('ft_')) {
                             typeIcon = '📊 基金';
                             typeColor = '#10b981';
+                            displayCode = s.code.replace(/^f_/i, '');
                         }
 
                         return `<div class="suggest-item" onclick="pick('${s.code}','${s.name}','${s.currency}')">
                             <span class="suggest-name">${s.name}</span>
                             <div class="suggest-info">
                                 <span class="tag" style="background: ${typeColor}20; color: ${typeColor};">${typeIcon}</span>
-                                <span class="suggest-code">${s.code}</span>
+                                <span class="suggest-code">${displayCode}</span>
                             </div>
                         </div>`;
                     }).join('');
@@ -1279,6 +1566,9 @@
 
         function pick(c, n, cur) {
             document.getElementById('mCode').value = n;
+            document.getElementById('mRealCode').value = c;
+            document.getElementById('mCurrency').value = cur;
+            document.getElementById('mName').value = n;
             document.getElementById('suggest').style.display = 'none';
         }
         
@@ -1318,6 +1608,8 @@
         setInterval(refreshAll, 60000);
 
         window.onload = () => {
+            const btn = document.getElementById('privacyBtn');
+            if(btn) btn.innerText = isPrivacyMode ? '🙈' : '👁️';
             refreshAll();
         };
 
