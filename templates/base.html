@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Portfolio{% endblock %}</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --bg-sidebar: rgba(255, 255, 255, 0.02);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #3b82f6;
+            --red: #ef4444;
+            --green: #10b981;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --radius: 16px;
+            --radius-sm: 12px;
+            --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 240px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            backdrop-filter: blur(20px);
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--accent);
+            margin-bottom: 48px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 8px;
+            font-weight: 500;
+            text-decoration: none;
+        }
+
+        .menu-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            transform: translateX(4px);
+        }
+
+        .menu-item.active {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.15), transparent);
+            color: var(--accent);
+            border-left: 3px solid var(--accent);
+        }
+
+        .menu-item span:first-child { font-size: 20px; }
+
+        /* 主内容区域 */
+        .main-content {
+            flex: 1;
+            margin-left: 240px;
+            padding: 40px;
+            max-width: 1400px;
+        }
+
+        /* 通用组件样式 */
+        .fab-group {
+            position: fixed;
+            top: 28px;
+            right: 28px;
+            z-index: 5000;
+            display: flex;
+            flex-direction: row-reverse;
+            gap: 12px;
+        }
+        
+        .fab-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow);
+            font-size: 22px;
+            transition: all 0.3s ease;
+            color: var(--text-primary);
+        }
+        
+        .fab-btn:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-hover);
+            background: var(--bg-tertiary);
+        }
+
+        /* 模态框通用样式 */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            display: none;
+            z-index: 6000;
+        }
+        
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 32px;
+            width: 420px;
+            box-shadow: var(--shadow-hover);
+            border: 1px solid var(--border);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+        }
+        
+        .modal h3 { font-size: 22px; font-weight: 700; }
+        
+        .close-btn {
+            cursor: pointer;
+            font-size: 28px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border: none;
+        }
+        
+        .close-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        /* 按钮通用样式 */
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            padding: 12px 28px;
+            border-radius: var(--radius-sm);
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        /* 输入框通用样式 */
+        .input-group { margin-bottom: 20px; }
+        .input-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .modal-input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 14px;
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 16px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+        .modal-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        /* 子页面特定样式 */
+        {% block styles %}{% endblock %}
+    </style>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <span>⚡</span>
+            <span>Antigravity</span>
+        </div>
+        
+        <a href="/assets" class="menu-item {% if active_page == 'assets' %}active{% endif %}">
+            <span>💰</span>
+            <span>我的资产</span>
+        </a>
+        <a href="/" class="menu-item {% if active_page == 'investment' %}active{% endif %}">
+            <span>💼</span>
+            <span>我的投资</span>
+        </a>
+        <a href="/analysis" class="menu-item {% if active_page == 'analysis' %}active{% endif %}">
+            <span>📊</span>
+            <span>资产分析</span>
+        </a>
+        <a href="/market" class="menu-item {% if active_page == 'market' %}active{% endif %}" onclick="alert('功能开发中');return false;">
+            <span>📈</span>
+            <span>市场分析</span>
+        </a>
+        <a href="/settings" class="menu-item {% if active_page == 'settings' %}active{% endif %}" onclick="alert('功能开发中');return false;">
+            <span>⚙️</span>
+            <span>设置</span>
+        </a>
+    </div>
+    
+    <div class="main-content" id="capture-area">
+        <!-- 全局右上角按钮 -->
+        <div class="fab-group" data-html2canvas-ignore="true">
+            <button class="fab-btn" id="privacyBtn" onclick="togglePrivacy()">👁️</button>
+            {% block fab_buttons %}{% endblock %}
+            <button class="fab-btn" onclick="saveAsImage()">📸</button>
+        </div>
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- 全局脚本 -->
+    <script>
+        // 全局状态
+        let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
+        
+        // 隐私切换
+        function togglePrivacy() {
+            isPrivacyMode = !isPrivacyMode;
+            localStorage.setItem('privacy_mode', isPrivacyMode);
+            updatePrivacyUI();
+            
+            // 触发子页面的更新函数（如果存在）
+            if (typeof updatePageData === 'function') {
+                updatePageData();
+            }
+        }
+        
+        // 更新UI状态
+        function updatePrivacyUI() {
+            const btn = document.getElementById('privacyBtn');
+            if(btn) btn.innerText = isPrivacyMode ? '🙈' : '👁️';
+        }
+        
+        // 截图功能
+        function saveAsImage() {
+            html2canvas(document.querySelector('#capture-area'), {
+                backgroundColor: '#0f172a', // 使用 --bg-primary 颜色
+                scale: 2
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'portfolio.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+        
+        // 格式化辅助函数
+        function formatDisplayCode(code) {
+            if (!code) return '';
+            const lowerCode = code.toLowerCase();
+            if (lowerCode.endsWith('.hk')) return code.toUpperCase();
+            if (lowerCode.startsWith('sh') || lowerCode.startsWith('sz') || lowerCode.startsWith('bj')) return code.substring(2);
+            if (lowerCode.startsWith('gb_')) return code.substring(3).toUpperCase();
+            if (lowerCode.startsWith('f_')) return code.substring(2);
+            if (lowerCode.startsWith('ft_')) return code.substring(3);
+            return code;
+        }
+
+        // 初始化
+        window.addEventListener('load', () => {
+            updatePrivacyUI();
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

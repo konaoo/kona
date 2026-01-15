@@ -1,982 +1,575 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>我的资产 - Portfolio</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        :root {
-            --bg-primary: #0a0e27;
-            --bg-secondary: rgba(255, 255, 255, 0.05);
-            --bg-tertiary: rgba(255, 255, 255, 0.08);
-            --bg-sidebar: rgba(255, 255, 255, 0.02);
-            --text-primary: #ffffff;
-            --text-secondary: rgba(255, 255, 255, 0.6);
-            --blue: #3b82f6;
-            --green: #00d26a;
-            --red: #ff4d4f;
-            --orange: #faad14;
-            --purple: #8b5cf6;
-            --border: rgba(255, 255, 255, 0.1);
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.4);
-            --radius: 16px;
-            --radius-sm: 12px;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
-            color: var(--text-primary);
-            min-height: 100vh;
-            display: flex;
-        }
-        
-        .sidebar {
-            width: 240px;
-            background: var(--bg-sidebar);
-            backdrop-filter: blur(20px);
-            border-right: 1px solid var(--border);
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            height: 100vh;
-            z-index: 1000;
-        }
-        
-        .logo {
-            font-size: 22px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 40px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .menu-item {
-            padding: 14px 18px;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 15px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-            text-decoration: none;
-        }
-        
-        .menu-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            transform: translateX(4px);
-        }
-        
-        .menu-item.active {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
-            color: var(--text-primary);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-        
-        .main-content {
-            flex: 1;
-            margin-left: 240px;
-            padding: 28px;
-            max-width: 1500px;
-        }
-        
-        .section {
-            background: var(--bg-secondary);
-            backdrop-filter: blur(20px);
-            border-radius: var(--radius);
-            padding: 28px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
-            transition: all 0.3s ease;
-        }
-        
-        .section:hover {
-            box-shadow: var(--shadow-hover);
-        }
-        
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .section-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-        
-        /* 总资产看板 - 沿用投资页面风格 */
-        .assets-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 28px;
-        }
-        
-        .total-assets-section {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-        }
-        
-        .total-mv-label {
-            font-size: 14px;
-            color: var(--text-secondary);
-            margin-bottom: 14px;
-            font-weight: 500;
-        }
-        
-        .main-mv {
-            font-size: 52px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        /* 资产分类卡片 - 靠右显示 */
-        .asset-breakdown {
-            display: flex;
-            gap: 18px;
-            flex: 1;
-            justify-content: flex-end;
-        }
-        
-        .asset-card {
-            background: var(--bg-tertiary);
-            backdrop-filter: blur(10px);
-            border-radius: var(--radius-sm);
-            padding: 18px 24px;
-            min-width: 160px;
-            text-align: left;
-            transition: all 0.3s ease;
-            border: 2px solid var(--border);
-        }
-        
-        .asset-card:hover {
-            background: var(--bg-secondary);
-            transform: translateY(-2px);
-        }
-        
-        .asset-card-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-        
-        .asset-card-value {
-            font-size: 22px;
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .asset-card-value.cash { color: var(--green); }
-        .asset-card-value.invest { color: var(--blue); }
-        .asset-card-value.other { color: var(--orange); }
-        
-        /* 投资资产详情区域 */
-        .invest-section {
-            margin-top: 24px;
-        }
-        
-        .invest-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 24px;
-            gap: 20px;
-        }
-        
-        .invest-total {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .invest-total-label {
-            font-size: 14px;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-        
-        .invest-total-value {
-            font-size: 36px;
-            font-weight: 700;
-            color: var(--blue);
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .invest-total-value.cash { color: var(--green); }
-        .invest-total-value.other { color: var(--orange); }
-        .invest-total-value.liability { color: var(--red); }
-        
-        /* 盈亏统计卡片 */
-        .pnl-stats {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-        
-        .pnl-stat-item {
-            background: var(--bg-tertiary);
-            backdrop-filter: blur(10px);
-            border-radius: var(--radius-sm);
-            padding: 16px 20px;
-            min-width: 150px;
-            text-align: left;
-            transition: all 0.3s ease;
-            border: 2px solid var(--border);
-        }
-        
-        .pnl-stat-item:hover {
-            background: var(--bg-secondary);
-            transform: translateY(-2px);
-        }
-        
-        .pnl-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-        
-        .pnl-value {
-            font-size: 18px;
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-            margin-bottom: 4px;
-        }
-        
-        .pnl-rate {
-            font-size: 13px;
-            font-weight: 500;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .pnl-value.up, .pnl-rate.up { color: var(--red); }
-        .pnl-value.down, .pnl-rate.down { color: var(--green); }
-        .pnl-value.neutral { color: var(--text-primary); }
-        
-        /* 资产卡片网格 - 类似顶部分类卡片样式 */
-        .asset-card-grid {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            margin-top: 16px;
-        }
-        
-        .asset-card-item {
-            background: var(--bg-tertiary);
-            backdrop-filter: blur(10px);
-            border-radius: var(--radius-sm);
-            padding: 18px 24px;
-            min-width: 180px;
-            transition: all 0.3s ease;
-            border: 2px solid var(--border);
-            position: relative;
-        }
-        
-        .asset-card-item:hover {
-            background: var(--bg-secondary);
-            transform: translateY(-2px);
-        }
-        
-        .asset-card-item:hover .asset-card-actions {
-            opacity: 1;
-        }
-        
-        .asset-card-item-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-        
-        .asset-card-item-value {
-            font-size: 22px;
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .asset-card-item-value.cash { color: var(--green); }
-        .asset-card-item-value.other { color: var(--orange); }
-        .asset-card-item-value.liability { color: var(--red); }
-        
-        .asset-card-actions {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-        
-        .asset-card-actions .action-btn {
-            width: 28px;
-            height: 28px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            background: var(--bg-secondary);
-            border-radius: 6px;
-        }
-        
-        /* 分类持仓卡片网格 */
+{% extends "base.html" %}
+
+{% set active_page = "assets" %}
+
+{% block styles %}
+    .section {
+        background: var(--bg-secondary);
+        backdrop-filter: blur(20px);
+        border-radius: var(--radius);
+        padding: 28px;
+        margin-bottom: 24px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+        transition: all 0.3s ease;
+    }
+    
+    .section:hover { box-shadow: var(--shadow-hover); }
+    
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .section-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    
+    /* 总资产看板 - 沿用投资页面风格 */
+    .assets-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 28px;
+    }
+    
+    .total-assets-section {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+    
+    .total-mv-label {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
+        font-weight: 500;
+    }
+    
+    .main-mv {
+        font-size: 52px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    /* 资产分类卡片 - 靠右显示 */
+    .asset-breakdown {
+        display: flex;
+        gap: 18px;
+        flex: 1;
+        justify-content: flex-end;
+    }
+    
+    .asset-card {
+        background: var(--bg-tertiary);
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-sm);
+        padding: 18px 24px;
+        min-width: 160px;
+        text-align: left;
+        transition: all 0.3s ease;
+        border: 2px solid var(--border);
+    }
+    
+    .asset-card:hover {
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+    }
+    
+    .asset-card-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    
+    .asset-card-value {
+        font-size: 22px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .asset-card-value.cash { color: var(--green); }
+    .asset-card-value.invest { color: var(--blue); }
+    .asset-card-value.other { color: var(--orange); }
+    
+    /* 投资资产详情区域 */
+    .invest-section { margin-top: 24px; }
+    
+    .invest-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        gap: 20px;
+    }
+    
+    .invest-total {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .invest-total-label {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+    
+    .invest-total-value {
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--blue);
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .invest-total-value.cash { color: var(--green); }
+    .invest-total-value.other { color: var(--orange); }
+    .invest-total-value.liability { color: var(--red); }
+    
+    /* 盈亏统计卡片 */
+    .pnl-stats {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    
+    .pnl-stat-item {
+        background: var(--bg-tertiary);
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-sm);
+        padding: 16px 20px;
+        min-width: 150px;
+        text-align: left;
+        transition: all 0.3s ease;
+        border: 2px solid var(--border);
+    }
+    
+    .pnl-stat-item:hover {
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+    }
+    
+    .pnl-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    
+    .pnl-value {
+        font-size: 18px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        margin-bottom: 4px;
+    }
+    
+    .pnl-rate {
+        font-size: 13px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .pnl-value.up, .pnl-rate.up { color: var(--red); }
+    .pnl-value.down, .pnl-rate.down { color: var(--green); }
+    .pnl-value.neutral { color: var(--text-primary); }
+    
+    /* 资产卡片网格 - 类似顶部分类卡片样式 */
+    .asset-card-grid {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }
+    
+    .asset-card-item {
+        background: var(--bg-tertiary);
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-sm);
+        padding: 18px 24px;
+        min-width: 180px;
+        transition: all 0.3s ease;
+        border: 2px solid var(--border);
+        position: relative;
+    }
+    
+    .asset-card-item:hover {
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+    }
+    
+    .asset-card-item:hover .asset-card-actions { opacity: 1; }
+    
+    .asset-card-item-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    
+    .asset-card-item-value {
+        font-size: 22px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .asset-card-item-value.cash { color: var(--green); }
+    .asset-card-item-value.other { color: var(--orange); }
+    .asset-card-item-value.liability { color: var(--red); }
+    
+    .asset-card-actions {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+    
+    .asset-card-actions .action-btn {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        background: var(--bg-secondary);
+        border-radius: 6px;
+    }
+    
+    /* 分类持仓卡片网格 */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-top: 20px;
+    }
+    
+    .category-card {
+        background: var(--bg-tertiary);
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-sm);
+        padding: 20px;
+        transition: all 0.3s ease;
+        border: 2px solid var(--border);
+    }
+    
+    .category-card:hover {
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+    }
+    
+    .category-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    
+    .category-icon { font-size: 20px; }
+    
+    .category-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    .category-mv {
+        font-size: 24px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        margin-bottom: 12px;
+    }
+    
+    .category-mv.cn { color: #3b82f6; }
+    .category-mv.us { color: #8b5cf6; }
+    .category-mv.hk { color: #f59e0b; }
+    .category-mv.fund { color: #10b981; }
+    
+    .category-pnl {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .category-pnl-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+    }
+    
+    .category-pnl-label { color: var(--text-secondary); }
+    
+    .category-pnl-value {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .category-pnl-value.up { color: var(--red); }
+    .category-pnl-value.down { color: var(--green); }
+    
+    .action-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 6px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        color: var(--text-secondary);
+    }
+    
+    .action-btn:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 30px;
+        color: var(--text-secondary);
+        font-size: 14px;
+    }
+    
+    @media (max-width: 1200px) {
         .category-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-top: 20px;
+            grid-template-columns: repeat(2, 1fr);
         }
-        
-        .category-card {
-            background: var(--bg-tertiary);
-            backdrop-filter: blur(10px);
-            border-radius: var(--radius-sm);
-            padding: 20px;
-            transition: all 0.3s ease;
-            border: 2px solid var(--border);
-        }
-        
-        .category-card:hover {
-            background: var(--bg-secondary);
-            transform: translateY(-2px);
-        }
-        
-        .category-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 16px;
-        }
-        
-        .category-icon {
-            font-size: 20px;
-        }
-        
-        .category-name {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        
-        .category-mv {
-            font-size: 24px;
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-            margin-bottom: 12px;
-        }
-        
-        .category-mv.cn { color: #3b82f6; }
-        .category-mv.us { color: #8b5cf6; }
-        .category-mv.hk { color: #f59e0b; }
-        .category-mv.fund { color: #10b981; }
-        
-        .category-pnl {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .category-pnl-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 13px;
-        }
-        
-        .category-pnl-label {
-            color: var(--text-secondary);
-        }
-        
-        .category-pnl-value {
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .category-pnl-value.up { color: var(--red); }
-        .category-pnl-value.down { color: var(--green); }
-        
-        /* 现金/其他资产列表 */
-        .asset-list-section {
-            margin-top: 24px;
-        }
-        
-        .asset-list-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        
-        .asset-list-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .asset-list-total {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--green);
-            margin-left: 12px;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .asset-list-total.other {
-            color: var(--orange);
-        }
-        
-        .asset-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .asset-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 14px 18px;
-            background: var(--bg-tertiary);
-            border-radius: var(--radius-sm);
-            border: 2px solid var(--border);
-            transition: all 0.3s ease;
-        }
-        
-        .asset-item:hover {
-            background: var(--bg-secondary);
-            transform: translateX(4px);
-        }
-        
-        .asset-info {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-        
-        .asset-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-        }
-        
-        .asset-icon.cash { background: rgba(0, 210, 106, 0.2); }
-        .asset-icon.other { background: rgba(250, 173, 20, 0.2); }
-        
-        .asset-name {
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        .asset-amount {
-            font-size: 16px;
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-        }
-        
-        .asset-actions {
-            display: flex;
-            gap: 6px;
-        }
-        
-        .action-btn {
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 6px;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-            color: var(--text-secondary);
-        }
-        
-        .action-btn:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            color: white;
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            border: none;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-family: inherit;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 30px;
-            color: var(--text-secondary);
-            font-size: 14px;
-        }
-        
-        /* FAB按钮 */
-        .fab-group {
-            position: fixed;
-            top: 28px;
-            right: 28px;
-            z-index: 5000;
-            display: flex;
-            flex-direction: row-reverse;
-            gap: 12px;
-        }
-        
-        .fab-btn {
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            background: var(--bg-secondary);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: var(--shadow);
-            font-size: 22px;
-            transition: all 0.3s ease;
-            color: var(--text-primary);
-        }
-        
-        .fab-btn:hover {
-            transform: scale(1.1);
-            box-shadow: var(--shadow-hover);
-            background: var(--bg-tertiary);
-        }
-        
-        /* Modal */
-        .overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(10px);
-            display: none;
-            z-index: 6000;
-        }
-        
-        .modal {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: var(--bg-secondary);
-            backdrop-filter: blur(20px);
-            border-radius: 20px;
-            padding: 32px;
-            width: 380px;
-            box-shadow: var(--shadow-hover);
-            border: 1px solid var(--border);
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-        
-        .modal h3 {
-            font-size: 18px;
-            font-weight: 700;
-        }
-        
-        .close-btn {
-            cursor: pointer;
-            font-size: 22px;
-            color: var(--text-secondary);
-            background: var(--bg-tertiary);
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            border: none;
-        }
-        
-        .close-btn:hover {
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-        }
-        
-        .input-group {
-            margin-bottom: 16px;
-        }
-        
-        .input-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-        
-        .modal-input {
-            width: 100%;
-            padding: 12px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            box-sizing: border-box;
-            font-size: 14px;
-            font-family: inherit;
-            transition: all 0.2s ease;
-        }
-        
-        .modal-input:focus {
-            outline: none;
-            border-color: var(--blue);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-        
-        @media (max-width: 1200px) {
-            .category-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 60px;
-                padding: 12px;
-            }
-            .sidebar .logo span:last-child,
-            .sidebar .menu-item span:last-child {
-                display: none;
-            }
-            .main-content {
-                margin-left: 60px;
-                padding: 16px;
-            }
-            .assets-header {
-                flex-direction: column;
-            }
-            .asset-breakdown {
-                justify-content: flex-start;
-                flex-wrap: wrap;
-            }
-        .main-mv {
-            font-size: 36px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 24px;
-            user-select: none; /* 防止截图选中 */
-        }
-        
-        .asset-card-value {
-            font-size: 20px;
-            font-weight: 600;
-            margin-top: 8px;
-            user-select: none; /* 防止截图选中 */
-        }
-        
-        .invest-total-value {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 24px;
-            color: var(--text-primary);
-            user-select: none; /* 防止截图选中 */
-        }
-            .category-grid {
-                grid-template-columns: 1fr;
-            }
-            .pnl-stats {
-                justify-content: flex-start;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="logo">
-            <span>📊</span>
-            <span>Portfolio</span>
-        </div>
-        <a href="/assets" class="menu-item active">
-            <span>💰</span>
-            <span>我的资产</span>
-        </a>
-        <a href="/" class="menu-item">
-            <span>💼</span>
-            <span>我的投资</span>
-        </a>
-        <div class="menu-item" onclick="alert('功能开发中')">
-            <span>📊</span>
-            <span>资产分析</span>
-        </div>
-        <div class="menu-item" onclick="alert('功能开发中')">
-            <span>📈</span>
-            <span>市场分析</span>
-        </div>
-        <div class="menu-item" onclick="alert('功能开发中')">
-            <span>⚙️</span>
-            <span>设置</span>
-        </div>
-    </div>
+    }
     
-    <div class="main-content" id="capture-area">
-        <div class="fab-group" data-html2canvas-ignore="true">
-            <button class="fab-btn" id="privacyBtn" onclick="togglePrivacy()">👁️</button>
-            <button class="fab-btn" onclick="saveAsImage()">📸</button>
-        </div>
-        
-        <!-- 总资产看板 -->
-        <div class="section">
-            <div class="assets-header">
-                <div class="total-assets-section">
-                    <div class="total-mv-label">总资产 (CNY)</div>
-                    <div class="main-mv" id="totalAssets">¥ 0</div>
+    @media (max-width: 768px) {
+        .assets-header { flex-direction: column; }
+        .asset-breakdown {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+        .category-grid { grid-template-columns: 1fr; }
+        .pnl-stats { justify-content: flex-start; }
+    }
+    
+    /* 继承覆盖：确保金额不可选中 */
+    .main-mv, 
+    .asset-card-value, 
+    .invest-total-value,
+    .asset-card-item-value {
+        user-select: none;
+    }
+{% endblock %}
+
+{% block content %}
+    <!-- 总资产看板 -->
+    <div class="section">
+        <div class="assets-header">
+            <div class="total-assets-section">
+                <div class="total-mv-label">总资产 (CNY)</div>
+                <div class="main-mv" id="totalAssets">¥ 0</div>
+            </div>
+            <div class="asset-breakdown">
+                <div class="asset-card">
+                    <div class="asset-card-label">现金资产</div>
+                    <div class="asset-card-value cash" id="totalCash">¥ 0</div>
                 </div>
-                <div class="asset-breakdown">
-                    <div class="asset-card">
-                        <div class="asset-card-label">现金资产</div>
-                        <div class="asset-card-value cash" id="totalCash">¥ 0</div>
-                    </div>
-                    <div class="asset-card">
-                        <div class="asset-card-label">投资资产</div>
-                        <div class="asset-card-value invest" id="totalInvest">¥ 0</div>
-                    </div>
-                    <div class="asset-card">
-                        <div class="asset-card-label">其他资产</div>
-                        <div class="asset-card-value other" id="totalOther">¥ 0</div>
-                    </div>
+                <div class="asset-card">
+                    <div class="asset-card-label">投资资产</div>
+                    <div class="asset-card-value invest" id="totalInvest">¥ 0</div>
                 </div>
-            </div>
-        </div>
-        
-        <!-- 投资资产详情 -->
-        <div class="section">
-            <div class="section-header">
-                <div class="section-title">投资资产</div>
-                <a href="/" style="color: var(--text-secondary); text-decoration: none; font-size: 14px;">查看详情 →</a>
-            </div>
-            
-            <div class="invest-header">
-                <div class="invest-total">
-                    <div class="invest-total-label">持有总市值 (CNY)</div>
-                    <div class="invest-total-value" id="investMV">¥ 0</div>
+                <div class="asset-card">
+                    <div class="asset-card-label">其他资产</div>
+                    <div class="asset-card-value other" id="totalOther">¥ 0</div>
                 </div>
-                <div class="pnl-stats">
-                    <div class="pnl-stat-item">
-                        <div class="pnl-label">今日盈亏</div>
-                        <div class="pnl-value" id="todayPnl">--</div>
-                        <div class="pnl-rate" id="todayRate">--</div>
-                    </div>
-                    <div class="pnl-stat-item">
-                        <div class="pnl-label">持仓盈亏</div>
-                        <div class="pnl-value" id="floatPnl">--</div>
-                        <div class="pnl-rate" id="floatRate">--</div>
-                    </div>
-                    <div class="pnl-stat-item">
-                        <div class="pnl-label">累计盈亏</div>
-                        <div class="pnl-value" id="totalPnl">--</div>
-                        <div class="pnl-rate" id="totalRate">--</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 分类持仓 -->
-            <div class="category-grid">
-                <div class="category-card" id="card-cn">
-                    <div class="category-header">
-                        <span class="category-icon">🇨🇳</span>
-                        <span class="category-name">A股</span>
-                    </div>
-                    <div class="category-mv cn" id="mv-cn">¥ 0</div>
-                    <div class="category-pnl">
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">今日盈亏</span>
-                            <span class="category-pnl-value" id="day-cn">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">持仓盈亏</span>
-                            <span class="category-pnl-value" id="float-cn">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">累计盈亏</span>
-                            <span class="category-pnl-value" id="total-cn">--</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="category-card" id="card-us">
-                    <div class="category-header">
-                        <span class="category-icon">🇺🇸</span>
-                        <span class="category-name">美股</span>
-                    </div>
-                    <div class="category-mv us" id="mv-us">¥ 0</div>
-                    <div class="category-pnl">
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">今日盈亏</span>
-                            <span class="category-pnl-value" id="day-us">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">持仓盈亏</span>
-                            <span class="category-pnl-value" id="float-us">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">累计盈亏</span>
-                            <span class="category-pnl-value" id="total-us">--</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="category-card" id="card-hk">
-                    <div class="category-header">
-                        <span class="category-icon">🇭🇰</span>
-                        <span class="category-name">港股</span>
-                    </div>
-                    <div class="category-mv hk" id="mv-hk">¥ 0</div>
-                    <div class="category-pnl">
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">今日盈亏</span>
-                            <span class="category-pnl-value" id="day-hk">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">持仓盈亏</span>
-                            <span class="category-pnl-value" id="float-hk">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">累计盈亏</span>
-                            <span class="category-pnl-value" id="total-hk">--</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="category-card" id="card-fund">
-                    <div class="category-header">
-                        <span class="category-icon">📊</span>
-                        <span class="category-name">基金</span>
-                    </div>
-                    <div class="category-mv fund" id="mv-fund">¥ 0</div>
-                    <div class="category-pnl">
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">今日盈亏</span>
-                            <span class="category-pnl-value" id="day-fund">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">持仓盈亏</span>
-                            <span class="category-pnl-value" id="float-fund">--</span>
-                        </div>
-                        <div class="category-pnl-row">
-                            <span class="category-pnl-label">累计盈亏</span>
-                            <span class="category-pnl-value" id="total-fund">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 现金资产 -->
-        <div class="section">
-            <div class="section-header">
-                <div class="section-title">现金资产</div>
-                <button class="btn-primary" onclick="openModal('cash')">+ 添加</button>
-            </div>
-            
-            <div class="invest-header">
-                <div class="invest-total">
-                    <div class="invest-total-label">现金总额 (CNY)</div>
-                    <div class="invest-total-value cash" id="cashMV">¥ 0</div>
-                </div>
-            </div>
-            
-            <div class="asset-card-grid" id="cashList">
-                <div class="empty-state">暂无现金资产</div>
-            </div>
-        </div>
-        
-        <!-- 其他资产 -->
-        <div class="section">
-            <div class="section-header">
-                <div class="section-title">其他资产</div>
-                <button class="btn-primary" onclick="openModal('other')">+ 添加</button>
-            </div>
-            
-            <div class="invest-header">
-                <div class="invest-total">
-                    <div class="invest-total-label">其他资产总额 (CNY)</div>
-                    <div class="invest-total-value other" id="otherMV">¥ 0</div>
-                </div>
-            </div>
-            
-            <div class="asset-card-grid" id="otherList">
-                <div class="empty-state">暂无其他资产</div>
-            </div>
-        </div>
-        
-        <!-- 我的负债 -->
-        <div class="section">
-            <div class="section-header">
-                <div class="section-title">我的负债</div>
-                <button class="btn-primary" onclick="openModal('liability')">+ 添加</button>
-            </div>
-            
-            <div class="invest-header">
-                <div class="invest-total">
-                    <div class="invest-total-label">负债总额 (CNY)</div>
-                    <div class="invest-total-value liability" id="liabilityMV">¥ 0</div>
-                </div>
-            </div>
-            
-            <div class="asset-card-grid" id="liabilityList">
-                <div class="empty-state">暂无负债记录</div>
             </div>
         </div>
     </div>
     
+    <!-- 投资资产详情 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">投资资产</div>
+            <a href="/" style="color: var(--text-secondary); text-decoration: none; font-size: 14px;">查看详情 →</a>
+        </div>
+        
+        <div class="invest-header">
+            <div class="invest-total">
+                <div class="invest-total-label">持有总市值 (CNY)</div>
+                <div class="invest-total-value" id="investMV">¥ 0</div>
+            </div>
+            <div class="pnl-stats">
+                <div class="pnl-stat-item">
+                    <div class="pnl-label">今日盈亏</div>
+                    <div class="pnl-value" id="todayPnl">--</div>
+                    <div class="pnl-rate" id="todayRate">--</div>
+                </div>
+                <div class="pnl-stat-item">
+                    <div class="pnl-label">持仓盈亏</div>
+                    <div class="pnl-value" id="floatPnl">--</div>
+                    <div class="pnl-rate" id="floatRate">--</div>
+                </div>
+                <div class="pnl-stat-item">
+                    <div class="pnl-label">累计盈亏</div>
+                    <div class="pnl-value" id="totalPnl">--</div>
+                    <div class="pnl-rate" id="totalRate">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 分类持仓 -->
+        <div class="category-grid">
+            <div class="category-card" id="card-cn">
+                <div class="category-header">
+                    <span class="category-icon">🇨🇳</span>
+                    <span class="category-name">A股</span>
+                </div>
+                <div class="category-mv cn" id="mv-cn">¥ 0</div>
+                <div class="category-pnl">
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">今日盈亏</span>
+                        <span class="category-pnl-value" id="day-cn">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">持仓盈亏</span>
+                        <span class="category-pnl-value" id="float-cn">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">累计盈亏</span>
+                        <span class="category-pnl-value" id="total-cn">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="category-card" id="card-us">
+                <div class="category-header">
+                    <span class="category-icon">🇺🇸</span>
+                    <span class="category-name">美股</span>
+                </div>
+                <div class="category-mv us" id="mv-us">¥ 0</div>
+                <div class="category-pnl">
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">今日盈亏</span>
+                        <span class="category-pnl-value" id="day-us">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">持仓盈亏</span>
+                        <span class="category-pnl-value" id="float-us">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">累计盈亏</span>
+                        <span class="category-pnl-value" id="total-us">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="category-card" id="card-hk">
+                <div class="category-header">
+                    <span class="category-icon">🇭🇰</span>
+                    <span class="category-name">港股</span>
+                </div>
+                <div class="category-mv hk" id="mv-hk">¥ 0</div>
+                <div class="category-pnl">
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">今日盈亏</span>
+                        <span class="category-pnl-value" id="day-hk">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">持仓盈亏</span>
+                        <span class="category-pnl-value" id="float-hk">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">累计盈亏</span>
+                        <span class="category-pnl-value" id="total-hk">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="category-card" id="card-fund">
+                <div class="category-header">
+                    <span class="category-icon">📊</span>
+                    <span class="category-name">基金</span>
+                </div>
+                <div class="category-mv fund" id="mv-fund">¥ 0</div>
+                <div class="category-pnl">
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">今日盈亏</span>
+                        <span class="category-pnl-value" id="day-fund">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">持仓盈亏</span>
+                        <span class="category-pnl-value" id="float-fund">--</span>
+                    </div>
+                    <div class="category-pnl-row">
+                        <span class="category-pnl-label">累计盈亏</span>
+                        <span class="category-pnl-value" id="total-fund">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 现金资产 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">现金资产</div>
+            <button class="btn-primary" onclick="openModal('cash')">+ 添加</button>
+        </div>
+        
+        <div class="invest-header">
+            <div class="invest-total">
+                <div class="invest-total-label">现金总额 (CNY)</div>
+                <div class="invest-total-value cash" id="cashMV">¥ 0</div>
+            </div>
+        </div>
+        
+        <div class="asset-card-grid" id="cashList">
+            <div class="empty-state">暂无现金资产</div>
+        </div>
+    </div>
+    
+    <!-- 其他资产 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">其他资产</div>
+            <button class="btn-primary" onclick="openModal('other')">+ 添加</button>
+        </div>
+        
+        <div class="invest-header">
+            <div class="invest-total">
+                <div class="invest-total-label">其他资产总额 (CNY)</div>
+                <div class="invest-total-value other" id="otherMV">¥ 0</div>
+            </div>
+        </div>
+        
+        <div class="asset-card-grid" id="otherList">
+            <div class="empty-state">暂无其他资产</div>
+        </div>
+    </div>
+    
+    <!-- 我的负债 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">我的负债</div>
+            <button class="btn-primary" onclick="openModal('liability')">+ 添加</button>
+        </div>
+        
+        <div class="invest-header">
+            <div class="invest-total">
+                <div class="invest-total-label">负债总额 (CNY)</div>
+                <div class="invest-total-value liability" id="liabilityMV">¥ 0</div>
+            </div>
+        </div>
+        
+        <div class="asset-card-grid" id="liabilityList">
+            <div class="empty-state">暂无负债记录</div>
+        </div>
+    </div>
+
     <!-- Modal -->
     <div class="overlay" id="overlay">
         <div class="modal">
@@ -999,43 +592,22 @@
             </form>
         </div>
     </div>
-    
+{% endblock %}
+
+{% block scripts %}
     <script>
         let FX = { USD: 7.25, HKD: 0.93, CNY: 1.00 };
-        let isPrivacyMode = localStorage.getItem('privacy_mode') === 'true';
-        
-        function togglePrivacy() {
-            isPrivacyMode = !isPrivacyMode;
-            localStorage.setItem('privacy_mode', isPrivacyMode);
-            // 更新按钮图标
-            const btn = document.getElementById('privacyBtn');
-            if(btn) btn.innerText = isPrivacyMode ? '🙈' : '👁️';
-            
-            // 重新渲染所有数据
-            renderCashList();
-            renderOtherList();
-            renderLiabilityList();
-            renderInvestData();
-            updateTotals();
-        }
-        
-        // 页面加载时设置按钮初始状态
-        window.addEventListener('load', () => {
-             const btn = document.getElementById('privacyBtn');
-             if(btn) btn.innerText = isPrivacyMode ? '🙈' : '👁️';
-        });
-
         let cashAssets = [];
         let otherAssets = [];
         let liabilities = [];
         
         // 投资数据
         let investData = {
-            total: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0 },
-            cn: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0 },
-            us: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0 },
-            hk: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0 },
-            fund: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0 }
+            total: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 },
+            cn: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 },
+            us: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 },
+            hk: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 },
+            fund: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 }
         };
         
         function getCategory(code) {
@@ -1044,6 +616,15 @@
             if (code.startsWith('hk') || code.includes('.hk')) return 'hk';
             if (code.startsWith('gb_') || /^[a-z]+$/.test(code)) return 'us';
             return 'cn';
+        }
+        
+        // 供 base.html 调用的更新函数
+        function updatePageData() {
+            renderCashList();
+            renderOtherList();
+            renderLiabilityList();
+            renderInvestData();
+            updateTotals();
         }
         
         async function loadData() {
@@ -1267,6 +848,27 @@
             
             const liabEl = document.getElementById('liabilityMV');
             if(liabEl) liabEl.innerText = fmt(totalLiability);
+            
+            // 保存每日快照
+            saveDailySnapshot({
+                total_asset: totalAll,
+                total_invest: investData.total.mv,
+                total_cash: totalCash,
+                total_other: totalOther,
+                total_liability: totalLiability,
+                total_pnl: investData.total.totalPnl,
+                day_pnl: investData.total.dayPnl
+            });
+        }
+        
+        function saveDailySnapshot(data) {
+            // 简单防抖：如果数据没有实质变化，或者距离上次保存时间太短，可以跳过
+            // 这里为了确保数据最新，每次计算都发送（后端是 UPDATE 操作）
+            fetch('/api/snapshot/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            }).catch(err => console.error('Snapshot save failed:', err));
         }
         
         function openModal(type) {
@@ -1349,23 +951,10 @@
             }
         }
         
-        function saveAsImage() {
-            html2canvas(document.querySelector('#capture-area'), {
-                backgroundColor: '#0a0e27',
-                scale: 2
-            }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = 'my-assets.png';
-                link.href = canvas.toDataURL();
-                link.click();
-            });
-        }
-        
         // 初始加载
         window.onload = loadData;
         
         // 每分钟刷新
         setInterval(loadData, 60000);
     </script>
-</body>
-</html>
+{% endblock %}

@@ -7,6 +7,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
+import config  # 添加导入
 
 logger = logging.getLogger(__name__)
 
@@ -112,13 +113,21 @@ class DatabaseManager:
             )
         ''')
         
-        # 创建索引
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_code ON portfolio(code)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_time ON transactions(time)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cash_assets_id ON cash_assets(id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_other_assets_id ON other_assets(id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_liabilities_id ON liabilities(id)')
+        # 创建每日快照表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL UNIQUE,
+                total_asset REAL NOT NULL,
+                total_invest REAL NOT NULL,
+                total_cash REAL NOT NULL,
+                total_other REAL NOT NULL,
+                total_liability REAL NOT NULL,
+                total_pnl REAL NOT NULL,
+                day_pnl REAL NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
         conn.commit()
         conn.close()
@@ -741,3 +750,63 @@ class DatabaseManager:
             return False
         finally:
             conn.close()
+    def save_daily_snapshot(self, data: Dict[str, float]) -> bool:
+        """保存每日资产快照（如果当日已存在则更新）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        try:
+            cursor.execute('''
+                INSERT INTO daily_snapshots (
+                    date, total_asset, total_invest, total_cash, 
+                    total_other, total_liability, total_pnl, day_pnl, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(date) DO UPDATE SET
+                    total_asset=excluded.total_asset,
+                    total_invest=excluded.total_invest,
+                    total_cash=excluded.total_cash,
+                    total_other=excluded.total_other,
+                    total_liability=excluded.total_liability,
+                    total_pnl=excluded.total_pnl,
+                    day_pnl=excluded.day_pnl,
+                    updated_at=CURRENT_TIMESTAMP
+            ''', (
+                today,
+                data.get('total_asset', 0),
+                data.get('total_invest', 0),
+                data.get('total_cash', 0),
+                data.get('total_other', 0),
+                data.get('total_liability', 0),
+                data.get('total_pnl', 0),
+                data.get('day_pnl', 0)
+            ))
+            conn.commit()
+            logger.info(f"Daily snapshot saved for {today}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save snapshot: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+            
+    def get_history(self, limit: int = 365) -> List[Dict[str, Any]]:
+        """获取历史资产数据"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM daily_snapshots 
+                ORDER BY date ASC 
+                LIMIT ?
+            ''', (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+# 全局数据库实例
+db = DatabaseManager(str(config.DATABASE_PATH))

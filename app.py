@@ -47,7 +47,7 @@ def open_browser():
 @app.route('/')
 def index():
     """主页 - 我的投资"""
-    response = make_response(render_template('index.html', version=APP_VERSION))
+    response = make_response(render_template('investment.html', version=APP_VERSION))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -312,6 +312,20 @@ def update_asset():
         return jsonify({"error": "Invalid value"}), 400
 
 
+@app.route('/analysis')
+def analysis():
+    """资产分析页面"""
+    return make_response(render_template('analysis.html', version=APP_VERSION))
+
+
+@app.route('/api/history')
+def get_history():
+    """获取历史资产数据"""
+    days = request.args.get('days', 365, type=int)
+    history = db.get_history(days)
+    return jsonify(history)
+
+
 @app.route('/api/portfolio/modify', methods=['POST'])
 def modify_asset():
     """修正资产（数量、成本、调整值）"""
@@ -333,6 +347,20 @@ def modify_asset():
             return jsonify({"error": "Asset not found"}), 404
     except ValueError:
         return jsonify({"error": "Invalid value"}), 400
+
+
+@app.route('/api/snapshot/save', methods=['POST'])
+def save_snapshot():
+    """保存每日资产快照"""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    success = db.save_daily_snapshot(data)
+    if success:
+        return jsonify({"status": "ok"})
+    else:
+        return jsonify({"error": "Failed to save snapshot"}), 500
 
 
 @app.route('/api/portfolio/delete', methods=['POST'])
