@@ -14,6 +14,7 @@ from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
 from core.snapshot import take_snapshot
+from core.news import news_fetcher  # 引入新闻模块
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -203,6 +204,19 @@ def update_asset():
 def analysis():
     """资产分析页面"""
     return make_response(render_template('analysis.html', version=APP_VERSION))
+
+
+@app.route('/news')
+def news_page():
+    """市场快讯页面"""
+    return make_response(render_template('news.html', version=APP_VERSION))
+
+
+@app.route('/api/news/latest')
+def get_latest_news():
+    """获取最新快讯 API"""
+    data = news_fetcher.fetch_latest()
+    return jsonify(data)
 
 
 @app.route('/api/history')
