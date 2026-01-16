@@ -6,15 +6,17 @@ import logging
 import threading
 import webbrowser
 import time
-from flask import Flask, render_template, jsonify, request, make_response
+from flask import Flask, render_template, jsonify, request, make_response, send_file
 from pathlib import Path
+import os
 
 import config
 from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
 from core.snapshot import take_snapshot
-from core.news import news_fetcher  # 引入新闻模块
+from core.news import news_fetcher
+from core.system import system_manager  # 引入系统模块
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -32,7 +34,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
 
 # 应用版本号，用于强制刷新缓存
-APP_VERSION = "v11.0.2"
+APP_VERSION = config.APP_VERSION
 
 # 初始化数据库（从CSV导入备份数据）
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
@@ -210,6 +212,72 @@ def analysis():
 def news_page():
     """市场快讯页面"""
     return make_response(render_template('news.html', version=APP_VERSION))
+
+
+@app.route('/settings')
+def settings_page():
+    """设置页面"""
+    return make_response(render_template('settings.html', version=APP_VERSION))
+
+
+@app.route('/api/settings/info')
+def get_system_info():
+    """获取系统版本信息"""
+    info = system_manager.get_version_info()
+    return jsonify(info)
+
+
+@app.route('/api/settings/check_api')
+def check_api_status():
+    """检测API状态"""
+    status = system_manager.check_api_status()
+    return jsonify(status)
+
+
+@app.route('/api/settings/backup')
+def backup_database():
+    """下载数据库备份"""
+    if config.DATABASE_PATH.exists():
+        return send_file(
+            config.DATABASE_PATH,
+            as_attachment=True,
+            download_name=f"portfolio_backup_{int(time.time())}.db",
+            mimetype='application/x-sqlite3'
+        )
+    return jsonify({"error": "Database not found"}), 404
+
+
+@app.route('/api/settings/restore', methods=['POST'])
+def restore_database():
+    """恢复数据库"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+        
+    # 保存到临时文件
+    temp_path = config.BASE_DIR / "temp_restore.db"
+    try:
+        file.save(temp_path)
+        
+        # 执行恢复
+        success = system_manager.restore_database(str(temp_path))
+        
+        if success:
+            return jsonify({"status": "ok", "message": "Restore successful"})
+        else:
+            return jsonify({"error": "Restore failed or invalid file"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        # 清理临时文件
+        if temp_path.exists():
+            try:
+                os.remove(temp_path)
+            except:
+                pass
 
 
 @app.route('/api/news/latest')

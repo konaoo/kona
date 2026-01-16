@@ -16,6 +16,7 @@ TRANSACTION_PATH = BASE_DIR / "transactions.csv"
 HOST = "127.0.0.1"
 PORT = 5003
 DEBUG = False
+APP_VERSION = "v11.3.0"
 
 # API配置
 API_TIMEOUT = 3
