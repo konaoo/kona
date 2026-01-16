@@ -750,6 +750,26 @@ class DatabaseManager:
             return False
         finally:
             conn.close()
+    def get_today_realized_pnl(self) -> float:
+        """获取今日已实现盈亏（卖出产生的盈亏）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        try:
+            cursor.execute('''
+                SELECT SUM(pnl) 
+                FROM transactions 
+                WHERE type = '减仓' AND time LIKE ?
+            ''', (f'{today}%',))
+            result = cursor.fetchone()[0]
+            return float(result) if result else 0.0
+        except Exception as e:
+            logger.error(f"Failed to get realized pnl: {e}")
+            return 0.0
+        finally:
+            conn.close()
+
     def save_daily_snapshot(self, data: Dict[str, float]) -> bool:
         """保存每日资产快照（如果当日已存在则更新）"""
         conn = self.get_connection()

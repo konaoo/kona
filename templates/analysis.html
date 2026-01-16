@@ -136,6 +136,49 @@
         color: var(--text-primary);
     }
     
+    /* 里程碑卡片样式 */
+    .milestone-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+    
+    .milestone-card {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: transform 0.2s;
+    }
+    
+    .milestone-card:hover { transform: translateY(-4px); background: var(--bg-secondary); box-shadow: var(--shadow-hover); }
+    
+    .milestone-title { font-size: 13px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+    .milestone-date { font-size: 11px; opacity: 0.7; }
+    
+    .milestone-main { 
+        font-size: 24px; 
+        font-weight: 700; 
+        color: var(--text-primary); 
+        font-variant-numeric: tabular-nums;
+        margin-top: 4px;
+    }
+    
+    .milestone-sub-group { display: flex; align-items: baseline; gap: 8px; }
+    .milestone-sub { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .milestone-rate { font-size: 13px; font-weight: 500; opacity: 0.9; }
+    
+    @media (max-width: 1024px) {
+        .milestone-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    @media (max-width: 600px) {
+        .milestone-grid { grid-template-columns: 1fr; }
+    }
+    
     /* 收益日历样式 */
     .calendar-header-controls {
         display: flex;
@@ -333,7 +376,7 @@
         async function initData() {
             try {
                 historyData = await (await fetch('/api/history')).json();
-                renderTrendChart(historyData);
+                renderMilestones(historyData); // 替换原来的 renderTrendChart
                 
                 FX = await (await fetch('/api/rates')).json();
                 const rawPortfolio = await (await fetch('/api/portfolio')).json();
@@ -380,35 +423,92 @@
             }
         }
         
-        // --- 资产趋势图 ---
-        function renderTrendChart(data) {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (data.length === 0) return;
+        // --- 资产里程碑 ---
+        function renderMilestones(data) {
+            if (!data || data.length === 0) return;
             
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: data.map(d => d.date),
-                    datasets: [{
-                        label: '总资产',
-                        data: data.map(d => d.total_asset),
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-                    scales: {
-                        x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
-                        y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } }
+            // 数据按日期升序排列，data[data.length-1] 是最新的
+            const latest = data[data.length - 1];
+            const currentTotal = latest.total_asset;
+            
+            const fmt = (v) => isPrivacyMode ? '****' : `¥ ${Math.round(v).toLocaleString()}`;
+            const fmtDiff = (v) => {
+                const s = v >= 0 ? '+' : '';
+                return `<span class="${v >= 0 ? 'text-up' : 'text-down'}">${isPrivacyMode ? '****' : s + Math.round(v).toLocaleString()}</span>`;
+            };
+            const fmtRate = (v, base) => {
+                const r = base > 0 ? (v / base * 100) : 0;
+                return `<span class="${r >= 0 ? 'text-up' : 'text-down'}">${r >= 0 ? '+' : ''}${r.toFixed(2)}%</span>`;
+            };
+
+            // 辅助函数：找指定日期之前的最近一条记录
+            const findRecord = (targetDateStr) => {
+                // data 是升序
+                let found = null;
+                for (let i = data.length - 1; i >= 0; i--) {
+                    if (data[i].date < targetDateStr) {
+                        found = data[i];
+                        break;
                     }
                 }
+                return found; // 如果没找到更早的，返回null
+            };
+
+            // 1. 本周 (对比上周五)
+            const today = new Date();
+            const dayOfWeek = today.getDay(); // 0=周日, 1=周一
+            const diffToLastFriday = (dayOfWeek === 0 ? 2 : dayOfWeek + 2); // 简单推算
+            // 更严谨：找到本周一之前的最新数据
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+            monday.setHours(0,0,0,0);
+            const mondayStr = monday.toISOString().split('T')[0];
+            
+            const lastWeekRec = findRecord(mondayStr);
+            const weekBase = lastWeekRec ? lastWeekRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const weekDiff = currentTotal - weekBase;
+            
+            document.getElementById('weekTotal').innerText = fmt(currentTotal);
+            document.getElementById('weekDiff').innerHTML = fmtDiff(weekDiff);
+            document.getElementById('weekDateLabel').innerText = lastWeekRec ? `vs ${lastWeekRec.date.slice(5)}` : 'vs 初始';
+
+            // 2. 本月 (对比上月末)
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const fdomStr = firstDayOfMonth.toISOString().split('T')[0];
+            const lastMonthRec = findRecord(fdomStr);
+            const monthBase = lastMonthRec ? lastMonthRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const monthDiff = currentTotal - monthBase;
+            
+            document.getElementById('monthTotal').innerText = fmt(currentTotal);
+            document.getElementById('monthDiff').innerHTML = fmtDiff(monthDiff);
+            document.getElementById('monthDateLabel').innerText = lastMonthRec ? `vs ${lastMonthRec.date.slice(5)}` : 'vs 初始';
+
+            // 3. 今年 (对比去年末)
+            const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
+            const fdoyStr = firstDayOfYear.toISOString().split('T')[0];
+            const lastYearRec = findRecord(fdoyStr);
+            const yearBase = lastYearRec ? lastYearRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const yearDiff = currentTotal - yearBase;
+            
+            document.getElementById('yearTotal').innerText = fmt(currentTotal);
+            document.getElementById('yearDiff').innerHTML = fmtDiff(yearDiff);
+            document.getElementById('yearRate').innerHTML = fmtRate(yearDiff, yearBase);
+            document.getElementById('yearDateLabel').innerText = lastYearRec ? `vs ${lastYearRec.date}` : 'vs 初始';
+
+            // 4. 历史峰值
+            let peakVal = -Infinity;
+            let peakDate = '--';
+            data.forEach(d => {
+                if (d.total_asset > peakVal) {
+                    peakVal = d.total_asset;
+                    peakDate = d.date;
+                }
             });
+            const drawdown = currentTotal - peakVal;
+            
+            document.getElementById('peakTotal').innerText = fmt(peakVal);
+            document.getElementById('peakDiff').innerHTML = fmtDiff(drawdown); // 回撤金额
+            document.getElementById('peakDateLabel').innerText = peakDate;
         }
         
         // --- 分市场表现 ---
@@ -693,13 +793,39 @@
 {% endblock %}
 
 {% block content %}
-    <!-- 资产趋势 -->
+    <!-- 资产变动对比看板 -->
     <div class="section">
         <div class="section-header">
-            <div class="section-title">资产趋势</div>
+            <div class="section-title">资产里程碑</div>
         </div>
-        <div class="chart-container">
-            <canvas id="trendChart"></canvas>
+        <div class="milestone-grid">
+            <!-- 本周 -->
+            <div class="milestone-card">
+                <div class="milestone-title">本周变动 <span class="milestone-date" id="weekDateLabel">--</span></div>
+                <div class="milestone-main" id="weekTotal">--</div>
+                <div class="milestone-sub" id="weekDiff">--</div>
+            </div>
+            <!-- 本月 -->
+            <div class="milestone-card">
+                <div class="milestone-title">本月变动 <span class="milestone-date" id="monthDateLabel">--</span></div>
+                <div class="milestone-main" id="monthTotal">--</div>
+                <div class="milestone-sub" id="monthDiff">--</div>
+            </div>
+            <!-- 今年 -->
+            <div class="milestone-card">
+                <div class="milestone-title">今年 (YTD) <span class="milestone-date" id="yearDateLabel">--</span></div>
+                <div class="milestone-main" id="yearTotal">--</div>
+                <div class="milestone-sub-group">
+                    <span class="milestone-sub" id="yearDiff">--</span>
+                    <span class="milestone-rate" id="yearRate">--</span>
+                </div>
+            </div>
+            <!-- 历史峰值 -->
+            <div class="milestone-card">
+                <div class="milestone-title">历史峰值 <span class="milestone-date" id="peakDateLabel">--</span></div>
+                <div class="milestone-main" id="peakTotal">--</div>
+                <div class="milestone-sub" id="peakDiff">--</div>
+            </div>
         </div>
     </div>
     

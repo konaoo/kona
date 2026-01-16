@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>分类测试</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .btn-group { margin: 20px 0; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        button.active { background: #007bff; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #f0f0f0; }
+        .info { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>分类功能测试</h1>
+        
+        <div class="info">
+            <h3>当前状态</h3>
+            <p>currentCategory: <strong id="currentCat">all</strong></p>
+            <p>点击按钮切换分类，查看API请求和数据</p>
+        </div>
+        
+        <div class="btn-group">
+            <button onclick="switchCategory('all')" id="btn-all" class="active">全部</button>
+            <button onclick="switchCategory('stock_cn')" id="btn-stock_cn">A股</button>
+            <button onclick="switchCategory('stock_hk')" id="btn-stock_hk">港股</button>
+            <button onclick="switchCategory('stock_us')" id="btn-stock_us">美股</button>
+            <button onclick="switchCategory('fund')" id="btn-fund">基金</button>
+        </div>
+        
+        <div class="info">
+            <h3>API请求日志</h3>
+            <pre id="log"></pre>
+        </div>
+        
+        <div class="info">
+            <h3>返回数据</h3>
+            <pre id="data">点击按钮获取数据...</pre>
+        </div>
+        
+        <h2>持仓表格</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>数量</th>
+                    <th>价格</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+    </div>
+    
+    <script>
+        let currentCategory = 'all';
+        
+        function log(message) {
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = message + '\n' + logEl.innerHTML;
+        }
+        
+        async function switchCategory(type) {
+            log(`=== 切换分类 ===`);
+            log(`从: ${currentCategory}`);
+            log(`到: ${type}`);
+            
+            currentCategory = type;
+            document.getElementById('currentCat').innerText = currentCategory;
+            
+            // 更新按钮状态
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + type).classList.add('active');
+            
+            // 构建API URL
+            const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
+            log(`请求URL: ${apiUrl}`);
+            
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                log(`返回数据数量: ${data.length}`);
+                log(`数据: ${JSON.stringify(data.map(d => d.code))}`);
+                
+                document.getElementById('data').innerText = JSON.stringify(data, null, 2);
+                
+                // 更新表格
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = data.map(item => `
+                    <tr>
+                        <td>${item.code}</td>
+                        <td>${item.name}</td>
+                        <td>${item.qty}</td>
+                        <td>${item.price}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                log(`错误: ${error}`);
+            }
+        }
+        
+        // 页面加载时获取全部数据
+        window.onload = () => switchCategory('all');
+    </script>
+</body>
+</html>

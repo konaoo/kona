@@ -13,6 +13,7 @@ import config
 from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
+from core.snapshot import take_snapshot
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -69,121 +70,7 @@ def assets():
 @app.route('/test')
 def test_page():
     """测试页面"""
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>分类测试</title>
-        <style>
-            body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .btn-group { margin: 20px 0; }
-            button { padding: 10px 20px; margin: 5px; cursor: pointer; }
-            button.active { background: #007bff; color: white; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-            th { background: #f0f0f0; }
-            .info { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-            pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>分类功能测试</h1>
-            
-            <div class="info">
-                <h3>当前状态</h3>
-                <p>currentCategory: <strong id="currentCat">all</strong></p>
-                <p>点击按钮切换分类，查看API请求和数据</p>
-            </div>
-            
-            <div class="btn-group">
-                <button onclick="switchCategory('all')" id="btn-all" class="active">全部</button>
-                <button onclick="switchCategory('stock_cn')" id="btn-stock_cn">A股</button>
-                <button onclick="switchCategory('stock_hk')" id="btn-stock_hk">港股</button>
-                <button onclick="switchCategory('stock_us')" id="btn-stock_us">美股</button>
-                <button onclick="switchCategory('fund')" id="btn-fund">基金</button>
-            </div>
-            
-            <div class="info">
-                <h3>API请求日志</h3>
-                <pre id="log"></pre>
-            </div>
-            
-            <div class="info">
-                <h3>返回数据</h3>
-                <pre id="data">点击按钮获取数据...</pre>
-            </div>
-            
-            <h2>持仓表格</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>代码</th>
-                        <th>名称</th>
-                        <th>数量</th>
-                        <th>价格</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                </tbody>
-            </table>
-        </div>
-        
-        <script>
-            let currentCategory = 'all';
-            
-            function log(message) {
-                const logEl = document.getElementById('log');
-                logEl.innerHTML = message + '\\n' + logEl.innerHTML;
-            }
-            
-            async function switchCategory(type) {
-                log(`=== 切换分类 ===`);
-                log(`从: ${currentCategory}`);
-                log(`到: ${type}`);
-                
-                currentCategory = type;
-                document.getElementById('currentCat').innerText = currentCategory;
-                
-                // 更新按钮状态
-                document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-                document.getElementById('btn-' + type).classList.add('active');
-                
-                // 构建API URL
-                const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
-                log(`请求URL: ${apiUrl}`);
-                
-                try {
-                    const response = await fetch(apiUrl);
-                    const data = await response.json();
-                    
-                    log(`返回数据数量: ${data.length}`);
-                    log(`数据: ${JSON.stringify(data.map(d => d.code))}`);
-                    
-                    document.getElementById('data').innerText = JSON.stringify(data, null, 2);
-                    
-                    // 更新表格
-                    const tbody = document.getElementById('tableBody');
-                    tbody.innerHTML = data.map(item => `
-                        <tr>
-                            <td>${item.code}</td>
-                            <td>${item.name}</td>
-                            <td>${item.qty}</td>
-                            <td>${item.price}</td>
-                        </tr>
-                    `).join('');
-                } catch (error) {
-                    log(`错误: ${error}`);
-                }
-            }
-            
-            // 页面加载时获取全部数据
-            window.onload = () => switchCategory('all');
-        </script>
-    </body>
-    </html>
-    '''
+    return make_response(render_template('test_api.html'))
 
 
 @app.route('/compare')
@@ -351,7 +238,7 @@ def modify_asset():
 
 @app.route('/api/snapshot/save', methods=['POST'])
 def save_snapshot():
-    """保存每日资产快照"""
+    """保存每日资产快照（前端触发）"""
     data = request.json
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -361,6 +248,16 @@ def save_snapshot():
         return jsonify({"status": "ok"})
     else:
         return jsonify({"error": "Failed to save snapshot"}), 500
+
+
+@app.route('/api/snapshot/trigger', methods=['POST'])
+def trigger_snapshot():
+    """手动触发后台快照计算"""
+    success = take_snapshot()
+    if success:
+        return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
+    else:
+        return jsonify({"error": "Failed to take snapshot"}), 500
 
 
 @app.route('/api/portfolio/delete', methods=['POST'])
@@ -552,10 +449,31 @@ def health():
     return jsonify({"status": "ok", "version": "10.0"})
 
 
+def background_scheduler():
+    """后台任务调度"""
+    logger.info("Scheduler started")
+    while True:
+        try:
+            # 每小时执行一次快照
+            take_snapshot()
+        except Exception as e:
+            logger.error(f"Scheduler error: {e}")
+        
+        # 休眠 1 小时 (3600秒)
+        # 实际生产中建议使用 APScheduler，这里用简单 sleep 即可
+        time.sleep(3600)
+
 if __name__ == '__main__':
     logger.info("Starting Portfolio Management System v10.0...")
     logger.info(f"Database: {config.DATABASE_PATH}")
     logger.info(f"Server: http://{config.HOST}:{config.PORT}")
+    
+    # 启动后台快照任务
+    threading.Thread(target=background_scheduler, daemon=True).start()
+    
+    # 【优化】程序启动时，立即执行一次快照保存，防止用户短时间开机后数据未保存
+    # 使用线程异步执行，避免阻塞启动过程
+    threading.Thread(target=take_snapshot, daemon=True).start()
     
     # 自动打开浏览器
     threading.Thread(target=open_browser, daemon=True).start()
