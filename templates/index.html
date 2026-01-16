@@ -1125,7 +1125,7 @@
                 const apiUrl = currentCategory === 'all' ? '/api/portfolio' : `/api/portfolio?type=${currentCategory}`;
                 const cacheBreaker = `t=${timestamp}_${Math.random().toString(36).substring(7)}`;
                 const separator = apiUrl.includes('?') ? '&' : '?';
-                const fullUrl = `http://127.0.0.1:5003${apiUrl}${separator}${cacheBreaker}`;
+                const fullUrl = `${apiUrl}${separator}${cacheBreaker}`;
                 console.log('%c=== 请求持仓数据 ===', 'font-weight: bold; color: #e91e63;');
                 console.log('currentCategory:', currentCategory);
                 console.log('apiUrl:', apiUrl);
