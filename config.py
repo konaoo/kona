@@ -13,7 +13,7 @@ BACKUP_CSV_PATH = BASE_DIR / "portfolio.csv"
 TRANSACTION_PATH = BASE_DIR / "transactions.csv"
 
 # 服务器配置
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 5003
 DEBUG = False
 APP_VERSION = "v11.3.0"

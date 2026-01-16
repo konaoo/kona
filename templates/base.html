@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Portfolio{% endblock %}</title>
+    <!-- 替换为国内 CDN (字节跳动) -->
+    <script src="https://lf6-cdn-tos.bytecdntp.com/cdn/expire-1-M/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         :root {
             --bg-primary: #0f172a;
@@ -229,12 +231,80 @@
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
 
+        /* 移动端底部导航栏（默认隐藏） */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border);
+            padding: 10px 20px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+            z-index: 2000;
+            justify-content: space-between;
+        }
+
+        .mobile-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 10px;
+            width: 60px;
+        }
+
+        .mobile-nav-item span:first-child { font-size: 20px; }
+        
+        .mobile-nav-item.active {
+            color: var(--accent);
+        }
+
+        /* 响应式适配 */
+        @media (max-width: 768px) {
+            /* 隐藏侧边栏 */
+            .sidebar { display: none; }
+            
+            /* 显示底栏 */
+            .mobile-nav { display: flex; }
+            
+            /* 调整主内容区 */
+            .main-content {
+                margin-left: 0;
+                padding: 20px;
+                padding-bottom: 80px; /* 给底栏留空间 */
+                width: 100%;
+            }
+            
+            /* 调整悬浮按钮位置 */
+            .fab-group {
+                top: 16px;
+                right: 16px;
+            }
+            .fab-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+            }
+            
+            /* 调整模态框 */
+            .modal {
+                width: 90%;
+                padding: 24px;
+            }
+        }
+
         /* 子页面特定样式 */
         {% block styles %}{% endblock %}
     </style>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 </head>
 <body>
+    <!-- PC 端侧边栏 -->
     <div class="sidebar">
         <div class="logo">
             <span>⚡</span>
@@ -258,6 +328,30 @@
             <span>市场快讯</span>
         </a>
         <a href="/settings" class="menu-item {% if active_page == 'settings' %}active{% endif %}">
+            <span>⚙️</span>
+            <span>设置</span>
+        </a>
+    </div>
+    
+    <!-- 移动端底栏 -->
+    <div class="mobile-nav">
+        <a href="/assets" class="mobile-nav-item {% if active_page == 'assets' %}active{% endif %}">
+            <span>💰</span>
+            <span>资产</span>
+        </a>
+        <a href="/" class="mobile-nav-item {% if active_page == 'investment' %}active{% endif %}">
+            <span>💼</span>
+            <span>投资</span>
+        </a>
+        <a href="/analysis" class="mobile-nav-item {% if active_page == 'analysis' %}active{% endif %}">
+            <span>📊</span>
+            <span>分析</span>
+        </a>
+        <a href="/news" class="mobile-nav-item {% if active_page == 'news' %}active{% endif %}">
+            <span>⚡</span>
+            <span>快讯</span>
+        </a>
+        <a href="/settings" class="mobile-nav-item {% if active_page == 'settings' %}active{% endif %}">
             <span>⚙️</span>
             <span>设置</span>
         </a>
