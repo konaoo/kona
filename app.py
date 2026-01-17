@@ -531,6 +531,113 @@ def health():
     return jsonify({"status": "ok", "version": "10.0"})
 
 
+# ============================================================
+# 分析 API
+# ============================================================
+
+@app.route('/api/analysis/overview')
+def analysis_overview():
+    """
+    盈亏概览
+    
+    参数:
+        period: day|month|year|all (默认 all)
+    
+    返回:
+        {day: {pnl, pnl_rate}, month: {...}, year: {...}, all: {...}}
+    """
+    period = request.args.get('period', 'all')
+    
+    if period == 'all':
+        # 返回所有周期的数据
+        result = {
+            'day': db.get_pnl_overview('day'),
+            'month': db.get_pnl_overview('month'),
+            'year': db.get_pnl_overview('year'),
+            'all': db.get_pnl_overview('all')
+        }
+    else:
+        # 返回指定周期的数据
+        result = {period: db.get_pnl_overview(period)}
+    
+    return jsonify(result)
+
+
+@app.route('/api/analysis/calendar')
+def analysis_calendar():
+    """
+    收益日历
+    
+    参数:
+        type: day|month|year (默认 day)
+    
+    返回:
+        {items: [{label, pnl}], total_pnl, total_rate, title}
+    """
+    time_type = request.args.get('type', 'day')
+    result = db.get_calendar_data(time_type)
+    return jsonify(result)
+
+
+@app.route('/api/analysis/rank')
+def analysis_rank():
+    """
+    盈亏排行
+    
+    参数:
+        type: gain|loss|all (默认 all)
+        market: all|a|us|hk|fund (默认 all)
+    
+    返回:
+        {gain: [{code, name, pnl, pnl_rate, market}], loss: [...]}
+    """
+    rank_type = request.args.get('type', 'all')
+    market = request.args.get('market', 'all')
+    
+    # 获取持仓数据
+    portfolio_data = db.get_rank_data('gain', market)
+    
+    if not portfolio_data:
+        return jsonify({'gain': [], 'loss': []})
+    
+    # 获取实时价格
+    codes = [item['code'] for item in portfolio_data]
+    prices = batch_get_prices(codes)
+    
+    # 计算盈亏
+    result_items = []
+    for item in portfolio_data:
+        code = item['code']
+        price_info = prices.get(code, (0, 0, 0, 0))
+        current_price = price_info[0] if price_info[0] else item['cost_price']
+        
+        # 计算盈亏
+        qty = item['qty']
+        cost = item['cost_price'] * qty
+        current_value = current_price * qty
+        pnl = current_value - cost + item['adjustment']
+        pnl_rate = (pnl / cost * 100) if cost > 0 else 0
+        
+        result_items.append({
+            'code': code,
+            'name': item['name'],
+            'pnl': round(pnl, 2),
+            'pnl_rate': round(pnl_rate, 2),
+            'market': item['market']
+        })
+    
+    # 分类排序
+    gain_list = sorted([x for x in result_items if x['pnl'] > 0], key=lambda x: x['pnl'], reverse=True)
+    loss_list = sorted([x for x in result_items if x['pnl'] < 0], key=lambda x: x['pnl'])
+    
+    if rank_type == 'gain':
+        return jsonify({'gain': gain_list, 'loss': []})
+    elif rank_type == 'loss':
+        return jsonify({'gain': [], 'loss': loss_list})
+    else:
+        return jsonify({'gain': gain_list, 'loss': loss_list})
+
+
 def background_scheduler():
     """后台任务调度"""
     logger.info("Scheduler started")

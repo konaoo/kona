@@ -827,6 +827,249 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
+    
+    # ============================================================
+    # 分析数据查询
+    # ============================================================
+    
+    def get_pnl_overview(self, period: str = 'day') -> Dict[str, Any]:
+        """
+        获取盈亏概览数据
+        
+        Args:
+            period: day|month|year|all
+            
+        Returns:
+            {pnl: float, pnl_rate: float, base_value: float}
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            today = datetime.now()
+            
+            if period == 'day':
+                cursor.execute('''
+                    SELECT day_pnl, total_invest FROM daily_snapshots 
+                    WHERE date = ? 
+                    LIMIT 1
+                ''', (today.strftime('%Y-%m-%d'),))
+                row = cursor.fetchone()
+                if row:
+                    pnl = float(row['day_pnl'])
+                    base = float(row['total_invest']) if row['total_invest'] else 1
+                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
+            
+            elif period == 'month':
+                month_start = today.strftime('%Y-%m-01')
+                cursor.execute('''
+                    SELECT SUM(day_pnl) as total_pnl, 
+                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? ORDER BY date ASC LIMIT 1) as base
+                    FROM daily_snapshots 
+                    WHERE date >= ? AND date <= ?
+                ''', (month_start, month_start, today.strftime('%Y-%m-%d')))
+                row = cursor.fetchone()
+                if row:
+                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
+                    base = float(row['base']) if row['base'] else 1
+                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
+            
+            elif period == 'year':
+                year_start = today.strftime('%Y-01-01')
+                cursor.execute('''
+                    SELECT SUM(day_pnl) as total_pnl,
+                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? ORDER BY date ASC LIMIT 1) as base
+                    FROM daily_snapshots 
+                    WHERE date >= ? AND date <= ?
+                ''', (year_start, year_start, today.strftime('%Y-%m-%d')))
+                row = cursor.fetchone()
+                if row:
+                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
+                    base = float(row['base']) if row['base'] else 1
+                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
+            
+            else:  # all
+                cursor.execute('''
+                    SELECT SUM(day_pnl) as total_pnl,
+                           (SELECT total_invest FROM daily_snapshots ORDER BY date ASC LIMIT 1) as base
+                    FROM daily_snapshots
+                ''')
+                row = cursor.fetchone()
+                if row:
+                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
+                    base = float(row['base']) if row['base'] else 1
+                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
+        
+        except Exception as e:
+            logger.error(f"Failed to get pnl overview: {e}")
+            return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
+        finally:
+            conn.close()
+    
+    def get_calendar_data(self, time_type: str = 'day') -> Dict[str, Any]:
+        """
+        获取收益日历数据
+        
+        Args:
+            time_type: day|month|year
+            
+        Returns:
+            {items: [{label, pnl}], total_pnl, total_rate, title}
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            today = datetime.now()
+            items = []
+            total_pnl = 0
+            
+            if time_type == 'day':
+                month_start = today.strftime('%Y-%m-01')
+                cursor.execute('''
+                    SELECT date, day_pnl FROM daily_snapshots 
+                    WHERE date >= ? AND date <= ?
+                    ORDER BY date ASC
+                ''', (month_start, today.strftime('%Y-%m-%d')))
+                
+                for row in cursor.fetchall():
+                    day = int(row['date'].split('-')[2])
+                    pnl = float(row['day_pnl'])
+                    items.append({'label': str(day), 'pnl': pnl})
+                    total_pnl += pnl
+                
+                title = f"{today.month}月累计"
+            
+            elif time_type == 'month':
+                year_start = today.strftime('%Y-01-01')
+                cursor.execute('''
+                    SELECT strftime('%m', date) as month, SUM(day_pnl) as month_pnl 
+                    FROM daily_snapshots 
+                    WHERE date >= ? AND date <= ?
+                    GROUP BY strftime('%Y-%m', date)
+                    ORDER BY month ASC
+                ''', (year_start, today.strftime('%Y-%m-%d')))
+                
+                for row in cursor.fetchall():
+                    month = int(row['month'])
+                    pnl = float(row['month_pnl']) if row['month_pnl'] else 0
+                    items.append({'label': f"{month}月", 'pnl': pnl})
+                    total_pnl += pnl
+                
+                title = f"{today.year}年累计"
+            
+            elif time_type == 'year':
+                cursor.execute('''
+                    SELECT strftime('%Y', date) as year, SUM(day_pnl) as year_pnl 
+                    FROM daily_snapshots 
+                    GROUP BY strftime('%Y', date)
+                    ORDER BY year ASC
+                ''')
+                
+                for row in cursor.fetchall():
+                    year = row['year']
+                    pnl = float(row['year_pnl']) if row['year_pnl'] else 0
+                    items.append({'label': year, 'pnl': pnl})
+                    total_pnl += pnl
+                
+                title = "总累计"
+            
+            cursor.execute('''
+                SELECT total_invest FROM daily_snapshots ORDER BY date ASC LIMIT 1
+            ''')
+            row = cursor.fetchone()
+            base = float(row['total_invest']) if row and row['total_invest'] else 1
+            total_rate = round(total_pnl / base * 100, 2) if base else 0
+            
+            return {
+                'items': items,
+                'total_pnl': total_pnl,
+                'total_rate': total_rate,
+                'title': title
+            }
+        
+        except Exception as e:
+            logger.error(f"Failed to get calendar data: {e}")
+            return {'items': [], 'total_pnl': 0, 'total_rate': 0, 'title': ''}
+        finally:
+            conn.close()
+    
+    def get_rank_data(self, rank_type: str = 'gain', market: str = 'all') -> List[Dict[str, Any]]:
+        """
+        获取盈亏排行数据（持仓信息）
+        
+        Args:
+            rank_type: gain|loss
+            market: all|a|us|hk|fund
+            
+        Returns:
+            [{code, name, qty, cost_price, curr, adjustment, market}]
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if market == 'all':
+                cursor.execute('''
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                ''')
+            elif market == 'a':
+                cursor.execute('''
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
+                ''')
+            elif market == 'us':
+                cursor.execute('''
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'gb_%'
+                ''')
+            elif market == 'hk':
+                cursor.execute('''
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'hk%'
+                ''')
+            elif market == 'fund':
+                cursor.execute('''
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'f_%' OR code LIKE 'ft_%'
+                ''')
+            
+            data = []
+            for row in cursor.fetchall():
+                data.append({
+                    'code': row['code'],
+                    'name': row['name'],
+                    'qty': float(row['qty']),
+                    'cost_price': float(row['price']),
+                    'curr': row['curr'],
+                    'adjustment': float(row['adjustment']),
+                    'market': self._detect_market(row['code'])
+                })
+            
+            return data
+        
+        except Exception as e:
+            logger.error(f"Failed to get rank data: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def _detect_market(self, code: str) -> str:
+        """根据代码检测市场类型"""
+        if code.startswith('sh') or code.startswith('sz') or code.startswith('bj'):
+            return 'a'
+        elif code.startswith('hk'):
+            return 'hk'
+        elif code.startswith('gb_'):
+            return 'us'
+        elif code.startswith('f_') or code.startswith('ft_'):
+            return 'fund'
+        else:
+            return 'other'
 
 # 全局数据库实例
 db = DatabaseManager(str(config.DATABASE_PATH))
