@@ -134,42 +134,50 @@ def optional_auth(f):
 # 用户管理
 # ============================================================
 
-def get_or_create_user(db, user_id: str, email: str) -> bool:
+def get_or_create_user(db, user_id: str, email: str) -> str:
     """
     获取或创建用户记录
     
+    重要：优先根据 email 查找现有用户，确保同一邮箱始终使用同一 user_id
+    
     Args:
         db: DatabaseManager 实例
-        user_id: 用户 ID
+        user_id: 用户 ID（前端生成的，仅在新用户时使用）
         email: 用户邮箱
         
     Returns:
-        是否成功
+        实际使用的 user_id（可能是现有用户的 ID，也可能是新创建的）
     """
     conn = db.get_connection()
     cursor = conn.cursor()
     
     try:
-        # 检查用户是否存在
-        cursor.execute('SELECT id FROM users WHERE id = ?', (user_id,))
-        if cursor.fetchone():
-            # 更新最后登录时间
+        # 优先根据 email 查找现有用户
+        cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+        row = cursor.fetchone()
+        
+        if row:
+            # 用户已存在，使用现有的 user_id
+            existing_user_id = row['id']
             cursor.execute(
                 'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
-                (user_id,)
+                (existing_user_id,)
             )
+            conn.commit()
+            logger.info(f"Existing user found: {existing_user_id} ({email})")
+            return existing_user_id
         else:
-            # 创建新用户
+            # 新用户，使用前端传来的 user_id
             cursor.execute(
                 'INSERT INTO users (id, email) VALUES (?, ?)',
                 (user_id, email)
             )
-        
-        conn.commit()
-        return True
+            conn.commit()
+            logger.info(f"New user created: {user_id} ({email})")
+            return user_id
     except Exception as e:
         logger.error(f"Failed to get/create user: {e}")
         conn.rollback()
-        return False
+        return user_id
     finally:
         conn.close()

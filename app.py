@@ -618,20 +618,21 @@ def auth_login():
     if not data or 'user_id' not in data or 'email' not in data:
         return jsonify({"error": "Missing user_id or email"}), 400
     
-    user_id = data['user_id']
+    frontend_user_id = data['user_id']
     email = data['email']
     
-    # 创建或更新用户记录
-    get_or_create_user(db, user_id, email)
+    # 获取或创建用户记录（返回实际使用的 user_id）
+    # 如果该邮箱已有用户，返回现有 user_id；否则使用前端传来的 user_id
+    actual_user_id = get_or_create_user(db, frontend_user_id, email)
     
-    # 生成 JWT token
-    token = generate_token(user_id, email)
+    # 使用实际的 user_id 生成 JWT token
+    token = generate_token(actual_user_id, email)
     
-    logger.info(f"User logged in: {user_id} ({email})")
+    logger.info(f"User logged in: {actual_user_id} ({email})")
     
     return jsonify({
         "token": token,
-        "user_id": user_id,
+        "user_id": actual_user_id,
         "email": email
     })
 
