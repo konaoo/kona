@@ -609,7 +609,7 @@ def auth_me():
 @app.route('/health')
 def health():
     """健康检查"""
-    return jsonify({"status": "ok", "version": "10.0"})
+    return jsonify({"status": "ok", "version": config.APP_VERSION})
 
 
 # ============================================================
