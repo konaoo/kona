@@ -1070,6 +1070,37 @@ class DatabaseManager:
             return 'fund'
         else:
             return 'other'
+    
+    def fix_snapshot_day_pnl(self, dates: list) -> bool:
+        """
+        修复指定日期的 day_pnl 为 0（用于修正休市日错误记录的数据）
+        
+        Args:
+            dates: 日期列表，格式 ['2026-01-17', '2026-01-18']
+            
+        Returns:
+            True 表示成功
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            for date in dates:
+                cursor.execute('''
+                    UPDATE daily_snapshots 
+                    SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE date = ?
+                ''', (date,))
+                logger.info(f"Fixed day_pnl for date: {date}")
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to fix snapshot day_pnl: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
 
 # 全局数据库实例
 db = DatabaseManager(str(config.DATABASE_PATH))

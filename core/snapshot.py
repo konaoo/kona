@@ -12,6 +12,31 @@ from .price import batch_get_prices, get_forex_rates
 
 logger = logging.getLogger(__name__)
 
+
+def is_market_closed() -> bool:
+    """
+    判断当前是否休市
+    
+    休市条件：
+    1. 周末（周六、周日）
+    2. 非交易时间（9:30前或15:00后）
+    
+    Returns:
+        True 表示休市，False 表示开市
+    """
+    now = datetime.now()
+    
+    # 周末休市
+    if now.weekday() >= 5:  # 5=周六, 6=周日
+        return True
+    
+    # 交易时间判断 (9:30 - 15:00)
+    current_time = now.hour * 100 + now.minute
+    if current_time < 930 or current_time >= 1500:
+        return True
+    
+    return False
+
 def calculate_portfolio_stats() -> Dict[str, float]:
     """
     计算当前时刻的投资组合统计数据
@@ -106,10 +131,17 @@ def calculate_portfolio_stats() -> Dict[str, float]:
 def take_snapshot() -> bool:
     """
     执行快照保存
+    
+    注意：休市时 day_pnl 固定为 0
     """
     try:
         logger.info("Starting background snapshot task...")
         stats = calculate_portfolio_stats()
+        
+        # 休市时 day_pnl 应为 0
+        if is_market_closed():
+            logger.info("Market is closed, setting day_pnl to 0")
+            stats['day_pnl'] = 0.0
         
         # 保存到数据库
         success = db.save_daily_snapshot(stats)

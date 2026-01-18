@@ -342,6 +342,29 @@ def trigger_snapshot():
         return jsonify({"error": "Failed to take snapshot"}), 500
 
 
+@app.route('/api/snapshot/fix', methods=['POST'])
+def fix_snapshot():
+    """
+    修复指定日期的 day_pnl 为 0（用于修正休市日错误记录的数据）
+    
+    请求体:
+        {"dates": ["2026-01-17", "2026-01-18"]}
+    """
+    data = request.json
+    if not data or 'dates' not in data:
+        return jsonify({"error": "Missing dates"}), 400
+    
+    dates = data['dates']
+    if not isinstance(dates, list):
+        return jsonify({"error": "dates must be a list"}), 400
+    
+    success = db.fix_snapshot_day_pnl(dates)
+    if success:
+        return jsonify({"status": "ok", "message": f"Fixed {len(dates)} records"})
+    else:
+        return jsonify({"error": "Failed to fix snapshots"}), 500
+
+
 @app.route('/api/portfolio/delete', methods=['POST'])
 def delete_asset():
     """删除资产"""
