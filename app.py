@@ -290,17 +290,21 @@ def get_latest_news():
 
 
 @app.route('/api/history')
+@optional_auth
 def get_history():
     """获取历史资产数据"""
     days = request.args.get('days', 365, type=int)
-    history = db.get_history(days)
+    user_id = g.user_id
+    history = db.get_history(days, user_id)
     return jsonify(history)
 
 
 @app.route('/api/portfolio/modify', methods=['POST'])
+@optional_auth
 def modify_asset():
     """修正资产（数量、成本、调整值）"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data or 'qty' not in data or 'price' not in data or 'adjustment' not in data:
         return jsonify({"error": "Missing required fields"}), 400
@@ -310,7 +314,7 @@ def modify_asset():
         price = float(data['price'])
         adjustment = float(data['adjustment'])
         
-        success = db.modify_asset(data['code'], qty, price, adjustment)
+        success = db.modify_asset(data['code'], qty, price, adjustment, user_id)
         
         if success:
             return jsonify({"status": "ok"})
@@ -321,13 +325,15 @@ def modify_asset():
 
 
 @app.route('/api/snapshot/save', methods=['POST'])
+@optional_auth
 def save_snapshot():
     """保存每日资产快照（前端触发）"""
     data = request.json
+    user_id = g.user_id
     if not data:
         return jsonify({"error": "No data provided"}), 400
         
-    success = db.save_daily_snapshot(data)
+    success = db.save_daily_snapshot(data, user_id)
     if success:
         return jsonify({"status": "ok"})
     else:
@@ -345,6 +351,7 @@ def trigger_snapshot():
 
 
 @app.route('/api/snapshot/fix', methods=['POST'])
+@optional_auth
 def fix_snapshot():
     """
     修复指定日期的 day_pnl 为 0（用于修正休市日错误记录的数据）
@@ -353,6 +360,7 @@ def fix_snapshot():
         {"dates": ["2026-01-17", "2026-01-18"]}
     """
     data = request.json
+    user_id = g.user_id
     if not data or 'dates' not in data:
         return jsonify({"error": "Missing dates"}), 400
     
@@ -360,7 +368,7 @@ def fix_snapshot():
     if not isinstance(dates, list):
         return jsonify({"error": "dates must be a list"}), 400
     
-    success = db.fix_snapshot_day_pnl(dates)
+    success = db.fix_snapshot_day_pnl(dates, user_id)
     if success:
         return jsonify({"status": "ok", "message": f"Fixed {len(dates)} records"})
     else:
@@ -368,14 +376,16 @@ def fix_snapshot():
 
 
 @app.route('/api/portfolio/delete', methods=['POST'])
+@optional_auth
 def delete_asset():
     """删除资产"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data:
         return jsonify({"error": "Missing code"}), 400
     
-    success = db.delete_asset(data['code'])
+    success = db.delete_asset(data['code'], user_id)
     
     if success:
         return jsonify({"status": "ok"})
@@ -384,9 +394,11 @@ def delete_asset():
 
 
 @app.route('/api/portfolio/buy', methods=['POST'])
+@optional_auth
 def buy_asset():
     """加仓"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data or 'price' not in data or 'qty' not in data:
         return jsonify({"error": "Missing required fields"}), 400
@@ -394,7 +406,7 @@ def buy_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
-        success = db.buy_asset(data['code'], price, qty)
+        success = db.buy_asset(data['code'], price, qty, user_id)
         
         if success:
             return jsonify({"status": "ok"})
@@ -405,9 +417,11 @@ def buy_asset():
 
 
 @app.route('/api/portfolio/sell', methods=['POST'])
+@optional_auth
 def sell_asset():
     """减仓"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data or 'price' not in data or 'qty' not in data:
         return jsonify({"error": "Missing required fields"}), 400
@@ -415,7 +429,7 @@ def sell_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
-        success = db.sell_asset(data['code'], price, qty)
+        success = db.sell_asset(data['code'], price, qty, user_id)
         
         if success:
             return jsonify({"status": "ok"})
@@ -426,10 +440,12 @@ def sell_asset():
 
 
 @app.route('/api/transactions', methods=['GET'])
+@optional_auth
 def get_transactions():
     """获取交易记录"""
     limit = request.args.get('limit', 100, type=int)
-    data = db.get_transactions(limit)
+    user_id = g.user_id
+    data = db.get_transactions(limit, user_id)
     return jsonify(data)
 
 
@@ -441,70 +457,94 @@ def search():
     return jsonify(results)
 
 @app.route('/api/cash_assets', methods=['GET'])
+@optional_auth
 def get_cash_assets():
     """获取现金资产"""
-    data = db.get_cash_assets()
+    user_id = g.user_id
+    data = db.get_cash_assets(user_id)
     return jsonify(data)
 
 @app.route('/api/cash_assets/add', methods=['POST'])
+@optional_auth
 def add_cash_asset():
     """添加现金资产"""
-    return _handle_asset_add(db.add_cash_asset, "cash asset")
+    user_id = g.user_id
+    return _handle_asset_add(db.add_cash_asset, "cash asset", user_id)
 
 @app.route('/api/cash_assets/delete', methods=['POST'])
+@optional_auth
 def delete_cash_asset():
     """删除现金资产"""
-    return _handle_asset_delete(db.delete_cash_asset, "cash asset")
+    user_id = g.user_id
+    return _handle_asset_delete(db.delete_cash_asset, "cash asset", user_id)
 
 @app.route('/api/cash_assets/update', methods=['POST'])
+@optional_auth
 def update_cash_asset():
     """更新现金资产"""
-    return _handle_asset_update(db.update_cash_asset, "cash asset")
+    user_id = g.user_id
+    return _handle_asset_update(db.update_cash_asset, "cash asset", user_id)
 
 @app.route('/api/other_assets', methods=['GET'])
+@optional_auth
 def get_other_assets():
     """获取其他资产"""
-    data = db.get_other_assets()
+    user_id = g.user_id
+    data = db.get_other_assets(user_id)
     return jsonify(data)
 
 @app.route('/api/other_assets/add', methods=['POST'])
+@optional_auth
 def add_other_asset():
     """添加其他资产"""
-    return _handle_asset_add(db.add_other_asset, "other asset")
+    user_id = g.user_id
+    return _handle_asset_add(db.add_other_asset, "other asset", user_id)
 
 @app.route('/api/other_assets/delete', methods=['POST'])
+@optional_auth
 def delete_other_asset():
     """删除其他资产"""
-    return _handle_asset_delete(db.delete_other_asset, "other asset")
+    user_id = g.user_id
+    return _handle_asset_delete(db.delete_other_asset, "other asset", user_id)
 
 @app.route('/api/other_assets/update', methods=['POST'])
+@optional_auth
 def update_other_asset():
     """更新其他资产"""
-    return _handle_asset_update(db.update_other_asset, "other asset")
+    user_id = g.user_id
+    return _handle_asset_update(db.update_other_asset, "other asset", user_id)
 
 @app.route('/api/liabilities', methods=['GET'])
+@optional_auth
 def get_liabilities():
     """获取负债"""
-    data = db.get_liabilities()
+    user_id = g.user_id
+    data = db.get_liabilities(user_id)
     return jsonify(data)
 
 @app.route('/api/liabilities/add', methods=['POST'])
+@optional_auth
 def add_liability():
     """添加负债"""
-    return _handle_asset_add(db.add_liability, "liability")
+    user_id = g.user_id
+    return _handle_asset_add(db.add_liability, "liability", user_id)
 
 @app.route('/api/liabilities/delete', methods=['POST'])
+@optional_auth
 def delete_liability():
     """删除负债"""
-    return _handle_asset_delete(db.delete_liability, "liability")
+    user_id = g.user_id
+    return _handle_asset_delete(db.delete_liability, "liability", user_id)
 
 @app.route('/api/liabilities/update', methods=['POST'])
+@optional_auth
 def update_liability():
     """更新负债"""
-    return _handle_asset_update(db.update_liability, "liability")
+    user_id = g.user_id
+    return _handle_asset_update(db.update_liability, "liability", user_id)
 
 
-def _handle_asset_add(add_func, asset_type):
+def _handle_asset_add(add_func, asset_type, user_id=None):
     """处理资产添加的通用函数"""
     data = request.json
     
@@ -513,13 +553,13 @@ def _handle_asset_add(add_func, asset_type):
     
     try:
         amount = float(data['amount'])
-        success = add_func(data['name'], amount, data.get('curr', 'CNY'))
+        success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id)
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to add {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid amount"}), 400
 
 
-def _handle_asset_delete(delete_func, asset_type):
+def _handle_asset_delete(delete_func, asset_type, user_id=None):
     """处理资产删除的通用函数"""
     data = request.json
     
@@ -528,13 +568,13 @@ def _handle_asset_delete(delete_func, asset_type):
     
     try:
         asset_id = int(data['id'])
-        success = delete_func(asset_id)
+        success = delete_func(asset_id, user_id)
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to delete {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid id"}), 400
 
 
-def _handle_asset_update(update_func, asset_type):
+def _handle_asset_update(update_func, asset_type, user_id=None):
     """处理资产更新的通用函数"""
     data = request.json
     
@@ -544,7 +584,7 @@ def _handle_asset_update(update_func, asset_type):
     try:
         asset_id = int(data['id'])
         amount = float(data['amount'])
-        success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'))
+        success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id)
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to update {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid value"}), 400
@@ -617,6 +657,7 @@ def health():
 # ============================================================
 
 @app.route('/api/analysis/overview')
+@optional_auth
 def analysis_overview():
     """
     盈亏概览
@@ -628,23 +669,25 @@ def analysis_overview():
         {day: {pnl, pnl_rate}, month: {...}, year: {...}, all: {...}}
     """
     period = request.args.get('period', 'all')
+    user_id = g.user_id
     
     if period == 'all':
         # 返回所有周期的数据
         result = {
-            'day': db.get_pnl_overview('day'),
-            'month': db.get_pnl_overview('month'),
-            'year': db.get_pnl_overview('year'),
-            'all': db.get_pnl_overview('all')
+            'day': db.get_pnl_overview('day', user_id),
+            'month': db.get_pnl_overview('month', user_id),
+            'year': db.get_pnl_overview('year', user_id),
+            'all': db.get_pnl_overview('all', user_id)
         }
     else:
         # 返回指定周期的数据
-        result = {period: db.get_pnl_overview(period)}
+        result = {period: db.get_pnl_overview(period, user_id)}
     
     return jsonify(result)
 
 
 @app.route('/api/analysis/calendar')
+@optional_auth
 def analysis_calendar():
     """
     收益日历
@@ -656,11 +699,13 @@ def analysis_calendar():
         {items: [{label, pnl}], total_pnl, total_rate, title}
     """
     time_type = request.args.get('type', 'day')
-    result = db.get_calendar_data(time_type)
+    user_id = g.user_id
+    result = db.get_calendar_data(time_type, user_id)
     return jsonify(result)
 
 
 @app.route('/api/analysis/rank')
+@optional_auth
 def analysis_rank():
     """
     盈亏排行
@@ -674,9 +719,10 @@ def analysis_rank():
     """
     rank_type = request.args.get('type', 'all')
     market = request.args.get('market', 'all')
+    user_id = g.user_id
     
     # 获取持仓数据
-    portfolio_data = db.get_rank_data('gain', market)
+    portfolio_data = db.get_rank_data('gain', market, user_id)
     
     if not portfolio_data:
         return jsonify({'gain': [], 'loss': []})

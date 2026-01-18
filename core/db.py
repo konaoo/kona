@@ -356,17 +356,24 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def modify_asset(self, code: str, qty: float, price: float, adjustment: float) -> bool:
+    def modify_asset(self, code: str, qty: float, price: float, adjustment: float, user_id: str = None) -> bool:
         """修正资产数据（数量、成本、调整值）"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                UPDATE portfolio 
-                SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE code = ?
-            ''', (qty, price, adjustment, code))
+            if user_id:
+                cursor.execute('''
+                    UPDATE portfolio 
+                    SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ? AND user_id = ?
+                ''', (qty, price, adjustment, code, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE portfolio 
+                    SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                ''', (qty, price, adjustment, code))
             
             if cursor.rowcount > 0:
                 conn.commit()
@@ -400,14 +407,17 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def buy_asset(self, code: str, price: float, qty: float) -> bool:
+    def buy_asset(self, code: str, price: float, qty: float, user_id: str = None) -> bool:
         """加仓"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             # 获取当前持仓
-            cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ?', (code,))
+            if user_id:
+                cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+            else:
+                cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
             row = cursor.fetchone()
             
             if not row:
@@ -421,22 +431,29 @@ class DatabaseManager:
             new_price = (old_qty * old_price + qty * price) / new_qty if new_qty > 0 else 0
             
             # 更新持仓
-            cursor.execute('''
-                UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE code = ?
-            ''', (new_qty, new_price, code))
+            if user_id:
+                cursor.execute('''
+                    UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ? AND user_id = ?
+                ''', (new_qty, new_price, code, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                ''', (new_qty, new_price, code))
             
             # 记录交易
             cursor.execute('''
-                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl)
-                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0)
+                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
+                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?)
             ''', (
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 code,
                 name,
                 price,
                 qty,
-                price * qty
+                price * qty,
+                user_id
             ))
             
             conn.commit()
@@ -449,14 +466,17 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def sell_asset(self, code: str, price: float, qty: float) -> bool:
+    def sell_asset(self, code: str, price: float, qty: float, user_id: str = None) -> bool:
         """减仓"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             # 获取当前持仓
-            cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ?', (code,))
+            if user_id:
+                cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+            else:
+                cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
             row = cursor.fetchone()
             
             if not row:
@@ -476,17 +496,26 @@ class DatabaseManager:
             # 更新持仓或删除
             new_qty = old_qty - qty
             if new_qty < 0.001:
-                cursor.execute('DELETE FROM portfolio WHERE code = ?', (code,))
+                if user_id:
+                    cursor.execute('DELETE FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+                else:
+                    cursor.execute('DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
             else:
-                cursor.execute('''
-                    UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE code = ?
-                ''', (new_qty, pnl, code))
+                if user_id:
+                    cursor.execute('''
+                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND user_id = ?
+                    ''', (new_qty, pnl, code, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''', (new_qty, pnl, code))
             
             # 记录交易
             cursor.execute('''
-                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl)
-                VALUES (?, ?, ?, '减仓', ?, ?, ?, ?)
+                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
+                VALUES (?, ?, ?, '减仓', ?, ?, ?, ?, ?)
             ''', (
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 code,
@@ -494,7 +523,8 @@ class DatabaseManager:
                 price,
                 qty,
                 price * qty,
-                pnl
+                pnl,
+                user_id
             ))
             
             conn.commit()
@@ -507,17 +537,27 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_transactions(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_transactions(self, limit: int = 100, user_id: str = None) -> List[Dict[str, Any]]:
         """获取交易记录"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT time, code, name, type, price, qty, amount, pnl
-            FROM transactions
-            ORDER BY time DESC
-            LIMIT ?
-        ''', (limit,))
+        if user_id:
+            cursor.execute('''
+                SELECT time, code, name, type, price, qty, amount, pnl
+                FROM transactions
+                WHERE user_id = ?
+                ORDER BY time DESC
+                LIMIT ?
+            ''', (user_id, limit))
+        else:
+            cursor.execute('''
+                SELECT time, code, name, type, price, qty, amount, pnl
+                FROM transactions
+                WHERE user_id IS NULL OR user_id = ''
+                ORDER BY time DESC
+                LIMIT ?
+            ''', (limit,))
         
         data = []
         for row in cursor.fetchall():
@@ -711,16 +751,22 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_cash_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def update_cash_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """更新现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (name, amount, curr, asset_id))
+            if user_id:
+                cursor.execute('''
+                    UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                ''', (name, amount, curr, asset_id, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                ''', (name, amount, curr, asset_id))
             
             conn.commit()
             logger.info(f"Cash asset updated: {asset_id}")
@@ -732,16 +778,22 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_other_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def update_other_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """更新其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (name, amount, curr, asset_id))
+            if user_id:
+                cursor.execute('''
+                    UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                ''', (name, amount, curr, asset_id, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                ''', (name, amount, curr, asset_id))
             
             conn.commit()
             logger.info(f"Other asset updated: {asset_id}")
@@ -826,16 +878,22 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_liability(self, liability_id: int, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def update_liability(self, liability_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """更新负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (name, amount, curr, liability_id))
+            if user_id:
+                cursor.execute('''
+                    UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                ''', (name, amount, curr, liability_id, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                ''', (name, amount, curr, liability_id))
             
             conn.commit()
             logger.info(f"Liability updated: {liability_id}")
@@ -866,7 +924,7 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def save_daily_snapshot(self, data: Dict[str, float]) -> bool:
+    def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
         """保存每日资产快照（如果当日已存在则更新）"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -874,30 +932,72 @@ class DatabaseManager:
         today = datetime.now().strftime('%Y-%m-%d')
         
         try:
-            cursor.execute('''
-                INSERT INTO daily_snapshots (
-                    date, total_asset, total_invest, total_cash, 
-                    total_other, total_liability, total_pnl, day_pnl, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(date) DO UPDATE SET
-                    total_asset=excluded.total_asset,
-                    total_invest=excluded.total_invest,
-                    total_cash=excluded.total_cash,
-                    total_other=excluded.total_other,
-                    total_liability=excluded.total_liability,
-                    total_pnl=excluded.total_pnl,
-                    day_pnl=excluded.day_pnl,
-                    updated_at=CURRENT_TIMESTAMP
-            ''', (
-                today,
-                data.get('total_asset', 0),
-                data.get('total_invest', 0),
-                data.get('total_cash', 0),
-                data.get('total_other', 0),
-                data.get('total_liability', 0),
-                data.get('total_pnl', 0),
-                data.get('day_pnl', 0)
-            ))
+            # 对于有 user_id 的情况，使用 date + user_id 作为唯一键
+            if user_id:
+                cursor.execute('''
+                    SELECT id FROM daily_snapshots WHERE date = ? AND user_id = ?
+                ''', (today, user_id))
+                
+                if cursor.fetchone():
+                    cursor.execute('''
+                        UPDATE daily_snapshots SET
+                            total_asset=?, total_invest=?, total_cash=?,
+                            total_other=?, total_liability=?, total_pnl=?,
+                            day_pnl=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE date = ? AND user_id = ?
+                    ''', (
+                        data.get('total_asset', 0),
+                        data.get('total_invest', 0),
+                        data.get('total_cash', 0),
+                        data.get('total_other', 0),
+                        data.get('total_liability', 0),
+                        data.get('total_pnl', 0),
+                        data.get('day_pnl', 0),
+                        today,
+                        user_id
+                    ))
+                else:
+                    cursor.execute('''
+                        INSERT INTO daily_snapshots (
+                            date, total_asset, total_invest, total_cash, 
+                            total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (
+                        today,
+                        data.get('total_asset', 0),
+                        data.get('total_invest', 0),
+                        data.get('total_cash', 0),
+                        data.get('total_other', 0),
+                        data.get('total_liability', 0),
+                        data.get('total_pnl', 0),
+                        data.get('day_pnl', 0),
+                        user_id
+                    ))
+            else:
+                cursor.execute('''
+                    INSERT INTO daily_snapshots (
+                        date, total_asset, total_invest, total_cash, 
+                        total_other, total_liability, total_pnl, day_pnl, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(date) DO UPDATE SET
+                        total_asset=excluded.total_asset,
+                        total_invest=excluded.total_invest,
+                        total_cash=excluded.total_cash,
+                        total_other=excluded.total_other,
+                        total_liability=excluded.total_liability,
+                        total_pnl=excluded.total_pnl,
+                        day_pnl=excluded.day_pnl,
+                        updated_at=CURRENT_TIMESTAMP
+                ''', (
+                    today,
+                    data.get('total_asset', 0),
+                    data.get('total_invest', 0),
+                    data.get('total_cash', 0),
+                    data.get('total_other', 0),
+                    data.get('total_liability', 0),
+                    data.get('total_pnl', 0),
+                    data.get('day_pnl', 0)
+                ))
             conn.commit()
             logger.info(f"Daily snapshot saved for {today}")
             return True
@@ -908,18 +1008,27 @@ class DatabaseManager:
         finally:
             conn.close()
             
-    def get_history(self, limit: int = 365) -> List[Dict[str, Any]]:
+    def get_history(self, limit: int = 365, user_id: str = None) -> List[Dict[str, Any]]:
         """获取历史资产数据"""
         conn = self.get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                SELECT * FROM daily_snapshots 
-                ORDER BY date ASC 
-                LIMIT ?
-            ''', (limit,))
+            if user_id:
+                cursor.execute('''
+                    SELECT * FROM daily_snapshots 
+                    WHERE user_id = ?
+                    ORDER BY date ASC 
+                    LIMIT ?
+                ''', (user_id, limit))
+            else:
+                cursor.execute('''
+                    SELECT * FROM daily_snapshots 
+                    WHERE user_id IS NULL OR user_id = ''
+                    ORDER BY date ASC 
+                    LIMIT ?
+                ''', (limit,))
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
@@ -928,12 +1037,13 @@ class DatabaseManager:
     # 分析数据查询
     # ============================================================
     
-    def get_pnl_overview(self, period: str = 'day') -> Dict[str, Any]:
+    def get_pnl_overview(self, period: str = 'day', user_id: str = None) -> Dict[str, Any]:
         """
         获取盈亏概览数据
         
         Args:
             period: day|month|year|all
+            user_id: 用户ID
             
         Returns:
             {pnl: float, pnl_rate: float, base_value: float}
@@ -941,15 +1051,19 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # 构建 user_id 条件
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+        
         try:
             today = datetime.now()
             
             if period == 'day':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT day_pnl, total_invest FROM daily_snapshots 
-                    WHERE date = ? 
+                    WHERE date = ? AND {user_condition}
                     LIMIT 1
-                ''', (today.strftime('%Y-%m-%d'),))
+                ''', (today.strftime('%Y-%m-%d'),) + user_param)
                 row = cursor.fetchone()
                 if row:
                     pnl = float(row['day_pnl'])
@@ -959,12 +1073,12 @@ class DatabaseManager:
             
             elif period == 'month':
                 month_start = today.strftime('%Y-%m-01')
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT SUM(day_pnl) as total_pnl, 
-                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? ORDER BY date ASC LIMIT 1) as base
+                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? AND {user_condition} ORDER BY date ASC LIMIT 1) as base
                     FROM daily_snapshots 
-                    WHERE date >= ? AND date <= ?
-                ''', (month_start, month_start, today.strftime('%Y-%m-%d')))
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                ''', (month_start,) + user_param + (month_start, today.strftime('%Y-%m-%d')) + user_param)
                 row = cursor.fetchone()
                 if row:
                     pnl = float(row['total_pnl']) if row['total_pnl'] else 0
@@ -974,12 +1088,12 @@ class DatabaseManager:
             
             elif period == 'year':
                 year_start = today.strftime('%Y-01-01')
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT SUM(day_pnl) as total_pnl,
-                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? ORDER BY date ASC LIMIT 1) as base
+                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? AND {user_condition} ORDER BY date ASC LIMIT 1) as base
                     FROM daily_snapshots 
-                    WHERE date >= ? AND date <= ?
-                ''', (year_start, year_start, today.strftime('%Y-%m-%d')))
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                ''', (year_start,) + user_param + (year_start, today.strftime('%Y-%m-%d')) + user_param)
                 row = cursor.fetchone()
                 if row:
                     pnl = float(row['total_pnl']) if row['total_pnl'] else 0
@@ -988,11 +1102,12 @@ class DatabaseManager:
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
             
             else:  # all
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT SUM(day_pnl) as total_pnl,
-                           (SELECT total_invest FROM daily_snapshots ORDER BY date ASC LIMIT 1) as base
+                           (SELECT total_invest FROM daily_snapshots WHERE {user_condition} ORDER BY date ASC LIMIT 1) as base
                     FROM daily_snapshots
-                ''')
+                    WHERE {user_condition}
+                ''', user_param + user_param)
                 row = cursor.fetchone()
                 if row:
                     pnl = float(row['total_pnl']) if row['total_pnl'] else 0
@@ -1006,18 +1121,23 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_calendar_data(self, time_type: str = 'day') -> Dict[str, Any]:
+    def get_calendar_data(self, time_type: str = 'day', user_id: str = None) -> Dict[str, Any]:
         """
         获取收益日历数据
         
         Args:
             time_type: day|month|year
+            user_id: 用户ID
             
         Returns:
             {items: [{label, pnl}], total_pnl, total_rate, title}
         """
         conn = self.get_connection()
         cursor = conn.cursor()
+        
+        # 构建 user_id 条件
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
         
         try:
             today = datetime.now()
@@ -1026,11 +1146,11 @@ class DatabaseManager:
             
             if time_type == 'day':
                 month_start = today.strftime('%Y-%m-01')
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT date, day_pnl FROM daily_snapshots 
-                    WHERE date >= ? AND date <= ?
+                    WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
-                ''', (month_start, today.strftime('%Y-%m-%d')))
+                ''', (month_start, today.strftime('%Y-%m-%d')) + user_param)
                 
                 for row in cursor.fetchall():
                     day = int(row['date'].split('-')[2])
@@ -1042,13 +1162,13 @@ class DatabaseManager:
             
             elif time_type == 'month':
                 year_start = today.strftime('%Y-01-01')
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT strftime('%m', date) as month, SUM(day_pnl) as month_pnl 
                     FROM daily_snapshots 
-                    WHERE date >= ? AND date <= ?
+                    WHERE date >= ? AND date <= ? AND {user_condition}
                     GROUP BY strftime('%Y-%m', date)
                     ORDER BY month ASC
-                ''', (year_start, today.strftime('%Y-%m-%d')))
+                ''', (year_start, today.strftime('%Y-%m-%d')) + user_param)
                 
                 for row in cursor.fetchall():
                     month = int(row['month'])
@@ -1059,12 +1179,13 @@ class DatabaseManager:
                 title = f"{today.year}年累计"
             
             elif time_type == 'year':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT strftime('%Y', date) as year, SUM(day_pnl) as year_pnl 
                     FROM daily_snapshots 
+                    WHERE {user_condition}
                     GROUP BY strftime('%Y', date)
                     ORDER BY year ASC
-                ''')
+                ''', user_param)
                 
                 for row in cursor.fetchall():
                     year = row['year']
@@ -1074,9 +1195,9 @@ class DatabaseManager:
                 
                 title = "总累计"
             
-            cursor.execute('''
-                SELECT total_invest FROM daily_snapshots ORDER BY date ASC LIMIT 1
-            ''')
+            cursor.execute(f'''
+                SELECT total_invest FROM daily_snapshots WHERE {user_condition} ORDER BY date ASC LIMIT 1
+            ''', user_param)
             row = cursor.fetchone()
             base = float(row['total_invest']) if row and row['total_invest'] else 1
             total_rate = round(total_pnl / base * 100, 2) if base else 0
@@ -1094,13 +1215,14 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_rank_data(self, rank_type: str = 'gain', market: str = 'all') -> List[Dict[str, Any]]:
+    def get_rank_data(self, rank_type: str = 'gain', market: str = 'all', user_id: str = None) -> List[Dict[str, Any]]:
         """
         获取盈亏排行数据（持仓信息）
         
         Args:
             rank_type: gain|loss
             market: all|a|us|hk|fund
+            user_id: 用户ID
             
         Returns:
             [{code, name, qty, cost_price, curr, adjustment, market}]
@@ -1108,31 +1230,36 @@ class DatabaseManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # 构建 user_id 条件
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+        
         try:
             if market == 'all':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                ''')
+                    WHERE {user_condition}
+                ''', user_param)
             elif market == 'a':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
-                ''')
+                    WHERE (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%') AND {user_condition}
+                ''', user_param)
             elif market == 'us':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'gb_%'
-                ''')
+                    WHERE code LIKE 'gb_%' AND {user_condition}
+                ''', user_param)
             elif market == 'hk':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'hk%'
-                ''')
+                    WHERE code LIKE 'hk%' AND {user_condition}
+                ''', user_param)
             elif market == 'fund':
-                cursor.execute('''
+                cursor.execute(f'''
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'f_%' OR code LIKE 'ft_%'
-                ''')
+                    WHERE (code LIKE 'f_%' OR code LIKE 'ft_%') AND {user_condition}
+                ''', user_param)
             
             data = []
             for row in cursor.fetchall():
@@ -1167,12 +1294,13 @@ class DatabaseManager:
         else:
             return 'other'
     
-    def fix_snapshot_day_pnl(self, dates: list) -> bool:
+    def fix_snapshot_day_pnl(self, dates: list, user_id: str = None) -> bool:
         """
         修复指定日期的 day_pnl 为 0（用于修正休市日错误记录的数据）
         
         Args:
             dates: 日期列表，格式 ['2026-01-17', '2026-01-18']
+            user_id: 用户ID
             
         Returns:
             True 表示成功
@@ -1182,11 +1310,18 @@ class DatabaseManager:
         
         try:
             for date in dates:
-                cursor.execute('''
-                    UPDATE daily_snapshots 
-                    SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE date = ?
-                ''', (date,))
+                if user_id:
+                    cursor.execute('''
+                        UPDATE daily_snapshots 
+                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE date = ? AND user_id = ?
+                    ''', (date, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE daily_snapshots 
+                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE date = ? AND (user_id IS NULL OR user_id = '')
+                    ''', (date,))
                 logger.info(f"Fixed day_pnl for date: {date}")
             
             conn.commit()
