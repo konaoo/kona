@@ -621,18 +621,18 @@ def auth_login():
     frontend_user_id = data['user_id']
     email = data['email']
     
-    # 获取或创建用户记录（返回实际使用的 user_id）
-    # 如果该邮箱已有用户，返回现有 user_id；否则使用前端传来的 user_id
-    actual_user_id = get_or_create_user(db, frontend_user_id, email)
+    # 获取或创建用户记录（返回实际使用的 user_id 和 数字ID）
+    actual_user_id, user_number = get_or_create_user(db, frontend_user_id, email)
     
     # 使用实际的 user_id 生成 JWT token
     token = generate_token(actual_user_id, email)
     
-    logger.info(f"User logged in: {actual_user_id} ({email})")
+    logger.info(f"User logged in: {actual_user_id} ({email}) Num: {user_number}")
     
     return jsonify({
         "token": token,
         "user_id": actual_user_id,
+        "user_number": user_number,
         "email": email
     })
 

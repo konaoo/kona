@@ -134,7 +134,7 @@ def optional_auth(f):
 # 用户管理
 # ============================================================
 
-def get_or_create_user(db, user_id: str, email: str) -> str:
+def get_or_create_user(db, user_id: str, email: str) -> Tuple[str, int]:
     """
     获取或创建用户记录
     
@@ -146,38 +146,54 @@ def get_or_create_user(db, user_id: str, email: str) -> str:
         email: 用户邮箱
         
     Returns:
-        实际使用的 user_id（可能是现有用户的 ID，也可能是新创建的）
+        (user_id, user_number)
     """
     conn = db.get_connection()
     cursor = conn.cursor()
     
     try:
         # 优先根据 email 查找现有用户
-        cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+        cursor.execute('SELECT id, user_number FROM users WHERE email = ?', (email,))
         row = cursor.fetchone()
         
         if row:
             # 用户已存在，使用现有的 user_id
             existing_user_id = row['id']
+            user_number = row['user_number']
+            
+            # 如果是旧数据没有 number，补一个
+            if user_number is None:
+                cursor.execute("SELECT MAX(user_number) FROM users")
+                res = cursor.fetchone()
+                max_num = res[0] if res and res[0] else 10000
+                user_number = max_num + 1
+                cursor.execute("UPDATE users SET user_number = ? WHERE id = ?", (user_number, existing_user_id))
+            
             cursor.execute(
                 'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
                 (existing_user_id,)
             )
             conn.commit()
-            logger.info(f"Existing user found: {existing_user_id} ({email})")
-            return existing_user_id
+            logger.info(f"Existing user found: {existing_user_id} ({email}) ID: {user_number}")
+            return existing_user_id, user_number
         else:
-            # 新用户，使用前端传来的 user_id
+            # 新用户，计算新的 user_number
+            cursor.execute("SELECT MAX(user_number) FROM users")
+            res = cursor.fetchone()
+            max_num = res[0] if res and res[0] else 10000
+            new_num = max_num + 1
+            
+            # 创建新用户
             cursor.execute(
-                'INSERT INTO users (id, email) VALUES (?, ?)',
-                (user_id, email)
+                'INSERT INTO users (id, email, user_number) VALUES (?, ?, ?)',
+                (user_id, email, new_num)
             )
             conn.commit()
-            logger.info(f"New user created: {user_id} ({email})")
-            return user_id
+            logger.info(f"New user created: {user_id} ({email}) ID: {new_num}")
+            return user_id, new_num
     except Exception as e:
         logger.error(f"Failed to get/create user: {e}")
         conn.rollback()
-        return user_id
+        return user_id, 0
     finally:
         conn.close()
