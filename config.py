@@ -16,7 +16,11 @@ TRANSACTION_PATH = BASE_DIR / "transactions.csv"
 HOST = "0.0.0.0"
 PORT = 5003
 DEBUG = False
-APP_VERSION = "v11.3.0"
+APP_VERSION = "v12.0.0"  # 多用户版本
+
+# JWT 认证配置
+JWT_SECRET = os.getenv("JWT_SECRET", "kona-jwt-secret-key-change-in-production")
+JWT_EXPIRY_HOURS = 24 * 7  # 7 天
 
 # API配置
 API_TIMEOUT = 3

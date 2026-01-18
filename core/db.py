@@ -133,34 +133,39 @@ class DatabaseManager:
         conn.close()
         logger.info("Database initialized successfully")
     
-    def get_portfolio(self, asset_type: str = 'all') -> List[Dict[str, Any]]:
+    def get_portfolio(self, asset_type: str = 'all', user_id: str = None) -> List[Dict[str, Any]]:
         """获取持仓数据，支持按类型筛选"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        logger.info(f"get_portfolio called with asset_type: {asset_type}")
+        logger.info(f"get_portfolio called with asset_type: {asset_type}, user_id: {user_id}")
+
+        # 构建 user_id 条件
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
 
         if asset_type == 'all':
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
+                WHERE {user_condition}
                 ORDER BY code
-            ''')
+            ''', user_param)
         elif asset_type == 'stock_cn':
             # A股: sh/sz/bj开头 或 ETF代码
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
-                WHERE code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
-                   OR code IN ('159201', '159655', '512890', '513130', '513530')
+                WHERE {user_condition} AND (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
+                   OR code IN ('159201', '159655', '512890', '513130', '513530'))
                 ORDER BY code
-            ''')
+            ''', user_param)
         elif asset_type == 'stock_us':
             # 美股: gb_开头 或 纯字母（不含下划线和点）
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
-                WHERE code LIKE 'gb_%' 
+                WHERE {user_condition} AND (code LIKE 'gb_%' 
                    OR (code NOT LIKE 'f_%' 
                        AND code NOT LIKE 'ft_%' 
                        AND code NOT LIKE 'gb_%'
@@ -169,32 +174,33 @@ class DatabaseManager:
                        AND code NOT LIKE 'hk%' 
                        AND code NOT LIKE 'bj%'
                        AND code NOT LIKE '%.%' 
-                       AND code GLOB '[A-Za-z][A-Za-z]*')
+                       AND code GLOB '[A-Za-z][A-Za-z]*'))
                 ORDER BY code
-            ''')
+            ''', user_param)
         elif asset_type == 'stock_hk':
             # 港股: hk开头 或 .HK结尾
             logger.info("Querying HK stocks")
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
-                WHERE code LIKE 'hk%' OR code LIKE '%.HK' OR code LIKE '%.hk'
+                WHERE {user_condition} AND (code LIKE 'hk%' OR code LIKE '%.HK' OR code LIKE '%.hk')
                 ORDER BY code
-            ''')
+            ''', user_param)
         elif asset_type == 'fund':
             # 基金: f_ 或 ft_ 开头
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
-                WHERE code LIKE 'f_%' OR code LIKE 'ft_%'
+                WHERE {user_condition} AND (code LIKE 'f_%' OR code LIKE 'ft_%')
                 ORDER BY code
-            ''')
+            ''', user_param)
         else:
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment
                 FROM portfolio
+                WHERE {user_condition}
                 ORDER BY code
-            ''')
+            ''', user_param)
         
         data = []
         for row in cursor.fetchall():
@@ -212,16 +218,23 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def get_asset(self, code: str) -> Optional[Dict[str, Any]]:
+    def get_asset(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
         """获取单个资产信息"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT code, name, qty, price, curr, adjustment
-            FROM portfolio
-            WHERE code = ?
-        ''', (code,))
+        if user_id:
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code = ? AND user_id = ?
+            ''', (code, user_id))
+        else:
+            cursor.execute('''
+                SELECT code, name, qty, price, curr, adjustment
+                FROM portfolio
+                WHERE code = ? AND (user_id IS NULL OR user_id = '')
+            ''', (code,))
         
         row = cursor.fetchone()
         conn.close()
@@ -237,23 +250,59 @@ class DatabaseManager:
             }
         return None
     
-    def add_asset(self, data: Dict[str, Any]) -> bool:
+    def add_asset(self, data: Dict[str, Any], user_id: str = None) -> bool:
         """添加或更新资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (
-                data['code'],
-                data['name'],
-                data['qty'],
-                data['price'],
-                data.get('curr', 'CNY'),
-                data.get('adjustment', 0.0)
-            ))
+            # 对于有 user_id 的情况，使用 code + user_id 作为唯一键
+            if user_id:
+                # 先检查是否存在
+                cursor.execute('''
+                    SELECT id FROM portfolio WHERE code = ? AND user_id = ?
+                ''', (data['code'], user_id))
+                
+                if cursor.fetchone():
+                    # 更新
+                    cursor.execute('''
+                        UPDATE portfolio SET name=?, qty=?, price=?, curr=?, adjustment=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE code = ? AND user_id = ?
+                    ''', (
+                        data['name'],
+                        data['qty'],
+                        data['price'],
+                        data.get('curr', 'CNY'),
+                        data.get('adjustment', 0.0),
+                        data['code'],
+                        user_id
+                    ))
+                else:
+                    # 插入
+                    cursor.execute('''
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, user_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (
+                        data['code'],
+                        data['name'],
+                        data['qty'],
+                        data['price'],
+                        data.get('curr', 'CNY'),
+                        data.get('adjustment', 0.0),
+                        user_id
+                    ))
+            else:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    data['code'],
+                    data['name'],
+                    data['qty'],
+                    data['price'],
+                    data.get('curr', 'CNY'),
+                    data.get('adjustment', 0.0)
+                ))
             
             conn.commit()
             logger.info(f"Asset added/updated: {data['code']}")
@@ -265,7 +314,7 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_asset(self, code: str, field: str, value: float) -> bool:
+    def update_asset(self, code: str, field: str, value: float, user_id: str = None) -> bool:
         """更新资产字段"""
         if field not in self.VALID_FIELDS:
             logger.error(f"Invalid field name: {field}")
@@ -275,17 +324,25 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
+            # 构建 user_id 条件
+            if user_id:
+                user_condition = "AND user_id = ?"
+                params_suffix = (code, user_id)
+            else:
+                user_condition = "AND (user_id IS NULL OR user_id = '')"
+                params_suffix = (code,)
+            
             # 对于 adjustment 字段，需要累加
             if field == 'adjustment':
-                cursor.execute('''
+                cursor.execute(f'''
                     UPDATE portfolio SET adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE code = ?
-                ''', (value, code))
+                    WHERE code = ? {user_condition}
+                ''', (value,) + params_suffix)
             else:
                 cursor.execute(f'''
                     UPDATE portfolio SET {field} = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE code = ?
-                ''', (value, code))
+                    WHERE code = ? {user_condition}
+                ''', (value,) + params_suffix)
             
             if cursor.rowcount > 0:
                 conn.commit()
@@ -323,13 +380,16 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def delete_asset(self, code: str) -> bool:
+    def delete_asset(self, code: str, user_id: str = None) -> bool:
         """删除资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('DELETE FROM portfolio WHERE code = ?', (code,))
+            if user_id:
+                cursor.execute('DELETE FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+            else:
+                cursor.execute('DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
             conn.commit()
             logger.info(f"Asset deleted: {code}")
             return True
@@ -505,16 +565,25 @@ class DatabaseManager:
             logger.error(f"Failed to backup from CSV: {e}")
             return False
     
-    def get_cash_assets(self) -> List[Dict[str, Any]]:
+    def get_cash_assets(self, user_id: str = None) -> List[Dict[str, Any]]:
         """获取所有现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT id, name, amount, curr
-            FROM cash_assets
-            ORDER BY id
-        ''')
+        if user_id:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM cash_assets
+                WHERE user_id = ?
+                ORDER BY id
+            ''', (user_id,))
+        else:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM cash_assets
+                WHERE user_id IS NULL OR user_id = ''
+                ORDER BY id
+            ''')
         
         data = []
         for row in cursor.fetchall():
@@ -528,16 +597,16 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """添加现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute('''
-                INSERT INTO cash_assets (name, amount, curr)
-                VALUES (?, ?, ?)
-            ''', (name, amount, curr))
+                INSERT INTO cash_assets (name, amount, curr, user_id)
+                VALUES (?, ?, ?, ?)
+            ''', (name, amount, curr, user_id))
             
             conn.commit()
             logger.info(f"Cash asset added: {name}, amount={amount}")
@@ -549,13 +618,16 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def delete_cash_asset(self, asset_id: int) -> bool:
+    def delete_cash_asset(self, asset_id: int, user_id: str = None) -> bool:
         """删除现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('DELETE FROM cash_assets WHERE id = ?', (asset_id,))
+            if user_id:
+                cursor.execute('DELETE FROM cash_assets WHERE id = ? AND user_id = ?', (asset_id, user_id))
+            else:
+                cursor.execute('DELETE FROM cash_assets WHERE id = ? AND (user_id IS NULL OR user_id = "")', (asset_id,))
             conn.commit()
             logger.info(f"Cash asset deleted: {asset_id}")
             return True
@@ -566,16 +638,25 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_other_assets(self) -> List[Dict[str, Any]]:
+    def get_other_assets(self, user_id: str = None) -> List[Dict[str, Any]]:
         """获取所有其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT id, name, amount, curr
-            FROM other_assets
-            ORDER BY id
-        ''')
+        if user_id:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM other_assets
+                WHERE user_id = ?
+                ORDER BY id
+            ''', (user_id,))
+        else:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM other_assets
+                WHERE user_id IS NULL OR user_id = ''
+                ORDER BY id
+            ''')
         
         data = []
         for row in cursor.fetchall():
@@ -589,16 +670,16 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def add_other_asset(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def add_other_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """添加其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute('''
-                INSERT INTO other_assets (name, amount, curr)
-                VALUES (?, ?, ?)
-            ''', (name, amount, curr))
+                INSERT INTO other_assets (name, amount, curr, user_id)
+                VALUES (?, ?, ?, ?)
+            ''', (name, amount, curr, user_id))
             
             conn.commit()
             logger.info(f"Other asset added: {name}, amount={amount}")
@@ -610,13 +691,16 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def delete_other_asset(self, asset_id: int) -> bool:
+    def delete_other_asset(self, asset_id: int, user_id: str = None) -> bool:
         """删除其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('DELETE FROM other_assets WHERE id = ?', (asset_id,))
+            if user_id:
+                cursor.execute('DELETE FROM other_assets WHERE id = ? AND user_id = ?', (asset_id, user_id))
+            else:
+                cursor.execute('DELETE FROM other_assets WHERE id = ? AND (user_id IS NULL OR user_id = "")', (asset_id,))
             conn.commit()
             logger.info(f"Other asset deleted: {asset_id}")
             return True
@@ -669,16 +753,25 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_liabilities(self) -> List[Dict[str, Any]]:
+    def get_liabilities(self, user_id: str = None) -> List[Dict[str, Any]]:
         """获取所有负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT id, name, amount, curr
-            FROM liabilities
-            ORDER BY id
-        ''')
+        if user_id:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM liabilities
+                WHERE user_id = ?
+                ORDER BY id
+            ''', (user_id,))
+        else:
+            cursor.execute('''
+                SELECT id, name, amount, curr
+                FROM liabilities
+                WHERE user_id IS NULL OR user_id = ''
+                ORDER BY id
+            ''')
         
         data = []
         for row in cursor.fetchall():
@@ -692,16 +785,16 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def add_liability(self, name: str, amount: float, curr: str = 'CNY') -> bool:
+    def add_liability(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """添加负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute('''
-                INSERT INTO liabilities (name, amount, curr)
-                VALUES (?, ?, ?)
-            ''', (name, amount, curr))
+                INSERT INTO liabilities (name, amount, curr, user_id)
+                VALUES (?, ?, ?, ?)
+            ''', (name, amount, curr, user_id))
             
             conn.commit()
             logger.info(f"Liability added: {name}, amount={amount}")
@@ -713,13 +806,16 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def delete_liability(self, liability_id: int) -> bool:
+    def delete_liability(self, liability_id: int, user_id: str = None) -> bool:
         """删除负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('DELETE FROM liabilities WHERE id = ?', (liability_id,))
+            if user_id:
+                cursor.execute('DELETE FROM liabilities WHERE id = ? AND user_id = ?', (liability_id, user_id))
+            else:
+                cursor.execute('DELETE FROM liabilities WHERE id = ? AND (user_id IS NULL OR user_id = "")', (liability_id,))
             conn.commit()
             logger.info(f"Liability deleted: {liability_id}")
             return True

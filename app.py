@@ -6,7 +6,7 @@ import logging
 import threading
 import webbrowser
 import time
-from flask import Flask, render_template, jsonify, request, make_response, send_file
+from flask import Flask, render_template, jsonify, request, make_response, send_file, g
 from pathlib import Path
 import os
 
@@ -16,7 +16,8 @@ from core.price import get_price, batch_get_prices, get_forex_rates, search_stoc
 from core.parser import parse_code, get_display_code
 from core.snapshot import take_snapshot
 from core.news import news_fetcher
-from core.system import system_manager  # 引入系统模块
+from core.system import system_manager
+from core.auth import login_required, optional_auth, generate_token, get_or_create_user
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -140,17 +141,14 @@ def api_rates():
 
 
 @app.route('/api/portfolio', methods=['GET'])
+@optional_auth
 def get_portfolio():
     """获取持仓数据，支持按类型筛选"""
     asset_type = request.args.get('type', 'all')
-    timestamp = request.args.get('t')
-    logger.info(f"API: get_portfolio called with type={asset_type}, timestamp={timestamp}")
-    logger.info(f"Full request URL: {request.url}")
-    logger.info(f"All request args: {dict(request.args)}")
-    data = db.get_portfolio(asset_type)
+    user_id = g.user_id  # 从认证中间件获取
+    logger.info(f"API: get_portfolio called with type={asset_type}, user_id={user_id}")
+    data = db.get_portfolio(asset_type, user_id)
     logger.info(f"API: returning {len(data)} records")
-    if len(data) > 0:
-        logger.info(f"Sample codes: {[d['code'] for d in data[:5]]}")
     response = jsonify(data)
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0, private'
     response.headers['Pragma'] = 'no-cache'
@@ -160,9 +158,11 @@ def get_portfolio():
 
 
 @app.route('/api/portfolio/add', methods=['POST'])
+@optional_auth
 def add_asset():
     """添加资产"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data or 'qty' not in data or 'price' not in data:
         return jsonify({"error": "Missing required fields"}), 400
@@ -174,7 +174,7 @@ def add_asset():
     data['name'] = data.get('name', parsed['code'])
     data['adjustment'] = data.get('adjustment', 0.0)
     
-    success = db.add_asset(data)
+    success = db.add_asset(data, user_id)
     
     if success:
         return jsonify({"status": "ok"})
@@ -183,16 +183,18 @@ def add_asset():
 
 
 @app.route('/api/portfolio/update', methods=['POST'])
+@optional_auth
 def update_asset():
     """更新资产"""
     data = request.json
+    user_id = g.user_id
     
     if not data or 'code' not in data or 'field' not in data or 'val' not in data:
         return jsonify({"error": "Missing required fields"}), 400
     
     try:
         val = float(data['val'])
-        success = db.update_asset(data['code'], data['field'], val)
+        success = db.update_asset(data['code'], data['field'], val, user_id)
         
         if success:
             return jsonify({"status": "ok"})
@@ -546,6 +548,62 @@ def _handle_asset_update(update_func, asset_type):
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to update {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid value"}), 400
+
+
+# ============================================================
+# 认证 API
+# ============================================================
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    """
+    用户登录（从前端验证码登录成功后调用）
+    
+    请求体:
+        {
+            "user_id": "用户唯一ID",
+            "email": "用户邮箱",
+            "access_token": "前端生成的 token（可选）"
+        }
+    
+    返回:
+        {
+            "token": "JWT token",
+            "user_id": "用户ID",
+            "email": "用户邮箱"
+        }
+    """
+    data = request.json
+    
+    if not data or 'user_id' not in data or 'email' not in data:
+        return jsonify({"error": "Missing user_id or email"}), 400
+    
+    user_id = data['user_id']
+    email = data['email']
+    
+    # 创建或更新用户记录
+    get_or_create_user(db, user_id, email)
+    
+    # 生成 JWT token
+    token = generate_token(user_id, email)
+    
+    logger.info(f"User logged in: {user_id} ({email})")
+    
+    return jsonify({
+        "token": token,
+        "user_id": user_id,
+        "email": email
+    })
+
+
+@app.route('/api/auth/me', methods=['GET'])
+@login_required
+def auth_me():
+    """获取当前登录用户信息"""
+    return jsonify({
+        "user_id": g.user_id,
+        "email": g.email
+    })
 
 
 @app.route('/health')
