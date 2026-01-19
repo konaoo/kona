@@ -1,16 +1,45 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 *.so
+
+# macOS
 .DS_Store
-app.log
-app_output.log
+
+# Logs
+*.log
+
+# Database
 *.db
-*.csv
-*.json
+
+# Environment
 .env
 venv/
 .venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.opencode/
+.openwork/
+
+# Backup files
+*.bak
+*.bak2
+*.save
+
+# Data files
+*.csv
+*.json
+portfolio.db
+app.log
+app_output.log
+
+# Node modules
 node_modules/

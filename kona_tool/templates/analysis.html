@@ -1,0 +1,905 @@
+{% extends "base.html" %}
+
+{% set active_page = "analysis" %}
+
+{% block styles %}
+    .section {
+        background: var(--bg-secondary);
+        backdrop-filter: blur(20px);
+        border-radius: var(--radius);
+        padding: 28px;
+        margin-bottom: 24px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+        transition: all 0.3s ease;
+    }
+    
+    .section:hover { box-shadow: var(--shadow-hover); }
+    
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .section-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 350px;
+        width: 100%;
+    }
+    
+    /* 分市场表现样式 */
+    .market-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 10px;
+    }
+    
+    .market-tab {
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: var(--text-secondary);
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    
+    .market-tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+    
+    .market-tab.active {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+        color: var(--accent);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    
+    .market-overview {
+        display: flex;
+        gap: 40px;
+        margin-bottom: 24px;
+        padding: 20px;
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+    }
+    
+    .market-stat-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .market-stat-label { font-size: 13px; color: var(--text-secondary); }
+    .market-stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    
+    .rank-table { width: 100%; border-collapse: collapse; }
+    
+    .rank-table th {
+        text-align: left;
+        padding: 12px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .rank-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+        font-variant-numeric: tabular-nums;
+        vertical-align: middle;
+    }
+    
+    .rank-row:hover { background: var(--bg-tertiary); }
+    
+    .rank-icon {
+        font-size: 18px;
+        width: 24px;
+        display: inline-block;
+        text-align: center;
+    }
+    
+    .asset-name-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .asset-name-main { font-weight: 600; color: var(--text-primary); }
+    .asset-code-sub { font-size: 12px; color: var(--text-secondary); }
+    
+    .show-more-btn {
+        width: 100%;
+        padding: 12px;
+        text-align: center;
+        background: var(--bg-tertiary);
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 13px;
+        margin-top: 10px;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+    
+    .show-more-btn:hover {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+    }
+    
+    /* 里程碑卡片样式 */
+    .milestone-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+    
+    .milestone-card {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        transition: transform 0.2s;
+    }
+    
+    .milestone-card:hover { transform: translateY(-4px); background: var(--bg-secondary); box-shadow: var(--shadow-hover); }
+    
+    .milestone-title { font-size: 13px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+    .milestone-date { font-size: 11px; opacity: 0.7; }
+    
+    .milestone-main { 
+        font-size: 24px; 
+        font-weight: 700; 
+        color: var(--text-primary); 
+        font-variant-numeric: tabular-nums;
+        margin-top: 4px;
+    }
+    
+    .milestone-sub-group { display: flex; align-items: baseline; gap: 8px; }
+    .milestone-sub { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .milestone-rate { font-size: 13px; font-weight: 500; opacity: 0.9; }
+    
+    @media (max-width: 1024px) {
+        .milestone-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    @media (max-width: 600px) {
+        .milestone-grid { grid-template-columns: 1fr; }
+    }
+    
+    /* 收益日历样式 */
+    .calendar-header-controls {
+        display: flex;
+        justify-content: flex-end; /* 只剩日期切换按钮，靠右 */
+        align-items: center;
+    }
+    
+    .view-tabs {
+        display: flex;
+        background: var(--bg-primary); /* 在灰色块里，用深色背景区分 */
+        padding: 4px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+    }
+    
+    .view-tab {
+        padding: 6px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text-secondary);
+        transition: all 0.2s;
+    }
+    
+    .view-tab:hover { color: var(--text-primary); }
+    
+    .view-tab.active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-weight: 600;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+    }
+    
+    .calendar-nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .calendar-btn {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .calendar-btn:hover { background: var(--accent); color: white; }
+    
+    .calendar-label { font-size: 16px; font-weight: 700; min-width: 100px; text-align: center; }
+    
+    /* 日历上方统计区域 */
+    .calendar-stats {
+        display: flex;
+        justify-content: space-between; /* 左右分布 */
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 12px 20px;
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+    }
+    
+    .stats-left {
+        display: flex;
+        gap: 40px;
+    }
+    
+    .cal-stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    
+    .cal-stat-label { font-size: 12px; color: var(--text-secondary); }
+    .cal-stat-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    
+    .calendar-grid-day {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 12px;
+        padding: 10px;
+    }
+    
+    .calendar-grid-month {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        padding: 10px;
+    }
+    
+    .calendar-grid-year {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 10px;
+    }
+    
+    .week-header {
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 12px;
+        padding-bottom: 10px;
+        font-weight: 600;
+    }
+    
+    .day-cell {
+        aspect-ratio: 1.2;
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        position: relative;
+        transition: transform 0.2s;
+        min-height: 85px;
+    }
+    
+    .day-cell:hover { transform: scale(1.05); z-index: 10; box-shadow: var(--shadow-hover); }
+    .day-cell.empty { background: transparent; border: none; }
+    
+    .day-num { font-size: 13px; font-weight: 600; margin-bottom: 2px; color: var(--text-secondary); opacity: 0.8; }
+    .day-pnl { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .day-rate { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.9; margin-top: 2px; }
+    
+    .month-cell {
+        aspect-ratio: 1.5;
+        border-radius: 12px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        gap: 4px;
+        transition: transform 0.2s;
+    }
+    
+    .month-cell:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); background: var(--bg-secondary); }
+    
+    .year-cell {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        background: var(--bg-tertiary);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        transition: transform 0.2s;
+    }
+    
+    .year-cell:hover { transform: translateX(4px); background: var(--bg-secondary); }
+    
+    .cell-label { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+    
+    .cell-value-group {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+    }
+    
+    .cell-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cell-rate { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.9; }
+    
+    .text-up { color: var(--red); }
+    .text-down { color: var(--green); }
+
+    
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let FX = { USD: 7.25, HKD: 0.93, CNY: 1.00 };
+        let currentMarketTab = 'all';
+        let portfolioData = [];
+        let historyData = [];
+        let currentDate = new Date();
+        let calendarView = 'day'; 
+        let isRankExpanded = false;
+        let totalInvestmentCost = 0; 
+        
+        async function initData() {
+            try {
+                historyData = await (await fetch('/api/history')).json();
+                renderMilestones(historyData); // 替换原来的 renderTrendChart
+                
+                FX = await (await fetch('/api/rates')).json();
+                const rawPortfolio = await (await fetch('/api/portfolio')).json();
+                
+                if (rawPortfolio.length > 0) {
+                    const prices = await (await fetch('/api/prices/batch', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({codes: rawPortfolio.map(s => s.code)})
+                    })).json();
+                    
+                    // 计算总投资成本（用于估算收益率）
+                    totalInvestmentCost = 0;
+                    
+                    portfolioData = rawPortfolio.map(s => {
+                        const d = prices[s.code] || {price: 0};
+                        const curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : parseFloat(s.price));
+                        const cost = parseFloat(s.price);
+                        const qty = parseFloat(s.qty);
+                        const adj = parseFloat(s.adjustment) || 0;
+                        const rate = FX[s.curr] || 1;
+                        
+                        const totalPnl = ((curPrice - cost) * qty + adj) * rate;
+                        const totalCost = cost * qty * rate;
+                        const totalPnlRate = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+                        
+                        totalInvestmentCost += totalCost;
+                        
+                        let market = 'stock_cn';
+                        if (s.code.startsWith('f_') || s.code.startsWith('ft_')) market = 'fund';
+                        else if (s.code.includes('hk') || s.code.includes('.HK')) market = 'stock_hk';
+                        else if (s.code.startsWith('gb_') || /^[A-Za-z\.]+$/.test(s.code)) market = 'stock_us';
+                        
+                        return { ...s, market, totalPnl, totalCost, totalPnlRate, name: s.name, code: s.code };
+                    });
+                    
+                    renderMarketAnalysis();
+                }
+                
+                renderCalendar();
+                
+            } catch (e) {
+                console.error("Data load failed:", e);
+            }
+        }
+        
+        // --- 资产里程碑 ---
+        function renderMilestones(data) {
+            if (!data || data.length === 0) return;
+            
+            // 数据按日期升序排列，data[data.length-1] 是最新的
+            const latest = data[data.length - 1];
+            const currentTotal = latest.total_asset;
+            
+            const fmt = (v) => isPrivacyMode ? '****' : `¥ ${Math.round(v).toLocaleString()}`;
+            const fmtDiff = (v) => {
+                const s = v >= 0 ? '+' : '';
+                return `<span class="${v >= 0 ? 'text-up' : 'text-down'}">${isPrivacyMode ? '****' : s + Math.round(v).toLocaleString()}</span>`;
+            };
+            const fmtRate = (v, base) => {
+                const r = base > 0 ? (v / base * 100) : 0;
+                return `<span class="${r >= 0 ? 'text-up' : 'text-down'}">${r >= 0 ? '+' : ''}${r.toFixed(2)}%</span>`;
+            };
+
+            // 辅助函数：找指定日期之前的最近一条记录
+            const findRecord = (targetDateStr) => {
+                // data 是升序
+                let found = null;
+                for (let i = data.length - 1; i >= 0; i--) {
+                    if (data[i].date < targetDateStr) {
+                        found = data[i];
+                        break;
+                    }
+                }
+                return found; // 如果没找到更早的，返回null
+            };
+
+            // 1. 本周 (对比上周五)
+            const today = new Date();
+            const dayOfWeek = today.getDay(); // 0=周日, 1=周一
+            const diffToLastFriday = (dayOfWeek === 0 ? 2 : dayOfWeek + 2); // 简单推算
+            // 更严谨：找到本周一之前的最新数据
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+            monday.setHours(0,0,0,0);
+            const mondayStr = monday.toISOString().split('T')[0];
+            
+            const lastWeekRec = findRecord(mondayStr);
+            const weekBase = lastWeekRec ? lastWeekRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const weekDiff = currentTotal - weekBase;
+            
+            document.getElementById('weekTotal').innerText = fmt(currentTotal);
+            document.getElementById('weekDiff').innerHTML = fmtDiff(weekDiff);
+            document.getElementById('weekDateLabel').innerText = lastWeekRec ? `vs ${lastWeekRec.date.slice(5)}` : 'vs 初始';
+
+            // 2. 本月 (对比上月末)
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const fdomStr = firstDayOfMonth.toISOString().split('T')[0];
+            const lastMonthRec = findRecord(fdomStr);
+            const monthBase = lastMonthRec ? lastMonthRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const monthDiff = currentTotal - monthBase;
+            
+            document.getElementById('monthTotal').innerText = fmt(currentTotal);
+            document.getElementById('monthDiff').innerHTML = fmtDiff(monthDiff);
+            document.getElementById('monthDateLabel').innerText = lastMonthRec ? `vs ${lastMonthRec.date.slice(5)}` : 'vs 初始';
+
+            // 3. 今年 (对比去年末)
+            const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
+            const fdoyStr = firstDayOfYear.toISOString().split('T')[0];
+            const lastYearRec = findRecord(fdoyStr);
+            const yearBase = lastYearRec ? lastYearRec.total_asset : (data[0] ? data[0].total_asset : currentTotal);
+            const yearDiff = currentTotal - yearBase;
+            
+            document.getElementById('yearTotal').innerText = fmt(currentTotal);
+            document.getElementById('yearDiff').innerHTML = fmtDiff(yearDiff);
+            document.getElementById('yearRate').innerHTML = fmtRate(yearDiff, yearBase);
+            document.getElementById('yearDateLabel').innerText = lastYearRec ? `vs ${lastYearRec.date}` : 'vs 初始';
+
+            // 4. 历史峰值
+            let peakVal = -Infinity;
+            let peakDate = '--';
+            data.forEach(d => {
+                if (d.total_asset > peakVal) {
+                    peakVal = d.total_asset;
+                    peakDate = d.date;
+                }
+            });
+            const drawdown = currentTotal - peakVal;
+            
+            document.getElementById('peakTotal').innerText = fmt(peakVal);
+            document.getElementById('peakDiff').innerHTML = fmtDiff(drawdown); // 回撤金额
+            document.getElementById('peakDateLabel').innerText = peakDate;
+        }
+        
+        // --- 分市场表现 ---
+        function switchMarket(tab) {
+            currentMarketTab = tab;
+            isRankExpanded = false;
+            document.querySelectorAll('.market-tab').forEach(el => {
+                el.classList.remove('active');
+                if (el.dataset.tab === tab) el.classList.add('active');
+            });
+            renderMarketAnalysis();
+        }
+        
+        function toggleRankExpand() {
+            isRankExpanded = !isRankExpanded;
+            renderMarketAnalysis();
+        }
+        
+        function renderMarketAnalysis() {
+            let filtered = portfolioData;
+            if (currentMarketTab !== 'all') {
+                filtered = portfolioData.filter(p => p.market === currentMarketTab);
+            }
+            
+            const totalPnl = filtered.reduce((sum, p) => sum + p.totalPnl, 0);
+            const totalCost = filtered.reduce((sum, p) => sum + p.totalCost, 0);
+            const totalRate = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+            
+            document.getElementById('marketPnl').innerText = `¥ ${totalPnl.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
+            document.getElementById('marketPnl').className = 'market-stat-value ' + (totalPnl >= 0 ? 'text-up' : 'text-down');
+            
+            document.getElementById('marketRate').innerText = `${totalRate >= 0 ? '+' : ''}${totalRate.toFixed(2)}%`;
+            document.getElementById('marketRate').className = 'market-stat-value ' + (totalRate >= 0 ? 'text-up' : 'text-down');
+            
+            filtered.sort((a, b) => b.totalPnl - a.totalPnl);
+            
+            const displayList = isRankExpanded ? filtered : filtered.slice(0, 10);
+            
+            const tbody = document.getElementById('rankBody');
+            tbody.innerHTML = displayList.map((p, index) => {
+                let rankDisplay = index + 1;
+                if (index === 0) rankDisplay = '🥇';
+                else if (index === 1) rankDisplay = '🥈';
+                else if (index === 2) rankDisplay = '🥉';
+                
+                return `
+                <tr class="rank-row">
+                    <td style="text-align: center;"><span class="rank-icon">${rankDisplay}</span></td>
+                    <td>
+                        <div class="asset-name-col">
+                            <span class="asset-name-main">${p.name}</span>
+                            <span class="asset-code-sub">${formatDisplayCode(p.code)}</span>
+                        </div>
+                    </td>
+                    <td class="${p.totalPnl >= 0 ? 'text-up' : 'text-down'}">
+                        ¥ ${p.totalPnl.toLocaleString('zh-CN', {maximumFractionDigits: 0})}
+                    </td>
+                    <td class="${p.totalPnlRate >= 0 ? 'text-up' : 'text-down'}">
+                        ${p.totalPnlRate >= 0 ? '+' : ''}${p.totalPnlRate.toFixed(2)}%
+                    </td>
+                </tr>
+            `}).join('');
+            
+            const moreBtn = document.getElementById('showMoreBtn');
+            if (filtered.length > 10) {
+                moreBtn.style.display = 'block';
+                moreBtn.innerText = isRankExpanded ? '收起列表' : `查看更多 (还有 ${filtered.length - 10} 个)`;
+            } else {
+                moreBtn.style.display = 'none';
+            }
+        }
+        
+        // --- 收益日历 ---
+        function switchCalendarView(view) {
+            calendarView = view;
+            document.querySelectorAll('.view-tab').forEach(el => {
+                el.classList.remove('active');
+                if (el.dataset.view === view) el.classList.add('active');
+            });
+            renderCalendar();
+        }
+        
+        function changeDate(offset) {
+            if (calendarView === 'day') {
+                currentDate.setMonth(currentDate.getMonth() + offset);
+            } else if (calendarView === 'month') {
+                currentDate.setFullYear(currentDate.getFullYear() + offset);
+            }
+            renderCalendar();
+        }
+        
+        function renderCalendar() {
+            const container = document.getElementById('calendarGrid');
+            const label = document.getElementById('calendarLabel');
+            container.innerHTML = '';
+            container.className = `calendar-grid-${calendarView}`;
+            
+            // 构建完整数据映射
+            const dataMap = {};
+            historyData.forEach(h => dataMap[h.date] = h);
+            
+            let currentTotal = 0;
+            
+            if (calendarView === 'day') {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                label.innerText = `${year}年 ${month + 1}月`;
+                
+                ['日', '一', '二', '三', '四', '五', '六'].forEach(w => {
+                    const el = document.createElement('div');
+                    el.className = 'week-header';
+                    el.innerText = w;
+                    container.appendChild(el);
+                });
+                
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                for (let i = 0; i < firstDay; i++) {
+                    const el = document.createElement('div');
+                    el.className = 'day-cell empty';
+                    container.appendChild(el);
+                }
+                
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const data = dataMap[dateStr];
+                    const pnl = data ? data.day_pnl : undefined;
+                    
+                    if (pnl) currentTotal += pnl;
+                    
+                    // 计算收益率: day_pnl / (total_asset - day_pnl)
+                    let rate = 0;
+                    if (data && (data.total_asset - data.day_pnl) > 0) {
+                        rate = (data.day_pnl / (data.total_asset - data.day_pnl)) * 100;
+                    }
+                    
+                    const el = document.createElement('div');
+                    el.className = 'day-cell';
+                    if (pnl > 0) el.style.backgroundColor = `rgba(239, 68, 68, ${Math.min(pnl/5000, 0.2) + 0.1})`;
+                    else if (pnl < 0) el.style.backgroundColor = `rgba(16, 185, 129, ${Math.min(Math.abs(pnl)/5000, 0.2) + 0.1})`;
+                    
+                    const pnlClass = pnl ? (pnl >= 0 ? 'text-up' : 'text-down') : '';
+                    
+                    el.innerHTML = `
+                        <div class="day-num">${d}</div>
+                        <div class="day-pnl ${pnlClass}">
+                            ${pnl ? (pnl > 0 ? '+' : '') + Math.round(pnl).toLocaleString() : '--'}
+                        </div>
+                        <div class="day-rate ${pnlClass}">
+                            ${pnl ? (rate >= 0 ? '+' : '') + rate.toFixed(2) + '%' : ''}
+                        </div>
+                    `;
+                    container.appendChild(el);
+                }
+                
+            } else if (calendarView === 'month') {
+                const year = currentDate.getFullYear();
+                label.innerText = `${year}年`;
+                
+                const monthStats = new Array(12).fill(null).map(() => ({ pnl: 0, firstDate: null, startInvest: 0 }));
+                
+                // 按月聚合
+                historyData.forEach(h => {
+                    const d = new Date(h.date);
+                    if (d.getFullYear() === year) {
+                        const m = d.getMonth();
+                        const stats = monthStats[m];
+                        
+                        stats.pnl += h.day_pnl;
+                        
+                        // 寻找当月最早记录
+                        if (!stats.firstDate || new Date(h.date) < stats.firstDate) {
+                            stats.firstDate = new Date(h.date);
+                            // 期初本金估算 = 当天投资总值 - 当天收益
+                            stats.startInvest = h.total_invest - h.day_pnl;
+                        }
+                    }
+                });
+                
+                for (let m = 0; m < 12; m++) {
+                    const stats = monthStats[m];
+                    const pnl = stats.pnl;
+                    if (stats.firstDate) currentTotal += pnl; // 只累加有数据的月份
+                    
+                    // 计算收益率
+                    let rate = 0;
+                    if (stats.startInvest > 0) {
+                        rate = (pnl / stats.startInvest) * 100;
+                    }
+                    
+                    const el = document.createElement('div');
+                    el.className = 'month-cell';
+                    if (pnl > 0) el.style.backgroundColor = `rgba(239, 68, 68, ${Math.min(pnl/20000, 0.2) + 0.1})`;
+                    else if (pnl < 0) el.style.backgroundColor = `rgba(16, 185, 129, ${Math.min(Math.abs(pnl)/20000, 0.2) + 0.1})`;
+                    
+                    const pnlClass = pnl ? (pnl >= 0 ? 'text-up' : 'text-down') : '';
+                    
+                    el.innerHTML = `
+                        <div class="cell-label">${m + 1}月</div>
+                        <div class="cell-value-group">
+                            <div class="cell-value ${pnlClass}">
+                                ${stats.firstDate ? (pnl > 0 ? '+' : '') + Math.round(pnl).toLocaleString() : '--'}
+                            </div>
+                            <div class="cell-rate ${pnlClass}">
+                                ${stats.firstDate ? (rate >= 0 ? '+' : '') + rate.toFixed(2) + '%' : ''}
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                }
+            } else if (calendarView === 'year') {
+                label.innerText = `全部年份`;
+                const yearStats = {}; // { year: { pnl: 0, firstDate: null, startInvest: 0 } }
+                
+                historyData.forEach(h => {
+                    const y = new Date(h.date).getFullYear();
+                    if (!yearStats[y]) yearStats[y] = { pnl: 0, firstDate: null, startInvest: 0 };
+                    
+                    const stats = yearStats[y];
+                    stats.pnl += h.day_pnl;
+                    
+                    if (!stats.firstDate || new Date(h.date) < stats.firstDate) {
+                        stats.firstDate = new Date(h.date);
+                        stats.startInvest = h.total_invest - h.day_pnl;
+                    }
+                });
+                
+                const years = Object.keys(yearStats).sort((a, b) => b - a);
+                
+                years.forEach(y => {
+                    const stats = yearStats[y];
+                    const pnl = stats.pnl;
+                    currentTotal += pnl;
+                    
+                    let rate = 0;
+                    if (stats.startInvest > 0) {
+                        rate = (pnl / stats.startInvest) * 100;
+                    }
+                    
+                    const el = document.createElement('div');
+                    el.className = 'year-cell';
+                    
+                    const pnlClass = pnl >= 0 ? 'text-up' : 'text-down';
+                    
+                    el.innerHTML = `
+                        <div class="cell-label">${y}年</div>
+                        <div class="cell-value-group">
+                            <div class="cell-value ${pnlClass}">
+                                ${(pnl > 0 ? '+' : '') + Math.round(pnl).toLocaleString()}
+                            </div>
+                            <div class="cell-rate ${pnlClass}">
+                                ${(rate >= 0 ? '+' : '') + rate.toFixed(2)}%
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                });
+                if (years.length === 0) container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">暂无历史数据</div>';
+            }
+            
+            // 更新顶部统计
+            const footerLabel = calendarView === 'day' ? '本月累计收益' : (calendarView === 'month' ? '本年累计收益' : '历史总收益');
+            document.getElementById('calTotalLabel').innerText = footerLabel;
+            
+            const totalValEl = document.getElementById('calTotalValue');
+            totalValEl.innerText = (currentTotal > 0 ? '+' : '') + `¥ ${currentTotal.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
+            totalValEl.className = 'cal-stat-value ' + (currentTotal >= 0 ? 'text-up' : 'text-down');
+            
+            let rate = 0;
+            if (totalInvestmentCost > 0) {
+                rate = (currentTotal / totalInvestmentCost) * 100;
+            }
+            
+            const totalRateEl = document.getElementById('calTotalRate');
+            totalRateEl.innerText = `${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`;
+            totalRateEl.className = 'cal-stat-value ' + (rate >= 0 ? 'text-up' : 'text-down');
+        }
+        
+        window.onload = initData;
+    </script>
+{% endblock %}
+
+{% block content %}
+    <!-- 资产变动对比看板 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">资产里程碑</div>
+        </div>
+        <div class="milestone-grid">
+            <!-- 本周 -->
+            <div class="milestone-card">
+                <div class="milestone-title">本周变动 <span class="milestone-date" id="weekDateLabel">--</span></div>
+                <div class="milestone-main" id="weekTotal">--</div>
+                <div class="milestone-sub" id="weekDiff">--</div>
+            </div>
+            <!-- 本月 -->
+            <div class="milestone-card">
+                <div class="milestone-title">本月变动 <span class="milestone-date" id="monthDateLabel">--</span></div>
+                <div class="milestone-main" id="monthTotal">--</div>
+                <div class="milestone-sub" id="monthDiff">--</div>
+            </div>
+            <!-- 今年 -->
+            <div class="milestone-card">
+                <div class="milestone-title">今年 (YTD) <span class="milestone-date" id="yearDateLabel">--</span></div>
+                <div class="milestone-main" id="yearTotal">--</div>
+                <div class="milestone-sub-group">
+                    <span class="milestone-sub" id="yearDiff">--</span>
+                    <span class="milestone-rate" id="yearRate">--</span>
+                </div>
+            </div>
+            <!-- 历史峰值 -->
+            <div class="milestone-card">
+                <div class="milestone-title">历史峰值 <span class="milestone-date" id="peakDateLabel">--</span></div>
+                <div class="milestone-main" id="peakTotal">--</div>
+                <div class="milestone-sub" id="peakDiff">--</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 分市场表现 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">分市场表现</div>
+        </div>
+        <div class="market-tabs">
+            <div class="market-tab active" data-tab="all" onclick="switchMarket('all')">全部</div>
+            <div class="market-tab" data-tab="stock_cn" onclick="switchMarket('stock_cn')">A股</div>
+            <div class="market-tab" data-tab="stock_us" onclick="switchMarket('stock_us')">美股</div>
+            <div class="market-tab" data-tab="stock_hk" onclick="switchMarket('stock_hk')">港股</div>
+            <div class="market-tab" data-tab="fund" onclick="switchMarket('fund')">基金</div>
+        </div>
+        <div class="market-overview">
+            <div class="market-stat-item">
+                <span class="market-stat-label">累计收益金额 (CNY)</span>
+                <span class="market-stat-value" id="marketPnl">--</span>
+            </div>
+            <div class="market-stat-item">
+                <span class="market-stat-label">累计收益率</span>
+                <span class="market-stat-value" id="marketRate">--</span>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="rank-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px; text-align: center;">排名</th>
+                        <th>资产名称 / 代码</th>
+                        <th>累计收益</th>
+                        <th>收益率</th>
+                    </tr>
+                </thead>
+                <tbody id="rankBody"></tbody>
+            </table>
+            <button id="showMoreBtn" class="show-more-btn" onclick="toggleRankExpand()" style="display: none;">查看更多</button>
+        </div>
+    </div>
+    
+    <!-- 收益日历 -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">收益日历</div>
+            <div class="calendar-header-controls">
+                <div class="calendar-nav">
+                    <button class="calendar-btn" onclick="changeDate(-1)">❮</button>
+                    <span class="calendar-label" id="calendarLabel">--</span>
+                    <button class="calendar-btn" onclick="changeDate(1)">❯</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="calendar-stats">
+            <div class="stats-left">
+                <div class="cal-stat-item">
+                    <span class="cal-stat-label" id="calTotalLabel">本月累计收益</span>
+                    <span class="cal-stat-value" id="calTotalValue">--</span>
+                </div>
+                <div class="cal-stat-item">
+                    <span class="cal-stat-label">收益率 (估算)</span>
+                    <span class="cal-stat-value" id="calTotalRate">--</span>
+                </div>
+            </div>
+            <div class="view-tabs">
+                <div class="view-tab active" data-view="day" onclick="switchCalendarView('day')">日</div>
+                <div class="view-tab" data-view="month" onclick="switchCalendarView('month')">月</div>
+                <div class="view-tab" data-view="year" onclick="switchCalendarView('year')">年</div>
+            </div>
+        </div>
+        
+        <div id="calendarGrid">
+            <!-- JS填充 -->
+        </div>
+    </div>
+{% endblock %}

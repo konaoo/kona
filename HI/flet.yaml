@@ -1,0 +1,30 @@
+name: 咔咔记账
+description: Portfolio Management App - Mobile Client
+version: 1.0.0
+author: Kona
+
+# 应用配置
+app:
+  name: 咔咔记账
+  description: 个人投资组合管理工具
+
+# Python 依赖
+dependencies:
+  flet: ">=0.80.0"
+  python-dotenv: ">=1.0.0"
+  requests: ">=2.31.0"
+  urllib3: ">=2.0.0"
+  certifi: ">=2023.0.0"
+
+# Android 打包配置
+android:
+  package: com.kona.portfolio
+  adaptive_icon_background: "#0A0E1A"
+  permissions:
+    - android.permission.INTERNET
+    - android.permission.ACCESS_NETWORK_STATE
+
+# iOS 打包配置
+ios:
+  bundle_id: com.kona.portfolio
+  team_id: ""  # 需要时填写 Apple Developer Team ID
