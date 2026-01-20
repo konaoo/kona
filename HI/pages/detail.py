@@ -257,12 +257,14 @@ def build_detail_page(
     def safe_update():
         """安全地更新UI"""
         try:
-            list_view.update()
-        except Exception:
+            # 🔧 优先使用 page.update()，更稳定
+            state.page.update()
+        except Exception as e:
+            print(f"⚠️ Update failed: {e}")
             try:
-                state.page.update()
-            except Exception:
-                pass
+                list_view.update()
+            except Exception as e2:
+                print(f"⚠️ ListView update also failed: {e2}")
     
     # ============================================================
     # 加载数据
@@ -276,11 +278,20 @@ def build_detail_page(
         def fetch():
             try:
                 data = config["fetch_sync"]()
-                page_state["assets_data"] = data if data else []
+                # 🔧 确保数据是列表类型
+                if data is None:
+                    data = []
+                elif not isinstance(data, list):
+                    print(f"⚠️ Invalid data type: {type(data)}, expected list")
+                    data = []
+
+                page_state["assets_data"] = data
                 page_state["is_loading"] = False
                 render_list()
             except Exception as ex:
-                print(f"Load error: {ex}")
+                print(f"❌ Load error: {ex}")
+                import traceback
+                traceback.print_exc()  # 🔧 打印完整错误堆栈
                 page_state["is_loading"] = False
                 list_view.controls = [error_state("加载失败，请返回重试")]
                 safe_update()
@@ -357,20 +368,33 @@ def build_detail_page(
             def do_save():
                 try:
                     success = config["add_sync"](name, amount)
-                    # 先关闭弹窗
-                    if overlay_ref[0] and overlay_ref[0] in state.page.overlay:
-                        state.page.overlay.remove(overlay_ref[0])
-                    
+
+                    # 🔧 无论成功失败，先关闭弹窗
+                    try:
+                        if overlay_ref[0] and overlay_ref[0] in state.page.overlay:
+                            state.page.overlay.remove(overlay_ref[0])
+                            state.page.update()
+                    except Exception as e:
+                        print(f"⚠️ Close overlay error: {e}")
+
                     if success:
-                        # 重新加载数据
+                        # 🔧 延迟加载，避免与导航冲突
+                        import time
+                        time.sleep(0.3)
                         load_data()
                     else:
-                        state.page.update()
+                        print("❌ Save failed")
+                        safe_update()
                 except Exception as ex:
-                    print(f"Save error: {ex}")
-                    if overlay_ref[0] and overlay_ref[0] in state.page.overlay:
-                        state.page.overlay.remove(overlay_ref[0])
-                    state.page.update()
+                    print(f"❌ Save error: {ex}")
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        if overlay_ref[0] and overlay_ref[0] in state.page.overlay:
+                            state.page.overlay.remove(overlay_ref[0])
+                        safe_update()
+                    except:
+                        pass
             
             threading.Thread(target=do_save, daemon=True).start()
         

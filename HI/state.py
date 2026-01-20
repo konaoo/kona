@@ -38,6 +38,9 @@ class AppState:
         self.invest_holding_pnl_pct: float = 0
         self.invest_total_pnl: float = 0
         self.invest_total_pnl_pct: float = 0
+
+        # 汇率数据
+        self.exchange_rates: Dict[str, float] = {"USD": 7.25, "HKD": 0.93, "CNY": 1.0}
         
         # 回调函数
         self._on_state_change: Optional[Callable] = None
@@ -106,47 +109,75 @@ class AppState:
         self.prices = prices
         self.portfolio_loaded = True
         self._calculate_invest_summary()
+
+    def update_exchange_rates(self, rates: Dict[str, float]):
+        """更新汇率数据"""
+        self.exchange_rates = rates
+        # 汇率更新后重新计算投资汇总（如果已经加载了投资组合）
+        if self.portfolio_loaded:
+            self._calculate_invest_summary()
     
     def _calculate_invest_summary(self):
         """计算投资汇总数据"""
-        total_mv = 0
+        total_mv_cny = 0  # 总市值（人民币）
         total_cost = 0
         total_day = 0
         total_adj = 0
-        
+
         # 判断是否休市（周末）
         # 0=Mon, 6=Sun
         is_weekend = datetime.now().weekday() >= 5
-        
+
         for item in self.portfolio_data:
             code = item['code']
             qty = float(item['qty'])
             cost = float(item['price'])
             adj = float(item.get('adjustment', 0))
-            
+
             pi = self.prices.get(code, {})
-            cp = pi.get('price', 0) or pi.get('yclose', cost) or cost
-            yc = pi.get('yclose', cp)
-            
-            total_mv += cp * qty
-            total_cost += cost * qty
-            
+            # 当前价：优先使用 price，其次 yclose，最后用成本价
+            cp = pi.get('price', 0) or pi.get('yclose', 0) or cost
+            # 昨收价：必须存在且不为 0，否则用当前价（今日盈亏为 0）
+            yc = pi.get('yclose', 0) or cp
+
+            # 🔧 获取汇率
+            market_type = self.get_market_type(code)
+            if market_type == 'hk':
+                exchange_rate = self.exchange_rates.get('HKD', 0.93)
+            elif market_type == 'us':
+                exchange_rate = self.exchange_rates.get('USD', 7.25)
+            else:
+                exchange_rate = 1.0
+
+            # 🔧 市值和成本换算成人民币
+            mv_original = cp * qty  # 原币种市值
+            mv_cny = mv_original * exchange_rate  # 换算成人民币
+            cost_cny = cost * qty * exchange_rate  # 成本换算成人民币
+
+            total_mv_cny += mv_cny
+            total_cost += cost_cny
+
+            # 🔧 修复今日盈亏计算逻辑
             # 如果是周末，今日盈亏显示为 0
             if is_weekend:
                 total_day += 0
+            # 如果昨收价无效（为 0 或不存在），今日盈亏为 0
+            elif pi.get('yclose', 0) == 0 or pi.get('yclose') is None:
+                total_day += 0
+            # 正常计算：(当前价 - 昨收价) × 数量 × 汇率
             else:
-                total_day += (cp - yc) * qty
-                
-            total_adj += adj
-        
-        self.invest_total_mv = total_mv
+                total_day += (cp - yc) * qty * exchange_rate
+
+            total_adj += adj * exchange_rate  # 调整值也换算成人民币
+
+        self.invest_total_mv = total_mv_cny
         self.invest_day_pnl = total_day
-        self.invest_day_pnl_pct = (total_day / (total_mv - total_day) * 100) if (total_mv - total_day) > 0 else 0
-        
-        h_pnl = total_mv - total_cost + total_adj
+        self.invest_day_pnl_pct = (total_day / (total_mv_cny - total_day) * 100) if (total_mv_cny - total_day) > 0 else 0
+
+        h_pnl = total_mv_cny - total_cost + total_adj
         self.invest_holding_pnl = h_pnl
         self.invest_holding_pnl_pct = (h_pnl / total_cost * 100) if total_cost > 0 else 0
-        
+
         self.invest_total_pnl = h_pnl
         self.invest_total_pnl_pct = self.invest_holding_pnl_pct
     

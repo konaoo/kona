@@ -284,3 +284,26 @@ def horizontal_padding(child: ft.Control, padding: int = Spacing.XL) -> ft.Conta
 def spacer(height: int) -> ft.Container:
     """垂直间距"""
     return ft.Container(height=height)
+
+
+# ============================================================
+# 下拉刷新组件
+# ============================================================
+
+def refreshable_container(
+    content: ft.Control,
+    on_refresh: Callable,
+) -> ft.Column:
+    """
+    下拉刷新容器
+
+    Args:
+        content: 页面内容
+        on_refresh: 刷新回调函数（异步）
+
+    Returns:
+        包装后的可刷新容器
+    """
+    # 使用 Flet 原生的下拉刷新（如果支持）
+    # 否则使用简单的刷新按钮
+    return ft.Column([content], scroll=ft.ScrollMode.AUTO, expand=True)

@@ -1,9 +1,10 @@
 """
 Portfolio App - 深色主题版 v5
-重构版 - 模块化架构 + 登录认证
+重构版 - 模块化架构 + 登录认证 + 优化加载体验
 """
 import flet as ft
 import threading
+import asyncio
 
 from config import Theme, Window, BREVO_API_KEY, BREVO_SENDER_EMAIL
 from state import AppState
@@ -11,6 +12,7 @@ from api import api
 from cache import cache
 from components import loading_indicator, spacer
 from error_handler import setup_global_exception_handler
+from data_manager import data_manager
 
 from pages.home import build_home_page
 from pages.invest import (
@@ -84,12 +86,29 @@ def main(page: ft.Page):
         """显示主应用"""
         # 初始化状态
         state = AppState(page)
-        
+
+        # 设置 DataManager 的 state 引用
+        data_manager.set_state(state)
+
+        # 🔧 获取实时汇率（后台执行，不阻塞 UI）
+        def load_exchange_rates():
+            try:
+                rates = api.get_exchange_rates_sync()
+                state.update_exchange_rates(rates)
+                print(f"✅ 汇率更新成功: USD={rates.get('USD')}, HKD={rates.get('HKD')}")
+            except Exception as e:
+                print(f"⚠️ 汇率获取失败，使用默认汇率: {e}")
+
+        threading.Thread(target=load_exchange_rates, daemon=True).start()
+
         # 当前页面索引（用于防止异步回调覆盖错误页面）
         current_page_index = [0]  # 使用列表来避免 nonlocal 问题
-        
-        # 启动时预加载数据（后台执行，不阻塞 UI）
-        cache.preload_all()
+
+        # 🚀 登录后立即预加载所有数据（后台执行，不阻塞 UI）
+        asyncio.create_task(data_manager.preload_all())
+
+        # 🔄 启动自动刷新（每 30 秒）
+        asyncio.create_task(data_manager.start_auto_refresh(interval=30))
         
         # 共享 UI 容器
         body = ft.Container(expand=True)
@@ -242,27 +261,26 @@ def main(page: ft.Page):
                 # 检查是否仍在投资页面
                 if current_page_index[0] != 1:
                     return
-                
+
                 # 使用缓存
                 if state.portfolio_loaded and not force_refresh:
                     render_portfolio()
                     return
-                
-                # 显示加载状态
-                portfolio_container.controls.clear()
-                portfolio_container.controls.append(loading_indicator())
-                page.update()
-                
+
+                # ✅ 去掉 loading，立即显示空列表或骨架
+                # 不再显示 loading_indicator，直接渲染占位符
+                render_portfolio()  # 先显示空状态或已有数据
+
                 # 使用缓存获取数据
                 portfolio, prices = cache.get_portfolio_sync(force_refresh)
-                
+
                 # 再次检查是否仍在投资页面
                 if current_page_index[0] != 1:
                     return
-                
+
                 if portfolio:
                     state.update_portfolio(portfolio, prices)
-                    
+
                     # 重建投资页面以更新汇总数据
                     body.content = build_invest_page(
                         state=state,
@@ -270,9 +288,9 @@ def main(page: ft.Page):
                         category_row=category_row,
                         on_category_change=on_category_click
                     )
-                
+
                 render_portfolio()
-            
+
             threading.Thread(target=do_load, daemon=True).start()
         
         def render_portfolio():

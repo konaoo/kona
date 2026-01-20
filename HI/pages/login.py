@@ -55,11 +55,10 @@ def build_login_page(
         bgcolor=Theme.BG_CARD,
         border_radius=BorderRadius.MD,
         expand=True,
-        height=65, # 增加高度以容纳标签和文字
-        content_padding=ft.Padding(15, 20, 15, 5), # 调整内边距，让文字下沉一点
-        text_vertical_align=0.0, # 顶部对齐? 不，默认即可，或者调整 padding
+        height=56,  # 🔧 统一高度
+        content_padding=ft.Padding(Spacing.MD, Spacing.SM, Spacing.MD, Spacing.SM),
     )
-    
+
     code_field = ft.TextField(
         label="验证码",
         hint_text="请输入6位数字验证码",
@@ -72,10 +71,11 @@ def build_login_page(
         cursor_color=Theme.ACCENT,
         bgcolor=Theme.BG_CARD,
         border_radius=BorderRadius.MD,
-        visible=False,
+        visible=True,  # 🔧 始终显示验证码输入框
         max_length=6,
-        height=65,
-        content_padding=ft.Padding(15, 20, 15, 5),
+        height=56,  # 🔧 统一高度
+        content_padding=ft.Padding(Spacing.MD, Spacing.SM, Spacing.MD, Spacing.SM),
+        on_change=lambda e: on_code_change(e),  # 🔧 监听输入变化
     )
     
     error_text = ft.Text(
@@ -87,8 +87,8 @@ def build_login_page(
     
     # 发送按钮文字
     send_button_text = ft.Text(
-        "发送",
-        size=14,
+        "发送验证码",  # 🔧 改为更明确的文案
+        size=13,
         weight=ft.FontWeight.BOLD,
         color=Theme.TEXT_PRIMARY,
     )
@@ -139,10 +139,22 @@ def build_login_page(
         error_text.value = message
         error_text.visible = True
         page.update()
-    
+
     def hide_error():
         """隐藏错误信息"""
         error_text.visible = False
+        page.update()
+
+    def on_code_change(e):
+        """验证码输入变化时检查登录按钮状态"""
+        code = code_field.value.strip()
+        # 🔧 当验证码输入完整（6位）时，登录按钮可用；否则灰色禁用
+        if len(code) == 6:
+            login_button.bgcolor = Theme.ACCENT
+            login_button.opacity = 1.0
+        else:
+            login_button.bgcolor = Theme.BG_ELEVATED
+            login_button.opacity = 0.5
         page.update()
     
     def update_send_button(loading: bool = False, disabled: bool = False, text: str = None):
@@ -153,9 +165,14 @@ def build_login_page(
         send_button_text.visible = not loading
         if text:
             send_button_text.value = text
-        
-        # 禁用时灰色，正常时强调色
-        send_button.bgcolor = Theme.BG_ELEVATED if (disabled or loading) else Theme.ACCENT
+
+        # 🔧 禁用时灰色，正常时强调色
+        if disabled or loading:
+            send_button.bgcolor = Theme.BG_ELEVATED
+            send_button.opacity = 0.6
+        else:
+            send_button.bgcolor = Theme.ACCENT
+            send_button.opacity = 1.0
         page.update()
     
     def update_login_button(loading: bool = False):
@@ -186,19 +203,17 @@ def build_login_page(
         success, error = await auth_manager.send_code(email)
         
         if success:
-            # 切换到验证码输入步骤
+            # 🔧 切换到验证码输入步骤（验证码输入框已经始终可见）
             state["step"] = "code"
-            code_field.visible = True
-            login_button.visible = True
-            
+
             # 开始倒计时
             state["countdown"] = 60
-            update_send_button(disabled=True, text=f"{state['countdown']}s")
-            
+            update_send_button(disabled=True, text=f"重新发送({state['countdown']}s)")  # 🔧 改为"重新发送"
+
             # 启动倒计时任务
             asyncio.create_task(countdown_timer())
             page.update()
-            
+
             # 自动聚焦验证码输入框 (兼容新旧版本)
             try:
                 res = code_field.focus()
@@ -216,9 +231,9 @@ def build_login_page(
             await asyncio.sleep(1)
             state["countdown"] -= 1
             if state["countdown"] > 0:
-                update_send_button(disabled=True, text=f"{state['countdown']}s")
+                update_send_button(disabled=True, text=f"重新发送({state['countdown']}s)")  # 🔧 倒计时文案
             else:
-                update_send_button(disabled=False, text="发送")
+                update_send_button(disabled=False, text="重新发送")  # 🔧 倒计时结束后显示"重新发送"
     
     async def do_verify_code():
         """验证验证码（异步执行）"""
@@ -273,7 +288,9 @@ def build_login_page(
     
     def on_login_click(e):
         """登录按钮点击"""
-        if not state["login_loading"]:
+        # 🔧 只有验证码输入完整（6位）且不在加载中时才允许点击
+        code = code_field.value.strip()
+        if len(code) == 6 and not state["login_loading"]:
             asyncio.create_task(do_verify_code())
     
     # ========== 按钮组件 ==========
@@ -282,20 +299,21 @@ def build_login_page(
         content=send_button_content,
         bgcolor=Theme.ACCENT,
         border_radius=BorderRadius.MD,
-        width=80,
-        height=50,
+        width=110,  # 🔧 增加宽度以容纳"发送验证码"文字
+        height=56,  # 🔧 统一高度与邮箱输入框一致
         alignment=ft.Alignment(0, 0),
         on_click=on_send_click,
         ink=True,
     )
-    
+
     login_button = ft.Container(
         content=login_button_content,
-        bgcolor=Theme.ACCENT,
+        bgcolor=Theme.BG_ELEVATED,  # 🔧 初始状态为灰色
         border_radius=BorderRadius.MD,
         padding=ft.Padding(0, Spacing.LG, 0, Spacing.LG),
         alignment=ft.Alignment(0, 0),
-        visible=False,
+        visible=True,  # 🔧 始终显示登录按钮
+        opacity=0.5,  # 🔧 初始半透明（禁用状态）
         on_click=on_login_click,
         ink=True,
     )
@@ -349,10 +367,10 @@ def build_login_page(
                         ft.Container(width=10),
                         send_button
                     ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                    
-                    spacer(Spacing.SM),
-                    
-                    # 验证码
+
+                    spacer(Spacing.MD),
+
+                    # 验证码（宽度与登录按钮一致，不需要在Row中）
                     code_field,
                     
                     # 错误提示

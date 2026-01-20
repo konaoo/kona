@@ -121,11 +121,11 @@ def build_analysis_page(state: AppState) -> ft.Container:
     calendar_time_type = "day"
     rank_type = "gain"
     is_mounted = False
-    
-    # 初始使用空数据
-    overview_data = get_empty_overview_data()
-    calendar_data = get_empty_calendar_data("day")
-    rank_data = get_empty_rank_data("all")
+
+    # 🔧 优先使用缓存数据，如果缓存不存在才使用空数据
+    overview_data = get_real_overview_data()
+    calendar_data = get_real_calendar_data("day")
+    rank_data = get_real_rank_data("all")
     
     # ============================================================
     # 1. 盈亏概览
@@ -622,26 +622,28 @@ def build_analysis_page(state: AppState) -> ft.Container:
     
     page_content = ft.Column(build_page_controls(), scroll=ft.ScrollMode.AUTO)
     is_mounted = True
-    
-    # 后台异步加载真实数据 (一次性获取所有)
+
+    # 🔧 后台静默刷新（只在缓存过期时才会触发）
     def load_real_data():
         nonlocal overview_data, calendar_data, rank_data
         try:
+            # 强制刷新缓存（从API获取最新数据）
             # 1. Overview
             real_overview = get_real_overview_data()
-            if real_overview:
+            if real_overview and real_overview != overview_data:
                 overview_data = real_overview
-                
+
             # 2. Calendar (Current Type)
             real_calendar = get_real_calendar_data(calendar_time_type)
-            if real_calendar:
+            if real_calendar and real_calendar != calendar_data:
                 calendar_data = real_calendar
-                
+
             # 3. Rank
             real_rank = get_real_rank_data("all")
-            if real_rank:
+            if real_rank and real_rank != rank_data:
                 rank_data = real_rank
-            
+
+            # 🔧 只有数据发生变化时才更新UI
             if is_mounted:
                 page_content.controls = build_page_controls()
                 try:
@@ -649,8 +651,9 @@ def build_analysis_page(state: AppState) -> ft.Container:
                 except:
                     pass
         except Exception as e:
-            print(f"Failed to load analysis data: {e}")
-    
+            print(f"⚠️ 分析页后台刷新失败: {e}")
+
+    # 🔧 后台静默刷新（不阻塞UI显示）
     threading.Thread(target=load_real_data, daemon=True).start()
     
     return ft.Container(

@@ -12,28 +12,57 @@ from components import loading_indicator, empty_state, error_state, simple_heade
 
 def build_news_page(state: AppState) -> ft.Container:
     """构建快讯页面"""
-    
-    news_list = ft.ListView(expand=True, spacing=Spacing.SM, padding=ft.Padding(Spacing.XL, 0, Spacing.XL, 0))
-    
+
+    news_list = ft.ListView(expand=True, spacing=Spacing.MD, padding=ft.Padding(Spacing.XL, 0, Spacing.XL, Spacing.XL))
+
     def render_news(items):
         """渲染快讯列表"""
         news_list.controls.clear()
-        
+
         if not items:
             news_list.controls.append(empty_state(ft.Icons.ARTICLE, "暂无快讯"))
         else:
             for item in items[:20]:
                 content = item.get('content', '') or item.get('title', '')
                 time_str = item.get('time', '')
+
+                # 🎨 新布局：日期在卡片外 + 左侧辅助线 + 卡片描边
                 news_list.controls.append(
                     ft.Container(
                         content=ft.Column([
-                            ft.Text(content, size=FontSize.LG, color=Theme.TEXT_PRIMARY, max_lines=3),
-                            ft.Text(time_str, size=FontSize.MD, color=Theme.TEXT_TERTIARY),
-                        ], spacing=Spacing.SM),
-                        padding=Spacing.LG,
-                        bgcolor=Theme.BG_CARD,
-                        border_radius=BorderRadius.LG,
+                            # 卡片内容 + 左侧辅助线
+                            ft.Container(
+                                content=ft.Row([
+                                    # 左侧辅助线
+                                    ft.Container(
+                                        width=3,
+                                        bgcolor=Theme.ACCENT,
+                                        border_radius=ft.border_radius.all(2),
+                                    ),
+                                    # 内容区域
+                                    ft.Container(
+                                        content=ft.Column([
+                                            ft.Text(
+                                                content,
+                                                size=FontSize.BASE,
+                                                color=Theme.TEXT_PRIMARY,
+                                                max_lines=4,
+                                                overflow=ft.TextOverflow.ELLIPSIS
+                                            ),
+                                            spacer(4),
+                                            # 🔧 日期移到左下角
+                                            ft.Text(time_str, size=FontSize.XS, color=Theme.TEXT_TERTIARY),
+                                        ], spacing=0),
+                                        padding=ft.Padding(Spacing.MD, Spacing.SM, Spacing.MD, Spacing.SM),
+                                        expand=True,
+                                    ),
+                                ], spacing=0),
+                                # 卡片描边
+                                bgcolor=Theme.BG_CARD,
+                                border_radius=BorderRadius.MD,
+                                border=ft.border.all(1, Theme.BORDER),
+                            ),
+                        ], spacing=0),
                     )
                 )
         
@@ -76,11 +105,25 @@ def build_news_page(state: AppState) -> ft.Container:
     
     load_news()
     
+    # 🎯 自定义标题："市场快讯LIVE" + 标志
+    custom_header = ft.Container(
+        content=ft.Row([
+            ft.Text("市场快讯", size=FontSize.XXL, weight=ft.FontWeight.BOLD, color=Theme.TEXT_PRIMARY),
+            ft.Container(
+                content=ft.Text("LIVE", size=FontSize.SM, weight=ft.FontWeight.BOLD, color=Theme.TEXT_PRIMARY),
+                bgcolor=Theme.DANGER,
+                padding=ft.Padding(6, 2, 6, 2),
+                border_radius=BorderRadius.SM,
+            ),
+        ], spacing=8),
+        padding=ft.Padding(Spacing.XL, Spacing.LG, Spacing.XL, Spacing.MD),  # 🔧 减少顶部间距
+    )
+
     return ft.Container(
         content=ft.Column([
-            simple_header("快讯"),
+            custom_header,
             news_list,
-        ]),
+        ], spacing=0),
         bgcolor=Theme.BG_PRIMARY,
         expand=True
     )

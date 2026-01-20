@@ -430,6 +430,28 @@ class ApiClient:
         """同步删除负债"""
         return self._post_sync("/api/liabilities/delete", {"id": asset_id})
 
+    def get_exchange_rates_sync(self) -> Dict[str, float]:
+        """同步获取汇率"""
+        try:
+            res = self._session.get(
+                f"{self.base_url}/api/rates",
+                timeout=self.timeout
+            )
+            if res.status_code == 200:
+                return res.json()
+            else:
+                log_api_error("/api/rates", APIError(f"HTTP {res.status_code}", status_code=res.status_code))
+                return {"USD": 7.25, "HKD": 0.93, "CNY": 1.0}  # 默认汇率
+        except requests.exceptions.Timeout:
+            log_api_error("/api/rates", requests.exceptions.Timeout("请求超时"))
+            return {"USD": 7.25, "HKD": 0.93, "CNY": 1.0}
+        except requests.exceptions.ConnectionError as e:
+            log_api_error("/api/rates", e)
+            return {"USD": 7.25, "HKD": 0.93, "CNY": 1.0}
+        except Exception as e:
+            log_api_error("/api/rates", e)
+            return {"USD": 7.25, "HKD": 0.93, "CNY": 1.0}
+
 
 # 全局 API 客户端实例
 api = ApiClient()

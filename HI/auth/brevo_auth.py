@@ -2,6 +2,7 @@
 Brevo (Sendinblue) 邮件验证码认证
 
 免费版：300封/天，不需要验证域名
+开发模式：使用固定验证码 123456
 """
 import random
 import string
@@ -12,6 +13,7 @@ import requests
 from typing import Dict, Optional, Tuple
 
 from .provider import AuthProvider, AuthResult, UserInfo
+from config import DEV_MODE, DEV_VERIFICATION_CODE
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,20 @@ class BrevoAuthProvider(AuthProvider):
     async def send_code(self, email: str) -> Tuple[bool, Optional[str]]:
         """发送邮箱验证码"""
         try:
+            # 🔧 开发模式：使用固定验证码
+            if DEV_MODE:
+                code = DEV_VERIFICATION_CODE
+                expires = time.time() + 3600  # 1小时有效期（开发模式延长时间）
+
+                # 存储验证码
+                self._codes[email] = {
+                    "code": code,
+                    "expires": expires
+                }
+
+                logger.info(f"🔧 DEV MODE: Verification code for {email} is {code}")
+                return True, None
+
             # 生成 6 位数字验证码
             code = self._generate_code(6)
             expires = time.time() + 300  # 5 分钟有效期
@@ -113,7 +129,43 @@ class BrevoAuthProvider(AuthProvider):
     
     async def verify_code(self, email: str, code: str) -> AuthResult:
         """验证邮箱验证码"""
-        # 检查验证码是否存在
+        # 🔧 开发模式：自动接受固定验证码
+        if DEV_MODE and code == DEV_VERIFICATION_CODE:
+            # 直接通过验证，不检查存储的验证码
+            logger.info(f"🔧 DEV MODE: Auto-accepting verification code for {email}")
+
+            # 获取或创建用户
+            user = self._users.get(email)
+            if not user:
+                user = {
+                    "user_id": str(uuid.uuid4()),
+                    "email": email,
+                    "created_at": time.time()
+                }
+                self._users[email] = user
+                logger.info(f"New user created: {user['user_id']}")
+
+            # 生成访问令牌
+            access_token = self._generate_token()
+            refresh_token = self._generate_token()
+
+            self._tokens[access_token] = {
+                "user_id": user["user_id"],
+                "email": email,
+                "expires": time.time() + 86400 * 7  # 7 天有效期
+            }
+
+            logger.info(f"User logged in: {user['user_id']}")
+
+            return AuthResult(
+                success=True,
+                user_id=user["user_id"],
+                email=email,
+                access_token=access_token,
+                refresh_token=refresh_token
+            )
+
+        # 正常模式：检查验证码是否存在
         stored = self._codes.get(email)
         if not stored:
             return AuthResult(success=False, error="请先获取验证码")
