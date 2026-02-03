@@ -16,11 +16,10 @@ class _InvestPageState extends State<InvestPage> {
   @override
   void initState() {
     super.initState();
-    _loadData();
   }
 
   Future<void> _loadData() async {
-    await context.read<AppState>().refreshPortfolio();
+    await context.read<AppState>().refreshHomeData();
   }
 
   @override

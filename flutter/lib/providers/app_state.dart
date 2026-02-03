@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/cache_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
+  final CacheService _cache = CacheService();
 
   // 用户状态
   bool _isLoggedIn = false;
@@ -120,6 +122,94 @@ class AppState extends ChangeNotifier {
   // ============================================================
   // Methods
   // ============================================================
+
+  Future<void> hydrateFromCache() async {
+    final cachedPortfolio = await _cache.getJson('cache_portfolio');
+    if (cachedPortfolio != null && cachedPortfolio['items'] is List) {
+      _portfolio = (cachedPortfolio['items'] as List)
+          .map((e) => PortfolioItem.fromJson(e))
+          .toList();
+    }
+
+    final cachedCash = await _cache.getJson('cache_cash_assets');
+    if (cachedCash != null && cachedCash['items'] is List) {
+      _cashAssets = (cachedCash['items'] as List).map((e) => Asset.fromJson(e)).toList();
+    }
+
+    final cachedOther = await _cache.getJson('cache_other_assets');
+    if (cachedOther != null && cachedOther['items'] is List) {
+      _otherAssets = (cachedOther['items'] as List).map((e) => Asset.fromJson(e)).toList();
+    }
+
+    final cachedLiabilities = await _cache.getJson('cache_liabilities');
+    if (cachedLiabilities != null && cachedLiabilities['items'] is List) {
+      _liabilities = (cachedLiabilities['items'] as List).map((e) => Asset.fromJson(e)).toList();
+    }
+
+    final cachedPrices = await _cache.getJson('cache_prices');
+    if (cachedPrices != null && cachedPrices['items'] is Map) {
+      _prices = {};
+      (cachedPrices['items'] as Map).forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          _prices[key.toString()] = PriceInfo.fromJson(value);
+        }
+      });
+    }
+
+    final cachedHistory = await _cache.getJson('cache_history');
+    if (cachedHistory != null && cachedHistory['items'] is List) {
+      _calculateHistoryStats(cachedHistory['items'] as List);
+    }
+
+    final cachedRates = await _cache.getJson('cache_exchange_rates');
+    if (cachedRates != null && cachedRates['rates'] is Map) {
+      updateExchangeRates(cachedRates['rates'] as Map<String, dynamic>);
+    }
+
+    // recompute totals
+    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+    _totalInvest = investTotalMV;
+    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+
+    _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
+    notifyListeners();
+  }
+
+  Future<void> savePortfolioToCache() async {
+    await _cache.setJson('cache_portfolio', {
+      'items': _portfolio.map((e) => e.toJson()).toList(),
+    });
+  }
+
+  Future<void> saveHomeCache(List<dynamic> history) async {
+    await _cache.setJson('cache_portfolio', {
+      'items': _portfolio.map((e) => e.toJson()).toList(),
+    });
+    await _cache.setJson('cache_cash_assets', {
+      'items': _cashAssets.map((e) => e.toJson()).toList(),
+    });
+    await _cache.setJson('cache_other_assets', {
+      'items': _otherAssets.map((e) => e.toJson()).toList(),
+    });
+    await _cache.setJson('cache_liabilities', {
+      'items': _liabilities.map((e) => e.toJson()).toList(),
+    });
+    await _cache.setJson('cache_history', {
+      'items': history,
+    });
+    await _cache.setJson('cache_exchange_rates', {
+      'rates': _exchangeRates,
+    });
+    await _cache.setJson('cache_prices', {
+      'items': _prices.map((key, value) => MapEntry(key, {
+        'price': value.price,
+        'yclose': value.yclose,
+        'chg': value.change,
+      })),
+    });
+  }
 
   /// 登录
   Future<bool> login(String userId, String email) async {
@@ -271,11 +361,21 @@ class AppState extends ChangeNotifier {
       final history = results[4] as List;
       _calculateHistoryStats(history);
 
+      await saveHomeCache(history);
+
       _portfolioLoaded = true;
       notifyListeners();
     } catch (e) {
       debugPrint('刷新首页数据失败: $e');
     }
+  }
+
+  /// 刷新所有核心数据（用于启动与下拉刷新）
+  Future<void> refreshAll() async {
+    await Future.wait([
+      refreshHomeData(),
+      loadExchangeRates(),
+    ]);
   }
 
   /// 计算历史统计数据
@@ -407,5 +507,3 @@ class AppState extends ChangeNotifier {
     return '$sign${value.toStringAsFixed(2)}%';
   }
 }
-
-

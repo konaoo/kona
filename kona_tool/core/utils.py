@@ -7,6 +7,7 @@ import time
 import logging
 from typing import Optional, Dict, Any
 from functools import wraps
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -144,3 +145,19 @@ def normalize_code(code: str) -> str:
     if not code:
         return ""
     return code.strip().lower()
+
+
+def http_get(url: str, params: Optional[Dict[str, Any]] = None,
+             headers: Optional[Dict[str, Any]] = None,
+             timeout: float = 3, retries: int = 2, backoff: float = 0.3):
+    """
+    HTTP GET with timeout + retry
+    """
+    last_err = None
+    for _ in range(retries):
+        try:
+            return requests.get(url, params=params, headers=headers, timeout=timeout)
+        except Exception as e:
+            last_err = e
+            time.sleep(backoff)
+    raise last_err if last_err else Exception("Unknown HTTP error")

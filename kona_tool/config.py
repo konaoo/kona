@@ -9,7 +9,7 @@ from pathlib import Path
 
 # 基础路径
 BASE_DIR = Path(__file__).parent.absolute()
-DATABASE_PATH = BASE_DIR / "portfolio.db"
+DATABASE_PATH = Path(os.getenv("KONA_DATABASE_PATH", str(BASE_DIR / "portfolio.db")))
 BACKUP_CSV_PATH = BASE_DIR / "portfolio.csv"
 TRANSACTION_PATH = BASE_DIR / "transactions.csv"
 

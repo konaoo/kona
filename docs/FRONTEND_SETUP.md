@@ -68,3 +68,4 @@ flutter run
 
 - If the app cannot call API, check the base URL
 - If Flutter fails to build, re-run `flutter doctor`
+- The app uses local cache for faster first paint; clear app storage if you need to reset

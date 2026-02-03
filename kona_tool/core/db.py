@@ -56,6 +56,7 @@ class DatabaseManager:
                 price REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 adjustment REAL DEFAULT 0.0,
+                user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -73,6 +74,7 @@ class DatabaseManager:
                 qty REAL NOT NULL,
                 amount REAL NOT NULL,
                 pnl REAL DEFAULT 0.0,
+                user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -84,6 +86,7 @@ class DatabaseManager:
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
+                user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -96,6 +99,7 @@ class DatabaseManager:
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
+                user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -108,6 +112,7 @@ class DatabaseManager:
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
+                user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -125,9 +130,24 @@ class DatabaseManager:
                 total_liability REAL NOT NULL,
                 total_pnl REAL NOT NULL,
                 day_pnl REAL NOT NULL,
+                user_id TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # Ensure user_id columns exist for older DBs
+        def _ensure_column(table: str, column: str, col_def: str) -> None:
+            cursor.execute(f'PRAGMA table_info({table})')
+            cols = [row[1] for row in cursor.fetchall()]
+            if column not in cols:
+                cursor.execute(f'ALTER TABLE {table} ADD COLUMN {col_def}')
+
+        _ensure_column('portfolio', 'user_id', 'user_id TEXT')
+        _ensure_column('transactions', 'user_id', 'user_id TEXT')
+        _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
+        _ensure_column('other_assets', 'user_id', 'user_id TEXT')
+        _ensure_column('liabilities', 'user_id', 'user_id TEXT')
+        _ensure_column('daily_snapshots', 'user_id', 'user_id TEXT')
 
         # 创建索引以优化查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)')
