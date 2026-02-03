@@ -117,6 +117,20 @@ class DatabaseManager:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # 创建用户表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                nickname TEXT,
+                register_method TEXT,
+                phone TEXT,
+                user_number INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        ''')
         
         # 创建每日快照表
         cursor.execute('''
@@ -148,6 +162,12 @@ class DatabaseManager:
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
         _ensure_column('liabilities', 'user_id', 'user_id TEXT')
         _ensure_column('daily_snapshots', 'user_id', 'user_id TEXT')
+        _ensure_column('users', 'nickname', 'nickname TEXT')
+        _ensure_column('users', 'register_method', 'register_method TEXT')
+        _ensure_column('users', 'phone', 'phone TEXT')
+        _ensure_column('users', 'user_number', 'user_number INTEGER')
+        _ensure_column('users', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('users', 'last_login', 'last_login TIMESTAMP')
 
         # 创建索引以优化查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)')

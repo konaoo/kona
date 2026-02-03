@@ -17,7 +17,7 @@ from core.parser import parse_code, get_display_code
 from core.snapshot import take_snapshot
 from core.news import news_fetcher
 from core.system import system_manager
-from core.auth import login_required, optional_auth, generate_token, get_or_create_user
+from core.auth import login_required, optional_auth, generate_token, get_or_create_user, get_user_profile
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -620,20 +620,36 @@ def auth_login():
     
     frontend_user_id = data['user_id']
     email = data['email']
+    nickname = data.get('nickname')
+    register_method = data.get('register_method')
+    phone = data.get('phone')
     
     # 获取或创建用户记录（返回实际使用的 user_id 和 数字ID）
-    actual_user_id, user_number = get_or_create_user(db, frontend_user_id, email)
+    actual_user_id, user_number = get_or_create_user(
+        db,
+        frontend_user_id,
+        email,
+        nickname=nickname,
+        register_method=register_method,
+        phone=phone,
+    )
     
     # 使用实际的 user_id 生成 JWT token
     token = generate_token(actual_user_id, email)
     
     logger.info(f"User logged in: {actual_user_id} ({email}) Num: {user_number}")
     
+    profile = get_user_profile(db, actual_user_id) or {}
     return jsonify({
         "token": token,
         "user_id": actual_user_id,
         "user_number": user_number,
-        "email": email
+        "email": email,
+        "nickname": profile.get("nickname"),
+        "register_method": profile.get("register_method"),
+        "phone": profile.get("phone"),
+        "created_at": profile.get("created_at"),
+        "last_login": profile.get("last_login"),
     })
 
 
@@ -641,6 +657,9 @@ def auth_login():
 @login_required
 def auth_me():
     """获取当前登录用户信息"""
+    profile = get_user_profile(db, g.user_id)
+    if profile:
+        return jsonify(profile)
     return jsonify({
         "user_id": g.user_id,
         "email": g.email
