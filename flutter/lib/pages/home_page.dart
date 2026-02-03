@@ -54,7 +54,7 @@ class _HomePageState extends State<HomePage> {
                       Row(
                         children: [
                           const Text(
-                            '总资产估值',
+                            '总资产估值（￥）',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppTheme.textSecondary,
@@ -82,7 +82,7 @@ class _HomePageState extends State<HomePage> {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                appState.formatAmount(appState.totalAsset),
+                        appState.formatAmount(appState.totalAsset, prefix: ''),
                                 style: const TextStyle(
                                   fontSize: FontSize.hero,
                                   fontWeight: FontWeight.bold,
@@ -112,37 +112,41 @@ class _HomePageState extends State<HomePage> {
 
                 // 资产分类卡片
                 AssetCard(
-                  title: '现金资产',
+                  title: '现金资产（￥）',
                   amount: appState.totalCash,
                   icon: Icons.account_balance_wallet,
                   hidden: appState.amountHidden,
+                  showCurrency: false,
                   onTap: () => widget.onNavigate('cash_detail'),
                 ),
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '投资资产',
+                  title: '投资资产（￥）',
                   amount: appState.totalInvest,
                   icon: Icons.trending_up,
                   hidden: appState.amountHidden,
+                  showCurrency: false,
                   onTap: () => widget.onSwitchTab(1),
                 ),
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '其他资产',
+                  title: '其他资产（￥）',
                   amount: appState.totalOther,
                   icon: Icons.dataset,
                   hidden: appState.amountHidden,
+                  showCurrency: false,
                   onTap: () => widget.onNavigate('other_detail'),
                 ),
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '我的负债',
+                  title: '我的负债（￥）',
                   amount: appState.totalLiability,
                   icon: Icons.credit_card,
                   hidden: appState.amountHidden,
+                  showCurrency: false,
                   onTap: () => widget.onNavigate('liability_detail'),
                 ),
 
@@ -171,7 +175,7 @@ class _HomePageState extends State<HomePage> {
     final isHistoryPeak = label == '历史峰值';
     final hasBaseline = isHistoryPeak ||
         (label == '本月变动' ? appState.hasMonthBaseline : label == '今年变动' ? appState.hasYearBaseline : true);
-    final displayText = hasBaseline ? appState.formatAmount(value) : '--';
+    final displayText = hasBaseline ? appState.formatAmount(value, prefix: '') : '--';
     final displayColor = hasBaseline
         ? (isHistoryPeak ? AppTheme.textPrimary : color)
         : AppTheme.textTertiary;

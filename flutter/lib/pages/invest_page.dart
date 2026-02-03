@@ -51,7 +51,7 @@ class _InvestPageState extends State<InvestPage> {
                                       Row(
                                         children: [
                                           const Text(
-                                            '总市值',
+                                            '总市值（￥）',
                                             style: TextStyle(
                                               fontSize: FontSize.base,
                                               color: AppTheme.textTertiary,
@@ -70,7 +70,7 @@ class _InvestPageState extends State<InvestPage> {
                                         ],
                                       ),
                                       Text(
-                                        appState.formatAmount(appState.investTotalMV),
+                                        appState.formatAmount(appState.investTotalMV, prefix: ''),
                                         style: const TextStyle(
                                           fontSize: FontSize.hero,
                                           fontWeight: FontWeight.bold,

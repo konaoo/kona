@@ -7,6 +7,7 @@ class AssetCard extends StatelessWidget {
   final double amount;
   final IconData icon;
   final bool hidden;
+  final bool showCurrency;
   final VoidCallback? onTap;
 
   const AssetCard({
@@ -15,13 +16,15 @@ class AssetCard extends StatelessWidget {
     required this.amount,
     required this.icon,
     this.hidden = false,
+    this.showCurrency = true,
     this.onTap,
   });
 
   String _formatAmount(double value) {
     if (hidden) return '****';
     if (value == 0) return '--';
-    return '¥${value.toStringAsFixed(0).replaceAllMapped(
+    final prefix = showCurrency ? '¥' : '';
+    return '$prefix${value.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]},',
     )}';
