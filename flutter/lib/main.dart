@@ -47,6 +47,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void initState() {
     super.initState();
     // 临时自动登录 - 方便测试
+    context.read<AppState>().hydrateFromCache();
     _autoLogin();
   }
 
@@ -55,11 +56,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
     final success = await appState.login('konaeee', 'konaeee@gmail.com');
     if (success && mounted) {
       setState(() => _isLoggedIn = true);
+      appState.refreshAll();
     }
   }
 
   void _onLoginSuccess() {
     setState(() => _isLoggedIn = true);
+    context.read<AppState>().refreshAll();
   }
 
   void _onLogout() {

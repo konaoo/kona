@@ -24,13 +24,11 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _refreshData();
   }
 
   Future<void> _refreshData() async {
     final appState = context.read<AppState>();
-    await appState.refreshHomeData();
-    await appState.loadExchangeRates();
+    await appState.refreshAll();
   }
 
   @override

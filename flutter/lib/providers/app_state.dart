@@ -370,6 +370,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 刷新所有核心数据（用于启动与下拉刷新）
+  Future<void> refreshAll() async {
+    await Future.wait([
+      refreshHomeData(),
+      loadExchangeRates(),
+    ]);
+  }
+
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
     if (history.isEmpty) {
