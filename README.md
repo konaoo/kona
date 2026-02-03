@@ -15,6 +15,7 @@
 - 部署方式说明：`docs/DEPLOYMENT.md`
 - Flutter 新电脑配置：`docs/FRONTEND_SETUP.md`
 - API 清单：`docs/API.md`
+- API 参数与返回：`docs/API_DETAILS.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
 
@@ -201,5 +202,6 @@ http://<服务器IP>:5003/api/rates
 - 本地运行：`docs/RUNBOOK.md`
 - Flutter 配置：`docs/FRONTEND_SETUP.md`
 - API 清单：`docs/API.md`
+- API 参数与返回：`docs/API_DETAILS.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
