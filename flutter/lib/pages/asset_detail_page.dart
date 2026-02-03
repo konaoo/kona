@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/asset.dart';
@@ -176,45 +177,83 @@ class AssetDetailPage extends StatelessWidget {
     if (asset.id == null) return;
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: Colors.black.withOpacity(0.55),
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppTheme.bgElevated,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text(
-            '删除资产',
-            style: TextStyle(color: AppTheme.textPrimary),
-          ),
-          content: Text(
-            '确定删除「${asset.name}」吗？',
-            style: const TextStyle(color: AppTheme.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final ok = await appState.deleteAsset(
-                  type: assetType,
-                  id: asset.id!,
-                );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  if (!ok) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('删除失败，请稍后重试')),
-                    );
-                  }
-                }
-              },
-              child: const Text(
-                '删除',
-                style: TextStyle(color: AppTheme.danger),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgCard.withOpacity(0.88),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xCC1A2744), Color(0xB30F1829)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '删除资产',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: FontSize.xl,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '确定删除「${asset.name}」吗？',
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: Spacing.xl),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.danger,
+                            ),
+                            onPressed: () async {
+                              final ok = await appState.deleteAsset(
+                                type: assetType,
+                                id: asset.id!,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                if (!ok) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('删除失败，请稍后重试')),
+                                  );
+                                }
+                              }
+                            },
+                            child: const Text('删除'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         );
       },
     );
