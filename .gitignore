@@ -47,3 +47,6 @@ node_modules/
 # local temp files
 kona_tool/app.pid
 kona_tool/config.py.backup
+
+# worktrees
+.worktrees/
