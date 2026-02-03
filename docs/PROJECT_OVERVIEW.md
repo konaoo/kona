@@ -37,6 +37,17 @@ flutter pub get
 flutter run
 ```
 
+## Data Refresh (SWR)
+
+- App loads cached data first (instant UI)
+- Background refresh updates data automatically
+- Switching pages does not clear or reload data
+- Pull-to-refresh triggers a manual refresh
+
+Key files:
+- `flutter/lib/providers/app_state.dart`
+- `flutter/lib/services/cache_service.dart`
+
 ---
 
 ## Backend (Flask)

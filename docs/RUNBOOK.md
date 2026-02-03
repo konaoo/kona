@@ -60,6 +60,17 @@ http://127.0.0.1:5003
 flutter run
 ```
 
+### Data Refresh Behavior (SWR)
+
+- App shows cached data immediately on launch
+- Background refresh updates data automatically
+- Switching pages does not clear data
+- Pull down to refresh on pages that support it
+
+If you need a clean slate for testing:
+- Clear app storage on the device, or
+- Uninstall and reinstall the app
+
 ---
 
 ## When Things Go Wrong

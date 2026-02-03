@@ -27,8 +27,8 @@ flutter/
 │  ├─ config/                  # App config, theme, API base URL
 │  ├─ models/                  # Data models
 │  ├─ pages/                   # Screens/pages
-│  ├─ providers/               # State management
-│  ├─ services/                # API client
+│  ├─ providers/               # State management (AppState + SWR)
+│  ├─ services/                # API client + cache service
 │  └─ widgets/                 # Reusable UI components
 ├─ assets/                     # Images and assets
 ├─ android/ ios/ web/ macos/ windows/ linux/  # Platform targets
@@ -36,6 +36,8 @@ flutter/
 ```
 
 Key file: `flutter/lib/config/api_config.dart`
+Cache file: `flutter/lib/services/cache_service.dart`
+State file: `flutter/lib/providers/app_state.dart`
 
 ---
 

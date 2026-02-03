@@ -34,7 +34,7 @@ This document explains what each module under `kona_tool/core/` is responsible f
 ## core/price.py
 
 - Price fetching and caching
-- Batch price queries and cache logic
+- Batch queries are cache-first (skip already cached codes)
 
 ## core/snapshot.py
 

@@ -97,6 +97,19 @@ flutter pub get
 flutter run
 ```
 
+**4) 数据刷新与缓存（SWR）**
+
+目标体验：打开 App 即刻有数据、切换页面不空白、后台自动更新。
+
+- 启动时先从本地缓存加载数据，页面立即显示
+- 后台触发刷新，更新后自动展示最新数据
+- 切换页面不会重复请求，不会清空现有数据
+- 下拉刷新触发更新（不使用手动刷新按钮）
+
+关键文件：
+- `flutter/lib/providers/app_state.dart`
+- `flutter/lib/services/cache_service.dart`
+
 ---
 
 **三、后端（kona_tool）**
