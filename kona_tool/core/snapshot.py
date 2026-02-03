@@ -128,6 +128,11 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
         'day_pnl': round(day_pnl, 2)
     }
 
+def is_weekend() -> bool:
+    """判断是否周末"""
+    return datetime.now().weekday() >= 5
+
+
 def take_snapshot(user_id: str = None) -> bool:
     """
     执行快照保存
@@ -138,9 +143,9 @@ def take_snapshot(user_id: str = None) -> bool:
         logger.info("Starting background snapshot task...")
         stats = calculate_portfolio_stats(user_id)
         
-        # 休市时 day_pnl 应为 0
-        if is_market_closed():
-            logger.info("Market is closed, setting day_pnl to 0")
+        # 周末 day_pnl 记为 0（避免无交易日异常）
+        if is_weekend():
+            logger.info("Weekend, setting day_pnl to 0")
             stats['day_pnl'] = 0.0
         
         # 保存到数据库

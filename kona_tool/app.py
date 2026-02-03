@@ -15,7 +15,7 @@ from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
 from core.asset_type import infer_asset_type
-from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed
+from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed, is_weekend
 from core.news import news_fetcher
 from core.system import system_manager
 from core.auth import login_required, optional_auth, generate_token, get_or_create_user, get_user_profile
@@ -562,7 +562,7 @@ def _save_snapshot_for_user(user_id=None):
     """保存用户当日快照（更实时）"""
     try:
         stats = calculate_portfolio_stats(user_id)
-        if is_market_closed():
+        if is_weekend():
             stats['day_pnl'] = 0.0
         db.save_daily_snapshot(stats, user_id)
     except Exception as e:

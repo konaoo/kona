@@ -17,11 +17,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
+  bool _overviewLoaded = false;
 
   // 收益日历相关
   String _calendarTimeType = 'day';
   Map<String, dynamic> _calendarData = {};
   bool _calendarLoading = false;
+  final Map<String, Map<String, dynamic>> _calendarCache = {};
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
@@ -33,13 +35,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _loadCalendar();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool force = false}) async {
+    if (_overviewLoaded && !force) return;
     setState(() => _loading = true);
     try {
-      final data = await _api.getAnalysisOverview(period: _currentPeriod);
+      final data = await _api.getAnalysisOverview(period: 'all');
       setState(() {
         _overview = data;
         _loading = false;
+        _overviewLoaded = true;
       });
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
@@ -47,13 +51,21 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
   }
 
-  Future<void> _loadCalendar() async {
+  Future<void> _loadCalendar({bool force = false}) async {
+    if (_calendarCache.containsKey(_calendarTimeType) && !force) {
+      setState(() {
+        _calendarData = _calendarCache[_calendarTimeType] ?? {};
+        _calendarLoading = false;
+      });
+      return;
+    }
     setState(() => _calendarLoading = true);
     try {
       final data = await _api.getAnalysisCalendar(timeType: _calendarTimeType);
       debugPrint('收益日历数据: $data');
       setState(() {
         _calendarData = data;
+        _calendarCache[_calendarTimeType] = data;
         _calendarLoading = false;
       });
     } catch (e) {
@@ -64,7 +76,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   void _changePeriod(String period) {
     setState(() => _currentPeriod = period);
-    _loadData();
   }
 
   @override
@@ -79,7 +90,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           _buildOverviewCard(appState),
           const SizedBox(height: Spacing.xl),
           // 收益日历
-          _buildCalendarSection(),
+          _buildCalendarSection(appState),
           const SizedBox(height: Spacing.xl),
           // 盈亏排行
           _buildRankSection(appState),
@@ -92,8 +103,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final periodData = _overview[_currentPeriod] ?? {};
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
-    final pnl = (apiPnl != null && apiPnl != 0) ? apiPnl : appState.investDayPnl;
-    final pnlRate = (apiRate != null && apiRate != 0) ? apiRate : appState.investDayPnlRate;
+    final isDay = _currentPeriod == 'day';
+    final pnl = isDay ? ((apiPnl != null && apiPnl != 0) ? apiPnl : appState.investDayPnl) : (apiPnl ?? 0);
+    final pnlRate = isDay ? ((apiRate != null && apiRate != 0) ? apiRate : appState.investDayPnlRate) : (apiRate ?? 0);
     final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
 
     return Container(
@@ -110,13 +122,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Text(
             _getPeriodTitle(_currentPeriod),
-            style: const TextStyle(fontSize: FontSize.base, color: AppTheme.textSecondary),
+            style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 4),
           Text(
-            _loading ? '加载中...' : '¥${pnl.toStringAsFixed(2)}',
+            _loading && !_overviewLoaded ? '加载中...' : '¥${pnl.toStringAsFixed(2)}',
             style: TextStyle(
-              fontSize: 32,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
               color: _loading ? AppTheme.textPrimary : pnlColor,
             ),
@@ -132,8 +144,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
               const SizedBox(width: 4),
               Text(
-                _loading ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
-                style: TextStyle(color: _loading ? AppTheme.textTertiary : pnlColor),
+                _loading && !_overviewLoaded ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: FontSize.sm, color: _loading ? AppTheme.textTertiary : pnlColor),
               ),
             ],
           ),
@@ -173,7 +185,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return GestureDetector(
       onTap: () => _changePeriod(value),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
@@ -181,7 +193,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: FontSize.base,
+            fontSize: FontSize.sm,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
           ),
@@ -190,7 +202,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
-  Widget _buildCalendarSection() {
+  Widget _buildCalendarSection(AppState appState) {
     // 根据时间类型生成日期网格数据
     final now = DateTime.now();
     List<Map<String, dynamic>> calendarGrid = [];
@@ -234,18 +246,26 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
     // 如果有实际数据，填充到网格中（用精确匹配）
     final items = _calendarData['items'] as List<dynamic>? ?? [];
-    final pnlMap = <String, double>{};
+    final pnlMap = <int, double>{};
     for (var item in items) {
       final label = item['label'] ?? '';
       final pnl = (item['pnl'] as num?)?.toDouble();
-      if (label.toString().isNotEmpty && pnl != null) {
-        pnlMap[label.toString()] = pnl;
+      final key = _parseLabelKey(label.toString());
+      if (key != null && pnl != null) {
+        pnlMap[key] = pnl;
       }
     }
+    // 当天数据兜底：如果日历无当天数据，用实时日盈亏补上
+    if (_calendarTimeType == 'day') {
+      final todayKey = DateTime.now().day;
+      final todayPnl = appState.investDayPnl;
+      if ((!pnlMap.containsKey(todayKey) || (pnlMap[todayKey] == 0 && todayPnl != 0)) && todayPnl != 0) {
+        pnlMap[todayKey] = todayPnl;
+      }
+    }
+
     for (var gridItem in calendarGrid) {
-      final key = _calendarTimeType == 'day'
-          ? gridItem['day'].toString()
-          : (_calendarTimeType == 'month' ? '${gridItem['day']}月' : gridItem['day'].toString());
+      final key = gridItem['day'] as int;
       if (pnlMap.containsKey(key)) {
         gridItem['pnl'] = pnlMap[key];
       }
@@ -466,8 +486,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   ),
                 )
               : Column(
-                  children: rankList.take(5).map((item) {
-                    return _buildRankCard(item, appState);
+                  children: rankList.take(5).toList().asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final item = entry.value;
+                    return _buildRankCard(item, appState, idx + 1);
                   }).toList(),
                 ),
         ),
@@ -517,7 +539,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return items;
   }
 
-  Widget _buildRankCard(_RankItem item, AppState appState) {
+  Widget _buildRankCard(_RankItem item, AppState appState, int rank) {
     final pnlColor = AppState.getPnlColor(item.pnl);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -528,6 +550,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ),
       child: Row(
         children: [
+          _rankBadge(rank),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,6 +613,52 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
     return c;
   }
+
+  int? _parseLabelKey(String label) {
+    final match = RegExp(r'\d+').allMatches(label).toList();
+    if (match.isEmpty) return null;
+    final last = match.last.group(0);
+    if (last == null) return null;
+    return int.tryParse(last);
+  }
+
+  Widget _rankBadge(int rank) {
+    if (rank > 3) {
+      return Container(
+        width: 22,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.bgElevated,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Text(
+          '$rank',
+          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+    final colors = [
+      const Color(0xFFFBBF24), // gold
+      const Color(0xFF94A3B8), // silver
+      const Color(0xFFD97706), // bronze
+    ];
+    final color = colors[rank - 1];
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color, width: 1),
+      ),
+      child: Text(
+        '$rank',
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
 }
 
 class AnalysisRankAllPage extends StatelessWidget {
@@ -634,6 +704,8 @@ class AnalysisRankAllPage extends StatelessWidget {
             ),
             child: Row(
               children: [
+                _rankBadge(index + 1),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -718,6 +790,44 @@ class AnalysisRankAllPage extends StatelessWidget {
       c = c.substring(0, c.length - 3);
     }
     return c;
+  }
+
+  Widget _rankBadge(int rank) {
+    if (rank > 3) {
+      return Container(
+        width: 22,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.bgElevated,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Text(
+          '$rank',
+          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+    final colors = [
+      const Color(0xFFFBBF24),
+      const Color(0xFF94A3B8),
+      const Color(0xFFD97706),
+    ];
+    final color = colors[rank - 1];
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color, width: 1),
+      ),
+      child: Text(
+        '$rank',
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700),
+      ),
+    );
   }
 }
 
