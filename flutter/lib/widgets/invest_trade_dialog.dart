@@ -27,9 +27,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   String? _errorText;
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
+  String _tradeMode = 'buy';
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
+  bool get _isTrade => widget.mode == 'trade';
 
   @override
   void dispose() {
@@ -168,7 +170,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         });
         return;
       }
-      if (_isBuy) {
+      final mode = _isTrade ? _tradeMode : (_isBuy ? 'buy' : 'sell');
+      if (mode == 'buy') {
         ok = await appState.buyInvestment(code: code, price: price, qty: qty);
       } else {
         ok = await appState.sellInvestment(code: code, price: price, qty: qty);
@@ -241,14 +244,77 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
+  Widget _buildTradeToggle() {
+    if (!_isTrade) return const SizedBox.shrink();
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: () => setState(() => _tradeMode = 'buy'),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: _tradeMode == 'buy' ? AppTheme.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _tradeMode == 'buy' ? AppTheme.accent : AppTheme.border,
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '买入',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _tradeMode == 'buy' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: InkWell(
+            onTap: () => setState(() => _tradeMode = 'sell'),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: _tradeMode == 'sell' ? AppTheme.danger : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _tradeMode == 'sell' ? AppTheme.danger : AppTheme.border,
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '卖出',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _tradeMode == 'sell' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = _isAdd
         ? '添加投资资产'
-        : _isBuy
-            ? '买入'
-            : '卖出';
-    final actionColor = _isBuy ? AppTheme.accent : AppTheme.danger;
+        : _isTrade
+            ? '买入 / 卖出'
+            : _isBuy
+                ? '买入'
+                : '卖出';
+    final actionColor = (_isTrade ? _tradeMode == 'buy' : _isBuy)
+        ? AppTheme.accent
+        : AppTheme.danger;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -327,6 +393,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   ),
                   const SizedBox(height: Spacing.lg),
                 ],
+                _buildTradeToggle(),
+                if (_isTrade) const SizedBox(height: Spacing.lg),
                 TextField(
                   controller: _priceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),

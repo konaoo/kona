@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
@@ -243,7 +242,11 @@ class _InvestPageState extends State<InvestPage> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showTradeActions(item),
+        onTap: () => showDialog(
+          context: context,
+          barrierColor: Colors.black.withOpacity(0.5),
+          builder: (_) => InvestTradeDialog(mode: 'trade', item: item),
+        ),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 4),
@@ -372,94 +375,4 @@ class _InvestPageState extends State<InvestPage> {
     return c;
   }
 
-  void _showTradeActions(dynamic item) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgCard.withOpacity(0.88),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xCC1A2744), Color(0xB30F1829)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.name,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: FontSize.xl,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatDisplayCode(item.code),
-                      style: const TextStyle(color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: Spacing.xl),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              showDialog(
-                                context: context,
-                                barrierColor: Colors.black.withOpacity(0.5),
-                                builder: (_) => InvestTradeDialog(mode: 'buy', item: item),
-                              );
-                            },
-                            child: const Text('买入'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
-                            onPressed: () {
-                              Navigator.pop(context);
-                              showDialog(
-                                context: context,
-                                barrierColor: Colors.black.withOpacity(0.5),
-                                builder: (_) => InvestTradeDialog(mode: 'sell', item: item),
-                              );
-                            },
-                            child: const Text('卖出'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
-                    Center(
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('取消'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
