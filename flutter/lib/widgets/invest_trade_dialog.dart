@@ -98,16 +98,21 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   void _onQueryChanged(String value) {
+    if (value.trim().isEmpty) {
+      setState(() {
+        _selected = null;
+        _results = [];
+        _errorText = null;
+        _searching = false;
+      });
+      return;
+    }
     if (_selected != null && value == (_selected?['name'] ?? '')) {
       return;
     }
     _selected = null;
     _errorText = null;
     _debounce?.cancel();
-    if (value.trim().isEmpty) {
-      setState(() => _results = []);
-      return;
-    }
     _debounce = Timer(const Duration(milliseconds: 300), () => _search(value.trim()));
   }
 
