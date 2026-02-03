@@ -27,5 +27,12 @@ jobs:
             nohup python3 app.py > app.log 2>&1 </dev/null &
             echo $! > app.pid
 
-            sleep 1
+            sleep 2
+
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/api/rates)
+            if [ "$status" != "200" ]; then
+              echo "Health check failed: HTTP $status"
+              exit 1
+            fi
+
             exit 0
