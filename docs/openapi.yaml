@@ -1,0 +1,797 @@
+openapi: 3.0.3
+info:
+  title: Kaka Portfolio API
+  version: "v12.0.0"
+  description: API for the Kaka portfolio management system
+servers:
+  - url: http://35.78.253.89:5003
+  - url: http://127.0.0.1:5003
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+    StatusOk:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  version:
+                    type: string
+  /api/rates:
+    get:
+      summary: Get FX rates
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: number
+  /api/price:
+    get:
+      summary: Get a single price
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  price:
+                    type: number
+                  yclose:
+                    type: number
+                  amt:
+                    type: number
+                  chg:
+                    type: number
+        "400":
+          description: Missing code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/prices/batch:
+    post:
+      summary: Get batch prices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                codes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    price:
+                      type: number
+                    yclose:
+                      type: number
+                    amt:
+                      type: number
+                    chg:
+                      type: number
+  /api/portfolio:
+    get:
+      summary: Get portfolio
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [all, stock_cn, stock_us, stock_hk, fund]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                    name:
+                      type: string
+                    qty:
+                      type: number
+                    price:
+                      type: number
+                    curr:
+                      type: string
+                    adjustment:
+                      type: number
+  /api/portfolio/add:
+    post:
+      summary: Add asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, qty, price]
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+                qty:
+                  type: number
+                price:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/update:
+    post:
+      summary: Update asset field
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, field, val]
+              properties:
+                code:
+                  type: string
+                field:
+                  type: string
+                val:
+                  type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/modify:
+    post:
+      summary: Modify asset qty/price/adjustment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, qty, price, adjustment]
+              properties:
+                code:
+                  type: string
+                qty:
+                  type: number
+                price:
+                  type: number
+                adjustment:
+                  type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/delete:
+    post:
+      summary: Delete asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/buy:
+    post:
+      summary: Buy asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, price, qty]
+              properties:
+                code:
+                  type: string
+                price:
+                  type: number
+                qty:
+                  type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/sell:
+    post:
+      summary: Sell asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, price, qty]
+              properties:
+                code:
+                  type: string
+                price:
+                  type: number
+                qty:
+                  type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/transactions:
+    get:
+      summary: Get transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /api/history:
+    get:
+      summary: Get history
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: days
+          required: false
+          schema:
+            type: integer
+            default: 365
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /api/search:
+    get:
+      summary: Search securities
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /api/news/latest:
+    get:
+      summary: Latest news
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /api/settings/info:
+    get:
+      summary: System info
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/settings/check_api:
+    get:
+      summary: Check API status
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/settings/backup:
+    get:
+      summary: Download DB backup
+      responses:
+        "200":
+          description: SQLite file
+  /api/settings/restore:
+    post:
+      summary: Restore DB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/cash_assets:
+    get:
+      summary: Get cash assets
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+  /api/cash_assets/add:
+    post:
+      summary: Add cash asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, amount]
+              properties:
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/cash_assets/delete:
+    post:
+      summary: Delete cash asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/cash_assets/update:
+    post:
+      summary: Update cash asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name, amount]
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/other_assets:
+    get:
+      summary: Get other assets
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+  /api/other_assets/add:
+    post:
+      summary: Add other asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, amount]
+              properties:
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/other_assets/delete:
+    post:
+      summary: Delete other asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/other_assets/update:
+    post:
+      summary: Update other asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name, amount]
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/liabilities:
+    get:
+      summary: Get liabilities
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+  /api/liabilities/add:
+    post:
+      summary: Add liability
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, amount]
+              properties:
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/liabilities/delete:
+    post:
+      summary: Delete liability
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/liabilities/update:
+    post:
+      summary: Update liability
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, name, amount]
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
+                amount:
+                  type: number
+                curr:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, email]
+              properties:
+                user_id:
+                  type: string
+                email:
+                  type: string
+                access_token:
+                  type: string
+      responses:
+        "200":
+          description: OK
+  /api/auth/me:
+    get:
+      summary: Current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+  /api/analysis/overview:
+    get:
+      summary: PnL overview
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [day, month, year, all]
+      responses:
+        "200":
+          description: OK
+  /api/analysis/calendar:
+    get:
+      summary: PnL calendar
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [day, month, year]
+      responses:
+        "200":
+          description: OK
+  /api/analysis/rank:
+    get:
+      summary: PnL rank
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [gain, loss, all]
+        - in: query
+          name: market
+          required: false
+          schema:
+            type: string
+            enum: [all, a, us, hk, fund]
+      responses:
+        "200":
+          description: OK
+  /api/snapshot/save:
+    post:
+      summary: Save daily snapshot
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+  /api/snapshot/trigger:
+    post:
+      summary: Trigger snapshot
+      responses:
+        "200":
+          description: OK
+  /api/snapshot/fix:
+    post:
+      summary: Fix snapshot day_pnl
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dates:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: OK

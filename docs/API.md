@@ -4,6 +4,12 @@ This list is based on `kona_tool/app.py` routes. Methods are shown when defined.
 
 ---
 
+## Detailed Request/Response
+
+See `docs/API_DETAILS.md` for parameters and response formats.
+
+---
+
 ## Web Pages
 
 - `GET /` main investment page
