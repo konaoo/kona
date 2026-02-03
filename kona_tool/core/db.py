@@ -1137,44 +1137,47 @@ class DatabaseManager:
             elif period == 'month':
                 month_start = today.strftime('%Y-%m-01')
                 cursor.execute(f'''
-                    SELECT SUM(day_pnl) as total_pnl, 
-                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? AND {user_condition} ORDER BY date ASC LIMIT 1) as base
-                    FROM daily_snapshots 
+                    SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
-                ''', (month_start,) + user_param + (month_start, today.strftime('%Y-%m-%d')) + user_param)
-                row = cursor.fetchone()
-                if row:
-                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
-                    base = float(row['base']) if row['base'] else 1
+                    ORDER BY date ASC
+                ''', (month_start, today.strftime('%Y-%m-%d')) + user_param)
+                rows = cursor.fetchall()
+                if rows:
+                    first = rows[0]
+                    last = rows[-1]
+                    pnl = float(last['total_pnl']) - float(first['total_pnl'])
+                    base = float(first['total_invest']) if first['total_invest'] else 1
                     return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
             
             elif period == 'year':
                 year_start = today.strftime('%Y-01-01')
                 cursor.execute(f'''
-                    SELECT SUM(day_pnl) as total_pnl,
-                           (SELECT total_invest FROM daily_snapshots WHERE date >= ? AND {user_condition} ORDER BY date ASC LIMIT 1) as base
-                    FROM daily_snapshots 
+                    SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
-                ''', (year_start,) + user_param + (year_start, today.strftime('%Y-%m-%d')) + user_param)
-                row = cursor.fetchone()
-                if row:
-                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
-                    base = float(row['base']) if row['base'] else 1
+                    ORDER BY date ASC
+                ''', (year_start, today.strftime('%Y-%m-%d')) + user_param)
+                rows = cursor.fetchall()
+                if rows:
+                    first = rows[0]
+                    last = rows[-1]
+                    pnl = float(last['total_pnl']) - float(first['total_pnl'])
+                    base = float(first['total_invest']) if first['total_invest'] else 1
                     return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
             
             else:  # all
                 cursor.execute(f'''
-                    SELECT SUM(day_pnl) as total_pnl,
-                           (SELECT total_invest FROM daily_snapshots WHERE {user_condition} ORDER BY date ASC LIMIT 1) as base
-                    FROM daily_snapshots
+                    SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE {user_condition}
-                ''', user_param + user_param)
-                row = cursor.fetchone()
-                if row:
-                    pnl = float(row['total_pnl']) if row['total_pnl'] else 0
-                    base = float(row['base']) if row['base'] else 1
+                    ORDER BY date ASC
+                ''', user_param)
+                rows = cursor.fetchall()
+                if rows:
+                    first = rows[0]
+                    last = rows[-1]
+                    pnl = float(last['total_pnl']) - float(first['total_pnl'])
+                    base = float(first['total_invest']) if first['total_invest'] else 1
                     return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
         
@@ -1210,14 +1213,19 @@ class DatabaseManager:
             if time_type == 'day':
                 month_start = today.strftime('%Y-%m-01')
                 cursor.execute(f'''
-                    SELECT date, day_pnl FROM daily_snapshots 
+                    SELECT date, day_pnl, total_pnl FROM daily_snapshots 
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                 ''', (month_start, today.strftime('%Y-%m-%d')) + user_param)
                 
+                prev_total = None
                 for row in cursor.fetchall():
                     day = int(row['date'].split('-')[2])
-                    pnl = float(row['day_pnl'])
+                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0
+                    if (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
+                        pnl = float(row['total_pnl']) - prev_total
+                    if row['total_pnl'] is not None:
+                        prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl
                 
@@ -1226,34 +1234,46 @@ class DatabaseManager:
             elif time_type == 'month':
                 year_start = today.strftime('%Y-01-01')
                 cursor.execute(f'''
-                    SELECT strftime('%m', date) as month, SUM(day_pnl) as month_pnl 
-                    FROM daily_snapshots 
+                    SELECT date, total_pnl FROM daily_snapshots 
                     WHERE date >= ? AND date <= ? AND {user_condition}
-                    GROUP BY strftime('%Y-%m', date)
-                    ORDER BY month ASC
+                    ORDER BY date ASC
                 ''', (year_start, today.strftime('%Y-%m-%d')) + user_param)
                 
+                month_first = {}
+                month_last = {}
                 for row in cursor.fetchall():
-                    month = int(row['month'])
-                    pnl = float(row['month_pnl']) if row['month_pnl'] else 0
-                    items.append({'label': f"{month}月", 'pnl': pnl})
+                    date = row['date']
+                    m = int(date.split('-')[1])
+                    tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
+                    if m not in month_first:
+                        month_first[m] = tp
+                    month_last[m] = tp
+                for m in sorted(month_last.keys()):
+                    pnl = month_last[m] - month_first.get(m, month_last[m])
+                    items.append({'label': f"{m}月", 'pnl': pnl})
                     total_pnl += pnl
                 
                 title = f"{today.year}年累计"
             
             elif time_type == 'year':
                 cursor.execute(f'''
-                    SELECT strftime('%Y', date) as year, SUM(day_pnl) as year_pnl 
-                    FROM daily_snapshots 
+                    SELECT date, total_pnl FROM daily_snapshots 
                     WHERE {user_condition}
-                    GROUP BY strftime('%Y', date)
-                    ORDER BY year ASC
+                    ORDER BY date ASC
                 ''', user_param)
                 
+                year_first = {}
+                year_last = {}
                 for row in cursor.fetchall():
-                    year = row['year']
-                    pnl = float(row['year_pnl']) if row['year_pnl'] else 0
-                    items.append({'label': year, 'pnl': pnl})
+                    date = row['date']
+                    y = int(date.split('-')[0])
+                    tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
+                    if y not in year_first:
+                        year_first[y] = tp
+                    year_last[y] = tp
+                for y in sorted(year_last.keys()):
+                    pnl = year_last[y] - year_first.get(y, year_last[y])
+                    items.append({'label': str(y), 'pnl': pnl})
                     total_pnl += pnl
                 
                 title = "总累计"

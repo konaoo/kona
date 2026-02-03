@@ -415,7 +415,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         child: Text(
           text,
           style: TextStyle(
-            fontSize: FontSize.base,
+            fontSize: FontSize.sm,
             color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
           ),
         ),
@@ -547,6 +547,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
         borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppTheme.border.withOpacity(0.6)),
       ),
       child: Row(
         children: [
@@ -623,39 +624,24 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _rankBadge(int rank) {
-    if (rank > 3) {
-      return Container(
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppTheme.bgElevated,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Text(
-          '$rank',
-          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
-        ),
-      );
-    }
     final colors = [
       const Color(0xFFFBBF24), // gold
       const Color(0xFF94A3B8), // silver
       const Color(0xFFD97706), // bronze
     ];
-    final color = colors[rank - 1];
+    final color = rank <= 3 ? colors[rank - 1] : AppTheme.textTertiary;
     return Container(
-      width: 24,
-      height: 24,
+      width: 26,
+      height: 26,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color, width: 1),
+        color: Colors.transparent,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 1.6),
       ),
       child: Text(
         '$rank',
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700),
+        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -701,6 +687,7 @@ class AnalysisRankAllPage extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.bgCard,
               borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppTheme.border.withOpacity(0.6)),
             ),
             child: Row(
               children: [
