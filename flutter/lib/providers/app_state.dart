@@ -41,6 +41,8 @@ class AppState extends ChangeNotifier {
   double _monthChange = 0;
   double _yearChange = 0;
   double _historyPeak = 0;
+  bool _hasMonthBaseline = false;
+  bool _hasYearBaseline = false;
 
   // 金额隐藏
   bool _amountHidden = false;
@@ -76,6 +78,8 @@ class AppState extends ChangeNotifier {
   double get monthChange => _monthChange;
   double get yearChange => _yearChange;
   double get historyPeak => _historyPeak;
+  bool get hasMonthBaseline => _hasMonthBaseline;
+  bool get hasYearBaseline => _hasYearBaseline;
 
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
@@ -384,6 +388,8 @@ class AppState extends ChangeNotifier {
       _monthChange = 0;
       _yearChange = 0;
       _historyPeak = 0;
+      _hasMonthBaseline = false;
+      _hasYearBaseline = false;
       return;
     }
 
@@ -392,6 +398,8 @@ class AppState extends ChangeNotifier {
     double? monthStart;
     double? yearStart;
     double peak = 0;
+    bool monthFromCurrent = false;
+    bool yearFromCurrent = false;
 
     // 按日期排序
     final sortedHistory = List<Map<String, dynamic>>.from(
@@ -416,12 +424,14 @@ class AppState extends ChangeNotifier {
       // 本月初数据（找到本月第一条记录）
       if (date.year == now.year && date.month == now.month && monthStart == null) {
         monthStart = totalAsset;
+        monthFromCurrent = true;
         debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
       }
 
       // 今年初数据（找到今年第一条记录）
       if (date.year == now.year && yearStart == null) {
         yearStart = totalAsset;
+        yearFromCurrent = true;
         debugPrint('找到今年数据: ${item['date']}, 资产=$totalAsset');
       }
     }
@@ -451,8 +461,10 @@ class AppState extends ChangeNotifier {
     }
 
     _historyPeak = peak;
-    _monthChange = monthStart != null ? _totalAsset - monthStart : 0;
-    _yearChange = yearStart != null ? _totalAsset - yearStart : 0;
+    _hasMonthBaseline = monthFromCurrent;
+    _hasYearBaseline = yearFromCurrent;
+    _monthChange = (monthStart != null && monthFromCurrent) ? _totalAsset - monthStart : 0;
+    _yearChange = (yearStart != null && yearFromCurrent) ? _totalAsset - yearStart : 0;
 
     debugPrint('计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)');
   }

@@ -157,8 +157,13 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildMilestone(String label, double value, AppState appState) {
     final color = value >= 0 ? AppTheme.success : AppTheme.danger;
-    final sign = value > 0 ? '+' : '';
     final isHistoryPeak = label == '历史峰值';
+    final hasBaseline = isHistoryPeak ||
+        (label == '本月变动' ? appState.hasMonthBaseline : label == '今年变动' ? appState.hasYearBaseline : true);
+    final displayText = hasBaseline ? appState.formatAmount(value) : '--';
+    final displayColor = hasBaseline
+        ? (isHistoryPeak ? AppTheme.textPrimary : color)
+        : AppTheme.textTertiary;
 
     return Expanded(
       child: Column(
@@ -169,21 +174,13 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            value == 0 ? '--' : appState.formatAmount(value),
+            displayText,
             style: TextStyle(
               fontSize: FontSize.lg,
               fontWeight: FontWeight.w600,
-              color: isHistoryPeak ? AppTheme.textPrimary : color,
+              color: displayColor,
             ),
           ),
-          if (!isHistoryPeak && value != 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                '$sign${value.toStringAsFixed(0)}',
-                style: TextStyle(fontSize: FontSize.sm, color: color),
-              ),
-            ),
         ],
       ),
     );
