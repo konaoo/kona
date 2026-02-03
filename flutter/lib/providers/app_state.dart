@@ -423,6 +423,49 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// 搜索股票/基金
+  Future<List<dynamic>> searchStocks(String query) async {
+    return await _api.searchStocks(query);
+  }
+
+  /// 添加投资资产
+  Future<bool> addInvestment({
+    required String code,
+    required String name,
+    required double price,
+    required double qty,
+    String? curr,
+  }) async {
+    final ok = await _api.addPortfolioAsset(code, name, price, qty, curr: curr);
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
+  /// 买入（加仓）
+  Future<bool> buyInvestment({
+    required String code,
+    required double price,
+    required double qty,
+  }) async {
+    final ok = await _api.buyPortfolioAsset(code, price, qty);
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
+  /// 卖出（减仓）
+  Future<bool> sellInvestment({
+    required String code,
+    required double price,
+    required double qty,
+  }) async {
+    final ok = await _api.sellPortfolioAsset(code, price, qty);
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
     if (history.isEmpty) {

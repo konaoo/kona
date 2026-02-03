@@ -108,6 +108,66 @@ class ApiService {
     return await _get(ApiConfig.portfolio) ?? [];
   }
 
+  /// 搜索股票/基金
+  Future<List<dynamic>> searchStocks(String query) async {
+    if (query.isEmpty) return [];
+    return await _get('${ApiConfig.search}?q=$query') ?? [];
+  }
+
+  /// 添加投资资产
+  Future<bool> addPortfolioAsset(String code, String name, double price, double qty, {String? curr}) async {
+    try {
+      await _post(ApiConfig.portfolioAdd, {
+        'code': code,
+        'name': name,
+        'price': price,
+        'qty': qty,
+        if (curr != null && curr.isNotEmpty) 'curr': curr,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 买入（加仓）
+  Future<bool> buyPortfolioAsset(String code, double price, double qty) async {
+    try {
+      await _post(ApiConfig.portfolioBuy, {
+        'code': code,
+        'price': price,
+        'qty': qty,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 卖出（减仓）
+  Future<bool> sellPortfolioAsset(String code, double price, double qty) async {
+    try {
+      await _post(ApiConfig.portfolioSell, {
+        'code': code,
+        'price': price,
+        'qty': qty,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 删除持仓
+  Future<bool> deletePortfolioAsset(String code) async {
+    try {
+      await _post(ApiConfig.portfolioDelete, {'code': code});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// 批量获取价格
   Future<Map<String, dynamic>> getPricesBatch(List<String> codes) async {
     return await _post(ApiConfig.pricesBatch, {'codes': codes}) ?? {};

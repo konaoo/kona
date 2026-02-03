@@ -11,6 +11,7 @@ import 'pages/news_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/asset_detail_page.dart';
 import 'widgets/add_asset_dialog.dart';
+import 'widgets/invest_trade_dialog.dart';
 
 void main() {
   runApp(const MyApp());
@@ -132,6 +133,14 @@ class _MainAppState extends State<MainApp> {
     );
   }
 
+  void _showAddInvestment() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => const InvestTradeDialog(mode: 'add'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,10 +157,10 @@ class _MainAppState extends State<MainApp> {
           ProfilePage(onLogout: widget.onLogout),
         ],
       ),
-      floatingActionButton: _currentIndex == 0
+      floatingActionButton: _currentIndex == 0 || _currentIndex == 1
           ? FloatingActionButton(
-              heroTag: 'add_asset_home',
-              onPressed: _showQuickAdd,
+              heroTag: _currentIndex == 0 ? 'add_asset_home' : 'add_investment',
+              onPressed: _currentIndex == 0 ? _showQuickAdd : _showAddInvestment,
               backgroundColor: AppTheme.accent,
               child: const Icon(Icons.add, color: AppTheme.textPrimary),
             )

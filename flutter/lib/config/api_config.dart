@@ -9,6 +9,10 @@ class ApiConfig {
   /// API 端点
   static const String login = '/api/auth/login';
   static const String portfolio = '/api/portfolio';
+  static const String portfolioAdd = '/api/portfolio/add';
+  static const String portfolioBuy = '/api/portfolio/buy';
+  static const String portfolioSell = '/api/portfolio/sell';
+  static const String portfolioDelete = '/api/portfolio/delete';
   static const String pricesBatch = '/api/prices/batch';
   static const String cashAssets = '/api/cash_assets';
   static const String otherAssets = '/api/other_assets';
@@ -19,4 +23,5 @@ class ApiConfig {
   static const String news = '/api/news/latest';
   static const String rates = '/api/rates';
   static const String history = '/api/history';
+  static const String search = '/api/search';
 }

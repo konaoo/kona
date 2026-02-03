@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../widgets/gradient_card.dart';
+import '../widgets/invest_trade_dialog.dart';
 
 /// 投资页面 - 持仓列表
 class InvestPage extends StatefulWidget {
@@ -238,15 +240,20 @@ class _InvestPageState extends State<InvestPage> {
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 4),
-      padding: const EdgeInsets.all(Spacing.md),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showTradeActions(item),
         borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      child: Row(
-        children: [
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 4),
+          padding: const EdgeInsets.all(Spacing.md),
+          decoration: BoxDecoration(
+            color: AppTheme.bgCard,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: Row(
+            children: [
           // 名称
           SizedBox(
             width: 80,
@@ -262,7 +269,7 @@ class _InvestPageState extends State<InvestPage> {
                   ),
                 ),
                 Text(
-                  item.code,
+                  _formatDisplayCode(item.code),
                   style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
                 ),
               ],
@@ -300,23 +307,24 @@ class _InvestPageState extends State<InvestPage> {
               ],
             ),
           ),
-          // 盈亏
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  appState.formatPnl(holdingPnl),
-                  style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
-                ),
-                Text(
-                  appState.formatPct(holdingPnlPct),
-                  style: TextStyle(fontSize: FontSize.xs, color: pnlColor),
-                ),
-              ],
+            // 盈亏
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    appState.formatPnl(holdingPnl),
+                    style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
+                  ),
+                  Text(
+                    appState.formatPct(holdingPnlPct),
+                    style: TextStyle(fontSize: FontSize.xs, color: pnlColor),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -342,5 +350,115 @@ class _InvestPageState extends State<InvestPage> {
   Color _getHoldingPnlRateColor(AppState appState) {
     final rate = _calculateHoldingPnlRate(appState);
     return AppState.getPnlColor(rate);
+  }
+
+  String _formatDisplayCode(String code) {
+    var c = code;
+    if (c.toLowerCase().startsWith('gb_')) {
+      c = c.substring(3).toUpperCase();
+    } else if (c.toLowerCase().startsWith('f_')) {
+      c = c.substring(2);
+    } else if (c.toLowerCase().startsWith('ft_')) {
+      c = c.substring(3);
+    } else if (c.toLowerCase().startsWith('sh') ||
+        c.toLowerCase().startsWith('sz') ||
+        c.toLowerCase().startsWith('bj')) {
+      c = c.substring(2);
+    }
+    if (c.toUpperCase().endsWith('.HK')) {
+      c = c.substring(0, c.length - 3);
+    }
+    return c;
+  }
+
+  void _showTradeActions(dynamic item) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgCard.withOpacity(0.88),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xCC1A2744), Color(0xB30F1829)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: FontSize.xl,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatDisplayCode(item.code),
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: Spacing.xl),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              showDialog(
+                                context: context,
+                                barrierColor: Colors.black.withOpacity(0.5),
+                                builder: (_) => InvestTradeDialog(mode: 'buy', item: item),
+                              );
+                            },
+                            child: const Text('买入'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              showDialog(
+                                context: context,
+                                barrierColor: Colors.black.withOpacity(0.5),
+                                builder: (_) => InvestTradeDialog(mode: 'sell', item: item),
+                              );
+                            },
+                            child: const Text('卖出'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
