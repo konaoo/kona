@@ -382,6 +382,25 @@ class AppState extends ChangeNotifier {
     ]);
   }
 
+  /// 添加资产（现金/其他/负债）
+  Future<bool> addAsset({
+    required String type,
+    required String name,
+    required double amount,
+  }) async {
+    bool ok = false;
+    if (type == 'cash') {
+      ok = await _api.addCashAsset(name, amount);
+    } else if (type == 'other') {
+      ok = await _api.addOtherAsset(name, amount);
+    } else if (type == 'liability') {
+      ok = await _api.addLiability(name, amount);
+    }
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
     if (history.isEmpty) {

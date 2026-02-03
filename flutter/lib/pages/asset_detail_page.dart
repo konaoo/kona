@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/asset.dart';
+import '../widgets/add_asset_dialog.dart';
 
 /// 资产详情页面
 class AssetDetailPage extends StatelessWidget {
@@ -26,6 +27,13 @@ class AssetDetailPage extends StatelessWidget {
           style: const TextStyle(color: AppTheme.textPrimary),
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add_asset_detail_$assetType',
+        onPressed: () => _showAddDialog(context),
+        backgroundColor: AppTheme.accent,
+        child: const Icon(Icons.add, color: AppTheme.textPrimary),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Consumer<AppState>(
         builder: (context, appState, child) {
           final assets = _getAssets(appState);
@@ -145,7 +153,7 @@ class AssetDetailPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '¥${asset.amount.toStringAsFixed(2)}',
+                  asset.amount.toStringAsFixed(2),
                   style: const TextStyle(
                     fontSize: FontSize.base,
                     color: AppTheme.textSecondary,
@@ -166,5 +174,13 @@ class AssetDetailPage extends StatelessWidget {
 
   void _showDeleteDialog(Asset asset, AppState appState) {
     // TODO: 实现删除功能
+  }
+
+  void _showAddDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => AddAssetDialog(fixedAssetType: assetType),
+    );
   }
 }

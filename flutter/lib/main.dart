@@ -10,6 +10,7 @@ import 'pages/analysis_page.dart';
 import 'pages/news_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/asset_detail_page.dart';
+import 'widgets/add_asset_dialog.dart';
 
 void main() {
   runApp(const MyApp());
@@ -123,6 +124,14 @@ class _MainAppState extends State<MainApp> {
     );
   }
 
+  void _showQuickAdd() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => const AddAssetDialog(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,6 +148,15 @@ class _MainAppState extends State<MainApp> {
           ProfilePage(onLogout: widget.onLogout),
         ],
       ),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton(
+              heroTag: 'add_asset_home',
+              onPressed: _showQuickAdd,
+              backgroundColor: AppTheme.accent,
+              child: const Icon(Icons.add, color: AppTheme.textPrimary),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Color(0xFF0F172A),
