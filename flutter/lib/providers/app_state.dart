@@ -1,0 +1,411 @@
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../models/portfolio.dart';
+import '../models/asset.dart';
+
+/// 应用状态管理
+class AppState extends ChangeNotifier {
+  final ApiService _api = ApiService();
+
+  // 用户状态
+  bool _isLoggedIn = false;
+  String? _token;
+  String? _email;
+  String? _userId;
+  int? _userNumber;
+
+  // 资产数据
+  double _totalAsset = 0;
+  double _totalCash = 0;
+  double _totalInvest = 0;
+  double _totalOther = 0;
+  double _totalLiability = 0;
+
+  // 投资组合
+  List<PortfolioItem> _portfolio = [];
+  Map<String, PriceInfo> _prices = {};
+  String _currentCategory = 'all';
+  bool _portfolioLoaded = false;
+
+  // 资产列表
+  List<Asset> _cashAssets = [];
+  List<Asset> _otherAssets = [];
+  List<Asset> _liabilities = [];
+
+  // 汇率
+  Map<String, double> _exchangeRates = {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
+
+  // 历史数据
+  double _monthChange = 0;
+  double _yearChange = 0;
+  double _historyPeak = 0;
+
+  // 金额隐藏
+  bool _amountHidden = false;
+
+  // ============================================================
+  // Getters
+  // ============================================================
+
+  bool get isLoggedIn => _isLoggedIn;
+  String? get token => _token;
+  String? get email => _email;
+  String? get userId => _userId;
+  int? get userNumber => _userNumber;
+
+  double get totalAsset => _totalAsset;
+  double get totalCash => _totalCash;
+  double get totalInvest => _totalInvest;
+  double get totalOther => _totalOther;
+  double get totalLiability => _totalLiability;
+
+  List<PortfolioItem> get portfolio => _portfolio;
+  Map<String, PriceInfo> get prices => _prices;
+  String get currentCategory => _currentCategory;
+  bool get portfolioLoaded => _portfolioLoaded;
+
+  List<Asset> get cashAssets => _cashAssets;
+  List<Asset> get otherAssets => _otherAssets;
+  List<Asset> get liabilities => _liabilities;
+
+  Map<String, double> get exchangeRates => _exchangeRates;
+  bool get amountHidden => _amountHidden;
+
+  double get monthChange => _monthChange;
+  double get yearChange => _yearChange;
+  double get historyPeak => _historyPeak;
+
+  /// 过滤后的投资组合
+  List<PortfolioItem> get filteredPortfolio {
+    if (_currentCategory == 'all') return _portfolio;
+    return _portfolio.where((item) => item.marketType == _currentCategory).toList();
+  }
+
+  /// 投资总市值
+  double get investTotalMV {
+    double total = 0;
+    for (var item in _portfolio) {
+      final priceInfo = _prices[item.code];
+      final currentPrice = priceInfo?.price ?? item.price;
+      total += currentPrice * item.qty;
+    }
+    return total;
+  }
+
+  /// 投资今日盈亏
+  double get investDayPnl {
+    double total = 0;
+    for (var item in _portfolio) {
+      final priceInfo = _prices[item.code];
+      if (priceInfo != null) {
+        total += priceInfo.change * item.qty;
+      }
+    }
+    return total;
+  }
+
+  /// 投资持仓盈亏
+  double get investHoldingPnl {
+    double total = 0;
+    for (var item in _portfolio) {
+      final priceInfo = _prices[item.code];
+      final currentPrice = priceInfo?.price ?? item.price;
+      final mv = currentPrice * item.qty;
+      final cost = item.price * item.qty;
+      total += mv - cost + item.adjustment;
+    }
+    return total;
+  }
+
+  // ============================================================
+  // Methods
+  // ============================================================
+
+  /// 登录
+  Future<bool> login(String userId, String email) async {
+    try {
+      final result = await _api.login(userId, email);
+      if (result != null && result['token'] != null) {
+        _isLoggedIn = true;
+        _token = result['token'];
+        _email = result['email'];
+        _userId = result['user_id'];
+        _userNumber = result['user_number'];
+        _api.setToken(result['token']);
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 设置登录状态
+  void setLoggedIn({
+    required String token,
+    required String email,
+    required String userId,
+    int? userNumber,
+  }) {
+    _isLoggedIn = true;
+    _token = token;
+    _email = email;
+    _userId = userId;
+    _userNumber = userNumber;
+    _api.setToken(token);
+    notifyListeners();
+  }
+
+  /// 退出登录
+  void logout() {
+    _isLoggedIn = false;
+    _token = null;
+    _email = null;
+    _userId = null;
+    _userNumber = null;
+    _api.clearToken();
+    _portfolio = [];
+    _prices = {};
+    _cashAssets = [];
+    _otherAssets = [];
+    _liabilities = [];
+    _portfolioLoaded = false;
+    notifyListeners();
+  }
+
+  /// 切换金额隐藏
+  void toggleAmountHidden() {
+    _amountHidden = !_amountHidden;
+    notifyListeners();
+  }
+
+  /// 格式化金额（支持隐藏）
+  String formatAmount(double value, {String prefix = '¥'}) {
+    if (_amountHidden) return '****';
+    return '$prefix${value.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    )}';
+  }
+
+  /// 设置分类
+  void setCategory(String category) {
+    _currentCategory = category;
+    notifyListeners();
+  }
+
+  /// 更新汇率
+  void updateExchangeRates(Map<String, dynamic> rates) {
+    _exchangeRates = {
+      'USD': (rates['USD'] as num?)?.toDouble() ?? 7.25,
+      'HKD': (rates['HKD'] as num?)?.toDouble() ?? 0.93,
+      'CNY': 1.0,
+    };
+    notifyListeners();
+  }
+
+  /// 刷新首页数据
+  Future<void> refreshHomeData() async {
+    try {
+      // 并行获取数据
+      final results = await Future.wait([
+        _api.getCashAssets(),
+        _api.getOtherAssets(),
+        _api.getLiabilities(),
+        _api.getPortfolio(),
+        _api.getHistory(),
+      ]);
+
+      _cashAssets = (results[0] as List).map((e) => Asset.fromJson(e)).toList();
+      _otherAssets = (results[1] as List).map((e) => Asset.fromJson(e)).toList();
+      _liabilities = (results[2] as List).map((e) => Asset.fromJson(e)).toList();
+      _portfolio = (results[3] as List).map((e) => PortfolioItem.fromJson(e)).toList();
+
+      // 获取价格
+      if (_portfolio.isNotEmpty) {
+        final codes = _portfolio.map((e) => e.code).toList();
+
+        // 代码转换：将前端代码转换为价格API需要的格式
+        final priceApiCodes = codes.map((code) {
+          // gb_boxx -> boxx (去掉 gb_ 前缀)
+          if (code.startsWith('gb_')) {
+            return code.substring(3); // 去掉 "gb_" 前缀
+          }
+          return code;
+        }).toList();
+
+        debugPrint('请求价格的代码列表: $codes');
+        debugPrint('价格API代码转换: $priceApiCodes');
+
+        final pricesData = await _api.getPricesBatch(priceApiCodes);
+        debugPrint('价格API返回数据: ${pricesData.keys.toList()}');
+
+        // 转换价格数据，将价格API的key映射回原始代码
+        _prices = {};
+        for (int i = 0; i < codes.length; i++) {
+          final originalCode = codes[i];
+          final apiCode = priceApiCodes[i];
+
+          if (pricesData.containsKey(apiCode)) {
+            try {
+              _prices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
+              debugPrint('成功解析价格: $originalCode (API: $apiCode) = ${pricesData[apiCode]}');
+            } catch (e) {
+              debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
+            }
+          } else {
+            debugPrint('警告: 价格API未返回代码 $apiCode (原始: $originalCode)');
+          }
+        }
+      }
+
+      // 计算总额（必须在历史数据计算之前）
+      _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+      _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
+      _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+      _totalInvest = investTotalMV;
+      _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+
+      // 处理历史数据（必须在总资产计算之后）
+      final history = results[4] as List;
+      _calculateHistoryStats(history);
+
+      _portfolioLoaded = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('刷新首页数据失败: $e');
+    }
+  }
+
+  /// 计算历史统计数据
+  void _calculateHistoryStats(List<dynamic> history) {
+    if (history.isEmpty) {
+      _monthChange = 0;
+      _yearChange = 0;
+      _historyPeak = 0;
+      return;
+    }
+
+    final now = DateTime.now();
+
+    double? monthStart;
+    double? yearStart;
+    double peak = 0;
+
+    // 按日期排序
+    final sortedHistory = List<Map<String, dynamic>>.from(
+      history.map((e) => e as Map<String, dynamic>)
+    );
+    sortedHistory.sort((a, b) => a['date'].compareTo(b['date']));
+
+    debugPrint('历史数据计算: 当前日期=${now.toString().substring(0,10)}, 当前总资产=$_totalAsset');
+    debugPrint('历史数据条数: ${sortedHistory.length}');
+    if (sortedHistory.isNotEmpty) {
+      debugPrint('最早记录: ${sortedHistory.first['date']}, 资产=${sortedHistory.first['total_asset']}');
+      debugPrint('最新记录: ${sortedHistory.last['date']}, 资产=${sortedHistory.last['total_asset']}');
+    }
+
+    for (var item in sortedHistory) {
+      final date = DateTime.parse(item['date']);
+      final totalAsset = (item['total_asset'] as num).toDouble();
+
+      // 历史峰值
+      if (totalAsset > peak) peak = totalAsset;
+
+      // 本月初数据（找到本月第一条记录）
+      if (date.year == now.year && date.month == now.month && monthStart == null) {
+        monthStart = totalAsset;
+        debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
+      }
+
+      // 今年初数据（找到今年第一条记录）
+      if (date.year == now.year && yearStart == null) {
+        yearStart = totalAsset;
+        debugPrint('找到今年数据: ${item['date']}, 资产=$totalAsset');
+      }
+    }
+
+    // 如果没有本月数据，使用上个月最后一天的数据
+    if (monthStart == null && sortedHistory.isNotEmpty) {
+      for (var i = sortedHistory.length - 1; i >= 0; i--) {
+        final date = DateTime.parse(sortedHistory[i]['date']);
+        if (date.isBefore(DateTime(now.year, now.month, 1))) {
+          monthStart = (sortedHistory[i]['total_asset'] as num).toDouble();
+          debugPrint('使用上个月数据: ${sortedHistory[i]['date']}, 资产=$monthStart');
+          break;
+        }
+      }
+    }
+
+    // 如果没有今年数据，使用去年最后一天的数据
+    if (yearStart == null && sortedHistory.isNotEmpty) {
+      for (var i = sortedHistory.length - 1; i >= 0; i--) {
+        final date = DateTime.parse(sortedHistory[i]['date']);
+        if (date.year < now.year) {
+          yearStart = (sortedHistory[i]['total_asset'] as num).toDouble();
+          debugPrint('使用去年数据: ${sortedHistory[i]['date']}, 资产=$yearStart');
+          break;
+        }
+      }
+    }
+
+    _historyPeak = peak;
+    _monthChange = monthStart != null ? _totalAsset - monthStart : 0;
+    _yearChange = yearStart != null ? _totalAsset - yearStart : 0;
+
+    debugPrint('计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)');
+  }
+
+  /// 刷新投资组合
+  Future<void> refreshPortfolio() async {
+    try {
+      final data = await _api.getPortfolio();
+      _portfolio = (data).map((e) => PortfolioItem.fromJson(e)).toList();
+
+      if (_portfolio.isNotEmpty) {
+        final codes = _portfolio.map((e) => e.code).toList();
+        final pricesData = await _api.getPricesBatch(codes);
+        _prices = pricesData.map((key, value) => MapEntry(key, PriceInfo.fromJson(value)));
+      }
+
+      _totalInvest = investTotalMV;
+      _portfolioLoaded = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('刷新投资组合失败: $e');
+    }
+  }
+
+  /// 加载汇率
+  Future<void> loadExchangeRates() async {
+    try {
+      final rates = await _api.getExchangeRates();
+      updateExchangeRates(rates);
+    } catch (e) {
+      debugPrint('加载汇率失败: $e');
+    }
+  }
+
+  /// 获取盈亏颜色
+  static Color getPnlColor(double value) {
+    if (value > 0) return const Color(0xFFEF4444); // 红色（盈利）
+    if (value < 0) return const Color(0xFF10B981); // 绿色（亏损）
+    return const Color(0xFF94A3B8); // 灰色
+  }
+
+  /// 格式化盈亏
+  String formatPnl(double value) {
+    if (_amountHidden) return '****';
+    final sign = value >= 0 ? '+' : '';
+    return '$sign${value.toStringAsFixed(2)}';
+  }
+
+  /// 格式化百分比
+  String formatPct(double value) {
+    final sign = value >= 0 ? '+' : '';
+    return '$sign${value.toStringAsFixed(2)}%';
+  }
+}
+
+
