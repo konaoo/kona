@@ -19,4 +19,6 @@ jobs:
             git pull
             pip3 install -r requirements.txt
             pkill -f "python3 app.py" || true
-            nohup python3 app.py > app.log 2>&1 &
+            nohup python3 app.py > app.log 2>&1 </dev/null &
+            sleep 1
+            exit 0
