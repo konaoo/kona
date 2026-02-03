@@ -61,20 +61,12 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.bgCard,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: AppTheme.border, width: 1),
-                            ),
-                            child: const Text(
-                              '￥',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: AppTheme.textTertiary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          const Text(
+                            '￥',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textTertiary,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           IconButton(
