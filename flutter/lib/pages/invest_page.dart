@@ -254,76 +254,77 @@ class _InvestPageState extends State<InvestPage> {
           ),
           child: Row(
             children: [
-          // 名称
-          SizedBox(
-            width: 80,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.name.length > 5 ? '${item.name.substring(0, 5)}…' : item.name,
-                  style: const TextStyle(
-                    fontSize: FontSize.base,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
+              // 名称
+              SizedBox(
+                width: 80,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name.length > 5 ? '${item.name.substring(0, 5)}…' : item.name,
+                      style: const TextStyle(
+                        fontSize: FontSize.base,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      _formatDisplayCode(item.code),
+                      style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
+                    ),
+                  ],
                 ),
-                Text(
-                  _formatDisplayCode(item.code),
-                  style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
-                ),
-              ],
-            ),
-          ),
-          // 市值
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  appState.formatAmount(mv, prefix: item.currencySymbol),
-                  style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
-                ),
-                Text(
-                  '${item.qty.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
-                ),
-              ],
-            ),
-          ),
-          // 现价
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
-                ),
-                Text(
-                  '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
-                ),
-              ],
-            ),
-          ),
-            // 盈亏
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    appState.formatPnl(holdingPnl),
-                    style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
-                  ),
-                  Text(
-                    appState.formatPct(holdingPnlPct),
-                    style: TextStyle(fontSize: FontSize.xs, color: pnlColor),
-                  ),
-                ],
               ),
-            ),
-          ],
+              // 市值
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      appState.formatAmount(mv, prefix: item.currencySymbol),
+                      style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
+                    ),
+                    Text(
+                      '${item.qty.toStringAsFixed(0)}',
+                      style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+              // 现价
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
+                    ),
+                    Text(
+                      '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+              // 盈亏
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      appState.formatPnl(holdingPnl),
+                      style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
+                    ),
+                    Text(
+                      appState.formatPct(holdingPnlPct),
+                      style: TextStyle(fontSize: FontSize.xs, color: pnlColor),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
