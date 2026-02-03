@@ -223,12 +223,12 @@ class _InvestPageState extends State<InvestPage> {
               child: InkWell(
                 onTap: () => appState.setCategory(cat.$1),
                 borderRadius: BorderRadius.circular(AppRadius.xxl),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
-                  child: Text(
-                    cat.$2,
-                    style: TextStyle(
-                      fontSize: FontSize.lg,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
+                    child: Text(
+                      cat.$2,
+                      style: TextStyle(
+                      fontSize: FontSize.base,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                       color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
                     ),
