@@ -66,7 +66,7 @@ class AssetDetailPage extends StatelessWidget {
             itemCount: assets.length,
             itemBuilder: (context, index) {
               final asset = assets[index];
-              return _buildAssetItem(asset, appState);
+              return _buildAssetItem(context, asset, appState);
             },
           );
         },
@@ -113,7 +113,7 @@ class AssetDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _buildAssetItem(Asset asset, AppState appState) {
+  Widget _buildAssetItem(BuildContext context, Asset asset, AppState appState) {
     return Container(
       margin: const EdgeInsets.only(bottom: Spacing.md),
       padding: const EdgeInsets.all(Spacing.lg),
@@ -165,15 +165,59 @@ class AssetDetailPage extends StatelessWidget {
           // 删除按钮
           IconButton(
             icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
-            onPressed: () => _showDeleteDialog(asset, appState),
+            onPressed: () => _showDeleteDialog(context, asset, appState),
           ),
         ],
       ),
     );
   }
 
-  void _showDeleteDialog(Asset asset, AppState appState) {
-    // TODO: 实现删除功能
+  void _showDeleteDialog(BuildContext context, Asset asset, AppState appState) {
+    if (asset.id == null) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.bgElevated,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text(
+            '删除资产',
+            style: TextStyle(color: AppTheme.textPrimary),
+          ),
+          content: Text(
+            '确定删除「${asset.name}」吗？',
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final ok = await appState.deleteAsset(
+                  type: assetType,
+                  id: asset.id!,
+                );
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (!ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('删除失败，请稍后重试')),
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                '删除',
+                style: TextStyle(color: AppTheme.danger),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showAddDialog(BuildContext context) {

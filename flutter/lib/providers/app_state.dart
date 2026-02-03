@@ -401,6 +401,24 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// 删除资产（现金/其他/负债）
+  Future<bool> deleteAsset({
+    required String type,
+    required int id,
+  }) async {
+    bool ok = false;
+    if (type == 'cash') {
+      ok = await _api.deleteCashAsset(id);
+    } else if (type == 'other') {
+      ok = await _api.deleteOtherAsset(id);
+    } else if (type == 'liability') {
+      ok = await _api.deleteLiability(id);
+    }
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
     if (history.isEmpty) {
