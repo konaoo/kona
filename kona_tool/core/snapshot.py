@@ -37,7 +37,7 @@ def is_market_closed() -> bool:
     
     return False
 
-def calculate_portfolio_stats() -> Dict[str, float]:
+def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     """
     计算当前时刻的投资组合统计数据
     
@@ -53,10 +53,10 @@ def calculate_portfolio_stats() -> Dict[str, float]:
         }
     """
     # 1. 获取所有基础数据
-    portfolio = db.get_portfolio()
-    cash_assets = db.get_cash_assets()
-    other_assets = db.get_other_assets()
-    liabilities = db.get_liabilities()
+    portfolio = db.get_portfolio(user_id=user_id)
+    cash_assets = db.get_cash_assets(user_id=user_id)
+    other_assets = db.get_other_assets(user_id=user_id)
+    liabilities = db.get_liabilities(user_id=user_id)
     
     # 2. 获取实时价格和汇率
     codes = [p['code'] for p in portfolio]
@@ -128,7 +128,7 @@ def calculate_portfolio_stats() -> Dict[str, float]:
         'day_pnl': round(day_pnl, 2)
     }
 
-def take_snapshot() -> bool:
+def take_snapshot(user_id: str = None) -> bool:
     """
     执行快照保存
     
@@ -136,7 +136,7 @@ def take_snapshot() -> bool:
     """
     try:
         logger.info("Starting background snapshot task...")
-        stats = calculate_portfolio_stats()
+        stats = calculate_portfolio_stats(user_id)
         
         # 休市时 day_pnl 应为 0
         if is_market_closed():
@@ -144,7 +144,7 @@ def take_snapshot() -> bool:
             stats['day_pnl'] = 0.0
         
         # 保存到数据库
-        success = db.save_daily_snapshot(stats)
+        success = db.save_daily_snapshot(stats, user_id)
         
         if success:
             logger.info(f"Snapshot saved successfully: Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")

@@ -14,7 +14,7 @@ import config
 from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
-from core.snapshot import take_snapshot
+from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed
 from core.news import news_fetcher
 from core.system import system_manager
 from core.auth import login_required, optional_auth, generate_token, get_or_create_user, get_user_profile
@@ -554,6 +554,15 @@ def _handle_asset_add(add_func, asset_type, user_id=None):
     try:
         amount = float(data['amount'])
         success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id)
+        if success:
+            # 添加后立刻保存当天快照（更实时）
+            try:
+                stats = calculate_portfolio_stats(user_id)
+                if is_market_closed():
+                    stats['day_pnl'] = 0.0
+                db.save_daily_snapshot(stats, user_id)
+            except Exception as e:
+                logger.warning(f"Snapshot after add failed: {e}")
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to add {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid amount"}), 400
@@ -569,6 +578,15 @@ def _handle_asset_delete(delete_func, asset_type, user_id=None):
     try:
         asset_id = int(data['id'])
         success = delete_func(asset_id, user_id)
+        if success:
+            # 删除后立刻保存当天快照（更实时）
+            try:
+                stats = calculate_portfolio_stats(user_id)
+                if is_market_closed():
+                    stats['day_pnl'] = 0.0
+                db.save_daily_snapshot(stats, user_id)
+            except Exception as e:
+                logger.warning(f"Snapshot after delete failed: {e}")
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to delete {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid id"}), 400
@@ -585,6 +603,15 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
         asset_id = int(data['id'])
         amount = float(data['amount'])
         success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id)
+        if success:
+            # 更新后立刻保存当天快照（更实时）
+            try:
+                stats = calculate_portfolio_stats(user_id)
+                if is_market_closed():
+                    stats['day_pnl'] = 0.0
+                db.save_daily_snapshot(stats, user_id)
+            except Exception as e:
+                logger.warning(f"Snapshot after update failed: {e}")
         return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to update {asset_type}"}), 500
     except ValueError:
         return jsonify({"error": "Invalid value"}), 400
