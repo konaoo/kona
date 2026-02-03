@@ -139,6 +139,11 @@ class _InvestPageState extends State<InvestPage> {
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.md, Spacing.xl, 4),
                     padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: Spacing.sm),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgCard.withOpacity(0.45),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(color: AppTheme.border.withOpacity(0.4)),
+                    ),
                     child: Row(
                       children: const [
                         SizedBox(
@@ -324,7 +329,7 @@ class _InvestPageState extends State<InvestPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      appState.formatPnlInt(holdingPnl),
+                      appState.formatPnlIntWithCurrency(holdingPnl, item.currencySymbol),
                       style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
                     ),
                     Text(
@@ -342,6 +347,12 @@ class _InvestPageState extends State<InvestPage> {
   }
 
   String _formatDisplayCode(String code) {
+    const customMap = {
+      'ft_LU1116320737': 'BLK',
+    };
+    if (customMap.containsKey(code)) {
+      return customMap[code]!;
+    }
     var c = code;
     if (c.toLowerCase().startsWith('gb_')) {
       c = c.substring(3).toUpperCase();

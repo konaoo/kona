@@ -656,6 +656,18 @@ class AppState extends ChangeNotifier {
     return '$sign$text';
   }
 
+  /// 格式化盈亏（整数 + 币种）
+  String formatPnlIntWithCurrency(double value, String symbol) {
+    if (_amountHidden) return '****';
+    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
+    final absVal = value.abs();
+    final text = absVal.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$sign$symbol$text';
+  }
+
   /// 格式化百分比
   String formatPct(double value) {
     final sign = value >= 0 ? '+' : '';
