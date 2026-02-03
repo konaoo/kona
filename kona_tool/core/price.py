@@ -119,20 +119,37 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
         代码到价格数据的映射
     """
     results = {}
-    
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_code = {
-            executor.submit(get_price, code, use_cache): code 
-            for code in codes
-        }
-        for future in as_completed(future_to_code):
-            code = future_to_code[future]
-            try:
-                results[code] = future.result()
-            except Exception as e:
-                logger.warning(f"Failed to get price for {code}: {e}")
-                results[code] = (0.0, 0.0, 0.0, 0.0)
-    
+    missing_codes: List[str] = []
+    seen_missing = set()
+
+    if use_cache:
+        for code in codes:
+            cached = price_cache.get(code)
+            if cached:
+                results[code] = cached
+            elif code not in seen_missing:
+                missing_codes.append(code)
+                seen_missing.add(code)
+    else:
+        for code in codes:
+            if code not in seen_missing:
+                missing_codes.append(code)
+                seen_missing.add(code)
+
+    if missing_codes:
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_code = {
+                executor.submit(get_price, code, False): code
+                for code in missing_codes
+            }
+            for future in as_completed(future_to_code):
+                code = future_to_code[future]
+                try:
+                    results[code] = future.result()
+                except Exception as e:
+                    logger.warning(f"Failed to get price for {code}: {e}")
+                    results[code] = (0.0, 0.0, 0.0, 0.0)
+
     return results
 
 
