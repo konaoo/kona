@@ -59,6 +59,44 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return c;
   }
 
+  Widget _marketBadge(String typeName) {
+    String label = 'A';
+    Color color = AppTheme.accent;
+    switch (typeName) {
+      case '美股':
+        label = 'US';
+        color = AppTheme.danger;
+        break;
+      case '港股':
+        label = 'HK';
+        color = AppTheme.success;
+        break;
+      case '基金':
+        label = 'F';
+        color = const Color(0xFFF59E0B);
+        break;
+      default:
+        label = 'A';
+        color = AppTheme.accent;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.6), width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: FontSize.xs,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   void _onQueryChanged(String value) {
     if (_selected != null && value == (_selected?['name'] ?? '')) {
       return;
@@ -179,9 +217,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     style: const TextStyle(color: AppTheme.textPrimary, fontSize: FontSize.base),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    '$typeName + $code',
-                    style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                  Row(
+                    children: [
+                      _marketBadge(typeName),
+                      const SizedBox(width: 6),
+                      Text(
+                        code,
+                        style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -251,9 +295,23 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   _buildSearchResults(),
                   if (_selected != null) ...[
                     const SizedBox(height: 8),
-                    Text(
-                      '已选择：${_selected?['name']} · ${_selected?['type_name']} + ${_formatDisplayCode(_selected?['code'] ?? '')}',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                    Row(
+                      children: [
+                        const Text(
+                          '已选择：',
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                        ),
+                        Text(
+                          '${_selected?['name']}  ',
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                        ),
+                        _marketBadge(_selected?['type_name'] ?? ''),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formatDisplayCode(_selected?['code'] ?? ''),
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                        ),
+                      ],
                     ),
                   ],
                   const SizedBox(height: Spacing.lg),
