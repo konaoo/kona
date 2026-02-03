@@ -31,6 +31,8 @@
 - Flutter 新电脑配置：`docs/FRONTEND_SETUP.md`
 - API 清单：`docs/API.md`
 - API 参数与返回：`docs/API_DETAILS.md`
+- Swagger UI：`docs/swagger-ui.html`
+- Postman/Apifox 导入：`docs/API_IMPORT.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
 
@@ -218,5 +220,7 @@ http://<服务器IP>:5003/api/rates
 - Flutter 配置：`docs/FRONTEND_SETUP.md`
 - API 清单：`docs/API.md`
 - API 参数与返回：`docs/API_DETAILS.md`
+- Swagger UI：`docs/swagger-ui.html`
+- Postman/Apifox 导入：`docs/API_IMPORT.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`

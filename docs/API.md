@@ -1,6 +1,9 @@
 # API Reference (Backend)
 
-This list is based on `kona_tool/app.py` routes. Methods are shown when defined.
+This file is auto-generated from `kona_tool/app.py`.
+
+Run: `python3 scripts/generate_api_docs.py`
+
 
 ---
 
@@ -12,16 +15,15 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 
 ## Web Pages
 
-- `GET /` main investment page
-- `GET /assets` assets page
-- `GET /analysis` analysis page
-- `GET /news` news page
-- `GET /settings` settings page
-- `GET /test` API test page
-- `GET /compare` JS compare page
-- `GET /direct_test` direct test page
+- `GET /`
+- `GET /assets`
+- `GET /test`
+- `GET /compare`
+- `GET /direct_test`
+- `GET /analysis`
+- `GET /news`
+- `GET /settings`
 
----
 
 ## Core APIs
 
@@ -31,51 +33,44 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 - `GET /api/portfolio`
 - `POST /api/portfolio/add`
 - `POST /api/portfolio/update`
+- `GET /api/history`
 - `POST /api/portfolio/modify`
 - `POST /api/portfolio/delete`
 - `POST /api/portfolio/buy`
 - `POST /api/portfolio/sell`
 - `GET /api/transactions`
-- `GET /api/history`
 - `GET /api/search`
 
----
 
-## Cash Assets
+## Auth
+
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+
+
+## Analysis & News
+
+- `GET /api/news/latest`
+- `GET /api/analysis/overview`
+- `GET /api/analysis/calendar`
+- `GET /api/analysis/rank`
+
+
+## Assets (Cash/Other/Liabilities)
 
 - `GET /api/cash_assets`
 - `POST /api/cash_assets/add`
 - `POST /api/cash_assets/delete`
 - `POST /api/cash_assets/update`
-
----
-
-## Other Assets
-
 - `GET /api/other_assets`
 - `POST /api/other_assets/add`
 - `POST /api/other_assets/delete`
 - `POST /api/other_assets/update`
-
----
-
-## Liabilities
-
 - `GET /api/liabilities`
 - `POST /api/liabilities/add`
 - `POST /api/liabilities/delete`
 - `POST /api/liabilities/update`
 
----
-
-## Analysis & News
-
-- `GET /api/analysis/overview`
-- `GET /api/analysis/calendar`
-- `GET /api/analysis/rank`
-- `GET /api/news/latest`
-
----
 
 ## Snapshots
 
@@ -83,7 +78,6 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 - `POST /api/snapshot/trigger`
 - `POST /api/snapshot/fix`
 
----
 
 ## Settings
 
@@ -92,15 +86,8 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 - `GET /api/settings/backup`
 - `POST /api/settings/restore`
 
----
-
-## Auth
-
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-
----
 
 ## Health
 
 - `GET /health`
+
