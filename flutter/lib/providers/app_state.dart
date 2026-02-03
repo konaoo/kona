@@ -43,6 +43,8 @@ class AppState extends ChangeNotifier {
   double _historyPeak = 0;
   bool _hasMonthBaseline = false;
   bool _hasYearBaseline = false;
+  bool _monthFromFirst = false;
+  bool _yearFromFirst = false;
 
   // 金额隐藏
   bool _amountHidden = false;
@@ -80,6 +82,8 @@ class AppState extends ChangeNotifier {
   double get historyPeak => _historyPeak;
   bool get hasMonthBaseline => _hasMonthBaseline;
   bool get hasYearBaseline => _hasYearBaseline;
+  bool get monthFromFirst => _monthFromFirst;
+  bool get yearFromFirst => _yearFromFirst;
 
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
@@ -427,6 +431,8 @@ class AppState extends ChangeNotifier {
       _historyPeak = 0;
       _hasMonthBaseline = false;
       _hasYearBaseline = false;
+      _monthFromFirst = false;
+      _yearFromFirst = false;
       return;
     }
 
@@ -435,6 +441,8 @@ class AppState extends ChangeNotifier {
     double? monthStart;
     double? yearStart;
     double peak = 0;
+    double? firstNonZero;
+    String? firstNonZeroDate;
     bool monthFromCurrent = false;
     bool yearFromCurrent = false;
 
@@ -458,50 +466,48 @@ class AppState extends ChangeNotifier {
       // 历史峰值
       if (totalAsset > peak) peak = totalAsset;
 
+      if (totalAsset != 0 && firstNonZero == null) {
+        firstNonZero = totalAsset;
+        firstNonZeroDate = item['date'];
+      }
+
       // 本月初数据（找到本月第一条记录）
-      if (date.year == now.year && date.month == now.month && monthStart == null) {
+      if (date.year == now.year && date.month == now.month && monthStart == null && totalAsset != 0) {
         monthStart = totalAsset;
         monthFromCurrent = true;
         debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
       }
 
       // 今年初数据（找到今年第一条记录）
-      if (date.year == now.year && yearStart == null) {
+      if (date.year == now.year && yearStart == null && totalAsset != 0) {
         yearStart = totalAsset;
         yearFromCurrent = true;
         debugPrint('找到今年数据: ${item['date']}, 资产=$totalAsset');
       }
     }
 
-    // 如果没有本月数据，使用上个月最后一天的数据
-    if (monthStart == null && sortedHistory.isNotEmpty) {
-      for (var i = sortedHistory.length - 1; i >= 0; i--) {
-        final date = DateTime.parse(sortedHistory[i]['date']);
-        if (date.isBefore(DateTime(now.year, now.month, 1))) {
-          monthStart = (sortedHistory[i]['total_asset'] as num).toDouble();
-          debugPrint('使用上个月数据: ${sortedHistory[i]['date']}, 资产=$monthStart');
-          break;
-        }
-      }
+    // 如果没有本月/今年数据，使用首次记账作为起点（新用户友好）
+    if (monthStart == null && firstNonZero != null) {
+      monthStart = firstNonZero;
+      _monthFromFirst = true;
+      debugPrint('使用首次记账作为本月起点: $firstNonZeroDate, 资产=$monthStart');
+    } else {
+      _monthFromFirst = false;
     }
 
-    // 如果没有今年数据，使用去年最后一天的数据
-    if (yearStart == null && sortedHistory.isNotEmpty) {
-      for (var i = sortedHistory.length - 1; i >= 0; i--) {
-        final date = DateTime.parse(sortedHistory[i]['date']);
-        if (date.year < now.year) {
-          yearStart = (sortedHistory[i]['total_asset'] as num).toDouble();
-          debugPrint('使用去年数据: ${sortedHistory[i]['date']}, 资产=$yearStart');
-          break;
-        }
-      }
+    if (yearStart == null && firstNonZero != null) {
+      yearStart = firstNonZero;
+      _yearFromFirst = true;
+      debugPrint('使用首次记账作为今年起点: $firstNonZeroDate, 资产=$yearStart');
+    } else {
+      _yearFromFirst = false;
     }
 
     _historyPeak = peak;
-    _hasMonthBaseline = monthFromCurrent;
-    _hasYearBaseline = yearFromCurrent;
-    _monthChange = (monthStart != null && monthFromCurrent) ? _totalAsset - monthStart : 0;
-    _yearChange = (yearStart != null && yearFromCurrent) ? _totalAsset - yearStart : 0;
+    _hasMonthBaseline = monthStart != null;
+    _hasYearBaseline = yearStart != null;
+    _monthChange = monthStart != null ? _totalAsset - monthStart : 0;
+    _yearChange = yearStart != null ? _totalAsset - yearStart : 0;
 
     debugPrint('计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)');
   }
