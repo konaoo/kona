@@ -54,10 +54,27 @@ class _HomePageState extends State<HomePage> {
                       Row(
                         children: [
                           const Text(
-                            '总资产估值（￥）',
+                            '总资产估值',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.bgCard,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTheme.border, width: 1),
+                            ),
+                            child: const Text(
+                              '￥',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppTheme.textTertiary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           IconButton(
@@ -112,7 +129,7 @@ class _HomePageState extends State<HomePage> {
 
                 // 资产分类卡片
                 AssetCard(
-                  title: '现金资产（￥）',
+                  title: '现金资产',
                   amount: appState.totalCash,
                   icon: Icons.account_balance_wallet,
                   hidden: appState.amountHidden,
@@ -122,7 +139,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '投资资产（￥）',
+                  title: '投资资产',
                   amount: appState.totalInvest,
                   icon: Icons.trending_up,
                   hidden: appState.amountHidden,
@@ -132,7 +149,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '其他资产（￥）',
+                  title: '其他资产',
                   amount: appState.totalOther,
                   icon: Icons.dataset,
                   hidden: appState.amountHidden,
@@ -142,7 +159,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: Spacing.md),
 
                 AssetCard(
-                  title: '我的负债（￥）',
+                  title: '我的负债',
                   amount: appState.totalLiability,
                   icon: Icons.credit_card,
                   hidden: appState.amountHidden,
