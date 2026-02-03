@@ -18,7 +18,14 @@ jobs:
             cd ${{ secrets.APP_DIR }}
             git pull
             pip3 install -r requirements.txt
-            pkill -f "python3 app.py" || true
+
+            if [ -f app.pid ]; then
+              kill $(cat app.pid) || true
+              rm -f app.pid
+            fi
+
             nohup python3 app.py > app.log 2>&1 </dev/null &
+            echo $! > app.pid
+
             sleep 1
             exit 0
