@@ -158,11 +158,11 @@ class _MainAppState extends State<MainApp> {
         ],
       ),
       floatingActionButton: _currentIndex == 0 || _currentIndex == 1
-          ? FloatingActionButton(
+          ? FloatingActionButton.small(
               heroTag: _currentIndex == 0 ? 'add_asset_home' : 'add_investment',
               onPressed: _currentIndex == 0 ? _showQuickAdd : _showAddInvestment,
               backgroundColor: AppTheme.accent,
-              child: const Icon(Icons.add, color: AppTheme.textPrimary),
+              child: const Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

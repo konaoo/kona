@@ -92,9 +92,17 @@ class _InvestPageState extends State<InvestPage> {
                                       ),
                                     ),
                                     Text(
-                                      appState.formatPnl(appState.investDayPnl),
+                                      appState.formatPnlInt(appState.investDayPnl),
                                       style: TextStyle(
                                         fontSize: FontSize.lg,
+                                        color: AppState.getPnlColor(appState.investDayPnl),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      appState.formatPct(appState.investDayPnlRate),
+                                      style: TextStyle(
+                                        fontSize: FontSize.sm,
                                         color: AppState.getPnlColor(appState.investDayPnl),
                                       ),
                                     ),
@@ -109,10 +117,10 @@ class _InvestPageState extends State<InvestPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
-                                _buildStat('持仓盈亏', appState.formatPnl(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
-                                _buildStat('持仓盈亏率', appState.formatPct(_calculateHoldingPnlRate(appState)), _getHoldingPnlRateColor(appState)),
-                                _buildStat('累计盈亏', appState.formatPnl(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
-                                _buildStat('累计盈亏率', appState.formatPct(_calculateHoldingPnlRate(appState)), _getHoldingPnlRateColor(appState)),
+                                _buildStat('持仓盈亏', appState.formatPnlInt(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
+                                _buildStat('持仓盈亏率', appState.formatPct(appState.investHoldingPnlRate), AppState.getPnlColor(appState.investHoldingPnlRate)),
+                                _buildStat('累计盈亏', appState.formatPnlInt(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
+                                _buildStat('累计盈亏率', appState.formatPct(appState.investHoldingPnlRate), AppState.getPnlColor(appState.investHoldingPnlRate)),
                               ],
                             ),
                           ],
@@ -135,12 +143,12 @@ class _InvestPageState extends State<InvestPage> {
                       children: const [
                         SizedBox(
                           width: 80,
-                          child: Text('名称', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text('资产名称', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
                         ),
-                        Expanded(child: Text('市值', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
-                        Expanded(child: Text('现价', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
+                        Expanded(child: Text('市值/数量', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
+                        Expanded(child: Text('现价/成本', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
                         Expanded(
-                          child: Text('盈亏', textAlign: TextAlign.end, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text('累计盈亏', textAlign: TextAlign.end, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
                         ),
                       ],
                     ),
@@ -316,7 +324,7 @@ class _InvestPageState extends State<InvestPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      appState.formatPnl(holdingPnl),
+                      appState.formatPnlInt(holdingPnl),
                       style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
                     ),
                     Text(
@@ -331,29 +339,6 @@ class _InvestPageState extends State<InvestPage> {
         ),
       ),
     );
-  }
-
-  // 计算持仓盈亏率
-  double _calculateHoldingPnlRate(AppState appState) {
-    double totalCost = 0;
-    double totalPnl = 0;
-
-    for (var item in appState.portfolio) {
-      final priceInfo = appState.prices[item.code];
-      final currentPrice = priceInfo?.price ?? item.price;
-      final cost = item.price * item.qty;
-      final mv = currentPrice * item.qty;
-      totalCost += cost;
-      totalPnl += (mv - cost + item.adjustment);
-    }
-
-    return totalCost > 0 ? (totalPnl / totalCost * 100) : 0.0;
-  }
-
-  // 获取盈亏率颜色
-  Color _getHoldingPnlRateColor(AppState appState) {
-    final rate = _calculateHoldingPnlRate(appState);
-    return AppState.getPnlColor(rate);
   }
 
   String _formatDisplayCode(String code) {

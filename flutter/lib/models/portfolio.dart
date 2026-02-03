@@ -89,12 +89,13 @@ class PriceInfo {
   factory PriceInfo.fromJson(Map<String, dynamic> json) {
     final price = _parseDouble(json['price']);
     final yclose = _parseDouble(json['yclose']);
-    final chg = _parseDouble(json['chg']);  // 后端返回的是chg不是change
+    final amt = _parseDouble(json['amt']);  // 涨跌额
+    final chg = _parseDouble(json['chg']);  // 涨跌幅%
     return PriceInfo(
       price: price,
       yclose: yclose,
-      change: chg,
-      changePct: yclose > 0 ? (chg / yclose * 100) : 0,
+      change: amt,
+      changePct: chg != 0 ? chg : (yclose > 0 ? (amt / yclose * 100) : 0),
     );
   }
 

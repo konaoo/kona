@@ -85,6 +85,17 @@ class AppState extends ChangeNotifier {
   bool get monthFromFirst => _monthFromFirst;
   bool get yearFromFirst => _yearFromFirst;
 
+  double _rateForCurrency(String curr) {
+    switch (curr.toUpperCase()) {
+      case 'USD':
+        return _exchangeRates['USD'] ?? 7.25;
+      case 'HKD':
+        return _exchangeRates['HKD'] ?? 0.93;
+      default:
+        return 1.0;
+    }
+  }
+
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
     if (_currentCategory == 'all') return _portfolio;
@@ -97,7 +108,8 @@ class AppState extends ChangeNotifier {
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
       final currentPrice = priceInfo?.price ?? item.price;
-      total += currentPrice * item.qty;
+      final rate = _rateForCurrency(item.curr);
+      total += currentPrice * item.qty * rate;
     }
     return total;
   }
@@ -108,10 +120,27 @@ class AppState extends ChangeNotifier {
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
       if (priceInfo != null) {
-        total += priceInfo.change * item.qty;
+        final rate = _rateForCurrency(item.curr);
+        total += priceInfo.change * item.qty * rate;
       }
     }
     return total;
+  }
+
+  /// 投资今日盈亏率
+  double get investDayPnlRate {
+    double pnl = 0;
+    double base = 0;
+    for (var item in _portfolio) {
+      final priceInfo = _prices[item.code];
+      if (priceInfo != null) {
+        final rate = _rateForCurrency(item.curr);
+        final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
+        pnl += priceInfo.change * item.qty * rate;
+        base += yclose * item.qty * rate;
+      }
+    }
+    return base > 0 ? (pnl / base * 100) : 0;
   }
 
   /// 投资持仓盈亏
@@ -120,11 +149,22 @@ class AppState extends ChangeNotifier {
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
       final currentPrice = priceInfo?.price ?? item.price;
-      final mv = currentPrice * item.qty;
-      final cost = item.price * item.qty;
-      total += mv - cost + item.adjustment;
+      final rate = _rateForCurrency(item.curr);
+      final mv = currentPrice * item.qty * rate;
+      final cost = item.price * item.qty * rate;
+      total += mv - cost + item.adjustment * rate;
     }
     return total;
+  }
+
+  /// 投资持仓盈亏率
+  double get investHoldingPnlRate {
+    double totalCost = 0;
+    for (var item in _portfolio) {
+      final rate = _rateForCurrency(item.curr);
+      totalCost += item.price * item.qty * rate;
+    }
+    return totalCost > 0 ? (investHoldingPnl / totalCost * 100) : 0;
   }
 
   // ============================================================
@@ -597,6 +637,18 @@ class AppState extends ChangeNotifier {
     if (_amountHidden) return '****';
     final sign = value >= 0 ? '+' : '';
     return '$sign${value.toStringAsFixed(2)}';
+  }
+
+  /// 格式化盈亏（整数）
+  String formatPnlInt(double value) {
+    if (_amountHidden) return '****';
+    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
+    final absVal = value.abs();
+    final text = absVal.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$sign$text';
   }
 
   /// 格式化百分比

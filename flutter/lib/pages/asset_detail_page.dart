@@ -28,11 +28,11 @@ class AssetDetailPage extends StatelessWidget {
           style: const TextStyle(color: AppTheme.textPrimary),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.small(
         heroTag: 'add_asset_detail_$assetType',
         onPressed: () => _showAddDialog(context),
         backgroundColor: AppTheme.accent,
-        child: const Icon(Icons.add, color: AppTheme.textPrimary),
+        child: const Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Consumer<AppState>(
