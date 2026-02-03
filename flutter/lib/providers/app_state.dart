@@ -107,7 +107,8 @@ class AppState extends ChangeNotifier {
     double total = 0;
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
-      final currentPrice = priceInfo?.price ?? item.price;
+      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
+      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
       final rate = _rateForCurrency(item.curr);
       total += currentPrice * item.qty * rate;
     }
@@ -119,7 +120,7 @@ class AppState extends ChangeNotifier {
     double total = 0;
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
-      if (priceInfo != null) {
+      if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
         total += priceInfo.change * item.qty * rate;
       }
@@ -133,11 +134,14 @@ class AppState extends ChangeNotifier {
     double base = 0;
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
-      if (priceInfo != null) {
+      if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
         final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
         pnl += priceInfo.change * item.qty * rate;
         base += yclose * item.qty * rate;
+      } else {
+        final rate = _rateForCurrency(item.curr);
+        base += item.price * item.qty * rate;
       }
     }
     return base > 0 ? (pnl / base * 100) : 0;
@@ -148,7 +152,8 @@ class AppState extends ChangeNotifier {
     double total = 0;
     for (var item in _portfolio) {
       final priceInfo = _prices[item.code];
-      final currentPrice = priceInfo?.price ?? item.price;
+      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
+      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
       final rate = _rateForCurrency(item.curr);
       final mv = currentPrice * item.qty * rate;
       final cost = item.price * item.qty * rate;

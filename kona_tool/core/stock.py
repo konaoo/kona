@@ -148,7 +148,37 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                     
     except Exception as e:
         logger.warning(f"Eastmoney US stock API error for {code}: {e}")
-    
+
+    # Nasdaq 备用接口（ETF/US Stocks）
+    try:
+        for assetclass in ["etf", "stocks"]:
+            url = f"https://api.nasdaq.com/api/quote/{s}/info?assetclass={assetclass}"
+            headers = config.API_HEADERS.get("default", config.HEADERS)
+            r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+            if r.status_code != 200:
+                continue
+            data = r.json().get("data") or {}
+            primary = data.get("primaryData") or {}
+            curr = safe_float(primary.get("lastSalePrice"))
+            net_change = safe_float(primary.get("netChange"))
+            pct = safe_float(primary.get("percentageChange"))
+
+            if curr > 0:
+                yclose = 0.0
+                summary = data.get("summaryData") or {}
+                if isinstance(summary, dict):
+                    yclose = safe_float((summary.get("PreviousClose") or {}).get("value"))
+                if yclose <= 0 and net_change != 0:
+                    yclose = curr - net_change
+                if yclose <= 0:
+                    yclose = curr
+                amt = curr - yclose
+                if pct == 0 and yclose > 0:
+                    pct = amt / yclose * 100
+                return curr, yclose, amt, pct
+    except Exception as e:
+        logger.warning(f"Nasdaq quote API error for {code}: {e}")
+
     return 0.0, 0.0, 0.0, 0.0
 
 
@@ -296,6 +326,10 @@ def get_stock_price(code: str) -> Tuple[float, float, float, float]:
     
     # 美股
     if code.startswith('gb_'):
+        return get_us_stock_price(code)
+
+    # 可能是美股代码（纯字母/点），优先走美股逻辑
+    if re.fullmatch(r'[A-Za-z\\.]+', code or ''):
         return get_us_stock_price(code)
     
     # 通用接口
