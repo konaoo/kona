@@ -67,3 +67,14 @@ flutter run
 - If API calls fail, confirm backend is running and base URL is correct.
 - If Flutter cannot run, check Flutter SDK installation.
 - If backend fails to start, check `kona_tool/app.log`.
+
+---
+
+## Update API Docs
+
+If you change routes in `kona_tool/app.py`, regenerate docs:
+
+```
+python3 scripts/generate_api_docs.py
+python3 scripts/generate_api_details.py
+```

@@ -35,6 +35,7 @@
 - Postman/Apifox 导入：`docs/API_IMPORT.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
+- 自动生成 API 文档脚本：`scripts/generate_api_docs.py`、`scripts/generate_api_details.py`
 
 ---
 
@@ -224,3 +225,4 @@ http://<服务器IP>:5003/api/rates
 - Postman/Apifox 导入：`docs/API_IMPORT.md`
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
+- 自动生成 API 文档脚本：`scripts/generate_api_docs.py`、`scripts/generate_api_details.py`
