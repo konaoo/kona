@@ -4,7 +4,16 @@
 目标：换电脑或换人接手，也能快速理解项目结构、部署方式、运行方式和每个目录的作用。
 
 **当前线上后端**：AWS 上运行 `kona_tool`。
-**前端**：Flutter，放在本仓库的 `flutter/`。
+**前端**：Flutter，位于本仓库的 `flutter/`。
+
+---
+
+**快速入口**
+
+- 项目结构说明：`docs/STRUCTURE.md`
+- 本地运行指南：`docs/RUNBOOK.md`
+- 部署方式说明：`docs/DEPLOYMENT.md`
+- Flutter 新电脑配置：`docs/FRONTEND_SETUP.md`
 
 ---
 
@@ -16,6 +25,7 @@
 ├─ flutter/                    # Flutter 前端
 ├─ kona_tool/                  # 后端 Flask 项目
 ├─ archive/HI/                 # 旧版本代码（已归档，不再运行）
+├─ docs/                       # 文档
 └─ README.md
 ```
 
@@ -118,7 +128,7 @@ python3 app.py
 
 **四、部署方式（AWS + GitHub Actions）**
 
-**部署流程**
+部署流程：
 
 1. 本地开发并 push 到 GitHub `main`
 2. GitHub Actions 自动连接 AWS
@@ -130,13 +140,6 @@ python3 app.py
 .github/workflows/deploy.yml
 ```
 
-**部署依赖的 GitHub Secrets**
-
-- `SSH_HOST`：AWS 公网 IP
-- `SSH_USER`：`ec2-user`
-- `SSH_KEY`：部署私钥
-- `APP_DIR`：`/home/ec2-user/portfolio/kona_tool`
-
 ---
 
 **五、日志与自动维护**
@@ -145,11 +148,6 @@ python3 app.py
 - 归档脚本：`kona_tool/rotate_log.sh`
 - 自动归档：每周一凌晨 2 点（crontab）
 - 归档路径：`kona_tool/archive/logs/`
-
-手动执行：
-```
-/home/ec2-user/portfolio/kona_tool/rotate_log.sh
-```
 
 ---
 
@@ -193,8 +191,9 @@ http://<服务器IP>:5003/api/rates
 
 ---
 
-**十、可选优化**
+**十、进一步文档**
 
-- 使用 systemd 管理 Flask 服务（更稳定）
-- 数据库定期自动备份
-- 增加 staging 环境
+- 结构说明：`docs/STRUCTURE.md`
+- 部署说明：`docs/DEPLOYMENT.md`
+- 本地运行：`docs/RUNBOOK.md`
+- Flutter 配置：`docs/FRONTEND_SETUP.md`
