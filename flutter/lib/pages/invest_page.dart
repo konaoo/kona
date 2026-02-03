@@ -126,7 +126,7 @@ class _InvestPageState extends State<InvestPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: Spacing.md),
+                      const SizedBox(height: Spacing.sm),
                       // 分类标签
                       _buildCategoryTabs(appState),
                     ],
@@ -137,11 +137,11 @@ class _InvestPageState extends State<InvestPage> {
               if (appState.filteredPortfolio.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Container(
-                    margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.md, Spacing.xl, 4),
-                    padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: Spacing.sm),
+                    margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.sm, Spacing.xl, 2),
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppTheme.bgCard.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppTheme.border.withOpacity(0.4)),
                     ),
                     child: Row(
