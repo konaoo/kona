@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../providers/app_state.dart';
 
 /// 分析页面 - 盈亏分析
 class AnalysisPage extends StatefulWidget {
@@ -23,15 +25,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
-  Map<String, dynamic> _rankData = {};
-  bool _rankLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _loadCalendar();
-    _loadRank();
   }
 
   Future<void> _loadData() async {
@@ -63,21 +62,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
   }
 
-  Future<void> _loadRank() async {
-    setState(() => _rankLoading = true);
-    try {
-      final data = await _api.getAnalysisRank(rankType: _rankType);
-      debugPrint('盈亏排行数据: $data');
-      setState(() {
-        _rankData = data;
-        _rankLoading = false;
-      });
-    } catch (e) {
-      debugPrint('加载盈亏排行失败: $e');
-      setState(() => _rankLoading = false);
-    }
-  }
-
   void _changePeriod(String period) {
     setState(() => _currentPeriod = period);
     _loadData();
@@ -85,28 +69,31 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(Spacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 盈亏概览卡片
-          _buildOverviewCard(),
+          _buildOverviewCard(appState),
           const SizedBox(height: Spacing.xl),
           // 收益日历
           _buildCalendarSection(),
           const SizedBox(height: Spacing.xl),
           // 盈亏排行
-          _buildRankSection(),
+          _buildRankSection(appState),
         ],
       ),
     );
   }
 
-  Widget _buildOverviewCard() {
+  Widget _buildOverviewCard(AppState appState) {
     final periodData = _overview[_currentPeriod] ?? {};
-    final pnl = (periodData['pnl'] as num?)?.toDouble() ?? 0.0;
-    final pnlRate = (periodData['pnl_rate'] as num?)?.toDouble() ?? 0.0;
+    final apiPnl = (periodData['pnl'] as num?)?.toDouble();
+    final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
+    final pnl = (apiPnl != null && apiPnl != 0) ? apiPnl : appState.investDayPnl;
+    final pnlRate = (apiRate != null && apiRate != 0) ? apiRate : appState.investDayPnlRate;
     final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
 
     return Container(
@@ -245,17 +232,22 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
 
-    // 如果有实际数据，填充到网格中
+    // 如果有实际数据，填充到网格中（用精确匹配）
     final items = _calendarData['items'] as List<dynamic>? ?? [];
+    final pnlMap = <String, double>{};
     for (var item in items) {
       final label = item['label'] ?? '';
       final pnl = (item['pnl'] as num?)?.toDouble();
-      // 查找并更新对应的网格项
-      for (var gridItem in calendarGrid) {
-        if (gridItem['date'].toString().contains(label.toString())) {
-          gridItem['pnl'] = pnl;
-          break;
-        }
+      if (label.toString().isNotEmpty && pnl != null) {
+        pnlMap[label.toString()] = pnl;
+      }
+    }
+    for (var gridItem in calendarGrid) {
+      final key = _calendarTimeType == 'day'
+          ? gridItem['day'].toString()
+          : (_calendarTimeType == 'month' ? '${gridItem['day']}月' : gridItem['day'].toString());
+      if (pnlMap.containsKey(key)) {
+        gridItem['pnl'] = pnlMap[key];
       }
     }
 
@@ -411,11 +403,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
-  Widget _buildRankSection() {
-    // 根据rankType选择盈利榜或亏损榜
-    final rankList = _rankType == 'profit'
-        ? (_rankData['gain'] as List<dynamic>? ?? [])
-        : (_rankData['loss'] as List<dynamic>? ?? []);
+  Widget _buildRankSection(AppState appState) {
+    final rankItems = _buildRankItems(appState);
+    final rankList =
+        _rankType == 'profit' ? rankItems.where((x) => x.pnl > 0).toList() : rankItems.where((x) => x.pnl < 0).toList();
+    if (_rankType == 'profit') {
+      rankList.sort((a, b) => b.pnl.compareTo(a.pnl));
+    } else {
+      rankList.sort((a, b) => a.pnl.compareTo(b.pnl));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,25 +429,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
           children: [
             _buildRankTab('盈利榜', _rankType == 'profit', () {
               setState(() => _rankType = 'profit');
-              _loadRank();
             }),
             const SizedBox(width: Spacing.sm),
             _buildRankTab('亏损榜', _rankType == 'loss', () {
               setState(() => _rankType = 'loss');
-              _loadRank();
             }),
             const Spacer(),
             GestureDetector(
               onTap: () {
-                // 显示提示信息
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('完整盈亏排行功能开发中...'),
-                    duration: Duration(seconds: 2),
-                    backgroundColor: AppTheme.accent,
-                  ),
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => AnalysisRankAllPage(rankType: _rankType)),
                 );
-                debugPrint('查看全部盈亏排行');
               },
               child: const Text(
                 '查看全部 >',
@@ -467,82 +455,21 @@ class _AnalysisPageState extends State<AnalysisPage> {
             color: AppTheme.bgCard,
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
-          child: _rankLoading
+          child: rankList.isEmpty
               ? const Center(
-                  child: CircularProgressIndicator(color: AppTheme.accent),
-                )
-              : rankList.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: Text(
-                          '暂无数据',
-                          style: TextStyle(color: AppTheme.textTertiary),
-                        ),
-                      ),
-                    )
-                  : Column(
-                      children: rankList.map((item) {
-                        final code = item['code'] ?? '';
-                        final name = item['name'] ?? '';
-                        final pnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
-                        final pnlRate = (item['pnl_rate'] as num?)?.toDouble() ?? 0.0;
-                        final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        color: AppTheme.textPrimary,
-                                        fontSize: FontSize.base,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      code,
-                                      style: const TextStyle(
-                                        color: AppTheme.textTertiary,
-                                        fontSize: FontSize.sm,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '¥${pnl.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        color: pnlColor,
-                                        fontSize: FontSize.base,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${pnlRate >= 0 ? '+' : ''}${pnlRate.toStringAsFixed(2)}%',
-                                      style: TextStyle(
-                                        color: pnlColor,
-                                        fontSize: FontSize.sm,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: Text(
+                      '暂无数据',
+                      style: TextStyle(color: AppTheme.textTertiary),
                     ),
+                  ),
+                )
+              : Column(
+                  children: rankList.take(5).map((item) {
+                    return _buildRankCard(item, appState);
+                  }).toList(),
+                ),
         ),
       ],
     );
@@ -568,4 +495,244 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ),
     );
   }
+
+  List<_RankItem> _buildRankItems(AppState appState) {
+    final items = <_RankItem>[];
+    for (final item in appState.portfolio) {
+      final priceInfo = appState.prices[item.code];
+      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
+      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+      final mv = currentPrice * item.qty;
+      final cost = item.price * item.qty;
+      final pnl = mv - cost + item.adjustment;
+      final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
+      items.add(_RankItem(
+        code: item.code,
+        name: item.name,
+        pnl: pnl,
+        pnlRate: pnlRate,
+        currencySymbol: item.currencySymbol,
+      ));
+    }
+    return items;
+  }
+
+  Widget _buildRankCard(_RankItem item, AppState appState) {
+    final pnlColor = AppState.getPnlColor(item.pnl);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: FontSize.base,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatDisplayCode(item.code),
+                  style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
+                style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                appState.formatPct(item.pnlRate),
+                style: TextStyle(color: pnlColor, fontSize: FontSize.sm),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDisplayCode(String code) {
+    const customMap = {
+      'ft_LU1116320737': 'BLK',
+    };
+    if (customMap.containsKey(code)) return customMap[code]!;
+    var c = code;
+    if (c.toLowerCase().startsWith('gb_')) {
+      c = c.substring(3).toUpperCase();
+    } else if (c.toLowerCase().startsWith('f_')) {
+      c = c.substring(2);
+    } else if (c.toLowerCase().startsWith('ft_')) {
+      c = c.substring(3);
+    } else if (c.toLowerCase().startsWith('sh') ||
+        c.toLowerCase().startsWith('sz') ||
+        c.toLowerCase().startsWith('bj')) {
+      c = c.substring(2);
+    }
+    if (c.toUpperCase().endsWith('.HK')) {
+      c = c.substring(0, c.length - 3);
+    }
+    return c;
+  }
+}
+
+class AnalysisRankAllPage extends StatelessWidget {
+  final String rankType; // profit / loss
+  const AnalysisRankAllPage({super.key, required this.rankType});
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final items = _buildRankItems(appState);
+    final list = rankType == 'profit'
+        ? items.where((x) => x.pnl > 0).toList()
+        : items.where((x) => x.pnl < 0).toList();
+    if (rankType == 'profit') {
+      list.sort((a, b) => b.pnl.compareTo(a.pnl));
+    } else {
+      list.sort((a, b) => a.pnl.compareTo(b.pnl));
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.bgPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.bgPrimary,
+        elevation: 0,
+        title: Text(rankType == 'profit' ? '盈利榜' : '亏损榜', style: const TextStyle(color: AppTheme.textPrimary)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(Spacing.xl),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final item = list[index];
+          final pnlColor = AppState.getPnlColor(item.pnl);
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.all(Spacing.md),
+            decoration: BoxDecoration(
+              color: AppTheme.bgCard,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: FontSize.base,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatDisplayCode(item.code),
+                        style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
+                      style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      appState.formatPct(item.pnlRate),
+                      style: TextStyle(color: pnlColor, fontSize: FontSize.sm),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<_RankItem> _buildRankItems(AppState appState) {
+    final items = <_RankItem>[];
+    for (final item in appState.portfolio) {
+      final priceInfo = appState.prices[item.code];
+      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
+      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+      final mv = currentPrice * item.qty;
+      final cost = item.price * item.qty;
+      final pnl = mv - cost + item.adjustment;
+      final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
+      items.add(_RankItem(
+        code: item.code,
+        name: item.name,
+        pnl: pnl,
+        pnlRate: pnlRate,
+        currencySymbol: item.currencySymbol,
+      ));
+    }
+    return items;
+  }
+
+  String _formatDisplayCode(String code) {
+    const customMap = {
+      'ft_LU1116320737': 'BLK',
+    };
+    if (customMap.containsKey(code)) return customMap[code]!;
+    var c = code;
+    if (c.toLowerCase().startsWith('gb_')) {
+      c = c.substring(3).toUpperCase();
+    } else if (c.toLowerCase().startsWith('f_')) {
+      c = c.substring(2);
+    } else if (c.toLowerCase().startsWith('ft_')) {
+      c = c.substring(3);
+    } else if (c.toLowerCase().startsWith('sh') ||
+        c.toLowerCase().startsWith('sz') ||
+        c.toLowerCase().startsWith('bj')) {
+      c = c.substring(2);
+    }
+    if (c.toUpperCase().endsWith('.HK')) {
+      c = c.substring(0, c.length - 3);
+    }
+    return c;
+  }
+}
+
+class _RankItem {
+  final String code;
+  final String name;
+  final double pnl;
+  final double pnlRate;
+  final String currencySymbol;
+
+  _RankItem({
+    required this.code,
+    required this.name,
+    required this.pnl,
+    required this.pnlRate,
+    required this.currencySymbol,
+  });
 }

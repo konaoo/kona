@@ -722,17 +722,29 @@ def analysis_overview():
     period = request.args.get('period', 'all')
     user_id = g.user_id
     
+    # 实时日盈亏（避免快照为0导致显示错误）
+    stats = calculate_portfolio_stats(user_id)
+    day_base = stats.get('total_invest', 0) or 1
+    day_obj = {
+        'pnl': stats.get('day_pnl', 0.0),
+        'pnl_rate': round(stats.get('day_pnl', 0.0) / day_base * 100, 2) if day_base else 0,
+        'base_value': day_base
+    }
+
     if period == 'all':
         # 返回所有周期的数据
         result = {
-            'day': db.get_pnl_overview('day', user_id),
+            'day': day_obj,
             'month': db.get_pnl_overview('month', user_id),
             'year': db.get_pnl_overview('year', user_id),
             'all': db.get_pnl_overview('all', user_id)
         }
     else:
         # 返回指定周期的数据
-        result = {period: db.get_pnl_overview(period, user_id)}
+        if period == 'day':
+            result = {'day': day_obj}
+        else:
+            result = {period: db.get_pnl_overview(period, user_id)}
     
     return jsonify(result)
 
