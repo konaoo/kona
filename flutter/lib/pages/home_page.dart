@@ -73,14 +73,25 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
 
-                      // 总资产金额
-                      Text(
-                        appState.formatAmount(appState.totalAsset),
-                        style: const TextStyle(
-                          fontSize: FontSize.hero,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
+                      // 总资产金额（自动缩放避免溢出）
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SizedBox(
+                            width: constraints.maxWidth,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                appState.formatAmount(appState.totalAsset),
+                                style: const TextStyle(
+                                  fontSize: FontSize.hero,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
 
                       const SizedBox(height: Spacing.xl),
@@ -173,12 +184,19 @@ class _HomePageState extends State<HomePage> {
             style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary),
           ),
           const SizedBox(height: 4),
-          Text(
-            displayText,
-            style: TextStyle(
-              fontSize: FontSize.lg,
-              fontWeight: FontWeight.w600,
-              color: displayColor,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: Text(
+                displayText,
+                style: TextStyle(
+                  fontSize: FontSize.lg,
+                  fontWeight: FontWeight.w600,
+                  color: displayColor,
+                ),
+              ),
             ),
           ),
         ],
