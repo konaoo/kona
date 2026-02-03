@@ -36,6 +36,7 @@
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
 - 自动生成 API 文档脚本：`scripts/generate_api_docs.py`、`scripts/generate_api_details.py`
+- 项目快速总览：`docs/PROJECT_OVERVIEW.md`
 
 ---
 
@@ -226,3 +227,4 @@ http://<服务器IP>:5003/api/rates
 - 后端模块说明：`docs/CORE_MODULES.md`
 - 维护与备份：`docs/MAINTENANCE.md`
 - 自动生成 API 文档脚本：`scripts/generate_api_docs.py`、`scripts/generate_api_details.py`
+- 项目快速总览：`docs/PROJECT_OVERVIEW.md`
