@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """数据库管理类"""
     
-    VALID_FIELDS = {'code', 'name', 'qty', 'price', 'curr', 'adjustment'}
+    VALID_FIELDS = {'code', 'name', 'qty', 'price', 'curr', 'adjustment', 'asset_type'}
     
     def __init__(self, db_path: str):
         """
@@ -56,6 +56,7 @@ class DatabaseManager:
                 price REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 adjustment REAL DEFAULT 0.0,
+                asset_type TEXT DEFAULT 'a',
                 user_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -180,9 +181,37 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
 
+        # 确保 asset_type 列存在并回填
+        self._ensure_portfolio_asset_type(cursor)
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
+
+    def _ensure_portfolio_asset_type(self, cursor) -> None:
+        """确保 portfolio 表有 asset_type 字段，并回填默认值"""
+        try:
+            cursor.execute("PRAGMA table_info(portfolio)")
+            cols = [row[1] for row in cursor.fetchall()]
+            if 'asset_type' not in cols:
+                cursor.execute("ALTER TABLE portfolio ADD COLUMN asset_type TEXT DEFAULT 'a'")
+                logger.info("Added asset_type column to portfolio")
+            # 回填空值
+            cursor.execute("SELECT code, name FROM portfolio WHERE asset_type IS NULL OR asset_type = ''")
+            rows = cursor.fetchall()
+            if rows:
+                from .asset_type import infer_asset_type
+                for row in rows:
+                    code = row[0]
+                    name = row[1]
+                    asset_type = infer_asset_type(code, name)
+                    cursor.execute(
+                        "UPDATE portfolio SET asset_type = ? WHERE code = ?",
+                        (asset_type, code)
+                    )
+                logger.info(f"Backfilled asset_type for {len(rows)} records")
+        except Exception as e:
+            logger.warning(f"Failed to ensure asset_type column: {e}")
     
     def get_portfolio(self, asset_type: str = 'all', user_id: str = None) -> List[Dict[str, Any]]:
         """获取持仓数据，支持按类型筛选"""
@@ -197,57 +226,21 @@ class DatabaseManager:
 
         if asset_type == 'all':
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
+                SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
                 WHERE {user_condition}
                 ORDER BY code
             ''', user_param)
-        elif asset_type == 'stock_cn':
-            # A股: sh/sz/bj开头 或 ETF代码
+        elif asset_type in ('a', 'us', 'hk', 'fund'):
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
+                SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE {user_condition} AND (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%'
-                   OR code IN ('159201', '159655', '512890', '513130', '513530'))
+                WHERE {user_condition} AND asset_type = ?
                 ORDER BY code
-            ''', user_param)
-        elif asset_type == 'stock_us':
-            # 美股: gb_开头 或 纯字母（不含下划线和点）
-            cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
-                FROM portfolio
-                WHERE {user_condition} AND (code LIKE 'gb_%' 
-                   OR (code NOT LIKE 'f_%' 
-                       AND code NOT LIKE 'ft_%' 
-                       AND code NOT LIKE 'gb_%'
-                       AND code NOT LIKE 'sh%' 
-                       AND code NOT LIKE 'sz%' 
-                       AND code NOT LIKE 'hk%' 
-                       AND code NOT LIKE 'bj%'
-                       AND code NOT LIKE '%.%' 
-                       AND code GLOB '[A-Za-z][A-Za-z]*'))
-                ORDER BY code
-            ''', user_param)
-        elif asset_type == 'stock_hk':
-            # 港股: hk开头 或 .HK结尾
-            logger.info("Querying HK stocks")
-            cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
-                FROM portfolio
-                WHERE {user_condition} AND (code LIKE 'hk%' OR code LIKE '%.HK' OR code LIKE '%.hk')
-                ORDER BY code
-            ''', user_param)
-        elif asset_type == 'fund':
-            # 基金: f_ 或 ft_ 开头
-            cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
-                FROM portfolio
-                WHERE {user_condition} AND (code LIKE 'f_%' OR code LIKE 'ft_%')
-                ORDER BY code
-            ''', user_param)
+            ''', user_param + (asset_type,))
         else:
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment
+                SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
                 WHERE {user_condition}
                 ORDER BY code
@@ -261,7 +254,8 @@ class DatabaseManager:
                 'qty': float(row['qty']),
                 'price': float(row['price']),
                 'curr': row['curr'],
-                'adjustment': float(row['adjustment'])
+                'adjustment': float(row['adjustment']),
+                'asset_type': row['asset_type'] if 'asset_type' in row.keys() else ''
             })
 
         logger.info(f"get_portfolio returned {len(data)} records for type {asset_type}")
@@ -276,13 +270,13 @@ class DatabaseManager:
         
         if user_id:
             cursor.execute('''
-                SELECT code, name, qty, price, curr, adjustment
+                SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
                 WHERE code = ? AND user_id = ?
             ''', (code, user_id))
         else:
             cursor.execute('''
-                SELECT code, name, qty, price, curr, adjustment
+                SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
                 WHERE code = ? AND (user_id IS NULL OR user_id = '')
             ''', (code,))
@@ -297,7 +291,8 @@ class DatabaseManager:
                 'qty': float(row['qty']),
                 'price': float(row['price']),
                 'curr': row['curr'],
-                'adjustment': float(row['adjustment'])
+                'adjustment': float(row['adjustment']),
+                'asset_type': row['asset_type'] if 'asset_type' in row.keys() else ''
             }
         return None
     
@@ -317,7 +312,7 @@ class DatabaseManager:
                 if cursor.fetchone():
                     # 更新
                     cursor.execute('''
-                        UPDATE portfolio SET name=?, qty=?, price=?, curr=?, adjustment=?, updated_at=CURRENT_TIMESTAMP
+                        UPDATE portfolio SET name=?, qty=?, price=?, curr=?, adjustment=?, asset_type=?, updated_at=CURRENT_TIMESTAMP
                         WHERE code = ? AND user_id = ?
                     ''', (
                         data['name'],
@@ -325,14 +320,15 @@ class DatabaseManager:
                         data['price'],
                         data.get('curr', 'CNY'),
                         data.get('adjustment', 0.0),
+                        data.get('asset_type', 'a'),
                         data['code'],
                         user_id
                     ))
                 else:
                     # 插入
                     cursor.execute('''
-                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, user_id, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ''', (
                         data['code'],
                         data['name'],
@@ -340,19 +336,21 @@ class DatabaseManager:
                         data['price'],
                         data.get('curr', 'CNY'),
                         data.get('adjustment', 0.0),
+                        data.get('asset_type', 'a'),
                         user_id
                     ))
             else:
                 cursor.execute('''
-                    INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ''', (
                     data['code'],
                     data['name'],
                     data['qty'],
                     data['price'],
                     data.get('curr', 'CNY'),
-                    data.get('adjustment', 0.0)
+                    data.get('adjustment', 0.0),
+                    data.get('asset_type', 'a')
                 ))
             
             conn.commit()

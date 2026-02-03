@@ -7,6 +7,7 @@ class PortfolioItem {
   final double price;
   final double adjustment;
   final String curr;
+  final String assetType;
 
   PortfolioItem({
     this.id,
@@ -16,6 +17,7 @@ class PortfolioItem {
     required this.price,
     this.adjustment = 0,
     this.curr = 'CNY',
+    this.assetType = '',
   });
 
   factory PortfolioItem.fromJson(Map<String, dynamic> json) {
@@ -27,6 +29,7 @@ class PortfolioItem {
       price: _parseDouble(json['price']),
       adjustment: _parseDouble(json['adjustment']),
       curr: json['curr'] ?? 'CNY',
+      assetType: json['asset_type'] ?? json['assetType'] ?? '',
     );
   }
 
@@ -39,11 +42,13 @@ class PortfolioItem {
       'price': price,
       'adjustment': adjustment,
       'curr': curr,
+      'asset_type': assetType,
     };
   }
 
   /// 获取市场类型
   String get marketType {
+    if (assetType.isNotEmpty) return assetType;
     final lowerCode = code.toLowerCase();
     if (lowerCode.startsWith('hk')) return 'hk';
     if (lowerCode.startsWith('gb_') || lowerCode.startsWith('us')) return 'us';
@@ -53,10 +58,10 @@ class PortfolioItem {
 
   /// 获取币种符号
   String get currencySymbol {
-    switch (marketType) {
-      case 'hk':
+    switch (curr.toUpperCase()) {
+      case 'HKD':
         return 'HK\$';
-      case 'us':
+      case 'USD':
         return '\$';
       default:
         return '¥';

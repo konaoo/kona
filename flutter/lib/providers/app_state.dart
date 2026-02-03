@@ -480,8 +480,9 @@ class AppState extends ChangeNotifier {
     required double price,
     required double qty,
     String? curr,
+    String? assetType,
   }) async {
-    final ok = await _api.addPortfolioAsset(code, name, price, qty, curr: curr);
+    final ok = await _api.addPortfolioAsset(code, name, price, qty, curr: curr, assetType: assetType);
     if (!ok) return false;
     await refreshHomeData();
     return true;
@@ -506,6 +507,19 @@ class AppState extends ChangeNotifier {
     required double qty,
   }) async {
     final ok = await _api.sellPortfolioAsset(code, price, qty);
+    if (!ok) return false;
+    await refreshHomeData();
+    return true;
+  }
+
+  /// 手动调整（数量/成本/调整）
+  Future<bool> modifyInvestment({
+    required String code,
+    required double qty,
+    required double price,
+    required double adjustment,
+  }) async {
+    final ok = await _api.modifyPortfolioAsset(code, qty, price, adjustment);
     if (!ok) return false;
     await refreshHomeData();
     return true;

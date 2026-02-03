@@ -20,6 +20,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _queryController = TextEditingController();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
+  final _adjustController = TextEditingController();
 
   Timer? _debounce;
   bool _saving = false;
@@ -32,17 +33,33 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
   bool get _isTrade => widget.mode == 'trade';
+  bool get _isAdjust => _tradeMode == 'adjust';
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isTrade && widget.item != null) {
+      _adjustController.text = widget.item!.adjustment.toStringAsFixed(2);
+    }
+  }
 
   @override
   void dispose() {
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
+    _adjustController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
   String _formatDisplayCode(String code) {
+    const customMap = {
+      'ft_LU1116320737': 'BLK',
+    };
+    if (customMap.containsKey(code)) {
+      return customMap[code]!;
+    }
     var c = code;
     if (c.toLowerCase().startsWith('gb_')) {
       c = c.substring(3).toUpperCase();
@@ -132,15 +149,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   Future<void> _submit() async {
     final appState = context.read<AppState>();
 
-    final priceStr = _priceController.text.trim();
-    final qtyStr = _qtyController.text.trim();
-    final price = double.tryParse(priceStr);
-    final qty = double.tryParse(qtyStr);
-
-    if (price == null || price <= 0 || qty == null || qty <= 0) {
-      setState(() => _errorText = '请输入有效价格和数量');
-      return;
-    }
+    double? price;
+    double? qty;
 
     setState(() {
       _saving = true;
@@ -149,18 +159,29 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
     bool ok = false;
     if (_isAdd) {
-      final raw = _queryController.text.trim();
-      if (_selected == null && raw.isEmpty) {
+      final priceStr = _priceController.text.trim();
+      final qtyStr = _qtyController.text.trim();
+      price = double.tryParse(priceStr);
+      qty = double.tryParse(qtyStr);
+      if (price == null || price <= 0 || qty == null || qty <= 0) {
         setState(() {
           _saving = false;
-          _errorText = '请选择股票或输入代码';
+          _errorText = '请输入有效价格和数量';
         });
         return;
       }
-      final code = _selected?['code'] ?? raw;
-      final name = _selected?['name'] ?? raw;
+      if (_selected == null) {
+        setState(() {
+          _saving = false;
+          _errorText = '必须从下拉列表选择资产';
+        });
+        return;
+      }
+      final code = _selected?['code'] ?? '';
+      final name = _selected?['name'] ?? '';
       final curr = _selected?['currency'];
-      ok = await appState.addInvestment(code: code, name: name, price: price, qty: qty, curr: curr);
+      final assetType = _selected?['asset_type'];
+      ok = await appState.addInvestment(code: code, name: name, price: price, qty: qty, curr: curr, assetType: assetType);
     } else {
       final code = widget.item?.code ?? '';
       if (code.isEmpty) {
@@ -171,9 +192,44 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         return;
       }
       final mode = _isTrade ? _tradeMode : (_isBuy ? 'buy' : 'sell');
-      if (mode == 'buy') {
+      if (mode == 'adjust') {
+        final adjustStr = _adjustController.text.trim();
+        final adjustVal = double.tryParse(adjustStr);
+        if (adjustVal == null) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效调整金额';
+          });
+          return;
+        }
+        final qtyVal = widget.item?.qty ?? 0;
+        final priceVal = widget.item?.price ?? 0;
+        ok = await appState.modifyInvestment(code: code, qty: qtyVal, price: priceVal, adjustment: adjustVal);
+      } else if (mode == 'buy') {
+        final priceStr = _priceController.text.trim();
+        final qtyStr = _qtyController.text.trim();
+        price = double.tryParse(priceStr);
+        qty = double.tryParse(qtyStr);
+        if (price == null || price <= 0 || qty == null || qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效价格和数量';
+          });
+          return;
+        }
         ok = await appState.buyInvestment(code: code, price: price, qty: qty);
       } else {
+        final priceStr = _priceController.text.trim();
+        final qtyStr = _qtyController.text.trim();
+        price = double.tryParse(priceStr);
+        qty = double.tryParse(qtyStr);
+        if (price == null || price <= 0 || qty == null || qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效价格和数量';
+          });
+          return;
+        }
         ok = await appState.sellInvestment(code: code, price: price, qty: qty);
       }
     }
@@ -299,6 +355,32 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             ),
           ),
         ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: InkWell(
+            onTap: () => setState(() => _tradeMode = 'adjust'),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: _tradeMode == 'adjust' ? AppTheme.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _tradeMode == 'adjust' ? AppTheme.accent : AppTheme.border,
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '调整',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _tradeMode == 'adjust' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -308,13 +390,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final title = _isAdd
         ? '添加投资资产'
         : _isTrade
-            ? '买入 / 卖出'
+            ? '买入 / 卖出 / 调整'
             : _isBuy
                 ? '买入'
                 : '卖出';
     final actionColor = (_isTrade ? _tradeMode == 'buy' : _isBuy)
         ? AppTheme.accent
-        : AppTheme.danger;
+        : (_isTrade && _tradeMode == 'adjust' ? AppTheme.accent : AppTheme.danger);
+    final canSave = !_saving && (!_isAdd || _selected != null);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -395,19 +478,28 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 ],
                 _buildTradeToggle(),
                 if (_isTrade) const SizedBox(height: Spacing.lg),
-                TextField(
-                  controller: _priceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(labelText: '价格'),
-                ),
-                const SizedBox(height: Spacing.lg),
-                TextField(
-                  controller: _qtyController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(labelText: '数量'),
-                ),
+                if (_isTrade && _isAdjust) ...[
+                  TextField(
+                    controller: _adjustController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    style: const TextStyle(color: AppTheme.textPrimary),
+                    decoration: const InputDecoration(labelText: '调整金额'),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: _priceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: AppTheme.textPrimary),
+                    decoration: const InputDecoration(labelText: '价格'),
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  TextField(
+                    controller: _qtyController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: AppTheme.textPrimary),
+                    decoration: const InputDecoration(labelText: '数量'),
+                  ),
+                ],
                 if (_errorText != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -428,7 +520,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: actionColor),
-                        onPressed: _saving ? null : _submit,
+                        onPressed: canSave ? _submit : null,
                         child: _saving
                             ? const SizedBox(
                                 width: 18,

@@ -14,6 +14,7 @@ import config
 from core.db import DatabaseManager
 from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
 from core.parser import parse_code, get_display_code
+from core.asset_type import infer_asset_type
 from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed
 from core.news import news_fetcher
 from core.system import system_manager
@@ -173,6 +174,13 @@ def add_asset():
     data['curr'] = parsed['curr']
     data['name'] = data.get('name', parsed['code'])
     data['adjustment'] = data.get('adjustment', 0.0)
+    # 资产类型（基金/港股/美股/A股）
+    provided_type = data.get('asset_type', '').strip()
+    inferred_type = infer_asset_type(data['code'], data.get('name', ''))
+    if not provided_type:
+        data['asset_type'] = inferred_type
+    else:
+        data['asset_type'] = inferred_type if (provided_type == 'us' and inferred_type == 'fund') else provided_type
     
     success = db.add_asset(data, user_id)
     

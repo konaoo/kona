@@ -152,34 +152,61 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     # Nasdaq 备用接口（ETF/US Stocks）
     try:
         for assetclass in ["etf", "stocks"]:
-            url = f"https://api.nasdaq.com/api/quote/{s}/info?assetclass={assetclass}"
-            headers = config.API_HEADERS.get("default", config.HEADERS)
-            r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
-            if r.status_code != 200:
-                continue
-            data = r.json().get("data") or {}
-            primary = data.get("primaryData") or {}
-            curr = safe_float(primary.get("lastSalePrice"))
-            net_change = safe_float(primary.get("netChange"))
-            pct = safe_float(primary.get("percentageChange"))
-
-            if curr > 0:
-                yclose = 0.0
-                summary = data.get("summaryData") or {}
-                if isinstance(summary, dict):
-                    yclose = safe_float((summary.get("PreviousClose") or {}).get("value"))
-                if yclose <= 0 and net_change != 0:
-                    yclose = curr - net_change
-                if yclose <= 0:
-                    yclose = curr
-                amt = curr - yclose
-                if pct == 0 and yclose > 0:
-                    pct = amt / yclose * 100
+            quote = _get_nasdaq_quote(s, assetclass)
+            if quote:
+                curr, yclose, amt, pct = quote
                 return curr, yclose, amt, pct
     except Exception as e:
         logger.warning(f"Nasdaq quote API error for {code}: {e}")
 
     return 0.0, 0.0, 0.0, 0.0
+
+
+def get_us_asset_type(code: str) -> Optional[str]:
+    """
+    判断美股资产类型：ETF -> fund / 股票 -> us
+    """
+    s = code.upper().replace('GB_', '').replace('US.', '')
+    try:
+        quote = _get_nasdaq_quote(s, "etf")
+        if quote:
+            return "fund"
+    except Exception as e:
+        logger.debug(f"Nasdaq ETF detect error for {code}: {e}")
+    try:
+        quote = _get_nasdaq_quote(s, "stocks")
+        if quote:
+            return "us"
+    except Exception as e:
+        logger.debug(f"Nasdaq stock detect error for {code}: {e}")
+    return None
+
+
+def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float]]:
+    url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass={assetclass}"
+    headers = config.API_HEADERS.get("default", config.HEADERS)
+    r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+    if r.status_code != 200:
+        return None
+    data = r.json().get("data") or {}
+    primary = data.get("primaryData") or {}
+    curr = safe_float(primary.get("lastSalePrice"))
+    net_change = safe_float(primary.get("netChange"))
+    pct = safe_float(primary.get("percentageChange"))
+    if curr <= 0:
+        return None
+    yclose = 0.0
+    summary = data.get("summaryData") or {}
+    if isinstance(summary, dict):
+        yclose = safe_float((summary.get("PreviousClose") or {}).get("value"))
+    if yclose <= 0 and net_change != 0:
+        yclose = curr - net_change
+    if yclose <= 0:
+        yclose = curr
+    amt = curr - yclose
+    if pct == 0 and yclose > 0:
+        pct = amt / yclose * 100
+    return curr, yclose, amt, pct
 
 
 @retry_on_failure(max_retries=2, delay=0.5)

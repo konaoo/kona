@@ -162,6 +162,60 @@ python3 app.py
 
 ---
 
+**3.5) 数据库结构（SQLite）**
+
+数据库文件：`kona_tool/portfolio.db`
+
+**portfolio（持仓表）**
+- `id`：主键
+- `code`：证券代码（唯一）
+- `name`：名称
+- `qty`：数量
+- `price`：成本价
+- `curr`：币种（CNY / USD / HKD）
+- `adjustment`：手动调整项（用于分红等校准）
+- `asset_type`：资产类型（`a` / `us` / `hk` / `fund`）
+- `user_id`：用户 ID
+- `created_at` / `updated_at`
+
+**transactions（交易记录）**
+- `id`：主键
+- `time`：交易时间
+- `code` / `name`：代码 / 名称
+- `type`：买入/卖出
+- `price` / `qty` / `amount`
+- `pnl`：成交盈亏
+- `user_id`
+- `created_at`
+
+**cash_assets / other_assets / liabilities（现金 / 其他 / 负债）**
+- `id`：主键
+- `name`：名称
+- `amount`：金额
+- `curr`：币种
+- `user_id`
+- `created_at` / `updated_at`
+
+**users（用户表）**
+- `id`：用户唯一标识
+- `email`
+- `nickname`
+- `register_method`
+- `phone`
+- `user_number`
+- `created_at`
+- `last_login`
+
+**daily_snapshots（每日资产快照）**
+- `id`
+- `date`
+- `total_asset` / `total_invest` / `total_cash` / `total_other` / `total_liability`
+- `total_pnl` / `day_pnl`
+- `user_id`
+- `updated_at`
+
+---
+
 **四、部署方式（AWS + GitHub Actions）**
 
 部署流程：

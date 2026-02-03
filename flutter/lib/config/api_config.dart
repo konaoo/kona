@@ -12,6 +12,7 @@ class ApiConfig {
   static const String portfolioAdd = '/api/portfolio/add';
   static const String portfolioBuy = '/api/portfolio/buy';
   static const String portfolioSell = '/api/portfolio/sell';
+  static const String portfolioModify = '/api/portfolio/modify';
   static const String portfolioDelete = '/api/portfolio/delete';
   static const String pricesBatch = '/api/prices/batch';
   static const String cashAssets = '/api/cash_assets';

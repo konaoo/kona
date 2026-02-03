@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 from .stock import get_stock_price
+from .asset_type import infer_asset_type, asset_type_label
 from .fund import get_fund_price
 from .utils import safe_float
 
@@ -297,4 +298,11 @@ def search_stocks(query: str) -> list:
             except Exception as e:
                 logger.error(f"Search task failed: {e}")
                 
-    return results[:15]
+    final_results = []
+    for item in results:
+        asset_type = infer_asset_type(item.get('code', ''), item.get('name', ''))
+        item['asset_type'] = asset_type
+        item['type_name'] = asset_type_label(asset_type)
+        final_results.append(item)
+
+    return final_results[:15]

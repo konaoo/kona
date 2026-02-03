@@ -115,7 +115,14 @@ class ApiService {
   }
 
   /// 添加投资资产
-  Future<bool> addPortfolioAsset(String code, String name, double price, double qty, {String? curr}) async {
+  Future<bool> addPortfolioAsset(
+    String code,
+    String name,
+    double price,
+    double qty, {
+    String? curr,
+    String? assetType,
+  }) async {
     try {
       await _post(ApiConfig.portfolioAdd, {
         'code': code,
@@ -123,6 +130,7 @@ class ApiService {
         'price': price,
         'qty': qty,
         if (curr != null && curr.isNotEmpty) 'curr': curr,
+        if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
       });
       return true;
     } catch (e) {
@@ -151,6 +159,21 @@ class ApiService {
         'code': code,
         'price': price,
         'qty': qty,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 修正资产（数量/成本/调整）
+  Future<bool> modifyPortfolioAsset(String code, double qty, double price, double adjustment) async {
+    try {
+      await _post(ApiConfig.portfolioModify, {
+        'code': code,
+        'qty': qty,
+        'price': price,
+        'adjustment': adjustment,
       });
       return true;
     } catch (e) {
