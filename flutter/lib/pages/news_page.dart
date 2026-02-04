@@ -14,7 +14,7 @@ class _NewsPageState extends State<NewsPage> {
   final ApiService _api = ApiService();
   List<Map<String, dynamic>> _news = [];
   bool _loading = true;
-  bool _onlyImportant = true;
+  bool _onlyImportant = false;
   final Set<String> _expandedKeys = {};
   final ScrollController _scrollController = ScrollController();
   final Set<String> _newsIds = {};
