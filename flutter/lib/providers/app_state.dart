@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../models/portfolio.dart';
@@ -8,6 +9,10 @@ import '../models/asset.dart';
 class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
+
+  AppState() {
+    _loadTheme();
+  }
 
   // 用户状态
   bool _isLoggedIn = false;
@@ -49,6 +54,9 @@ class AppState extends ChangeNotifier {
   // 金额隐藏
   bool _amountHidden = false;
 
+  // 主题模式
+  ThemeMode _themeMode = ThemeMode.dark;
+
   // ============================================================
   // Getters
   // ============================================================
@@ -76,6 +84,8 @@ class AppState extends ChangeNotifier {
 
   Map<String, double> get exchangeRates => _exchangeRates;
   bool get amountHidden => _amountHidden;
+  ThemeMode get themeMode => _themeMode;
+  bool get isLightTheme => _themeMode == ThemeMode.light;
 
   double get monthChange => _monthChange;
   double get yearChange => _yearChange;
@@ -94,6 +104,12 @@ class AppState extends ChangeNotifier {
       default:
         return 1.0;
     }
+  }
+
+  double getCurrencyRate(String curr) => _rateForCurrency(curr);
+
+  double convertToCny(double amount, String curr) {
+    return amount * _rateForCurrency(curr);
   }
 
   /// 过滤后的投资组合
@@ -228,6 +244,32 @@ class AppState extends ChangeNotifier {
 
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
     notifyListeners();
+  }
+
+  Future<void> _loadTheme() async {
+    final saved = await _cache.getString('theme_mode');
+    if (saved == 'light') {
+      _themeMode = ThemeMode.light;
+      AppTheme.setMode(ThemeMode.light);
+      notifyListeners();
+    } else if (saved == 'dark') {
+      _themeMode = ThemeMode.dark;
+      AppTheme.setMode(ThemeMode.dark);
+      notifyListeners();
+    }
+  }
+
+  Future<void> setThemeMode(ThemeMode mode, {bool save = true}) async {
+    _themeMode = mode;
+    AppTheme.setMode(mode);
+    if (save) {
+      await _cache.setString('theme_mode', mode == ThemeMode.light ? 'light' : 'dark');
+    }
+    notifyListeners();
+  }
+
+  void toggleTheme() {
+    setThemeMode(isLightTheme ? ThemeMode.dark : ThemeMode.light);
   }
 
   Future<void> savePortfolioToCache() async {
@@ -752,6 +794,24 @@ class AppState extends ChangeNotifier {
       (Match m) => '${m[1]},',
     );
     return '$sign$symbol$text';
+  }
+
+  /// 格式化盈亏（人民币，紧凑：万/亿，整数）
+  String formatCompactPnlCny(double value) {
+    if (_amountHidden) return '****';
+    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
+    final absVal = value.abs();
+    if (absVal >= 100000000) {
+      return '$sign¥${(absVal / 100000000).toStringAsFixed(0)}亿';
+    }
+    if (absVal >= 10000) {
+      return '$sign¥${(absVal / 10000).toStringAsFixed(0)}万';
+    }
+    final text = absVal.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$sign¥$text';
   }
 
   /// 格式化百分比

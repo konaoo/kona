@@ -99,7 +99,7 @@ class _NewsPageState extends State<NewsPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     '市场快讯',
                     style: TextStyle(
                       fontSize: FontSize.xxl,
@@ -109,7 +109,7 @@ class _NewsPageState extends State<NewsPage> {
                   ),
                   Row(
                     children: [
-                      const Text(
+                      Text(
                         '只看重要',
                         style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
                       ),
@@ -132,7 +132,7 @@ class _NewsPageState extends State<NewsPage> {
             ),
           ),
           if (_loading)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               child: Center(
                 child: CircularProgressIndicator(color: AppTheme.accent),
               ),
@@ -145,7 +145,7 @@ class _NewsPageState extends State<NewsPage> {
                   children: [
                     Icon(Icons.flash_on, size: 48, color: AppTheme.textTertiary),
                     const SizedBox(height: Spacing.md),
-                    const Text('暂无快讯', style: TextStyle(color: AppTheme.textSecondary)),
+                    Text('暂无快讯', style: TextStyle(color: AppTheme.textSecondary)),
                   ],
                 ),
               ),
@@ -158,7 +158,7 @@ class _NewsPageState extends State<NewsPage> {
               ),
             ),
           if (_loadingMore)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: Spacing.md),
                 child: Center(
@@ -186,7 +186,13 @@ class _NewsPageState extends State<NewsPage> {
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: isImportant ? Border.all(color: AppTheme.accent.withOpacity(0.3), width: 1) : null,
+        border: Border.all(
+          color: isImportant
+              ? AppTheme.accent.withOpacity(0.3)
+              : AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+          width: 1,
+        ),
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,14 +207,14 @@ class _NewsPageState extends State<NewsPage> {
                     color: AppTheme.accent,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
+                  child: Text(
                     '重要',
                     style: TextStyle(fontSize: 10, color: AppTheme.textPrimary),
                   ),
                 ),
               Text(
                 item['time'] ?? '',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: FontSize.sm,
                   color: AppTheme.textTertiary,
                 ),
@@ -230,7 +236,7 @@ class _NewsPageState extends State<NewsPage> {
               item['content'] ?? '',
               maxLines: expanded ? null : 5,
               overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: FontSize.base,
                 color: AppTheme.textPrimary,
                 height: 1.5,

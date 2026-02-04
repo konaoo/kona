@@ -64,13 +64,13 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.bgElevated,
-        title: const Text('修改昵称', style: TextStyle(color: AppTheme.textPrimary)),
+        title: Text('修改昵称', style: TextStyle(color: AppTheme.textPrimary)),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 12,
-          style: const TextStyle(color: AppTheme.textPrimary),
-          decoration: const InputDecoration(
+          style: TextStyle(color: AppTheme.textPrimary),
+          decoration: InputDecoration(
             hintText: '请输入昵称',
             hintStyle: TextStyle(color: AppTheme.textTertiary),
             counterText: '',
@@ -79,11 +79,11 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+            child: Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('保存', style: TextStyle(color: AppTheme.accent)),
+            child: Text('保存', style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -115,7 +115,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ? null
                 : Text(
                     fallback,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textPrimary,
@@ -132,7 +132,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: AppTheme.bgElevated,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.camera_alt, size: 12, color: AppTheme.textSecondary),
+              child: Icon(Icons.camera_alt, size: 12, color: AppTheme.textSecondary),
             ),
           ),
         ],
@@ -166,7 +166,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           Text(
                             _nickname?.isNotEmpty == true ? _nickname! : '用户 #${appState.userNumber ?? 0}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: FontSize.xl,
                               fontWeight: FontWeight.bold,
                               color: AppTheme.textPrimary,
@@ -175,7 +175,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: 4),
                           Text(
                             appState.email ?? 'user@example.com',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               color: AppTheme.textSecondary,
                             ),
@@ -184,7 +184,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.edit, color: AppTheme.textTertiary),
+                      icon: Icon(Icons.edit, color: AppTheme.textTertiary),
                       onPressed: _editNickname,
                     ),
                   ],
@@ -194,6 +194,8 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: Spacing.lg),
 
               // 设置项
+              _buildThemeToggle(appState),
+              const SizedBox(height: Spacing.sm),
               _buildSettingItem(Icons.settings, '系统设置', () {}),
               const SizedBox(height: Spacing.sm),
               _buildSettingItem(Icons.info_outline, '关于我们', () {
@@ -212,7 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     '退出登录',
                     style: TextStyle(
                       fontSize: FontSize.lg,
@@ -244,16 +246,60 @@ class _ProfilePageState extends State<ProfilePage> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     color: AppTheme.textPrimary,
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right, size: 20, color: AppTheme.textTertiary),
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textTertiary),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildThemeToggle(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(Spacing.lg),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.palette_outlined, size: 20, color: AppTheme.accentLight),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '浅色主题',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '小清新 · 文艺风',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: appState.isLightTheme,
+            onChanged: (_) => appState.toggleTheme(),
+            activeColor: AppTheme.accent,
+          ),
+        ],
       ),
     );
   }
@@ -263,7 +309,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.bgElevated,
-        title: const Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
+        title: Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -274,10 +320,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: AppTheme.bgCard,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.account_balance_wallet, size: 32, color: AppTheme.accent),
+              child: Icon(Icons.account_balance_wallet, size: 32, color: AppTheme.accent),
             ),
             const SizedBox(height: Spacing.md),
-            const Text(
+            Text(
               '咔咔记账',
               style: TextStyle(
                 fontSize: 20,
@@ -285,15 +331,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: AppTheme.textPrimary,
               ),
             ),
-            const Text('v1.0.0', style: TextStyle(color: AppTheme.textSecondary)),
+            Text('v1.0.0', style: TextStyle(color: AppTheme.textSecondary)),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               '专注于个人资产管理的极简应用。',
               style: TextStyle(color: AppTheme.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '© 2026 Kona Tool',
               style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
             ),
@@ -302,7 +348,7 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('确定', style: TextStyle(color: AppTheme.accent)),
+            child: Text('确定', style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),

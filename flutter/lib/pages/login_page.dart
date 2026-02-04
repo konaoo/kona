@@ -152,7 +152,7 @@ class _LoginPageState extends State<LoginPage> {
                   color: AppTheme.bgCard,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.account_balance_wallet,
                   size: 50,
                   color: AppTheme.accent,
@@ -162,7 +162,7 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: Spacing.lg),
               
               // 标题
-              const Text(
+              Text(
                 '咔咔记账',
                 style: TextStyle(
                   fontSize: FontSize.title,
@@ -173,7 +173,7 @@ class _LoginPageState extends State<LoginPage> {
               
               const SizedBox(height: Spacing.sm),
               
-              const Text(
+              Text(
                 '轻松管理你的投资',
                 style: TextStyle(
                   fontSize: FontSize.lg,
@@ -184,53 +184,56 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 50),
               
               // 邮箱 + 发送按钮
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: AppTheme.textPrimary),
-                      decoration: const InputDecoration(
-                        labelText: '邮箱地址',
-                        hintText: 'example@email.com',
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: '邮箱地址',
+                          hintText: 'example@email.com',
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 110,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: (isBypass || _sendingCode || _countdown > 0) ? null : _sendCode,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _countdown > 0 ? AppTheme.bgElevated : AppTheme.accent,
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: isCompact ? 88 : 96,
+                      child: ElevatedButton(
+                        onPressed: (isBypass || _sendingCode || _countdown > 0) ? null : _sendCode,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _countdown > 0 ? AppTheme.bgElevated : AppTheme.accent,
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: _sendingCode
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              )
+                            : FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  isBypass
+                                      ? '免验证码'
+                                      : (_countdown > 0 ? '重新发送($_countdown)' : '发送验证码'),
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: isCompact ? 12 : 13),
+                                ),
+                              ),
                       ),
-                      child: _sendingCode
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppTheme.textPrimary,
-                              ),
-                            )
-                          : FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                isBypass
-                                    ? '免验证码'
-                                    : (_countdown > 0 ? '重新发送($_countdown)' : '发送验证码'),
-                                maxLines: 1,
-                                softWrap: false,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: isCompact ? 12 : 13),
-                              ),
-                            ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               
               const SizedBox(height: Spacing.lg),
@@ -240,7 +243,7 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _codeController,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: const InputDecoration(
                   labelText: '验证码',
                   hintText: '请输入6位数字验证码',
@@ -259,7 +262,7 @@ class _LoginPageState extends State<LoginPage> {
                   padding: const EdgeInsets.only(top: Spacing.sm),
                   child: Text(
                     _errorMessage!,
-                    style: const TextStyle(color: AppTheme.danger),
+                    style: TextStyle(color: AppTheme.danger),
                   ),
                 ),
               
@@ -279,7 +282,7 @@ class _LoginPageState extends State<LoginPage> {
                         : AppTheme.bgElevated,
                   ),
                   child: _loggingIn
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
@@ -287,7 +290,7 @@ class _LoginPageState extends State<LoginPage> {
                             color: AppTheme.textPrimary,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           '登录',
                           style: TextStyle(fontSize: FontSize.lg),
                         ),
@@ -297,7 +300,7 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 100),
               
               // 底部说明
-              const Text(
+              Text(
                 '登录即表示同意服务条款和隐私政策',
                 style: TextStyle(
                   fontSize: FontSize.sm,

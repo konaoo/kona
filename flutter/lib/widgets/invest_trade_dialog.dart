@@ -278,7 +278,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: FontSize.base),
+                    style: TextStyle(color: AppTheme.textPrimary, fontSize: FontSize.base),
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -287,7 +287,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       const SizedBox(width: 6),
                       Text(
                         code,
-                        style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                        style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
                       ),
                     ],
                   ),
@@ -409,14 +409,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.bgCard.withOpacity(0.88),
+              color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.88),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-              gradient: const LinearGradient(
-                colors: [Color(0xCC1A2744), Color(0xB30F1829)],
+              border: Border.all(
+                color: AppTheme.isLight
+                    ? AppTheme.border.withOpacity(0.7)
+                    : Colors.white.withOpacity(0.08),
+                width: 1,
+              ),
+              gradient: LinearGradient(
+                colors: AppTheme.dialogGradient,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
+              boxShadow: AppTheme.cardShadow,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -424,7 +430,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: FontSize.xxl,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
@@ -435,14 +441,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   TextField(
                     controller: _queryController,
                     onChanged: _onQueryChanged,
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(
                       labelText: '股票代码/名称',
                       hintText: '输入代码或名称搜索',
                     ),
                   ),
                   if (_searching)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text('搜索中...', style: TextStyle(color: AppTheme.textTertiary)),
                     ),
@@ -451,19 +457,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text(
+                        Text(
                           '已选择：',
                           style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
                         ),
                         Text(
                           '${_selected?['name']}  ',
-                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
                         ),
                         _marketBadge(_selected?['type_name'] ?? ''),
                         const SizedBox(width: 6),
                         Text(
                           _formatDisplayCode(_selected?['code'] ?? ''),
-                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
                         ),
                       ],
                     ),
@@ -472,7 +478,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 ] else ...[
                   Text(
                     '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.base),
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.base),
                   ),
                   const SizedBox(height: Spacing.lg),
                 ],
@@ -482,21 +488,21 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   TextField(
                     controller: _adjustController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '调整金额'),
                   ),
                 ] else ...[
                   TextField(
                     controller: _priceController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '价格'),
                   ),
                   const SizedBox(height: Spacing.lg),
                   TextField(
                     controller: _qtyController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '数量'),
                   ),
                 ],
@@ -504,7 +510,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   const SizedBox(height: 8),
                   Text(
                     _errorText!,
-                    style: const TextStyle(color: AppTheme.danger, fontSize: FontSize.base),
+                    style: TextStyle(color: AppTheme.danger, fontSize: FontSize.base),
                   ),
                 ],
                 const SizedBox(height: Spacing.xl),
@@ -513,7 +519,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     Expanded(
                       child: TextButton(
                         onPressed: _saving ? null : () => Navigator.pop(context),
-                        child: const Text('取消'),
+                        child: Text('取消'),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -527,7 +533,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                 height: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('保存'),
+                            : Text('保存'),
                       ),
                     ),
                   ],

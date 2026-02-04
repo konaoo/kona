@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
                       // 标题 + 眼睛图标
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             '总资产估值',
                             style: TextStyle(
                               fontSize: 13,
@@ -61,7 +61,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Text(
+                          Text(
                             '￥',
                             style: TextStyle(
                               fontSize: 11,
@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
                               alignment: Alignment.centerLeft,
                               child: Text(
                         appState.formatAmount(appState.totalAsset, prefix: ''),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: FontSize.hero,
                                   fontWeight: FontWeight.bold,
                                   color: AppTheme.textPrimary,
@@ -183,7 +183,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary),
+            style: TextStyle(fontSize: 11, color: AppTheme.textTertiary),
           ),
           const SizedBox(height: 4),
           SizedBox(

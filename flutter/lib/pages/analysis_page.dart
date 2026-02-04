@@ -112,7 +112,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return Container(
       padding: const EdgeInsets.all(Spacing.xl),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: AppTheme.cardGradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -123,7 +123,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Text(
             _getPeriodTitle(_currentPeriod),
-            style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 4),
           Text(
@@ -275,7 +275,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
+            Text(
               '收益日历',
               style: TextStyle(
                 fontSize: FontSize.xl,
@@ -316,15 +316,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: _calendarLoading
-              ? const Center(
+              ? Center(
                   child: CircularProgressIndicator(color: AppTheme.accent),
                 )
               : GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _calendarTimeType == 'day' ? 7 : (_calendarTimeType == 'month' ? 4 : 5),
-                    childAspectRatio: _calendarTimeType == 'day' ? 0.85 : 1.0,
+                    crossAxisCount: _calendarTimeType == 'day' ? 6 : (_calendarTimeType == 'month' ? 4 : 5),
+                    childAspectRatio: _calendarTimeType == 'day' ? 0.9 : 1.0,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
                   ),
@@ -373,13 +373,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
                           ),
                           if (pnl != null) ...[
                             const SizedBox(height: 2),
-                            Text(
-                              _formatCalendarPnl(pnl),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: textColor,
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _formatCalendarPnl(pnl),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: textColor,
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ] else ...[
                             const SizedBox(height: 2),
@@ -408,7 +412,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               _calendarSummaryText(),
-              style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
             ),
           ),
         ),
@@ -449,7 +453,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '盈亏排行',
           style: TextStyle(
             fontSize: FontSize.xl,
@@ -474,7 +478,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   MaterialPageRoute(builder: (_) => AnalysisRankAllPage(rankType: _rankType)),
                 );
               },
-              child: const Text(
+              child: Text(
                 '查看全部 >',
                 style: TextStyle(fontSize: FontSize.base, color: AppTheme.accentLight),
               ),
@@ -489,7 +493,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               color: AppTheme.bgCard,
               borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
-            child: const Center(
+            child: Center(
               child: Padding(
                 padding: EdgeInsets.all(24.0),
                 child: Text(
@@ -561,6 +565,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
         borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+          width: 1,
+        ),
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Row(
         children: [
@@ -572,7 +581,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               children: [
                 Text(
                   item.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.textPrimary,
                     fontSize: FontSize.base,
                     fontWeight: FontWeight.w600,
@@ -581,7 +590,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 const SizedBox(height: 2),
                 Text(
                   _formatDisplayCode(item.code),
-                  style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                  style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
                 ),
               ],
             ),
@@ -637,10 +646,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   String _formatCalendarPnl(double pnl) {
-    final absVal = pnl.abs().toStringAsFixed(0);
-    if (pnl > 0) return '+$absVal';
-    if (pnl < 0) return '-$absVal';
-    return '0';
+    final sign = pnl > 0 ? '+' : (pnl < 0 ? '-' : '');
+    final absVal = pnl.abs();
+    String text;
+    if (absVal >= 100000000) {
+      text = '${(absVal / 100000000).toStringAsFixed(1)}亿';
+    } else if (absVal >= 10000) {
+      text = '${(absVal / 10000).toStringAsFixed(1)}万';
+    } else {
+      text = absVal.toStringAsFixed(0);
+    }
+    return '$sign$text';
   }
 
   String _calendarSummaryText() {
@@ -661,9 +677,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
       final gradients = [
-        const [Color(0xFFFDE68A), Color(0xFFF59E0B)], // gold
-        const [Color(0xFFE5E7EB), Color(0xFF94A3B8)], // silver
-        const [Color(0xFFFED7AA), Color(0xFFEA580C)], // bronze
+        [Color(0xFFFDE68A), Color(0xFFF59E0B)], // gold
+        [Color(0xFFE5E7EB), Color(0xFF94A3B8)], // silver
+        [Color(0xFFFED7AA), Color(0xFFEA580C)], // bronze
       ];
       final g = gradients[rank - 1];
       return SizedBox(
@@ -687,7 +703,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 ],
               ),
             ),
-            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
+            Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
@@ -702,7 +718,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ),
       child: Text(
         '$rank',
-        style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -730,9 +746,9 @@ class AnalysisRankAllPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.bgPrimary,
         elevation: 0,
-        title: Text(rankType == 'profit' ? '盈利榜' : '亏损榜', style: const TextStyle(color: AppTheme.textPrimary)),
+        title: Text(rankType == 'profit' ? '盈利榜' : '亏损榜', style: TextStyle(color: AppTheme.textPrimary)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -759,7 +775,7 @@ class AnalysisRankAllPage extends StatelessWidget {
                     children: [
                       Text(
                         item.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontSize: FontSize.base,
                           fontWeight: FontWeight.w600,
@@ -768,7 +784,7 @@ class AnalysisRankAllPage extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         _formatDisplayCode(item.code),
-                        style: const TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                        style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
                       ),
                     ],
                   ),
@@ -842,9 +858,9 @@ class AnalysisRankAllPage extends StatelessWidget {
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
       final gradients = [
-        const [Color(0xFFFDE68A), Color(0xFFF59E0B)],
-        const [Color(0xFFE5E7EB), Color(0xFF94A3B8)],
-        const [Color(0xFFFED7AA), Color(0xFFEA580C)],
+        [Color(0xFFFDE68A), Color(0xFFF59E0B)],
+        [Color(0xFFE5E7EB), Color(0xFF94A3B8)],
+        [Color(0xFFFED7AA), Color(0xFFEA580C)],
       ];
       final g = gradients[rank - 1];
       return SizedBox(
@@ -868,7 +884,7 @@ class AnalysisRankAllPage extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
+            Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
@@ -883,7 +899,7 @@ class AnalysisRankAllPage extends StatelessWidget {
       ),
       child: Text(
         '$rank',
-        style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
       ),
     );
   }

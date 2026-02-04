@@ -1,65 +1,171 @@
 import 'package:flutter/material.dart';
 
-/// 主题配置 - 深色主题
+class AppPalette {
+  final Color bgPrimary;
+  final Color bgCard;
+  final Color bgElevated;
+  final Color navBg;
+  final Color accent;
+  final Color accentLight;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textTertiary;
+  final Color success;
+  final Color danger;
+  final Color border;
+  final List<Color> cardGradient;
+
+  const AppPalette({
+    required this.bgPrimary,
+    required this.bgCard,
+    required this.bgElevated,
+    required this.navBg,
+    required this.accent,
+    required this.accentLight,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textTertiary,
+    required this.success,
+    required this.danger,
+    required this.border,
+    required this.cardGradient,
+  });
+
+  static const dark = AppPalette(
+    bgPrimary: Color(0xFF0A0E1A),
+    bgCard: Color(0xFF1A2332),
+    bgElevated: Color(0xFF1F2937),
+    navBg: Color(0xFF0F172A),
+    accent: Color(0xFF3B82F6),
+    accentLight: Color(0xFF60A5FA),
+    textPrimary: Color(0xFFFFFFFF),
+    textSecondary: Color(0xFF94A3B8),
+    textTertiary: Color(0xFF64748B),
+    success: Color(0xFF10B981),
+    danger: Color(0xFFEF4444),
+    border: Color(0xFF1F2937),
+    cardGradient: [Color(0xFF1A2744), Color(0xFF0F1829)],
+  );
+
+  // 轻浅文艺风：柔和米白 + 低饱和蓝绿
+  static const light = AppPalette(
+    bgPrimary: Color(0xFFF5F2ED),
+    bgCard: Color(0xFFFFFFFF),
+    bgElevated: Color(0xFFEFF2F7),
+    navBg: Color(0xFFF1EEE8),
+    accent: Color(0xFF4B86F0),
+    accentLight: Color(0xFF8CB5FF),
+    textPrimary: Color(0xFF1F2A37),
+    textSecondary: Color(0xFF6B7280),
+    textTertiary: Color(0xFF9AA3B2),
+    success: Color(0xFF16A34A),
+    danger: Color(0xFFE45656),
+    border: Color(0xFFDCE3EE),
+    cardGradient: [Color(0xFFE3EDFF), Color(0xFFF7FAFF)],
+  );
+}
+
+/// 主题配置
 class AppTheme {
+  static AppPalette _palette = AppPalette.dark;
+
+  static void setMode(ThemeMode mode) {
+    _palette = mode == ThemeMode.light ? AppPalette.light : AppPalette.dark;
+  }
+
+  static AppPalette get palette => _palette;
+  static bool get isLight => _palette == AppPalette.light;
+
   // 背景色
-  static const Color bgPrimary = Color(0xFF0A0E1A);
-  static const Color bgCard = Color(0xFF1A2332);
-  static const Color bgElevated = Color(0xFF1F2937);
-  static const Color navBg = Color(0xFF0F172A);
+  static Color get bgPrimary => _palette.bgPrimary;
+  static Color get bgCard => _palette.bgCard;
+  static Color get bgElevated => _palette.bgElevated;
+  static Color get navBg => _palette.navBg;
 
   // 强调色
-  static const Color accent = Color(0xFF3B82F6);
-  static const Color accentLight = Color(0xFF60A5FA);
+  static Color get accent => _palette.accent;
+  static Color get accentLight => _palette.accentLight;
 
   // 文字色
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFF94A3B8);
-  static const Color textTertiary = Color(0xFF64748B);
+  static Color get textPrimary => _palette.textPrimary;
+  static Color get textSecondary => _palette.textSecondary;
+  static Color get textTertiary => _palette.textTertiary;
 
   // 状态色
-  static const Color success = Color(0xFF10B981); // 盈利（绿色）
-  static const Color danger = Color(0xFFEF4444);  // 亏损（红色）
+  static Color get success => _palette.success;
+  static Color get danger => _palette.danger;
 
   // 边框
-  static const Color border = Color(0xFF1F2937);
+  static Color get border => _palette.border;
 
   // 渐变色
-  static const List<Color> cardGradient = [Color(0xFF1A2744), Color(0xFF0F1829)];
+  static List<Color> get cardGradient => _palette.cardGradient;
 
-  /// 获取深色主题
-  static ThemeData get darkTheme {
+  static List<BoxShadow> get cardShadow {
+    if (!isLight) return [];
+    return [
+      BoxShadow(
+        color: Color(0x14000000),
+        blurRadius: 16,
+        offset: Offset(0, 6),
+      ),
+    ];
+  }
+
+  static List<BoxShadow> get navShadow {
+    if (!isLight) return [];
+    return [
+      BoxShadow(
+        color: Color(0x22000000),
+        blurRadius: 12,
+        offset: Offset(0, -2),
+      ),
+    ];
+  }
+
+  static List<Color> get dialogGradient {
+    return isLight
+        ? [Color(0xFFFDFEFF), Color(0xFFF1F5FB)]
+        : [Color(0xCC1A2744), Color(0xB30F1829)];
+  }
+
+  static ThemeData buildTheme(AppPalette p, Brightness brightness) {
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: bgPrimary,
-      primaryColor: accent,
-      colorScheme: const ColorScheme.dark(
-        primary: accent,
-        secondary: accentLight,
-        surface: bgCard,
-        error: danger,
+      brightness: brightness,
+      scaffoldBackgroundColor: p.bgPrimary,
+      primaryColor: p.accent,
+      colorScheme: ColorScheme(
+        brightness: brightness,
+        primary: p.accent,
+        onPrimary: p.textPrimary,
+        secondary: p.accentLight,
+        onSecondary: p.textPrimary,
+        error: p.danger,
+        onError: p.textPrimary,
+        surface: p.bgCard,
+        onSurface: p.textPrimary,
       ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: bgPrimary,
+      appBarTheme: AppBarTheme(
+        backgroundColor: p.bgPrimary,
         elevation: 0,
         centerTitle: true,
         titleTextStyle: TextStyle(
-          color: textPrimary,
+          color: p.textPrimary,
           fontSize: 18,
           fontWeight: FontWeight.bold,
         ),
-        iconTheme: IconThemeData(color: textPrimary),
+        iconTheme: IconThemeData(color: p.textPrimary),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: navBg,
-        selectedItemColor: accent,
-        unselectedItemColor: textTertiary,
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: p.navBg,
+        selectedItemColor: p.accent,
+        unselectedItemColor: p.textTertiary,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: bgCard,
+        color: p.bgCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -67,42 +173,45 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: bgCard,
+        fillColor: p.bgCard,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: border),
+          borderSide: BorderSide(color: p.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: border),
+          borderSide: BorderSide(color: p.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: accent),
+          borderSide: BorderSide(color: p.accent),
         ),
-        labelStyle: const TextStyle(color: textSecondary),
-        hintStyle: const TextStyle(color: textTertiary),
+        labelStyle: TextStyle(color: p.textSecondary),
+        hintStyle: TextStyle(color: p.textTertiary),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: textPrimary,
+          backgroundColor: p.accent,
+          foregroundColor: p.textPrimary,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
         ),
       ),
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-        headlineMedium: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-        headlineSmall: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-        bodyLarge: TextStyle(color: textPrimary),
-        bodyMedium: TextStyle(color: textSecondary),
-        bodySmall: TextStyle(color: textTertiary),
+      textTheme: TextTheme(
+        headlineLarge: TextStyle(color: p.textPrimary, fontWeight: FontWeight.bold),
+        headlineMedium: TextStyle(color: p.textPrimary, fontWeight: FontWeight.bold),
+        headlineSmall: TextStyle(color: p.textPrimary, fontWeight: FontWeight.bold),
+        bodyLarge: TextStyle(color: p.textPrimary),
+        bodyMedium: TextStyle(color: p.textSecondary),
+        bodySmall: TextStyle(color: p.textTertiary),
       ),
     );
   }
+
+  static ThemeData get darkTheme => buildTheme(AppPalette.dark, Brightness.dark);
+  static ThemeData get lightTheme => buildTheme(AppPalette.light, Brightness.light);
 }
 
 /// 间距常量

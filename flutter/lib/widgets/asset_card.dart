@@ -41,8 +41,12 @@ class AssetCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(Spacing.lg),
           decoration: BoxDecoration(
-            border: Border.all(color: AppTheme.border, width: 1),
+            border: Border.all(
+              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+              width: 1,
+            ),
             borderRadius: BorderRadius.circular(AppRadius.lg),
+            boxShadow: AppTheme.cardShadow,
           ),
           child: Row(
             children: [
@@ -54,7 +58,7 @@ class AssetCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: FontSize.base,
                         color: AppTheme.textSecondary,
                       ),
@@ -62,7 +66,7 @@ class AssetCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       _formatAmount(amount),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: FontSize.xl,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary,
@@ -71,7 +75,7 @@ class AssetCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
                 size: 24,
                 color: AppTheme.textTertiary,

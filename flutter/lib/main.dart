@@ -25,11 +25,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AppState(),
-      child: MaterialApp(
-        title: '咔咔记账',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: const AuthWrapper(),
+      child: Consumer<AppState>(
+        builder: (context, appState, child) {
+          return MaterialApp(
+            title: '咔咔记账',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: appState.themeMode,
+            home: const AuthWrapper(),
+          );
+        },
       ),
     );
   }
@@ -199,16 +205,21 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               heroTag: _currentIndex == 0 ? 'add_asset_home' : 'add_investment',
               onPressed: _currentIndex == 0 ? _showQuickAdd : _showAddInvestment,
               backgroundColor: AppTheme.accent,
-              child: const Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
+              child: Icon(
+                Icons.add,
+                size: 20,
+                color: AppTheme.isLight ? Colors.white : AppTheme.textPrimary,
+              ),
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F172A),
+        decoration: BoxDecoration(
+          color: AppTheme.navBg,
           border: Border(
-            top: BorderSide(color: Color(0xFF1F2937), width: 1),
+            top: BorderSide(color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.3), width: 1),
           ),
+          boxShadow: AppTheme.navShadow,
         ),
         child: SafeArea(
           child: SizedBox(
@@ -244,7 +255,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               children: [
                 Icon(
                   isSelected ? activeIcon : icon,
-                  color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF64748B),
+                  color: isSelected ? AppTheme.accent : AppTheme.textTertiary,
                   size: 24,
                 ),
                 const SizedBox(height: 4),
@@ -252,7 +263,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                   label,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF64748B),
+                    color: isSelected ? AppTheme.accent : AppTheme.textTertiary,
                   ),
                 ),
               ],

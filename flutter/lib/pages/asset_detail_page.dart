@@ -20,19 +20,19 @@ class AssetDetailPage extends StatelessWidget {
         backgroundColor: AppTheme.bgPrimary,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           _getTitle(),
-          style: const TextStyle(color: AppTheme.textPrimary),
+          style: TextStyle(color: AppTheme.textPrimary),
         ),
       ),
       floatingActionButton: FloatingActionButton.small(
         heroTag: 'add_asset_detail_$assetType',
         onPressed: () => _showAddDialog(context),
         backgroundColor: AppTheme.accent,
-        child: const Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
+        child: Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Consumer<AppState>(
@@ -52,7 +52,7 @@ class AssetDetailPage extends StatelessWidget {
                   const SizedBox(height: Spacing.lg),
                   Text(
                     '暂无${_getTitle()}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: FontSize.lg,
                       color: AppTheme.textSecondary,
                     ),
@@ -146,7 +146,7 @@ class AssetDetailPage extends StatelessWidget {
               children: [
                 Text(
                   asset.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: FontSize.lg,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -155,7 +155,7 @@ class AssetDetailPage extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   asset.amount.toStringAsFixed(2),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: FontSize.base,
                     color: AppTheme.textSecondary,
                   ),
@@ -165,7 +165,7 @@ class AssetDetailPage extends StatelessWidget {
           ),
           // 删除按钮
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
+            icon: Icon(Icons.delete_outline, color: AppTheme.danger),
             onPressed: () => _showDeleteDialog(context, asset, appState),
           ),
         ],
@@ -189,20 +189,26 @@ class AssetDetailPage extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppTheme.bgCard.withOpacity(0.88),
+                  color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.88),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xCC1A2744), Color(0xB30F1829)],
+                  border: Border.all(
+                    color: AppTheme.isLight
+                        ? AppTheme.border.withOpacity(0.7)
+                        : Colors.white.withOpacity(0.08),
+                    width: 1,
+                  ),
+                  gradient: LinearGradient(
+                    colors: AppTheme.dialogGradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
+                  boxShadow: AppTheme.cardShadow,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '删除资产',
                       style: TextStyle(
                         color: AppTheme.textPrimary,
@@ -213,7 +219,7 @@ class AssetDetailPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       '确定删除「${asset.name}」吗？',
-                      style: const TextStyle(color: AppTheme.textSecondary),
+                      style: TextStyle(color: AppTheme.textSecondary),
                     ),
                     const SizedBox(height: Spacing.xl),
                     Row(
@@ -221,7 +227,7 @@ class AssetDetailPage extends StatelessWidget {
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(context),
-                            child: const Text('取消'),
+                            child: Text('取消'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -244,7 +250,7 @@ class AssetDetailPage extends StatelessWidget {
                                 }
                               }
                             },
-                            child: const Text('删除'),
+                            child: Text('删除'),
                           ),
                         ),
                       ],

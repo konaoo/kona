@@ -28,6 +28,7 @@ class _InvestPageState extends State<InvestPage> {
     return Consumer<AppState>(
       builder: (context, appState, child) {
         final isCompact = MediaQuery.of(context).size.width < 380;
+        final tableWidth = MediaQuery.of(context).size.width + (isCompact ? 100 : 140);
         return RefreshIndicator(
           onRefresh: _loadData,
           color: AppTheme.accent,
@@ -57,7 +58,7 @@ class _InvestPageState extends State<InvestPage> {
                                     children: [
                                       Row(
                                         children: [
-                                          const Text(
+                                          Text(
                                             '总市值',
                                             style: TextStyle(
                                               fontSize: FontSize.base,
@@ -78,7 +79,7 @@ class _InvestPageState extends State<InvestPage> {
                                       ),
                                       Text(
                                         appState.formatAmount(appState.investTotalMV, prefix: ''),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: FontSize.hero,
                                           fontWeight: FontWeight.bold,
                                           color: AppTheme.textPrimary,
@@ -90,7 +91,7 @@ class _InvestPageState extends State<InvestPage> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    const Text(
+                                    Text(
                                       '今日盈亏',
                                       style: TextStyle(
                                         fontSize: 11,
@@ -117,7 +118,7 @@ class _InvestPageState extends State<InvestPage> {
                               ],
                             ),
                             const SizedBox(height: Spacing.md),
-                            const Divider(color: AppTheme.border),
+                            Divider(color: AppTheme.border),
                             const SizedBox(height: Spacing.md),
                             // 持仓盈亏
                             Row(
@@ -139,68 +140,6 @@ class _InvestPageState extends State<InvestPage> {
                   ),
                 ),
               ),
-              // 持仓列表表头
-              if (appState.filteredPortfolio.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: Spacing.md,
-                      vertical: isCompact ? 4 : 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgCard.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border.withOpacity(0.4)),
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 80,
-                          child: Text(
-                            '资产名称',
-                            style: TextStyle(
-                              fontSize: isCompact ? 8 : FontSize.xs,
-                              color: AppTheme.textTertiary,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            '市值/数量',
-                            style: TextStyle(
-                              fontSize: isCompact ? 8 : FontSize.xs,
-                              color: AppTheme.textTertiary,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            '现价/成本',
-                            style: TextStyle(
-                              fontSize: isCompact ? 8 : FontSize.xs,
-                              color: AppTheme.textTertiary,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            '累计盈亏',
-                            textAlign: TextAlign.end,
-                            style: TextStyle(
-                              fontSize: isCompact ? 8 : FontSize.xs,
-                              color: AppTheme.textTertiary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // 持仓列表
               if (appState.filteredPortfolio.isEmpty)
                 SliverFillRemaining(
                   child: Center(
@@ -209,20 +148,105 @@ class _InvestPageState extends State<InvestPage> {
                       children: [
                         Icon(Icons.business_center, size: 48, color: AppTheme.textTertiary),
                         const SizedBox(height: Spacing.md),
-                        const Text('暂无持仓', style: TextStyle(color: AppTheme.textSecondary)),
+                        Text('暂无持仓', style: TextStyle(color: AppTheme.textSecondary)),
                       ],
                     ),
                   ),
                 )
               else
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = appState.filteredPortfolio[index];
-                      final priceInfo = appState.prices[item.code];
-                      return _buildPortfolioCard(item, priceInfo, appState, isCompact);
-                    },
-                    childCount: appState.filteredPortfolio.length,
+                SliverToBoxAdapter(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: SizedBox(
+                      width: tableWidth,
+                      child: Column(
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: Spacing.md,
+                              vertical: isCompact ? 4 : 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.isLight
+                                  ? AppTheme.bgElevated
+                                  : AppTheme.bgCard.withOpacity(0.45),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 80,
+                                  child: Text(
+                                    '资产名称',
+                                    style: TextStyle(
+                                      fontSize: isCompact ? 8 : FontSize.xs,
+                                      color: AppTheme.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    '市值/数量',
+                                    style: TextStyle(
+                                      fontSize: isCompact ? 8 : FontSize.xs,
+                                      color: AppTheme.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    '现价/成本',
+                                    style: TextStyle(
+                                      fontSize: isCompact ? 8 : FontSize.xs,
+                                      color: AppTheme.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    '累计盈亏',
+                                    textAlign: TextAlign.end,
+                                    style: TextStyle(
+                                      fontSize: isCompact ? 8 : FontSize.xs,
+                                      color: AppTheme.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    '当日盈亏',
+                                    textAlign: TextAlign.end,
+                                    style: TextStyle(
+                                      fontSize: isCompact ? 8 : FontSize.xs,
+                                      color: AppTheme.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: appState.filteredPortfolio.length,
+                            itemBuilder: (context, index) {
+                              final item = appState.filteredPortfolio[index];
+                              final priceInfo = appState.prices[item.code];
+                              return _buildPortfolioCard(item, priceInfo, appState, isCompact);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -235,7 +259,7 @@ class _InvestPageState extends State<InvestPage> {
   Widget _buildStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+        Text(label, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
         const SizedBox(height: 2),
         Text(value, style: TextStyle(fontSize: FontSize.lg, color: color)),
       ],
@@ -292,12 +316,20 @@ class _InvestPageState extends State<InvestPage> {
     final holdingPnl = mv - costTotal + item.adjustment;
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
+    final rate = appState.getCurrencyRate(item.curr);
+    final dailyPnl = hasValidPrice ? priceInfo.change * item.qty * rate : 0.0;
+    final dailyBase = (hasValidPrice && priceInfo.yclose > 0)
+        ? priceInfo.yclose * item.qty * rate
+        : 0.0;
+    final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
+    final dailyColor = AppState.getPnlColor(dailyPnl);
     final mvText = isCompact
         ? appState.formatCompactAmount(mv, prefix: item.currencySymbol)
         : appState.formatAmount(mv, prefix: item.currencySymbol);
     final pnlText = isCompact
         ? appState.formatCompactPnlWithCurrency(holdingPnl, item.currencySymbol)
         : appState.formatPnlIntWithCurrency(holdingPnl, item.currencySymbol);
+    final dailyText = appState.formatCompactPnlCny(dailyPnl);
 
     return Material(
       color: Colors.transparent,
@@ -314,6 +346,11 @@ class _InvestPageState extends State<InvestPage> {
           decoration: BoxDecoration(
             color: AppTheme.bgCard,
             borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+              width: 1,
+            ),
+            boxShadow: AppTheme.cardShadow,
           ),
           child: Row(
             children: [
@@ -325,7 +362,7 @@ class _InvestPageState extends State<InvestPage> {
                   children: [
                     Text(
                       item.name.length > 5 ? '${item.name.substring(0, 5)}…' : item.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: FontSize.base,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -333,7 +370,7 @@ class _InvestPageState extends State<InvestPage> {
                     ),
                     Text(
                       _formatDisplayCode(item.code),
-                      style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
+                      style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
                     ),
                   ],
                 ),
@@ -365,7 +402,7 @@ class _InvestPageState extends State<InvestPage> {
               ),
               // 现价
               Expanded(
-                flex: 3,
+                flex: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -390,7 +427,7 @@ class _InvestPageState extends State<InvestPage> {
               ),
               // 盈亏
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -409,6 +446,32 @@ class _InvestPageState extends State<InvestPage> {
                       style: TextStyle(
                         fontSize: isCompact ? 8 : FontSize.xs,
                         color: pnlColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 当日盈亏
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      dailyText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isCompact ? 10 : FontSize.md,
+                        fontWeight: FontWeight.w600,
+                        color: dailyColor,
+                      ),
+                    ),
+                    Text(
+                      appState.formatPct(dailyPnlPct),
+                      style: TextStyle(
+                        fontSize: isCompact ? 8 : FontSize.xs,
+                        color: dailyColor,
                       ),
                     ),
                   ],
