@@ -262,6 +262,27 @@ http://<服务器IP>:5003/api/rates
 - 部署私钥只放 GitHub Secrets
 - 不要把 `.env` 或私钥提交到仓库
 
+**邮件登录（SES SMTP）**
+
+用于登录验证码发送（`/api/auth/send_code`）。需要在 AWS SES 创建 SMTP 凭证，并在 `.env` 中配置：
+
+```
+SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+SMTP_PORT=587
+SMTP_USER=YOUR_SMTP_USER
+SMTP_PASS=YOUR_SMTP_PASS
+SMTP_FROM=you@example.com
+SMTP_FROM_NAME=Kaka
+SMTP_USE_TLS=true
+```
+
+注意事项：
+- `SMTP_USER` 使用 SES 的 **SMTP 用户名**（不是 IAM 用户名）
+- `SMTP_HOST` 必须与创建凭证的区域一致
+- `SMTP_FROM` 必须是 SES 已验证的邮箱（无域名时用邮箱验证）
+- 发件人名称建议英文（如 `Kaka`），避免 SES 拒绝含中文的 `From`
+- 若 SES 处于 Sandbox，仅能向已验证邮箱发送
+
 ---
 
 **八、归档说明**
