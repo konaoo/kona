@@ -667,14 +667,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ];
       final g = gradients[rank - 1];
       return SizedBox(
-        width: 32,
-        height: 32,
+        width: 26,
+        height: 26,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
                 shape: BoxShape.circle,
@@ -687,14 +687,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 ],
               ),
             ),
-            const Icon(Icons.military_tech, size: 16, color: Color(0xFF0F172A)),
-            Positioned(
-              bottom: 2,
-              child: Text(
-                '$rank',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF0F172A), fontWeight: FontWeight.w800),
-              ),
-            ),
+            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
@@ -855,14 +848,14 @@ class AnalysisRankAllPage extends StatelessWidget {
       ];
       final g = gradients[rank - 1];
       return SizedBox(
-        width: 32,
-        height: 32,
+        width: 26,
+        height: 26,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
                 shape: BoxShape.circle,
@@ -875,14 +868,7 @@ class AnalysisRankAllPage extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.military_tech, size: 16, color: Color(0xFF0F172A)),
-            Positioned(
-              bottom: 2,
-              child: Text(
-                '$rank',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF0F172A), fontWeight: FontWeight.w800),
-              ),
-            ),
+            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
