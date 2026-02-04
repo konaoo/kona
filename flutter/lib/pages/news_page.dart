@@ -14,6 +14,8 @@ class _NewsPageState extends State<NewsPage> {
   final ApiService _api = ApiService();
   List<Map<String, dynamic>> _news = [];
   bool _loading = true;
+  bool _onlyImportant = false;
+  final Set<String> _expandedKeys = {};
 
   @override
   void initState() {
@@ -28,6 +30,7 @@ class _NewsPageState extends State<NewsPage> {
       setState(() {
         _news = data.map((e) => e as Map<String, dynamic>).toList();
         _loading = false;
+        _expandedKeys.clear();
       });
     } catch (e) {
       debugPrint('加载快讯失败: $e');
@@ -37,6 +40,7 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredNews = _onlyImportant ? _news.where((e) => e['important'] == true).toList() : _news;
     return RefreshIndicator(
       onRefresh: _loadNews,
       color: AppTheme.accent,
@@ -44,14 +48,35 @@ class _NewsPageState extends State<NewsPage> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(Spacing.xl, 50, Spacing.xl, Spacing.md),
-              child: const Text(
-                '市场快讯',
-                style: TextStyle(
-                  fontSize: FontSize.xxl,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
+              padding: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.lg, Spacing.xl, Spacing.md),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '市场快讯',
+                    style: TextStyle(
+                      fontSize: FontSize.xxl,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      const Text(
+                        '只看重要',
+                        style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(width: 6),
+                      Switch(
+                        value: _onlyImportant,
+                        activeColor: AppTheme.accent,
+                        onChanged: (val) {
+                          setState(() => _onlyImportant = val);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -61,7 +86,7 @@ class _NewsPageState extends State<NewsPage> {
                 child: CircularProgressIndicator(color: AppTheme.accent),
               ),
             )
-          else if (_news.isEmpty)
+          else if (filteredNews.isEmpty)
             SliverFillRemaining(
               child: Center(
                 child: Column(
@@ -77,8 +102,8 @@ class _NewsPageState extends State<NewsPage> {
           else
             SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildNewsItem(_news[index]),
-                childCount: _news.length,
+                (context, index) => _buildNewsItem(filteredNews[index]),
+                childCount: filteredNews.length,
               ),
             ),
         ],
@@ -88,6 +113,8 @@ class _NewsPageState extends State<NewsPage> {
 
   Widget _buildNewsItem(Map<String, dynamic> item) {
     final isImportant = item['important'] == true;
+    final key = _itemKey(item);
+    final expanded = _expandedKeys.contains(key);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 4),
@@ -125,16 +152,33 @@ class _NewsPageState extends State<NewsPage> {
             ],
           ),
           const SizedBox(height: Spacing.sm),
-          Text(
-            item['content'] ?? '',
-            style: const TextStyle(
-              fontSize: FontSize.base,
-              color: AppTheme.textPrimary,
-              height: 1.5,
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                if (expanded) {
+                  _expandedKeys.remove(key);
+                } else {
+                  _expandedKeys.add(key);
+                }
+              });
+            },
+            child: Text(
+              item['content'] ?? '',
+              maxLines: expanded ? null : 5,
+              overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: FontSize.base,
+                color: AppTheme.textPrimary,
+                height: 1.5,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _itemKey(Map<String, dynamic> item) {
+    return '${item['time'] ?? ''}_${item['content'] ?? ''}';
   }
 }
