@@ -127,7 +127,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            showLoading ? '加载中...' : '¥${pnl.toStringAsFixed(2)}',
+            showLoading ? '加载中...' : '¥${pnl.toStringAsFixed(0)}',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
