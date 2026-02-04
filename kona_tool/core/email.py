@@ -5,6 +5,7 @@ import ssl
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
+from email.utils import formataddr
 
 import config
 
@@ -18,7 +19,10 @@ def send_verification_email(to_email: str, code: str) -> None:
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = Header(subject, "utf-8")
     sender = config.SMTP_FROM or config.SMTP_USER
-    msg["From"] = f"{config.SMTP_FROM_NAME} <{sender}>"
+    if config.SMTP_FROM_NAME:
+        msg["From"] = formataddr((str(Header(config.SMTP_FROM_NAME, "utf-8")), sender))
+    else:
+        msg["From"] = sender
     msg["To"] = to_email
 
     server = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=10)
