@@ -8,6 +8,7 @@ class ApiConfig {
   
   /// API 端点
   static const String login = '/api/auth/login';
+  static const String sendCode = '/api/auth/send_code';
   static const String portfolio = '/api/portfolio';
   static const String portfolioAdd = '/api/portfolio/add';
   static const String portfolioBuy = '/api/portfolio/buy';

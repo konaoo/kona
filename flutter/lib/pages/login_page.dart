@@ -52,8 +52,14 @@ class _LoginPageState extends State<LoginPage> {
       _errorMessage = null;
     });
 
-    // TODO: 调用发送验证码 API
-    await Future.delayed(const Duration(seconds: 1));
+    final ok = await context.read<AppState>().sendLoginCode(email);
+    if (!ok) {
+      setState(() {
+        _sendingCode = false;
+        _errorMessage = '发送失败，请稍后重试';
+      });
+      return;
+    }
 
     setState(() {
       _sendingCode = false;
@@ -93,7 +99,7 @@ class _LoginPageState extends State<LoginPage> {
 
       // 调用登录API
       final appState = context.read<AppState>();
-      final success = await appState.login(userId, email);
+      final success = await appState.login(userId, email, code);
 
       if (success) {
         setState(() => _loggingIn = false);

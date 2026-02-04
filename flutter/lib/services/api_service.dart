@@ -84,11 +84,12 @@ class ApiService {
   // ============================================================
 
   /// 登录
-  Future<Map<String, dynamic>?> login(String userId, String email) async {
+  Future<Map<String, dynamic>?> login(String userId, String email, String code) async {
     try {
       final data = await _post(ApiConfig.login, {
         'user_id': userId,
         'email': email,
+        'code': code,
       });
       if (data != null && data['token'] != null) {
         _token = data['token'];
@@ -319,6 +320,16 @@ class ApiService {
       return {"items": data, "page": page, "page_size": pageSize, "has_more": data.length >= pageSize};
     }
     return {"items": [], "page": page, "page_size": pageSize, "has_more": false};
+  }
+
+  /// 发送登录验证码
+  Future<bool> sendLoginCode(String email) async {
+    try {
+      await _post(ApiConfig.sendCode, {'email': email});
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// 获取汇率

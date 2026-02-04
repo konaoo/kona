@@ -265,9 +265,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// 登录
-  Future<bool> login(String userId, String email) async {
+  Future<bool> login(String userId, String email, String code) async {
     try {
-      final result = await _api.login(userId, email);
+      final result = await _api.login(userId, email, code);
       if (result != null && result['token'] != null) {
         _isLoggedIn = true;
         _token = result['token'];
@@ -282,6 +282,10 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       return false;
     }
+  }
+
+  Future<bool> sendLoginCode(String email) async {
+    return await _api.sendLoginCode(email);
   }
 
   /// 设置登录状态

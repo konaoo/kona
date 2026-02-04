@@ -56,10 +56,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   Future<void> _autoLogin() async {
     final appState = context.read<AppState>();
-    final success = await appState.login('konaeee', 'konaeee@gmail.com');
-    if (success && mounted) {
-      setState(() => _isLoggedIn = true);
-      appState.refreshAll();
+    // 自动登录已关闭，防止跳过验证码
+    if (mounted) {
+      setState(() => _isLoggedIn = false);
     }
   }
 

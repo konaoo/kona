@@ -19,6 +19,35 @@ from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_cl
 from core.news import news_fetcher
 from core.system import system_manager
 from core.auth import login_required, optional_auth, generate_token, get_or_create_user, get_user_profile
+from core.email import send_verification_email
+import random
+import re
+from datetime import timedelta
+
+# 邮箱验证码缓存（内存）
+_EMAIL_CODE_STORE = {}
+
+def _generate_code() -> str:
+    return f"{random.randint(0, 999999):06d}"
+
+def _store_code(email: str, code: str):
+    _EMAIL_CODE_STORE[email] = {
+        "code": code,
+        "expires": datetime.utcnow() + timedelta(minutes=10),
+        "last_send": datetime.utcnow(),
+    }
+
+def _verify_code(email: str, code: str) -> bool:
+    info = _EMAIL_CODE_STORE.get(email)
+    if not info:
+        return False
+    if datetime.utcnow() > info["expires"]:
+        _EMAIL_CODE_STORE.pop(email, None)
+        return False
+    if info["code"] != code:
+        return False
+    _EMAIL_CODE_STORE.pop(email, None)
+    return True
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -655,11 +684,14 @@ def auth_login():
     """
     data = request.json
     
-    if not data or 'user_id' not in data or 'email' not in data:
-        return jsonify({"error": "Missing user_id or email"}), 400
+    if not data or 'email' not in data or 'code' not in data:
+        return jsonify({"error": "Missing email or code"}), 400
     
-    frontend_user_id = data['user_id']
-    email = data['email']
+    email = data['email'].strip().lower()
+    code = data['code']
+    frontend_user_id = data.get('user_id') or email
+    if not _verify_code(email, code):
+        return jsonify({"error": "Invalid or expired code"}), 400
     nickname = data.get('nickname')
     register_method = data.get('register_method')
     phone = data.get('phone')
@@ -704,6 +736,30 @@ def auth_me():
         "user_id": g.user_id,
         "email": g.email
     })
+
+
+@app.route('/api/auth/send_code', methods=['POST'])
+def auth_send_code():
+    """发送邮箱验证码"""
+    data = request.json
+    if not data or 'email' not in data:
+        return jsonify({"error": "Missing email"}), 400
+    email = data['email'].strip().lower()
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):
+        return jsonify({"error": "Invalid email"}), 400
+
+    info = _EMAIL_CODE_STORE.get(email)
+    if info and (datetime.utcnow() - info["last_send"]).total_seconds() < 60:
+        return jsonify({"error": "Too many requests"}), 429
+
+    code = _generate_code()
+    _store_code(email, code)
+    try:
+        send_verification_email(email, code)
+    except Exception as e:
+        logger.error(f"Send code failed: {e}")
+        return jsonify({"error": "Send failed"}), 500
+    return jsonify({"status": "ok"})
 
 
 @app.route('/health')
