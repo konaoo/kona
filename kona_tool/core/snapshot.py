@@ -136,27 +136,31 @@ def is_weekend() -> bool:
 def take_snapshot(user_id: str = None) -> bool:
     """
     执行快照保存
-    
+
     注意：休市时 day_pnl 固定为 0
+    - 若 user_id 为空，默认对所有用户写快照
     """
     try:
         logger.info("Starting background snapshot task...")
-        stats = calculate_portfolio_stats(user_id)
-        
-        # 周末 day_pnl 记为 0（避免无交易日异常）
-        if is_weekend():
-            logger.info("Weekend, setting day_pnl to 0")
-            stats['day_pnl'] = 0.0
-        
-        # 保存到数据库
-        success = db.save_daily_snapshot(stats, user_id)
-        
-        if success:
-            logger.info(f"Snapshot saved successfully: Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
-        else:
-            logger.error("Failed to save snapshot to database")
-            
-        return success
+
+        user_ids = [user_id] if user_id else db.get_user_ids()
+        if not user_ids:
+            user_ids = [None]
+
+        success_any = False
+        for uid in user_ids:
+            stats = calculate_portfolio_stats(uid)
+            if is_weekend():
+                logger.info("Weekend, setting day_pnl to 0")
+                stats['day_pnl'] = 0.0
+            success = db.save_daily_snapshot(stats, uid)
+            success_any = success_any or success
+            if success:
+                logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
+            else:
+                logger.error(f"Failed to save snapshot to database: user={uid}")
+
+        return success_any
     except Exception as e:
         logger.error(f"Error taking snapshot: {e}")
         return False

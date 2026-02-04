@@ -186,6 +186,19 @@ class DatabaseManager:
 
         conn.commit()
         conn.close()
+
+    def get_user_ids(self) -> List[str]:
+        """获取所有用户ID（用于批量快照）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT id FROM users')
+            return [row['id'] for row in cursor.fetchall() if row['id']]
+        except Exception as e:
+            logger.error(f"Failed to get user ids: {e}")
+            return []
+        finally:
+            conn.close()
         logger.info("Database initialized successfully")
 
     def _ensure_portfolio_asset_type(self, cursor) -> None:

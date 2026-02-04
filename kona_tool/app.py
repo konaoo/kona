@@ -352,9 +352,11 @@ def save_snapshot():
 
 
 @app.route('/api/snapshot/trigger', methods=['POST'])
+@optional_auth
 def trigger_snapshot():
     """手动触发后台快照计算"""
-    success = take_snapshot()
+    user_id = g.user_id
+    success = take_snapshot(user_id)
     if success:
         return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
     else:
