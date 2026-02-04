@@ -14,7 +14,7 @@ class _NewsPageState extends State<NewsPage> {
   final ApiService _api = ApiService();
   List<Map<String, dynamic>> _news = [];
   bool _loading = true;
-  bool _onlyImportant = false;
+  bool _onlyImportant = true;
   final Set<String> _expandedKeys = {};
   final ScrollController _scrollController = ScrollController();
   final Set<String> _newsIds = {};
@@ -111,7 +111,7 @@ class _NewsPageState extends State<NewsPage> {
                     children: [
                       const Text(
                         '只看重要',
-                        style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textSecondary),
+                        style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(width: 6),
                       Transform.scale(
