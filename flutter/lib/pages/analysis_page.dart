@@ -324,7 +324,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: _calendarTimeType == 'day' ? 7 : (_calendarTimeType == 'month' ? 4 : 5),
-                    childAspectRatio: 1.0,
+                    childAspectRatio: _calendarTimeType == 'day' ? 0.85 : 1.0,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
                   ),
@@ -376,7 +376,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                             Text(
                               _formatCalendarPnl(pnl),
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 color: textColor,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -386,7 +386,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                             Text(
                               '-',
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 color: textColor,
                               ),
                             ),
@@ -396,6 +396,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
                     );
                   },
                 ),
+        ),
+        const SizedBox(height: Spacing.md),
+        Text(
+          _calendarSummaryText(),
+          style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
         ),
       ],
     );
@@ -626,6 +631,21 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (pnl > 0) return '+$absVal';
     if (pnl < 0) return '-$absVal';
     return '0';
+  }
+
+  String _calendarSummaryText() {
+    final totalPnl = (_calendarData['total_pnl'] as num?)?.toDouble() ?? 0.0;
+    final totalRate = (_calendarData['total_rate'] as num?)?.toDouble() ?? 0.0;
+    final label = _calendarTimeType == 'day'
+        ? '本月累计'
+        : (_calendarTimeType == 'month' ? '当年累计' : '历史累计');
+    final sign = totalPnl > 0 ? '+' : (totalPnl < 0 ? '-' : '');
+    final amount = totalPnl.abs().toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    final rateSign = totalRate >= 0 ? '+' : '';
+    return '$label  ${sign}¥$amount  收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
   }
 
   Widget _rankBadge(int rank) {
