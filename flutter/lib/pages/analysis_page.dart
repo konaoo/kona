@@ -470,30 +470,31 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ],
         ),
         const SizedBox(height: Spacing.md),
-        Container(
-          padding: const EdgeInsets.all(Spacing.lg),
-          decoration: BoxDecoration(
-            color: AppTheme.bgCard,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
-          child: rankList.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      '暂无数据',
-                      style: TextStyle(color: AppTheme.textTertiary),
-                    ),
-                  ),
-                )
-              : Column(
-                  children: rankList.take(5).toList().asMap().entries.map((entry) {
-                    final idx = entry.key;
-                    final item = entry.value;
-                    return _buildRankCard(item, appState, idx + 1);
-                  }).toList(),
+        if (rankList.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(Spacing.lg),
+            decoration: BoxDecoration(
+              color: AppTheme.bgCard,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+            ),
+            child: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Text(
+                  '暂无数据',
+                  style: TextStyle(color: AppTheme.textTertiary),
                 ),
-        ),
+              ),
+            ),
+          )
+        else
+          Column(
+            children: rankList.take(5).toList().asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              return _buildRankCard(item, appState, idx + 1);
+            }).toList(),
+          ),
       ],
     );
   }
@@ -548,7 +549,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppTheme.border.withOpacity(0.6)),
       ),
       child: Row(
         children: [
@@ -626,33 +626,39 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
-      final colors = [
-        const Color(0xFFFBBF24), // gold
-        const Color(0xFF94A3B8), // silver
-        const Color(0xFFD97706), // bronze
+      final gradients = [
+        const [Color(0xFFFDE68A), Color(0xFFF59E0B)], // gold
+        const [Color(0xFFE5E7EB), Color(0xFF94A3B8)], // silver
+        const [Color(0xFFFED7AA), Color(0xFFEA580C)], // bronze
       ];
-      final color = colors[rank - 1];
+      final g = gradients[rank - 1];
       return SizedBox(
-        width: 30,
-        height: 30,
+        width: 32,
+        height: 32,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
                 shape: BoxShape.circle,
-                border: Border.all(color: color, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: g[1].withOpacity(0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
             ),
-            Icon(Icons.emoji_events, size: 16, color: color),
+            const Icon(Icons.military_tech, size: 16, color: Color(0xFF0F172A)),
             Positioned(
-              bottom: 4,
+              bottom: 2,
               child: Text(
                 '$rank',
-                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+                style: const TextStyle(fontSize: 10, color: Color(0xFF0F172A), fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -715,7 +721,6 @@ class AnalysisRankAllPage extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.bgCard,
               borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: AppTheme.border.withOpacity(0.6)),
             ),
             child: Row(
               children: [
@@ -809,33 +814,39 @@ class AnalysisRankAllPage extends StatelessWidget {
 
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
-      final colors = [
-        const Color(0xFFFBBF24),
-        const Color(0xFF94A3B8),
-        const Color(0xFFD97706),
+      final gradients = [
+        const [Color(0xFFFDE68A), Color(0xFFF59E0B)],
+        const [Color(0xFFE5E7EB), Color(0xFF94A3B8)],
+        const [Color(0xFFFED7AA), Color(0xFFEA580C)],
       ];
-      final color = colors[rank - 1];
+      final g = gradients[rank - 1];
       return SizedBox(
-        width: 30,
-        height: 30,
+        width: 32,
+        height: 32,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
                 shape: BoxShape.circle,
-                border: Border.all(color: color, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: g[1].withOpacity(0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
             ),
-            Icon(Icons.emoji_events, size: 16, color: color),
+            const Icon(Icons.military_tech, size: 16, color: Color(0xFF0F172A)),
             Positioned(
-              bottom: 4,
+              bottom: 2,
               child: Text(
                 '$rank',
-                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+                style: const TextStyle(fontSize: 10, color: Color(0xFF0F172A), fontWeight: FontWeight.w800),
               ),
             ),
           ],
