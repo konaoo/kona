@@ -104,9 +104,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
     final isDay = _currentPeriod == 'day';
-    final pnl = isDay ? ((apiPnl != null && apiPnl != 0) ? apiPnl : appState.investDayPnl) : (apiPnl ?? 0);
-    final pnlRate = isDay ? ((apiRate != null && apiRate != 0) ? apiRate : appState.investDayPnlRate) : (apiRate ?? 0);
+    final pnl = isDay ? appState.investDayPnl : (apiPnl ?? 0);
+    final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
     final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
+    final showLoading = _loading && !_overviewLoaded && !isDay;
 
     return Container(
       padding: const EdgeInsets.all(Spacing.xl),
@@ -126,11 +127,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            _loading && !_overviewLoaded ? '加载中...' : '¥${pnl.toStringAsFixed(2)}',
+            showLoading ? '加载中...' : '¥${pnl.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
-              color: _loading ? AppTheme.textPrimary : pnlColor,
+              color: showLoading ? AppTheme.textPrimary : pnlColor,
             ),
           ),
           const SizedBox(height: 4),
@@ -140,12 +141,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
               Icon(
                 pnl >= 0 ? Icons.trending_up : Icons.trending_down,
                 size: 16,
-                color: _loading ? AppTheme.textTertiary : pnlColor,
+                color: showLoading ? AppTheme.textTertiary : pnlColor,
               ),
               const SizedBox(width: 4),
               Text(
-                _loading && !_overviewLoaded ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
-                style: TextStyle(fontSize: FontSize.sm, color: _loading ? AppTheme.textTertiary : pnlColor),
+                showLoading ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: FontSize.sm, color: showLoading ? AppTheme.textTertiary : pnlColor),
               ),
             ],
           ),
