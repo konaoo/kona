@@ -64,15 +64,19 @@ class _NewsPageState extends State<NewsPage> {
                     children: [
                       const Text(
                         '只看重要',
-                        style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+                        style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(width: 6),
-                      Switch(
-                        value: _onlyImportant,
-                        activeColor: AppTheme.accent,
-                        onChanged: (val) {
-                          setState(() => _onlyImportant = val);
-                        },
+                      Transform.scale(
+                        scale: 0.75,
+                        child: Switch(
+                          value: _onlyImportant,
+                          activeColor: AppTheme.accent,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (val) {
+                            setState(() => _onlyImportant = val);
+                          },
+                        ),
                       ),
                     ],
                   ),
