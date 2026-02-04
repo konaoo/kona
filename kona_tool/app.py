@@ -745,7 +745,7 @@ def auth_send_code():
     if not data or 'email' not in data:
         return jsonify({"error": "Missing email"}), 400
     email = data['email'].strip().lower()
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         return jsonify({"error": "Invalid email"}), 400
 
     info = _EMAIL_CODE_STORE.get(email)
