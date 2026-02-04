@@ -719,6 +719,41 @@ class AppState extends ChangeNotifier {
     return '$sign$symbol$text';
   }
 
+  /// 格式化金额（紧凑：万/亿）
+  String formatCompactAmount(double value, {String prefix = '', int decimals = 1}) {
+    if (_amountHidden) return '****';
+    final absVal = value.abs();
+    if (absVal >= 100000000) {
+      return '$prefix${(absVal / 100000000).toStringAsFixed(decimals)}亿';
+    }
+    if (absVal >= 10000) {
+      return '$prefix${(absVal / 10000).toStringAsFixed(decimals)}万';
+    }
+    final text = absVal.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$prefix$text';
+  }
+
+  /// 格式化盈亏（紧凑：万/亿 + 币种）
+  String formatCompactPnlWithCurrency(double value, String symbol, {int decimals = 1}) {
+    if (_amountHidden) return '****';
+    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
+    final absVal = value.abs();
+    if (absVal >= 100000000) {
+      return '$sign$symbol${(absVal / 100000000).toStringAsFixed(decimals)}亿';
+    }
+    if (absVal >= 10000) {
+      return '$sign$symbol${(absVal / 10000).toStringAsFixed(decimals)}万';
+    }
+    final text = absVal.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '$sign$symbol$text';
+  }
+
   /// 格式化百分比
   String formatPct(double value) {
     final sign = value >= 0 ? '+' : '';

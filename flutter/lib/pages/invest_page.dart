@@ -27,6 +27,7 @@ class _InvestPageState extends State<InvestPage> {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, appState, child) {
+        final isCompact = MediaQuery.of(context).size.width < 380;
         return RefreshIndicator(
           onRefresh: _loadData,
           color: AppTheme.accent,
@@ -143,29 +144,57 @@ class _InvestPageState extends State<InvestPage> {
                 SliverToBoxAdapter(
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
-                    padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 6),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Spacing.md,
+                      vertical: isCompact ? 4 : 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.bgCard.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppTheme.border.withOpacity(0.4)),
                     ),
                     child: Row(
-                      children: const [
+                      children: [
                         SizedBox(
                           width: 80,
-                          child: Text('资产名称', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text(
+                            '资产名称',
+                            style: TextStyle(
+                              fontSize: isCompact ? 8 : FontSize.xs,
+                              color: AppTheme.textTertiary,
+                            ),
+                          ),
                         ),
                         Expanded(
                           flex: 3,
-                          child: Text('市值/数量', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text(
+                            '市值/数量',
+                            style: TextStyle(
+                              fontSize: isCompact ? 8 : FontSize.xs,
+                              color: AppTheme.textTertiary,
+                            ),
+                          ),
                         ),
                         Expanded(
                           flex: 3,
-                          child: Text('现价/成本', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text(
+                            '现价/成本',
+                            style: TextStyle(
+                              fontSize: isCompact ? 8 : FontSize.xs,
+                              color: AppTheme.textTertiary,
+                            ),
+                          ),
                         ),
                         Expanded(
                           flex: 2,
-                          child: Text('累计盈亏', textAlign: TextAlign.end, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                          child: Text(
+                            '累计盈亏',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontSize: isCompact ? 8 : FontSize.xs,
+                              color: AppTheme.textTertiary,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -191,7 +220,7 @@ class _InvestPageState extends State<InvestPage> {
                     (context, index) {
                       final item = appState.filteredPortfolio[index];
                       final priceInfo = appState.prices[item.code];
-                      return _buildPortfolioCard(item, priceInfo, appState);
+                      return _buildPortfolioCard(item, priceInfo, appState, isCompact);
                     },
                     childCount: appState.filteredPortfolio.length,
                   ),
@@ -254,7 +283,7 @@ class _InvestPageState extends State<InvestPage> {
     );
   }
 
-  Widget _buildPortfolioCard(dynamic item, dynamic priceInfo, AppState appState) {
+  Widget _buildPortfolioCard(dynamic item, dynamic priceInfo, AppState appState, bool isCompact) {
     // 检查价格数据是否有效
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
     final currentPrice = hasValidPrice ? priceInfo.price : item.price;
@@ -263,6 +292,12 @@ class _InvestPageState extends State<InvestPage> {
     final holdingPnl = mv - costTotal + item.adjustment;
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
+    final mvText = isCompact
+        ? appState.formatCompactAmount(mv, prefix: item.currencySymbol)
+        : appState.formatAmount(mv, prefix: item.currencySymbol);
+    final pnlText = isCompact
+        ? appState.formatCompactPnlWithCurrency(holdingPnl, item.currencySymbol)
+        : appState.formatPnlIntWithCurrency(holdingPnl, item.currencySymbol);
 
     return Material(
       color: Colors.transparent,
@@ -310,12 +345,20 @@ class _InvestPageState extends State<InvestPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      appState.formatAmount(mv, prefix: item.currencySymbol),
-                      style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
+                      mvText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isCompact ? 10 : FontSize.md,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
                     Text(
                       '${item.qty.toStringAsFixed(0)}',
-                      style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
+                      style: TextStyle(
+                        fontSize: isCompact ? 8 : FontSize.xs,
+                        color: AppTheme.textTertiary,
+                      ),
                     ),
                   ],
                 ),
@@ -328,11 +371,19 @@ class _InvestPageState extends State<InvestPage> {
                   children: [
                     Text(
                       '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: FontSize.md, color: AppTheme.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isCompact ? 10 : FontSize.md,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
                     Text(
                       '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
+                      style: TextStyle(
+                        fontSize: isCompact ? 8 : FontSize.xs,
+                        color: AppTheme.textTertiary,
+                      ),
                     ),
                   ],
                 ),
@@ -344,12 +395,21 @@ class _InvestPageState extends State<InvestPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      appState.formatPnlIntWithCurrency(holdingPnl, item.currencySymbol),
-                      style: TextStyle(fontSize: FontSize.md, fontWeight: FontWeight.w600, color: pnlColor),
+                      pnlText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isCompact ? 10 : FontSize.md,
+                        fontWeight: FontWeight.w600,
+                        color: pnlColor,
+                      ),
                     ),
                     Text(
                       appState.formatPct(holdingPnlPct),
-                      style: TextStyle(fontSize: FontSize.xs, color: pnlColor),
+                      style: TextStyle(
+                        fontSize: isCompact ? 8 : FontSize.xs,
+                        color: pnlColor,
+                      ),
                     ),
                   ],
                 ),
