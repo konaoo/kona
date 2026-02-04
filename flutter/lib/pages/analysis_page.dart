@@ -256,13 +256,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
         pnlMap[key] = pnl;
       }
     }
-    // 当天数据兜底：如果日历无当天数据，用实时日盈亏补上
+    // 当天数据始终用实时日盈亏，确保与“今日盈亏”一致
     if (_calendarTimeType == 'day') {
       final todayKey = DateTime.now().day;
-      final todayPnl = appState.investDayPnl;
-      if ((!pnlMap.containsKey(todayKey) || (pnlMap[todayKey] == 0 && todayPnl != 0)) && todayPnl != 0) {
-        pnlMap[todayKey] = todayPnl;
-      }
+      pnlMap[todayKey] = appState.investDayPnl;
     }
 
     for (var gridItem in calendarGrid) {
@@ -377,7 +374,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                           if (pnl != null) ...[
                             const SizedBox(height: 2),
                             Text(
-                              pnl >= 0 ? '+${pnl.toStringAsFixed(0)}' : pnl.toStringAsFixed(0),
+                              _formatCalendarPnl(pnl),
                               style: TextStyle(
                                 fontSize: 10,
                                 color: textColor,
@@ -622,6 +619,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final last = match.last.group(0);
     if (last == null) return null;
     return int.tryParse(last);
+  }
+
+  String _formatCalendarPnl(double pnl) {
+    final absVal = pnl.abs().toStringAsFixed(0);
+    if (pnl > 0) return '+$absVal';
+    if (pnl < 0) return '-$absVal';
+    return '0';
   }
 
   Widget _rankBadge(int rank) {
