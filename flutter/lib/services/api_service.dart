@@ -309,8 +309,11 @@ class ApiService {
   /// 获取最新快讯（支持分页）
   Future<Map<String, dynamic>> getNews({int page = 1, int pageSize = 30}) async {
     final data = await _get('${ApiConfig.news}?page=$page&page_size=$pageSize');
-    if (data is Map) {
+    if (data is Map<String, dynamic>) {
       return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data as Map);
     }
     if (data is List) {
       return {"items": data, "page": page, "page_size": pageSize, "has_more": data.length >= pageSize};
