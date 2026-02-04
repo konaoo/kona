@@ -1169,7 +1169,9 @@ class DatabaseManager:
                         LIMIT 1
                     ''', (today.strftime('%Y-%m-%d'),) + user_param)
                     prev = cursor.fetchone()
-                    prev_total = float(prev['total_pnl']) if prev and prev['total_pnl'] else 0
+                    if not prev:
+                        return {'pnl': 0, 'pnl_rate': 0, 'base_value': base}
+                    prev_total = float(prev['total_pnl']) if prev['total_pnl'] else 0
                     pnl = today_total - prev_total
                     return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
