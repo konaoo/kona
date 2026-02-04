@@ -44,18 +44,18 @@ class NewsFetcher:
     def __init__(self):
         self.cache: List[Dict] = []
 
-    def fetch_latest(self) -> List[Dict]:
+    def fetch_latest(self, page: int = 1, page_size: int = 30) -> List[Dict]:
         """抓取最新快讯 (新浪源)"""
         logger.info("Fetching news from Sina...")
         try:
             params = {
-                "page": 1,
-                "page_size": 20,
+                "page": page,
+                "page_size": page_size,
                 "zhibo_id": 152,
                 "tag_id": 0,
                 "dire": "f",
                 "dpc": 1,
-                "pagesize": 20,
+                "pagesize": page_size,
                 "_": int(time.time() * 1000)
             }
             

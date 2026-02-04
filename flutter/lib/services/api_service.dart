@@ -306,12 +306,16 @@ class ApiService {
   // 其他
   // ============================================================
 
-  /// 获取最新快讯
-  Future<List<dynamic>> getNews() async {
-    final data = await _get(ApiConfig.news);
-    if (data is List) return data;
-    if (data is Map && data['items'] != null) return data['items'];
-    return [];
+  /// 获取最新快讯（支持分页）
+  Future<Map<String, dynamic>> getNews({int page = 1, int pageSize = 30}) async {
+    final data = await _get('${ApiConfig.news}?page=$page&page_size=$pageSize');
+    if (data is Map) {
+      return data;
+    }
+    if (data is List) {
+      return {"items": data, "page": page, "page_size": pageSize, "has_more": data.length >= pageSize};
+    }
+    return {"items": [], "page": page, "page_size": pageSize, "has_more": false};
   }
 
   /// 获取汇率

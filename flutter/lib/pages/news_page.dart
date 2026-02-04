@@ -16,25 +16,71 @@ class _NewsPageState extends State<NewsPage> {
   bool _loading = true;
   bool _onlyImportant = false;
   final Set<String> _expandedKeys = {};
+  final ScrollController _scrollController = ScrollController();
+  final Set<String> _newsIds = {};
+  int _page = 1;
+  final int _pageSize = 30;
+  bool _hasMore = true;
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
-    _loadNews();
+    _scrollController.addListener(_onScroll);
+    _loadNews(reset: true);
   }
 
-  Future<void> _loadNews() async {
-    setState(() => _loading = true);
-    try {
-      final data = await _api.getNews();
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_hasMore || _loadingMore) return;
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadNews();
+    }
+  }
+
+  Future<void> _loadNews({bool reset = false}) async {
+    if (_loadingMore && !reset) return;
+    if (reset) {
       setState(() {
-        _news = data.map((e) => e as Map<String, dynamic>).toList();
-        _loading = false;
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+        _news = [];
+        _newsIds.clear();
         _expandedKeys.clear();
+      });
+    } else {
+      setState(() => _loadingMore = true);
+    }
+    try {
+      final data = await _api.getNews(page: _page, pageSize: _pageSize);
+      final items = (data['items'] as List?)?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+      final hasMore = data['has_more'] == true;
+
+      for (final item in items) {
+        final key = _itemKey(item);
+        if (_newsIds.add(key)) {
+          _news.add(item);
+        }
+      }
+
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _hasMore = hasMore;
+        if (items.isNotEmpty) _page += 1;
       });
     } catch (e) {
       debugPrint('加载快讯失败: $e');
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
     }
   }
 
@@ -42,9 +88,10 @@ class _NewsPageState extends State<NewsPage> {
   Widget build(BuildContext context) {
     final filteredNews = _onlyImportant ? _news.where((e) => e['important'] == true).toList() : _news;
     return RefreshIndicator(
-      onRefresh: _loadNews,
+      onRefresh: () => _loadNews(reset: true),
       color: AppTheme.accent,
       child: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -108,6 +155,19 @@ class _NewsPageState extends State<NewsPage> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) => _buildNewsItem(filteredNews[index]),
                 childCount: filteredNews.length,
+              ),
+            ),
+          if (_loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: Spacing.md),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                  ),
+                ),
               ),
             ),
         ],

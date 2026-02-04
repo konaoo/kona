@@ -295,8 +295,15 @@ def restore_database():
 @app.route('/api/news/latest')
 def get_latest_news():
     """获取最新快讯 API"""
-    data = news_fetcher.fetch_latest()
-    return jsonify(data)
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 30, type=int)
+    data = news_fetcher.fetch_latest(page=page, page_size=page_size)
+    return jsonify({
+        "items": data,
+        "page": page,
+        "page_size": page_size,
+        "has_more": len(data) >= page_size
+    })
 
 
 @app.route('/api/history')
