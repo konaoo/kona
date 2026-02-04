@@ -1,13 +1,144 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
+import '../services/cache_service.dart';
 
 /// 我的页面
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
 
   const ProfilePage({super.key, required this.onLogout});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final CacheService _cache = CacheService();
+  final ImagePicker _picker = ImagePicker();
+
+  String? _nickname;
+  String? _avatarPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalProfile();
+  }
+
+  Future<void> _loadLocalProfile() async {
+    final nickname = await _cache.getString('profile_nickname');
+    final avatar = await _cache.getString('profile_avatar_path');
+    if (!mounted) return;
+    setState(() {
+      _nickname = nickname;
+      _avatarPath = avatar;
+    });
+  }
+
+  Future<void> _pickAvatar() async {
+    try {
+      final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      if (file == null) return;
+      await _cache.setString('profile_avatar_path', file.path);
+      if (!mounted) return;
+      setState(() => _avatarPath = file.path);
+    } catch (e) {
+      debugPrint('选择头像失败: $e');
+    }
+  }
+
+  Future<void> _removeAvatar() async {
+    await _cache.setString('profile_avatar_path', '');
+    if (!mounted) return;
+    setState(() => _avatarPath = null);
+  }
+
+  Future<void> _editNickname() async {
+    final controller = TextEditingController(text: _nickname ?? '');
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgElevated,
+        title: const Text('修改昵称', style: TextStyle(color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 12,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: '请输入昵称',
+            hintStyle: TextStyle(color: AppTheme.textTertiary),
+            counterText: '',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null) return;
+    await _cache.setString('profile_nickname', newName);
+    if (!mounted) return;
+    setState(() => _nickname = newName.isEmpty ? null : newName);
+  }
+
+  Widget _buildAvatar(AppState appState) {
+    final fallback = (_nickname?.isNotEmpty == true
+            ? _nickname!.substring(0, 1)
+            : (appState.email?.substring(0, 1).toUpperCase() ?? 'U'))
+        .toUpperCase();
+
+    final hasAvatar = _avatarPath != null && _avatarPath!.isNotEmpty && File(_avatarPath!).existsSync();
+    return GestureDetector(
+      onTap: _pickAvatar,
+      onLongPress: _removeAvatar,
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 35,
+            backgroundColor: AppTheme.accent,
+            backgroundImage: hasAvatar ? FileImage(File(_avatarPath!)) : null,
+            child: hasAvatar
+                ? null
+                : Text(
+                    fallback,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: AppTheme.bgElevated,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.camera_alt, size: 12, color: AppTheme.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,27 +158,14 @@ class ProfilePage extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // 头像
-                    CircleAvatar(
-                      radius: 35,
-                      backgroundColor: AppTheme.accent,
-                      child: Text(
-                        (appState.email?.substring(0, 1).toUpperCase() ?? 'U'),
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
+                    _buildAvatar(appState),
                     const SizedBox(width: Spacing.lg),
-                    // 用户名和邮箱
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '用户 #${appState.userNumber ?? 0}',
+                            _nickname?.isNotEmpty == true ? _nickname! : '用户 #${appState.userNumber ?? 0}',
                             style: const TextStyle(
                               fontSize: FontSize.xl,
                               fontWeight: FontWeight.bold,
@@ -67,51 +185,48 @@ class ProfilePage extends StatelessWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit, color: AppTheme.textTertiary),
-                      onPressed: () {
-                        // TODO: 编辑资料
-                      },
+                      onPressed: _editNickname,
                     ),
                   ],
                 ),
               ),
 
-          const SizedBox(height: Spacing.lg),
+              const SizedBox(height: Spacing.lg),
 
-          // 设置项
-          _buildSettingItem(Icons.settings, '系统设置', () {}),
-          const SizedBox(height: Spacing.sm),
-          _buildSettingItem(Icons.info_outline, '关于我们', () {
-            _showAboutDialog(context);
-          }),
+              // 设置项
+              _buildSettingItem(Icons.settings, '系统设置', () {}),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(Icons.info_outline, '关于我们', () {
+                _showAboutDialog(context);
+              }),
 
-          // 退出登录
-          const SizedBox(height: 40),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
-              onPressed: onLogout,
-              style: TextButton.styleFrom(
-                backgroundColor: AppTheme.bgCard,
-                padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: widget.onLogout,
+                  style: TextButton.styleFrom(
+                    backgroundColor: AppTheme.bgCard,
+                    padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                  ),
+                  child: const Text(
+                    '退出登录',
+                    style: TextStyle(
+                      fontSize: FontSize.lg,
+                      color: AppTheme.danger,
+                    ),
+                  ),
                 ),
               ),
-              child: const Text(
-                '退出登录',
-                style: TextStyle(
-                  fontSize: FontSize.lg,
-                  color: AppTheme.danger,
-                ),
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
-    },
-  );
-}
+  }
 
   Widget _buildSettingItem(IconData icon, String title, VoidCallback onTap) {
     return Material(

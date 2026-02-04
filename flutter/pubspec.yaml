@@ -16,6 +16,8 @@ dependencies:
   provider: ^6.1.1
   # 本地存储
   shared_preferences: ^2.2.2
+  # 选择头像
+  image_picker: ^1.0.7
   # 图表
   fl_chart: ^0.66.2
   # 下拉刷新
