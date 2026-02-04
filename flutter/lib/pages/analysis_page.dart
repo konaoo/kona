@@ -655,7 +655,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       (Match m) => '${m[1]},',
     );
     final rateSign = totalRate >= 0 ? '+' : '';
-    return '$label  ${sign}¥$amount  收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
+    return '$label  ${sign}$amount   收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
   }
 
   Widget _rankBadge(int rank) {
