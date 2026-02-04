@@ -37,6 +37,26 @@ kona_tool/archive/logs/
 
 ---
 
+## Daily Snapshot (Beijing 07:00)
+
+Script:
+```
+/home/ec2-user/portfolio/kona_tool/scripts/daily_snapshot.sh
+```
+
+Crontab (Beijing time):
+```
+CRON_TZ=Asia/Shanghai
+0 7 * * * /home/ec2-user/portfolio/kona_tool/scripts/daily_snapshot.sh
+```
+
+If your system does not support `CRON_TZ`, use UTC:
+```
+0 23 * * * /home/ec2-user/portfolio/kona_tool/scripts/daily_snapshot.sh
+```
+
+---
+
 ## Database Backup
 
 Database file:

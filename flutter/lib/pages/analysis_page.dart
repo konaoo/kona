@@ -624,24 +624,51 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _rankBadge(int rank) {
-    final colors = [
-      const Color(0xFFFBBF24), // gold
-      const Color(0xFF94A3B8), // silver
-      const Color(0xFFD97706), // bronze
-    ];
-    final color = rank <= 3 ? colors[rank - 1] : AppTheme.textTertiary;
+    if (rank <= 3) {
+      final colors = [
+        const Color(0xFFFBBF24), // gold
+        const Color(0xFF94A3B8), // silver
+        const Color(0xFFD97706), // bronze
+      ];
+      final color = colors[rank - 1];
+      return SizedBox(
+        width: 30,
+        height: 30,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 1.2),
+              ),
+            ),
+            Icon(Icons.emoji_events, size: 16, color: color),
+            Positioned(
+              bottom: 4,
+              child: Text(
+                '$rank',
+                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
-      width: 26,
-      height: 26,
+      width: 24,
+      height: 24,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.transparent,
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 1.6),
+        color: AppTheme.bgElevated,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         '$rank',
-        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700),
+        style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -780,39 +807,51 @@ class AnalysisRankAllPage extends StatelessWidget {
   }
 
   Widget _rankBadge(int rank) {
-    if (rank > 3) {
-      return Container(
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppTheme.bgElevated,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Text(
-          '$rank',
-          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+    if (rank <= 3) {
+      final colors = [
+        const Color(0xFFFBBF24),
+        const Color(0xFF94A3B8),
+        const Color(0xFFD97706),
+      ];
+      final color = colors[rank - 1];
+      return SizedBox(
+        width: 30,
+        height: 30,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 1.2),
+              ),
+            ),
+            Icon(Icons.emoji_events, size: 16, color: color),
+            Positioned(
+              bottom: 4,
+              child: Text(
+                '$rank',
+                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
         ),
       );
     }
-    final colors = [
-      const Color(0xFFFBBF24),
-      const Color(0xFF94A3B8),
-      const Color(0xFFD97706),
-    ];
-    final color = colors[rank - 1];
     return Container(
       width: 24,
       height: 24,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: AppTheme.bgElevated,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color, width: 1),
       ),
       child: Text(
         '$rank',
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700),
+        style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
       ),
     );
   }
