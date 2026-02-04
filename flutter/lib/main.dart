@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -92,8 +93,45 @@ class MainApp extends StatefulWidget {
   State<MainApp> createState() => _MainAppState();
 }
 
-class _MainAppState extends State<MainApp> {
+class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _currentIndex = 0;
+  Timer? _priceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startPriceTimer();
+  }
+
+  @override
+  void dispose() {
+    _stopPriceTimer();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPriceTimer();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopPriceTimer();
+    }
+  }
+
+  void _startPriceTimer() {
+    _priceTimer?.cancel();
+    _priceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      context.read<AppState>().refreshPricesOnly();
+    });
+  }
+
+  void _stopPriceTimer() {
+    _priceTimer?.cancel();
+    _priceTimer = null;
+  }
 
   void _switchTab(int index) {
     setState(() => _currentIndex = index);

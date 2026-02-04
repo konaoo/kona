@@ -423,6 +423,37 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
+  Future<void> refreshPricesOnly() async {
+    try {
+      if (_portfolio.isEmpty) return;
+
+      final codes = _portfolio.map((e) => e.code).toList();
+      final priceApiCodes = codes.map((code) {
+        if (code.startsWith('gb_')) {
+          return code.substring(3);
+        }
+        return code;
+      }).toList();
+
+      final pricesData = await _api.getPricesBatch(priceApiCodes);
+      _prices = {};
+      for (int i = 0; i < codes.length; i++) {
+        final originalCode = codes[i];
+        final apiCode = priceApiCodes[i];
+        if (pricesData.containsKey(apiCode)) {
+          _prices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
+        }
+      }
+
+      _totalInvest = investTotalMV;
+      _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('刷新行情价格失败: $e');
+    }
+  }
+
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll() async {
     await Future.wait([
