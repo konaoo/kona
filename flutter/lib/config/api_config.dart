@@ -2,6 +2,9 @@
 class ApiConfig {
   /// API 基础地址
   static const String baseUrl = 'http://35.78.253.89:5003';
+
+  /// 免验证码登录邮箱（仅测试用）
+  static const String loginBypassEmail = 'konaeee@gmail.com';
   
   /// 请求超时时间（秒）
   static const int timeout = 10;

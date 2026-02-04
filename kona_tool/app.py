@@ -683,14 +683,17 @@ def auth_login():
         }
     """
     data = request.json
-    
-    if not data or 'email' not in data or 'code' not in data:
-        return jsonify({"error": "Missing email or code"}), 400
-    
+
+    if not data or 'email' not in data:
+        return jsonify({"error": "Missing email"}), 400
+
     email = data['email'].strip().lower()
-    code = data['code']
+    is_bypass = email in config.LOGIN_BYPASS_EMAILS
+    code = data.get('code', '')
+    if not is_bypass and not code:
+        return jsonify({"error": "Missing code"}), 400
     frontend_user_id = data.get('user_id') or email
-    if not _verify_code(email, code):
+    if not is_bypass and not _verify_code(email, code):
         return jsonify({"error": "Invalid or expired code"}), 400
     nickname = data.get('nickname')
     register_method = data.get('register_method')
@@ -747,6 +750,8 @@ def auth_send_code():
     email = data['email'].strip().lower()
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         return jsonify({"error": "Invalid email"}), 400
+    if email in config.LOGIN_BYPASS_EMAILS:
+        return jsonify({"status": "ok", "bypass": True})
 
     info = _EMAIL_CODE_STORE.get(email)
     if info and (datetime.utcnow() - info["last_send"]).total_seconds() < 60:

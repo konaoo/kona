@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 
@@ -34,8 +35,19 @@ class _LoginPageState extends State<LoginPage> {
     return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
   }
 
+  bool _isBypassEmail(String email) {
+    return email.trim().toLowerCase() == ApiConfig.loginBypassEmail.toLowerCase();
+  }
+
   Future<void> _sendCode() async {
     final email = _emailController.text.trim();
+    if (_isBypassEmail(email)) {
+      setState(() {
+        _errorMessage = null;
+        _codeSent = true;
+      });
+      return;
+    }
     
     if (email.isEmpty) {
       setState(() => _errorMessage = '请输入邮箱地址');
@@ -82,8 +94,9 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     final code = _codeController.text.trim();
     final email = _emailController.text.trim();
+    final isBypass = _isBypassEmail(email);
 
-    if (code.isEmpty || code.length != 6) {
+    if (!isBypass && (code.isEmpty || code.length != 6)) {
       setState(() => _errorMessage = '请输入6位验证码');
       return;
     }
@@ -99,7 +112,7 @@ class _LoginPageState extends State<LoginPage> {
 
       // 调用登录API
       final appState = context.read<AppState>();
-      final success = await appState.login(userId, email, code);
+      final success = await appState.login(userId, email, isBypass ? '' : code);
 
       if (success) {
         setState(() => _loggingIn = false);
@@ -120,6 +133,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 380;
+    final isBypass = _isBypassEmail(_emailController.text);
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       body: SafeArea(
@@ -180,6 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                         labelText: '邮箱地址',
                         hintText: 'example@email.com',
                       ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -187,7 +203,7 @@ class _LoginPageState extends State<LoginPage> {
                     width: 110,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _sendingCode || _countdown > 0 ? null : _sendCode,
+                      onPressed: (isBypass || _sendingCode || _countdown > 0) ? null : _sendCode,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _countdown > 0 ? AppTheme.bgElevated : AppTheme.accent,
                       ),
@@ -200,9 +216,17 @@ class _LoginPageState extends State<LoginPage> {
                                 color: AppTheme.textPrimary,
                               ),
                             )
-                          : Text(
-                              _countdown > 0 ? '重新发送($_countdown)' : '发送验证码',
-                              style: const TextStyle(fontSize: 13),
+                          : FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                isBypass
+                                    ? '免验证码'
+                                    : (_countdown > 0 ? '重新发送($_countdown)' : '发送验证码'),
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: isCompact ? 12 : 13),
+                              ),
                             ),
                     ),
                   ),
@@ -246,11 +270,11 @@ class _LoginPageState extends State<LoginPage> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _codeController.text.length == 6 && !_loggingIn
+                  onPressed: (_codeController.text.length == 6 || isBypass) && !_loggingIn
                       ? _login
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _codeController.text.length == 6
+                    backgroundColor: (_codeController.text.length == 6 || isBypass)
                         ? AppTheme.accent
                         : AppTheme.bgElevated,
                   ),

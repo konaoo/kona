@@ -127,6 +127,13 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "咔咔记账")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 
+# 免验证码登录白名单（逗号分隔邮箱）
+LOGIN_BYPASS_EMAILS = [
+    e.strip().lower()
+    for e in os.getenv("LOGIN_BYPASS_EMAILS", "").split(",")
+    if e.strip()
+]
+
 # 证券类型分类
 ASSET_TYPES = {
     "stock_cn": {"name": "A股", "prefixes": ["sh", "sz", "bj"]},
