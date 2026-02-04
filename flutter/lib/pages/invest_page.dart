@@ -34,7 +34,12 @@ class _InvestPageState extends State<InvestPage> {
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(Spacing.xl),
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.xl,
+                    Spacing.xl,
+                    Spacing.xl,
+                    Spacing.xs,
+                  ),
                   child: Column(
                     children: [
                       // 汇总卡片
@@ -126,7 +131,7 @@ class _InvestPageState extends State<InvestPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: Spacing.sm),
+                      const SizedBox(height: Spacing.xs),
                       // 分类标签
                       _buildCategoryTabs(appState),
                     ],
@@ -137,7 +142,7 @@ class _InvestPageState extends State<InvestPage> {
               if (appState.filteredPortfolio.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Container(
-                    margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.sm, Spacing.xl, 2),
+                    margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
                     padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppTheme.bgCard.withOpacity(0.45),
@@ -150,9 +155,16 @@ class _InvestPageState extends State<InvestPage> {
                           width: 80,
                           child: Text('资产名称', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
                         ),
-                        Expanded(child: Text('市值/数量', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
-                        Expanded(child: Text('现价/成本', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary))),
                         Expanded(
+                          flex: 3,
+                          child: Text('市值/数量', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text('现价/成本', style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+                        ),
+                        Expanded(
+                          flex: 2,
                           child: Text('累计盈亏', textAlign: TextAlign.end, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
                         ),
                       ],
@@ -293,6 +305,7 @@ class _InvestPageState extends State<InvestPage> {
               ),
               // 市值
               Expanded(
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -309,6 +322,7 @@ class _InvestPageState extends State<InvestPage> {
               ),
               // 现价
               Expanded(
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -325,6 +339,7 @@ class _InvestPageState extends State<InvestPage> {
               ),
               // 盈亏
               Expanded(
+                flex: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
