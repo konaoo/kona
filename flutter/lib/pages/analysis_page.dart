@@ -398,9 +398,19 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 ),
         ),
         const SizedBox(height: Spacing.md),
-        Text(
-          _calendarSummaryText(),
-          style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
+          decoration: BoxDecoration(
+            color: AppTheme.bgElevated,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _calendarSummaryText(),
+              style: const TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+            ),
+          ),
         ),
       ],
     );
