@@ -585,7 +585,9 @@ class AppState extends ChangeNotifier {
     );
     sortedHistory.sort((a, b) => a['date'].compareTo(b['date']));
 
-    debugPrint('历史数据计算: 当前日期=${now.toString().substring(0,10)}, 当前总资产=$_totalAsset');
+    final latestSnapshotAsset = sortedHistory.last['total_asset'] as num;
+    final currentSnapshot = latestSnapshotAsset.toDouble();
+    debugPrint('历史数据计算: 当前日期=${now.toString().substring(0,10)}, 快照总资产=$currentSnapshot');
     debugPrint('历史数据条数: ${sortedHistory.length}');
     if (sortedHistory.isNotEmpty) {
       debugPrint('最早记录: ${sortedHistory.first['date']}, 资产=${sortedHistory.first['total_asset']}');
@@ -639,8 +641,8 @@ class AppState extends ChangeNotifier {
     _historyPeak = peak;
     _hasMonthBaseline = monthStart != null;
     _hasYearBaseline = yearStart != null;
-    _monthChange = monthStart != null ? _totalAsset - monthStart : 0;
-    _yearChange = yearStart != null ? _totalAsset - yearStart : 0;
+    _monthChange = monthStart != null ? currentSnapshot - monthStart : 0;
+    _yearChange = yearStart != null ? currentSnapshot - yearStart : 0;
 
     debugPrint('计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)');
   }
