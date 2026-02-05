@@ -755,14 +755,9 @@ def update_profile():
 
     if isinstance(nickname, str):
         nickname = nickname.strip()
-        if nickname == '':
-            nickname = None
-
-    if isinstance(avatar, str) and avatar == '':
-        avatar = None
 
     # 简单大小限制，避免超大头像
-    if isinstance(avatar, str) and len(avatar) > 500_000:
+    if isinstance(avatar, str) and len(avatar) > 1_500_000:
         return jsonify({"error": "Avatar too large"}), 400
 
     conn = db.get_connection()

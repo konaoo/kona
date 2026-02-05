@@ -24,21 +24,29 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final file = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 85,
-        maxWidth: 512,
-        maxHeight: 512,
+        imageQuality: 70,
+        maxWidth: 360,
+        maxHeight: 360,
       );
       if (file == null) return;
       final bytes = await File(file.path).readAsBytes();
       final base64Str = base64Encode(bytes);
-      await appState.updateProfile(avatar: base64Str);
+      final ok = await appState.updateProfile(avatar: base64Str);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('头像保存失败，请稍后重试')));
+      }
     } catch (e) {
       debugPrint('选择头像失败: $e');
     }
   }
 
   Future<void> _removeAvatar(AppState appState) async {
-    await appState.updateProfile(avatar: '');
+    final ok = await appState.updateProfile(avatar: '');
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('头像移除失败，请稍后重试')));
+    }
   }
 
   Future<void> _editNickname(AppState appState) async {
@@ -73,7 +81,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (newName == null) return;
-    await appState.updateProfile(nickname: newName);
+    final ok = await appState.updateProfile(nickname: newName);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('昵称保存失败，请稍后重试')));
+    }
   }
 
   Widget _buildAvatar(AppState appState) {
