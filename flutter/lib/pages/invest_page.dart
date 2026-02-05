@@ -28,7 +28,6 @@ class _InvestPageState extends State<InvestPage> {
     return Consumer<AppState>(
       builder: (context, appState, child) {
         final isCompact = MediaQuery.of(context).size.width < 380;
-        final tableWidth = MediaQuery.of(context).size.width + (isCompact ? 100 : 140);
         return RefreshIndicator(
           onRefresh: _loadData,
           color: AppTheme.accent,
@@ -155,98 +154,91 @@ class _InvestPageState extends State<InvestPage> {
                 )
               else
                 SliverToBoxAdapter(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: SizedBox(
-                      width: tableWidth,
-                      child: Column(
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: Spacing.md,
-                              vertical: isCompact ? 4 : 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.isLight
-                                  ? AppTheme.bgElevated
-                                  : AppTheme.bgCard.withOpacity(0.45),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+                  child: Column(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: Spacing.md,
+                          vertical: isCompact ? 4 : 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.isLight
+                              ? AppTheme.bgElevated
+                              : AppTheme.bgCard.withOpacity(0.45),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: isCompact ? 72 : 80,
+                              child: Text(
+                                '资产名称',
+                                style: TextStyle(
+                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  color: AppTheme.textTertiary,
+                                ),
                               ),
                             ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 80,
-                                  child: Text(
-                                    '资产名称',
-                                    style: TextStyle(
-                                      fontSize: isCompact ? 8 : FontSize.xs,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                '市值/数量',
+                                style: TextStyle(
+                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  color: AppTheme.textTertiary,
                                 ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    '市值/数量',
-                                    style: TextStyle(
-                                      fontSize: isCompact ? 8 : FontSize.xs,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    '现价/成本',
-                                    style: TextStyle(
-                                      fontSize: isCompact ? 8 : FontSize.xs,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    '累计盈亏',
-                                    textAlign: TextAlign.end,
-                                    style: TextStyle(
-                                      fontSize: isCompact ? 8 : FontSize.xs,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    '当日盈亏',
-                                    textAlign: TextAlign.end,
-                                    style: TextStyle(
-                                      fontSize: isCompact ? 8 : FontSize.xs,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: appState.filteredPortfolio.length,
-                            itemBuilder: (context, index) {
-                              final item = appState.filteredPortfolio[index];
-                              final priceInfo = appState.prices[item.code];
-                              return _buildPortfolioCard(item, priceInfo, appState, isCompact);
-                            },
-                          ),
-                        ],
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                '现价/成本',
+                                style: TextStyle(
+                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  color: AppTheme.textTertiary,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                '累计盈亏',
+                                textAlign: TextAlign.end,
+                                style: TextStyle(
+                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  color: AppTheme.textTertiary,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                '当日盈亏',
+                                textAlign: TextAlign.end,
+                                style: TextStyle(
+                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  color: AppTheme.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: appState.filteredPortfolio.length,
+                        itemBuilder: (context, index) {
+                          final item = appState.filteredPortfolio[index];
+                          final priceInfo = appState.prices[item.code];
+                          return _buildPortfolioCard(item, priceInfo, appState, isCompact);
+                        },
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -255,6 +247,7 @@ class _InvestPageState extends State<InvestPage> {
       },
     );
   }
+
 
   Widget _buildStat(String label, String value, Color color) {
     return Column(
@@ -275,25 +268,23 @@ class _InvestPageState extends State<InvestPage> {
       ('fund', '基金'),
     ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: categories.map((cat) {
-          final isSelected = appState.currentCategory == cat.$1;
-          return Padding(
-            padding: const EdgeInsets.only(right: Spacing.sm),
+    return Row(
+      children: categories.map((cat) {
+        final isSelected = appState.currentCategory == cat.$1;
+        return Expanded(
+          child: Center(
             child: Material(
               color: isSelected ? AppTheme.accent : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadius.xxl),
               child: InkWell(
                 onTap: () => appState.setCategory(cat.$1),
                 borderRadius: BorderRadius.circular(AppRadius.xxl),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
-                    child: Text(
-                      cat.$2,
-                      style: TextStyle(
-                      fontSize: FontSize.base,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 6),
+                  child: Text(
+                    cat.$2,
+                    style: TextStyle(
+                      fontSize: FontSize.sm,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                       color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
                     ),
@@ -301,9 +292,9 @@ class _InvestPageState extends State<InvestPage> {
                 ),
               ),
             ),
-          );
-        }).toList(),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -354,123 +345,126 @@ class _InvestPageState extends State<InvestPage> {
           ),
           child: Row(
             children: [
-              // 名称
               SizedBox(
-                width: 80,
+                width: isCompact ? 72 : 80,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.name.length > 5 ? '${item.name.substring(0, 5)}…' : item.name,
                       style: TextStyle(
-                        fontSize: FontSize.base,
+                        fontSize: isCompact ? 11 : FontSize.base,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
                       ),
                     ),
                     Text(
                       _formatDisplayCode(item.code),
-                      style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textTertiary),
+                      style: TextStyle(fontSize: isCompact ? 9 : FontSize.sm, color: AppTheme.textTertiary),
                     ),
                   ],
                 ),
               ),
-              // 市值
               Expanded(
                 flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      mvText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: isCompact ? 10 : FontSize.md,
-                        color: AppTheme.textPrimary,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        mvText,
+                        style: TextStyle(
+                          fontSize: isCompact ? 9 : FontSize.md,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                     ),
                     Text(
                       '${item.qty.toStringAsFixed(0)}',
                       style: TextStyle(
-                        fontSize: isCompact ? 8 : FontSize.xs,
+                        fontSize: isCompact ? 7 : FontSize.xs,
                         color: AppTheme.textTertiary,
                       ),
                     ),
                   ],
                 ),
               ),
-              // 现价
               Expanded(
                 flex: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: isCompact ? 10 : FontSize.md,
-                        color: AppTheme.textPrimary,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: isCompact ? 9 : FontSize.md,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                     ),
                     Text(
                       '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
                       style: TextStyle(
-                        fontSize: isCompact ? 8 : FontSize.xs,
+                        fontSize: isCompact ? 7 : FontSize.xs,
                         color: AppTheme.textTertiary,
                       ),
                     ),
                   ],
                 ),
               ),
-              // 盈亏
               Expanded(
                 flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      pnlText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: isCompact ? 10 : FontSize.md,
-                        fontWeight: FontWeight.w600,
-                        color: pnlColor,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        pnlText,
+                        style: TextStyle(
+                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontWeight: FontWeight.w600,
+                          color: pnlColor,
+                        ),
                       ),
                     ),
                     Text(
                       appState.formatPct(holdingPnlPct),
                       style: TextStyle(
-                        fontSize: isCompact ? 8 : FontSize.xs,
+                        fontSize: isCompact ? 7 : FontSize.xs,
                         color: pnlColor,
                       ),
                     ),
                   ],
                 ),
               ),
-              // 当日盈亏
               Expanded(
                 flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      dailyText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: isCompact ? 10 : FontSize.md,
-                        fontWeight: FontWeight.w600,
-                        color: dailyColor,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        dailyText,
+                        style: TextStyle(
+                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontWeight: FontWeight.w600,
+                          color: dailyColor,
+                        ),
                       ),
                     ),
                     Text(
                       appState.formatPct(dailyPnlPct),
                       style: TextStyle(
-                        fontSize: isCompact ? 8 : FontSize.xs,
+                        fontSize: isCompact ? 7 : FontSize.xs,
                         color: dailyColor,
                       ),
                     ),
