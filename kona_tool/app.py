@@ -952,12 +952,15 @@ if __name__ == '__main__':
     logger.info(f"Database: {config.DATABASE_PATH}")
     logger.info(f"Server: http://{config.HOST}:{config.PORT}")
     
-    # 启动后台快照任务
-    threading.Thread(target=background_scheduler, daemon=True).start()
+    # 启动后台快照任务（默认关闭，建议用 cron 固定时间触发）
+    if config.ENABLE_BACKGROUND_SNAPSHOT:
+        threading.Thread(target=background_scheduler, daemon=True).start()
+    else:
+        logger.info("Background snapshot disabled (cron preferred).")
     
-    # 【优化】程序启动时，立即执行一次快照保存，防止用户短时间开机后数据未保存
-    # 使用线程异步执行，避免阻塞启动过程
-    threading.Thread(target=take_snapshot, daemon=True).start()
+    # 启动时立即执行一次快照（默认关闭）
+    if config.ENABLE_STARTUP_SNAPSHOT:
+        threading.Thread(target=take_snapshot, daemon=True).start()
     
     # 自动打开浏览器
     threading.Thread(target=open_browser, daemon=True).start()

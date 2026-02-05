@@ -134,6 +134,11 @@ LOGIN_BYPASS_EMAILS = [
     if e.strip()
 ]
 
+# 快照后台任务开关
+# 说明：如果你使用 cron 在固定时间触发快照（例如 07:00），建议关闭后台任务。
+ENABLE_BACKGROUND_SNAPSHOT = os.getenv("ENABLE_BACKGROUND_SNAPSHOT", "false").lower() == "true"
+ENABLE_STARTUP_SNAPSHOT = os.getenv("ENABLE_STARTUP_SNAPSHOT", "false").lower() == "true"
+
 # 证券类型分类
 ASSET_TYPES = {
     "stock_cn": {"name": "A股", "prefixes": ["sh", "sz", "bj"]},
