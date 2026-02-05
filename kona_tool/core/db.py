@@ -125,6 +125,7 @@ class DatabaseManager:
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
                 nickname TEXT,
+                avatar TEXT,
                 register_method TEXT,
                 phone TEXT,
                 user_number INTEGER,
@@ -164,6 +165,7 @@ class DatabaseManager:
         _ensure_column('liabilities', 'user_id', 'user_id TEXT')
         _ensure_column('daily_snapshots', 'user_id', 'user_id TEXT')
         _ensure_column('users', 'nickname', 'nickname TEXT')
+        _ensure_column('users', 'avatar', 'avatar TEXT')
         _ensure_column('users', 'register_method', 'register_method TEXT')
         _ensure_column('users', 'phone', 'phone TEXT')
         _ensure_column('users', 'user_number', 'user_number INTEGER')

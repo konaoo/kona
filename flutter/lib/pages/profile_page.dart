@@ -1,11 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
-import '../services/cache_service.dart';
 
 /// 我的页面
 class ProfilePage extends StatefulWidget {
@@ -18,48 +19,30 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final CacheService _cache = CacheService();
   final ImagePicker _picker = ImagePicker();
-
-  String? _nickname;
-  String? _avatarPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLocalProfile();
-  }
-
-  Future<void> _loadLocalProfile() async {
-    final nickname = await _cache.getString('profile_nickname');
-    final avatar = await _cache.getString('profile_avatar_path');
-    if (!mounted) return;
-    setState(() {
-      _nickname = nickname;
-      _avatarPath = avatar;
-    });
-  }
-
-  Future<void> _pickAvatar() async {
+  Future<void> _pickAvatar(AppState appState) async {
     try {
-      final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 512,
+        maxHeight: 512,
+      );
       if (file == null) return;
-      await _cache.setString('profile_avatar_path', file.path);
-      if (!mounted) return;
-      setState(() => _avatarPath = file.path);
+      final bytes = await File(file.path).readAsBytes();
+      final base64Str = base64Encode(bytes);
+      await appState.updateProfile(avatar: base64Str);
     } catch (e) {
       debugPrint('选择头像失败: $e');
     }
   }
 
-  Future<void> _removeAvatar() async {
-    await _cache.setString('profile_avatar_path', '');
-    if (!mounted) return;
-    setState(() => _avatarPath = null);
+  Future<void> _removeAvatar(AppState appState) async {
+    await appState.updateProfile(avatar: '');
   }
 
-  Future<void> _editNickname() async {
-    final controller = TextEditingController(text: _nickname ?? '');
+  Future<void> _editNickname(AppState appState) async {
+    final controller = TextEditingController(text: appState.nickname ?? '');
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -90,27 +73,34 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (newName == null) return;
-    await _cache.setString('profile_nickname', newName);
-    if (!mounted) return;
-    setState(() => _nickname = newName.isEmpty ? null : newName);
+    await appState.updateProfile(nickname: newName);
   }
 
   Widget _buildAvatar(AppState appState) {
-    final fallback = (_nickname?.isNotEmpty == true
-            ? _nickname!.substring(0, 1)
+    final fallback = (appState.nickname?.isNotEmpty == true
+            ? appState.nickname!.substring(0, 1)
             : (appState.email?.substring(0, 1).toUpperCase() ?? 'U'))
         .toUpperCase();
 
-    final hasAvatar = _avatarPath != null && _avatarPath!.isNotEmpty && File(_avatarPath!).existsSync();
+    Uint8List? avatarBytes;
+    if (appState.avatar != null && appState.avatar!.isNotEmpty) {
+      try {
+        avatarBytes = base64Decode(appState.avatar!);
+      } catch (_) {
+        avatarBytes = null;
+      }
+    }
+
+    final hasAvatar = avatarBytes != null;
     return GestureDetector(
-      onTap: _pickAvatar,
-      onLongPress: _removeAvatar,
+      onTap: () => _pickAvatar(appState),
+      onLongPress: () => _removeAvatar(appState),
       child: Stack(
         children: [
           CircleAvatar(
             radius: 35,
             backgroundColor: AppTheme.accent,
-            backgroundImage: hasAvatar ? FileImage(File(_avatarPath!)) : null,
+            backgroundImage: hasAvatar ? MemoryImage(avatarBytes!) : null,
             child: hasAvatar
                 ? null
                 : Text(
@@ -165,7 +155,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _nickname?.isNotEmpty == true ? _nickname! : '用户 #${appState.userNumber ?? 0}',
+                            appState.nickname?.isNotEmpty == true
+                                ? appState.nickname!
+                                : '用户 #${appState.userNumber ?? 0}',
                             style: TextStyle(
                               fontSize: FontSize.xl,
                               fontWeight: FontWeight.bold,
@@ -185,7 +177,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     IconButton(
                       icon: Icon(Icons.edit, color: AppTheme.textTertiary),
-                      onPressed: _editNickname,
+                      onPressed: () => _editNickname(appState),
                     ),
                   ],
                 ),

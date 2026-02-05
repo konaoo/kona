@@ -235,7 +235,7 @@ def get_user_profile(db, user_id: str) -> Optional[dict]:
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            SELECT id, email, nickname, register_method, phone, user_number, created_at, last_login
+            SELECT id, email, nickname, avatar, register_method, phone, user_number, created_at, last_login
             FROM users
             WHERE id = ?
         ''', (user_id,))

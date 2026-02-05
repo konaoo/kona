@@ -20,6 +20,8 @@ class AppState extends ChangeNotifier {
   String? _email;
   String? _userId;
   int? _userNumber;
+  String? _nickname;
+  String? _avatar;
 
   // 资产数据
   double _totalAsset = 0;
@@ -66,6 +68,8 @@ class AppState extends ChangeNotifier {
   String? get email => _email;
   String? get userId => _userId;
   int? get userNumber => _userNumber;
+  String? get nickname => _nickname;
+  String? get avatar => _avatar;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -316,6 +320,8 @@ class AppState extends ChangeNotifier {
         _email = result['email'];
         _userId = result['user_id'];
         _userNumber = result['user_number'];
+        _nickname = result['nickname'];
+        _avatar = result['avatar'];
         _api.setToken(result['token']);
         notifyListeners();
         return true;
@@ -330,18 +336,34 @@ class AppState extends ChangeNotifier {
     return await _api.sendLoginCode(email);
   }
 
+  /// 更新用户资料
+  Future<bool> updateProfile({String? nickname, String? avatar}) async {
+    final result = await _api.updateProfile(nickname: nickname, avatar: avatar);
+    if (result != null) {
+      _nickname = result['nickname'];
+      _avatar = result['avatar'];
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
   /// 设置登录状态
   void setLoggedIn({
     required String token,
     required String email,
     required String userId,
     int? userNumber,
+    String? nickname,
+    String? avatar,
   }) {
     _isLoggedIn = true;
     _token = token;
     _email = email;
     _userId = userId;
     _userNumber = userNumber;
+    _nickname = nickname;
+    _avatar = avatar;
     _api.setToken(token);
     notifyListeners();
   }
@@ -353,6 +375,8 @@ class AppState extends ChangeNotifier {
     _email = null;
     _userId = null;
     _userNumber = null;
+    _nickname = null;
+    _avatar = null;
     _api.clearToken();
     _portfolio = [];
     _prices = {};

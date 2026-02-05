@@ -100,6 +100,19 @@ class ApiService {
     }
   }
 
+  /// 更新用户资料（昵称/头像）
+  Future<Map<String, dynamic>?> updateProfile({String? nickname, String? avatar}) async {
+    try {
+      final data = await _post(ApiConfig.profileUpdate, {
+        if (nickname != null) 'nickname': nickname,
+        if (avatar != null) 'avatar': avatar,
+      });
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // ============================================================
   // 资产相关
   // ============================================================

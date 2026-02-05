@@ -721,6 +721,7 @@ def auth_login():
         "user_number": user_number,
         "email": email,
         "nickname": profile.get("nickname"),
+        "avatar": profile.get("avatar"),
         "register_method": profile.get("register_method"),
         "phone": profile.get("phone"),
         "created_at": profile.get("created_at"),
@@ -739,6 +740,57 @@ def auth_me():
         "user_id": g.user_id,
         "email": g.email
     })
+
+
+@app.route('/api/auth/profile', methods=['POST'])
+@login_required
+def update_profile():
+    """更新用户资料（昵称/头像）"""
+    data = request.json or {}
+    nickname = data.get('nickname')
+    avatar = data.get('avatar')
+
+    if nickname is None and avatar is None:
+        return jsonify({"error": "No fields to update"}), 400
+
+    if isinstance(nickname, str):
+        nickname = nickname.strip()
+        if nickname == '':
+            nickname = None
+
+    if isinstance(avatar, str) and avatar == '':
+        avatar = None
+
+    # 简单大小限制，避免超大头像
+    if isinstance(avatar, str) and len(avatar) > 500_000:
+        return jsonify({"error": "Avatar too large"}), 400
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        updates = []
+        params = []
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(nickname)
+        if avatar is not None:
+            updates.append("avatar = ?")
+            params.append(avatar)
+        if not updates:
+            return jsonify({"error": "No fields to update"}), 400
+
+        params.append(g.user_id)
+        cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update profile: {e}")
+        conn.rollback()
+        return jsonify({"error": "Update failed"}), 500
+    finally:
+        conn.close()
+
+    profile = get_user_profile(db, g.user_id) or {}
+    return jsonify(profile)
 
 
 @app.route('/api/auth/send_code', methods=['POST'])

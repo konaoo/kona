@@ -26,6 +26,7 @@ def migrate():
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
                 nickname TEXT,
+                avatar TEXT,
                 register_method TEXT,
                 phone TEXT,
                 user_number INTEGER,
@@ -35,6 +36,7 @@ def migrate():
         ''')
 
         add_column('users', 'nickname', 'nickname TEXT')
+        add_column('users', 'avatar', 'avatar TEXT')
         add_column('users', 'register_method', 'register_method TEXT')
         add_column('users', 'phone', 'phone TEXT')
         add_column('users', 'user_number', 'user_number INTEGER')
