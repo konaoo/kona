@@ -132,7 +132,7 @@ class _InvestPageState extends State<InvestPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: Spacing.xs),
+                      const SizedBox(height: Spacing.md),
                       // 分类标签
                       _buildCategoryTabs(appState),
                     ],
@@ -178,7 +178,7 @@ class _InvestPageState extends State<InvestPage> {
                               child: Text(
                                 '资产名称',
                                 style: TextStyle(
-                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  fontSize: isCompact ? 9 : FontSize.base,
                                   color: AppTheme.textTertiary,
                                 ),
                               ),
@@ -188,7 +188,7 @@ class _InvestPageState extends State<InvestPage> {
                               child: Text(
                                 '市值/数量',
                                 style: TextStyle(
-                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  fontSize: isCompact ? 9 : FontSize.base,
                                   color: AppTheme.textTertiary,
                                 ),
                               ),
@@ -198,7 +198,7 @@ class _InvestPageState extends State<InvestPage> {
                               child: Text(
                                 '现价/成本',
                                 style: TextStyle(
-                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  fontSize: isCompact ? 9 : FontSize.base,
                                   color: AppTheme.textTertiary,
                                 ),
                               ),
@@ -209,7 +209,7 @@ class _InvestPageState extends State<InvestPage> {
                                 '累计盈亏',
                                 textAlign: TextAlign.end,
                                 style: TextStyle(
-                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  fontSize: isCompact ? 9 : FontSize.base,
                                   color: AppTheme.textTertiary,
                                 ),
                               ),
@@ -220,7 +220,7 @@ class _InvestPageState extends State<InvestPage> {
                                 '当日盈亏',
                                 textAlign: TextAlign.end,
                                 style: TextStyle(
-                                  fontSize: isCompact ? 8 : FontSize.sm,
+                                  fontSize: isCompact ? 9 : FontSize.base,
                                   color: AppTheme.textTertiary,
                                 ),
                               ),
@@ -269,10 +269,16 @@ class _InvestPageState extends State<InvestPage> {
     ];
 
     return Row(
-      children: categories.map((cat) {
+      children: categories.asMap().entries.map((entry) {
+        final index = entry.key;
+        final cat = entry.value;
         final isSelected = appState.currentCategory == cat.$1;
+        final alignment = index == 0
+            ? Alignment.centerLeft
+            : (index == categories.length - 1 ? Alignment.centerRight : Alignment.center);
         return Expanded(
-          child: Center(
+          child: Align(
+            alignment: alignment,
             child: Material(
               color: isSelected ? AppTheme.accent : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadius.xxl),
@@ -284,7 +290,7 @@ class _InvestPageState extends State<InvestPage> {
                   child: Text(
                     cat.$2,
                     style: TextStyle(
-                      fontSize: FontSize.sm,
+                      fontSize: FontSize.base,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                       color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
                     ),
@@ -321,6 +327,10 @@ class _InvestPageState extends State<InvestPage> {
         ? appState.formatCompactPnlWithCurrency(holdingPnl, item.currencySymbol)
         : appState.formatPnlIntWithCurrency(holdingPnl, item.currencySymbol);
     final dailyText = appState.formatCompactPnlCny(dailyPnl);
+    final nameSize = isCompact ? 12.0 : FontSize.lg;
+    final codeSize = isCompact ? 10.0 : FontSize.md;
+    final valueSize = isCompact ? 11.0 : FontSize.lg;
+    final subValueSize = isCompact ? 9.0 : FontSize.sm;
 
     return Material(
       color: Colors.transparent,
@@ -351,16 +361,22 @@ class _InvestPageState extends State<InvestPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.name.length > 5 ? '${item.name.substring(0, 5)}…' : item.name,
+                      item.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: isCompact ? 11 : FontSize.base,
+                        fontSize: nameSize,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    Text(
-                      _formatDisplayCode(item.code),
-                      style: TextStyle(fontSize: isCompact ? 9 : FontSize.sm, color: AppTheme.textTertiary),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _formatDisplayCode(item.code),
+                        style: TextStyle(fontSize: codeSize, color: AppTheme.textTertiary),
+                      ),
                     ),
                   ],
                 ),
@@ -376,16 +392,20 @@ class _InvestPageState extends State<InvestPage> {
                       child: Text(
                         mvText,
                         style: TextStyle(
-                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontSize: valueSize,
                           color: AppTheme.textPrimary,
                         ),
                       ),
                     ),
-                    Text(
-                      '${item.qty.toStringAsFixed(0)}',
-                      style: TextStyle(
-                        fontSize: isCompact ? 7 : FontSize.xs,
-                        color: AppTheme.textTertiary,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${item.qty.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontSize: subValueSize,
+                          color: AppTheme.textTertiary,
+                        ),
                       ),
                     ),
                   ],
@@ -402,16 +422,20 @@ class _InvestPageState extends State<InvestPage> {
                       child: Text(
                         '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
                         style: TextStyle(
-                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontSize: valueSize,
                           color: AppTheme.textPrimary,
                         ),
                       ),
                     ),
-                    Text(
-                      '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: isCompact ? 7 : FontSize.xs,
-                        color: AppTheme.textTertiary,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: subValueSize,
+                          color: AppTheme.textTertiary,
+                        ),
                       ),
                     ),
                   ],
@@ -428,17 +452,21 @@ class _InvestPageState extends State<InvestPage> {
                       child: Text(
                         pnlText,
                         style: TextStyle(
-                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontSize: valueSize,
                           fontWeight: FontWeight.w600,
                           color: pnlColor,
                         ),
                       ),
                     ),
-                    Text(
-                      appState.formatPct(holdingPnlPct),
-                      style: TextStyle(
-                        fontSize: isCompact ? 7 : FontSize.xs,
-                        color: pnlColor,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        appState.formatPct(holdingPnlPct),
+                        style: TextStyle(
+                          fontSize: subValueSize,
+                          color: pnlColor,
+                        ),
                       ),
                     ),
                   ],
@@ -455,17 +483,21 @@ class _InvestPageState extends State<InvestPage> {
                       child: Text(
                         dailyText,
                         style: TextStyle(
-                          fontSize: isCompact ? 9 : FontSize.md,
+                          fontSize: valueSize,
                           fontWeight: FontWeight.w600,
                           color: dailyColor,
                         ),
                       ),
                     ),
-                    Text(
-                      appState.formatPct(dailyPnlPct),
-                      style: TextStyle(
-                        fontSize: isCompact ? 7 : FontSize.xs,
-                        color: dailyColor,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        appState.formatPct(dailyPnlPct),
+                        style: TextStyle(
+                          fontSize: subValueSize,
+                          color: dailyColor,
+                        ),
                       ),
                     ),
                   ],
