@@ -186,19 +186,25 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild on theme changes so bottom bar updates immediately
+    context.watch<AppState>();
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          HomePage(
-            onNavigate: _navigateTo,
-            onSwitchTab: _switchTab,
-          ),
-          const InvestPage(),
-          const AnalysisPage(),
-          const NewsPage(),
-          ProfilePage(onLogout: widget.onLogout),
-        ],
+      body: SafeArea(
+        bottom: false,
+        minimum: const EdgeInsets.only(top: 8),
+        child: IndexedStack(
+          index: _currentIndex,
+          children: [
+            HomePage(
+              onNavigate: _navigateTo,
+              onSwitchTab: _switchTab,
+            ),
+            const InvestPage(),
+            const AnalysisPage(),
+            const NewsPage(),
+            ProfilePage(onLogout: widget.onLogout),
+          ],
+        ),
       ),
       floatingActionButton: _currentIndex == 0 || _currentIndex == 1
           ? FloatingActionButton.small(

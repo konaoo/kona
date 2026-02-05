@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../providers/app_state.dart';
 
 /// 快讯页面
 class NewsPage extends StatefulWidget {
@@ -86,6 +88,7 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<AppState>();
     final filteredNews = _onlyImportant ? _news.where((e) => e['important'] == true).toList() : _news;
     return RefreshIndicator(
       onRefresh: () => _loadNews(reset: true),

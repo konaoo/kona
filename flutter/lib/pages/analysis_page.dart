@@ -108,6 +108,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
     final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
     final showLoading = _loading && !_overviewLoaded && !isDay;
+    final amountText = appState.amountHidden ? '****' : '¥${pnl.toStringAsFixed(0)}';
 
     return Container(
       padding: const EdgeInsets.all(Spacing.xl),
@@ -127,7 +128,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            showLoading ? '加载中...' : '¥${pnl.toStringAsFixed(0)}',
+            showLoading ? '加载中...' : amountText,
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
@@ -376,7 +377,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                _formatCalendarPnl(pnl),
+                                _formatCalendarPnl(pnl, appState),
                                 maxLines: 1,
                                 softWrap: false,
                                 style: TextStyle(
@@ -411,7 +412,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              _calendarSummaryText(),
+              _calendarSummaryText(appState),
               style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
             ),
           ),
@@ -599,7 +600,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
+                appState.amountHidden ? '****' : appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
                 style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 2),
@@ -645,7 +646,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return int.tryParse(last);
   }
 
-  String _formatCalendarPnl(double pnl) {
+  String _formatCalendarPnl(double pnl, AppState appState) {
+    if (appState.amountHidden) {
+      return '****';
+    }
     final sign = pnl > 0 ? '+' : (pnl < 0 ? '-' : '');
     final absVal = pnl.abs();
     String text;
@@ -659,7 +663,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return '$sign$text';
   }
 
-  String _calendarSummaryText() {
+  String _calendarSummaryText(AppState appState) {
     final totalPnl = (_calendarData['total_pnl'] as num?)?.toDouble() ?? 0.0;
     final totalRate = (_calendarData['total_rate'] as num?)?.toDouble() ?? 0.0;
     final label = _calendarTimeType == 'day'
@@ -670,8 +674,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]},',
     );
+    final amountText = appState.amountHidden ? '****' : '$sign$amount';
     final rateSign = totalRate >= 0 ? '+' : '';
-    return '$label  ${sign}$amount   收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
+    return '$label  $amountText   收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
   }
 
   Widget _rankBadge(int rank) {
@@ -793,7 +798,7 @@ class AnalysisRankAllPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
+                      appState.amountHidden ? '****' : appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
                       style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),

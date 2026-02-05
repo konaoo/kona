@@ -276,7 +276,7 @@ class _ProfilePageState extends State<ProfilePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '浅色主题',
+                  '切换主题',
                   style: TextStyle(
                     fontSize: 15,
                     color: AppTheme.textPrimary,
@@ -285,7 +285,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '小清新 · 文艺风',
+                  '浅色 / 暗黑',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textTertiary,

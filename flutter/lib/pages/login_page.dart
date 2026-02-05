@@ -138,6 +138,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       body: SafeArea(
+        minimum: const EdgeInsets.only(top: 8),
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
           child: Column(
