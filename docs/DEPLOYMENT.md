@@ -125,6 +125,7 @@ Three alert channels are supported:
 - `kona.service` boot/runtime failure -> instant email
 - HTTP health check failure -> email (every 2 minutes probe)
 - Daily snapshot missing -> email (07:05 Beijing)
+- Price metrics degradation -> email (every 5 minutes threshold probe)
 
 Alert scripts:
 
@@ -132,6 +133,7 @@ Alert scripts:
 kona_tool/scripts/alert_sender.py
 kona_tool/scripts/check_kona_health.py
 kona_tool/scripts/check_daily_snapshot.py
+kona_tool/scripts/check_price_health_alert.py
 kona_tool/scripts/systemd_failure_notify.sh
 kona_tool/scripts/install_alerting_systemd.sh
 ```
@@ -142,6 +144,10 @@ kona_tool/scripts/install_alerting_systemd.sh
 cd /home/ec2-user/portfolio/kona_tool
 grep '^ALERT_NOTIFY_TO=' .env || echo 'ALERT_NOTIFY_TO=konaeee@gmail.com' >> .env
 grep '^KONA_HEALTH_URL=' .env || echo 'KONA_HEALTH_URL=http://127.0.0.1:5003/health' >> .env
+grep '^PRICE_HEALTH_URL=' .env || echo 'PRICE_HEALTH_URL=http://127.0.0.1:5003/api/system/price_health' >> .env
+grep '^PRICE_HEALTH_NETWORK_FAIL_DELTA_THRESHOLD=' .env || echo 'PRICE_HEALTH_NETWORK_FAIL_DELTA_THRESHOLD=20' >> .env
+grep '^PRICE_HEALTH_STALE_HITS_DELTA_THRESHOLD=' .env || echo 'PRICE_HEALTH_STALE_HITS_DELTA_THRESHOLD=30' >> .env
+grep '^PRICE_HEALTH_SOURCE_CONSEC_FAIL_THRESHOLD=' .env || echo 'PRICE_HEALTH_SOURCE_CONSEC_FAIL_THRESHOLD=5' >> .env
 ```
 
 ### 2) Install systemd alert units/timers
@@ -157,6 +163,13 @@ bash scripts/install_alerting_systemd.sh
 ```bash
 sudo systemctl list-timers | grep -E 'kona-(healthcheck|snapshot-verify|snapshot)'
 sudo systemctl status kona -l
+```
+
+Optional verify (price-health checker):
+
+```bash
+sudo systemctl start kona-price-health-alert.service
+sudo journalctl -u kona-price-health-alert.service -n 50 --no-pager
 ```
 
 ### 4) Send a manual test email
