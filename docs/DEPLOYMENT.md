@@ -108,13 +108,65 @@ sudo systemctl status kona -l
 Quick verify:
 
 ```bash
-redis-cli ping
+redis6-cli ping
 curl -s http://127.0.0.1:5003/health
 ```
 
 Expected:
-- `redis-cli ping` returns `PONG`
+- `redis6-cli ping` returns `PONG`
 - `/health` returns `{"status":"ok",...}`
+
+---
+
+## Alerting (Email)
+
+Three alert channels are supported:
+
+- `kona.service` boot/runtime failure -> instant email
+- HTTP health check failure -> email (every 2 minutes probe)
+- Daily snapshot missing -> email (07:05 Beijing)
+
+Alert scripts:
+
+```
+kona_tool/scripts/alert_sender.py
+kona_tool/scripts/check_kona_health.py
+kona_tool/scripts/check_daily_snapshot.py
+kona_tool/scripts/systemd_failure_notify.sh
+kona_tool/scripts/install_alerting_systemd.sh
+```
+
+### 1) Configure `.env`
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+grep '^ALERT_NOTIFY_TO=' .env || echo 'ALERT_NOTIFY_TO=konaeee@gmail.com' >> .env
+grep '^KONA_HEALTH_URL=' .env || echo 'KONA_HEALTH_URL=http://127.0.0.1:5003/health' >> .env
+```
+
+### 2) Install systemd alert units/timers
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+chmod +x scripts/install_alerting_systemd.sh
+bash scripts/install_alerting_systemd.sh
+```
+
+### 3) Verify
+
+```bash
+sudo systemctl list-timers | grep -E 'kona-(healthcheck|snapshot-verify|snapshot)'
+sudo systemctl status kona -l
+```
+
+### 4) Send a manual test email
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+python3 scripts/alert_sender.py \
+  --subject "[Kona][Test] alert channel ok" \
+  --body "If you received this email, alerting is configured correctly."
+```
 
 ---
 
