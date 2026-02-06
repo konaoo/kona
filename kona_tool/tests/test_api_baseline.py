@@ -14,6 +14,7 @@ if str(KONA_TOOL) not in sys.path:
 # Use a temporary database to avoid local schema conflicts
 _tmp_dir = tempfile.TemporaryDirectory()
 os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test.db")
+os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
 

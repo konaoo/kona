@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 import unittest
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 KONA_TOOL = ROOT / "kona_tool"
 if str(KONA_TOOL) not in sys.path:
     sys.path.insert(0, str(KONA_TOOL))
+os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 from core.utils import http_get
 

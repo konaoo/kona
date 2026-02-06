@@ -4,7 +4,6 @@
 """
 
 import os
-import secrets
 from pathlib import Path
 
 # 基础路径
@@ -19,13 +18,12 @@ PORT = 5003
 DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
-# JWT 认证配置
-# 优先从环境变量读取，如果没有则生成随机密钥并警告
+# JWT 认证配置（必须显式配置，缺失即启动失败）
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
-    JWT_SECRET = secrets.token_urlsafe(32)
-    import logging
-    logging.warning("⚠️ JWT_SECRET not set in environment! Using generated key. Please set it in production for security.")
+    raise RuntimeError(
+        "JWT_SECRET is required. Please set JWT_SECRET in environment (.env)."
+    )
 JWT_EXPIRY_HOURS = 24 * 7  # 7 天
 
 # API配置
