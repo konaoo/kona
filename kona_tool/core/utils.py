@@ -8,6 +8,8 @@ import logging
 from typing import Optional, Dict, Any
 from functools import wraps
 import requests
+from requests import Timeout, RequestException
+from .source_health import source_health
 
 logger = logging.getLogger(__name__)
 
@@ -161,3 +163,49 @@ def http_get(url: str, params: Optional[Dict[str, Any]] = None,
             last_err = e
             time.sleep(backoff)
     raise last_err if last_err else Exception("Unknown HTTP error")
+
+
+def monitored_http_get(
+    source: str,
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, Any]] = None,
+    timeout: float = 3,
+):
+    """
+    带熔断与统计的 HTTP GET。
+    """
+    if not source_health.can_attempt(source):
+        raise RuntimeError(f"source circuit open: {source}")
+
+    start = time.monotonic()
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+        duration_ms = (time.monotonic() - start) * 1000
+        ok = resp.status_code == 200
+        source_health.record(
+            source=source,
+            success=ok,
+            duration_ms=duration_ms,
+            timeout=False,
+            error=f"status={resp.status_code}" if not ok else "",
+        )
+        return resp
+    except Timeout as e:
+        source_health.record(
+            source=source,
+            success=False,
+            duration_ms=(time.monotonic() - start) * 1000,
+            timeout=True,
+            error=str(e),
+        )
+        raise
+    except RequestException as e:
+        source_health.record(
+            source=source,
+            success=False,
+            duration_ms=(time.monotonic() - start) * 1000,
+            timeout=False,
+            error=str(e),
+        )
+        raise

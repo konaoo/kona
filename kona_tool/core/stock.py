@@ -9,7 +9,7 @@ from typing import Tuple, Optional
 from bs4 import BeautifulSoup
 
 import config
-from .utils import safe_float, retry_on_failure, get_first_valid_price
+from .utils import safe_float, retry_on_failure, get_first_valid_price, monitored_http_get
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def get_nasdaq_price() -> Tuple[float, float, float, float]:
     """
     try:
         url = config.API_ENDPOINTS["sina_stock"].format(code="gb_ixic")
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_us_index", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         
         if '="' in r.text:
             data = r.text.split('="')[1].split(',')
@@ -45,7 +45,7 @@ def get_nasdaq_price() -> Tuple[float, float, float, float]:
     
     try:
         url = "http://qt.gtimg.cn/q=us.IXIC"
-        r = requests.get(url, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("tencent_us_index", url, timeout=config.API_TIMEOUT)
         
         if r.status_code == 200 and '="' in r.text:
             data = r.text.split('="')[1].split('~')
@@ -79,7 +79,7 @@ def get_ft_fund_price(isin: str) -> Tuple[float, float, float, float]:
         url = config.API_ENDPOINTS["ft_fund"].format(isin=isin.upper())
         headers = config.API_HEADERS["ft"]
         
-        r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("ft_fund", url, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
             price_tag = soup.find('span', class_='mod-tearsheet-overview__quote__value') or \
@@ -114,7 +114,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     
     try:
         url = config.API_ENDPOINTS["sina_stock"].format(code=f"gb_{s.lower()}")
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_us_stock", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         
         if '="' in r.text:
             data = r.text.split('="')[1].split(',')
@@ -135,7 +135,12 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     try:
         for secid in [f"105.{s}", f"106.{s}"]:
             url = f"https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=2&fields=f43,f60&secid={secid}"
-            r = requests.get(url, headers={'User-Agent': config.HEADERS['User-Agent']}, timeout=config.API_TIMEOUT)
+            r = monitored_http_get(
+                "eastmoney_us_stock",
+                url,
+                headers={'User-Agent': config.HEADERS['User-Agent']},
+                timeout=config.API_TIMEOUT,
+            )
             data = r.json().get('data')
             
             if data:
@@ -185,7 +190,7 @@ def get_us_asset_type(code: str) -> Optional[str]:
 def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float]]:
     url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass={assetclass}"
     headers = config.API_HEADERS.get("default", config.HEADERS)
-    r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+    r = monitored_http_get("nasdaq_quote", url, headers=headers, timeout=config.API_TIMEOUT)
     if r.status_code != 200:
         return None
     data = r.json().get("data") or {}
@@ -218,7 +223,7 @@ def get_hstech_price() -> Tuple[float, float, float, float]:
         (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
     try:
-        r = requests.get("http://qt.gtimg.cn/q=hkHSTECH", timeout=config.API_TIMEOUT)
+        r = monitored_http_get("tencent_hstech", "http://qt.gtimg.cn/q=hkHSTECH", timeout=config.API_TIMEOUT)
         if r.status_code == 200 and 'v_hkHSTECH=' in r.text:
             data = r.text.split('="')[1].split('~')
             curr = safe_float(data[3])
@@ -262,7 +267,7 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
         # 对于指数、港股和A股，优先使用腾讯API
         try:
             url = config.API_ENDPOINTS["tencent_stock"].format(code=s)
-            r = requests.get(url, timeout=config.API_TIMEOUT)
+            r = monitored_http_get("tencent_stock", url, timeout=config.API_TIMEOUT)
 
             if 'v_' + s + '=' in r.text:
                 data = r.text.split('=\"')[1].split(';')[0].split('~')
@@ -291,7 +296,7 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
         
         # 新浪API
         url = config.API_ENDPOINTS["sina_stock"].format(code=s)
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_stock", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         
         if '="' in r.text:
             match = re.search(r'="(.+)"', r.text)

@@ -8,7 +8,7 @@ import requests
 from typing import Tuple, Optional
 
 import config
-from .utils import safe_float, retry_on_failure
+from .utils import safe_float, retry_on_failure, monitored_http_get
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float]
         clean_code = fund_code.replace('f_', '')
         url = config.API_ENDPOINTS["tiantian_fund"].format(code=clean_code)
         
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("tiantian_fund", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         content = r.text
         
         match = re.search(r'jsonpgz\((.*?)\);', content)
@@ -70,7 +70,7 @@ def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float]
         params = {"fundCode": clean_code, "pageIndex": 1, "pageSize": 2}
         headers = config.API_HEADERS["eastmoney"]
         
-        r = requests.get(url, params=params, headers=headers, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("eastmoney_fund_f10", url, params=params, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code == 200:
             data = r.json()
             lsjz = data.get('Data', {}).get('LSJZList', [])
@@ -108,7 +108,13 @@ def get_fund_eastmoney_mobile(clean_code: str) -> Tuple[float, float, float, flo
         params = {"symbol": clean_code, "pageIndex": 1, "pageSize": 2}
         headers = config.API_HEADERS["eastmoney_mobile"]
         
-        r = requests.get(url, params=params, headers=headers, timeout=config.API_TIMEOUT)
+        r = monitored_http_get(
+            "eastmoney_fund_mobile",
+            url,
+            params=params,
+            headers=headers,
+            timeout=config.API_TIMEOUT,
+        )
         if r.status_code == 200:
             res = r.json()
             datas = res.get("Datas", [])
@@ -147,7 +153,7 @@ def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float]
             "Referer": "https://overseas.1234567.com.cn/"
         }
         
-        r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("overseas_fund_html", url, headers=headers, timeout=config.API_TIMEOUT)
         
         url = f"https://overseas.1234567.com.cn/{clean_code}.html"
         headers = {
@@ -155,7 +161,7 @@ def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float]
             "Referer": "https://overseas.1234567.com.cn/"
         }
         
-        r = requests.get(url, headers=headers, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("overseas_fund_html", url, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code == 200:
             html = r.text
             

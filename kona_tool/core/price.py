@@ -5,13 +5,16 @@
 import time
 import logging
 import re
-from typing import Dict, Tuple, Optional, List
+import threading
+from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 from .stock import get_stock_price
 from .asset_type import infer_asset_type, asset_type_label
 from .fund import get_fund_price
+from .source_health import source_health
+from .utils import monitored_http_get
 from .utils import safe_float
 
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ logger = logging.getLogger(__name__)
 class PriceCache:
     """价格缓存类"""
     
-    def __init__(self, ttl: int = 60):
+    def __init__(self, ttl: int = 60, stale_ttl: int = 300):
         """
         初始化缓存
         
@@ -29,6 +32,7 @@ class PriceCache:
         """
         self.cache: Dict[str, Tuple[Tuple[float, float, float, float], float]] = {}
         self.ttl = ttl
+        self.stale_ttl = max(stale_ttl, ttl)
     
     def get(self, code: str) -> Optional[Tuple[float, float, float, float]]:
         """
@@ -49,6 +53,19 @@ class PriceCache:
                 del self.cache[code]
                 logger.debug(f"Cache expired for {code}")
         return None
+
+    def get_stale(self, code: str) -> Optional[Tuple[float, float, float, float]]:
+        """
+        获取过期但仍可回退使用的缓存值（stale-while-revalidate）。
+        """
+        if code not in self.cache:
+            return None
+        price_data, timestamp = self.cache[code]
+        age = time.time() - timestamp
+        if age <= self.stale_ttl:
+            return price_data
+        del self.cache[code]
+        return None
     
     def set(self, code: str, price_data: Tuple[float, float, float, float]):
         """
@@ -68,7 +85,31 @@ class PriceCache:
 
 
 # 全局缓存实例
-price_cache = PriceCache(ttl=60)
+price_cache = PriceCache(ttl=config.CACHE_TTL, stale_ttl=config.CACHE_STALE_TTL)
+
+_runtime_lock = threading.Lock()
+_runtime_metrics: Dict[str, Any] = {
+    "cache_hits": 0,
+    "stale_hits": 0,
+    "network_fetch": 0,
+    "network_fail": 0,
+    "last_fetch_at": 0.0,
+}
+
+
+def _mark_metric(key: str, inc: int = 1) -> None:
+    with _runtime_lock:
+        _runtime_metrics[key] = int(_runtime_metrics.get(key, 0)) + inc
+        _runtime_metrics["last_fetch_at"] = time.time()
+
+
+def get_price_runtime_metrics() -> Dict[str, Any]:
+    with _runtime_lock:
+        return dict(_runtime_metrics)
+
+
+def get_price_source_health() -> Dict[str, Dict[str, Any]]:
+    return source_health.snapshot()
 
 
 def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, float]:
@@ -84,16 +125,21 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
     """
     logger.debug(f"Getting price for {code}")
     
+    stale_fallback = price_cache.get_stale(code)
+
     # 检查缓存
     if use_cache:
         cached = price_cache.get(code)
         if cached:
+            _mark_metric("cache_hits")
             return cached
     
     # 根据代码类型选择获取方式
     price_data = None
     
     # 场外基金
+    _mark_metric("network_fetch")
+
     if code.startswith('f_'):
         price_data = get_fund_price(code)
     
@@ -104,8 +150,15 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
     # 如果获取成功，更新缓存
     if price_data and price_data[0] > 0:
         price_cache.set(code, price_data)
-    
-    return price_data if price_data else (0.0, 0.0, 0.0, 0.0)
+        return price_data
+
+    _mark_metric("network_fail")
+    if stale_fallback:
+        _mark_metric("stale_hits")
+        logger.info(f"Price fallback to stale cache for {code}")
+        return stale_fallback
+
+    return (0.0, 0.0, 0.0, 0.0)
 
 
 def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[float, float, float, float]]:
@@ -161,13 +214,11 @@ def get_forex_rates() -> Dict[str, float]:
     Returns:
         汇率字典 {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0}
     """
-    import requests
-    
     rates = config.DEFAULT_FOREX_RATES.copy()
     
     try:
         url = config.API_ENDPOINTS["sina_forex"]
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_forex", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         
         if r.status_code == 200:
             text = r.text
@@ -222,7 +273,6 @@ def _parse_sina_response(content: str, type_code: str) -> List[dict]:
 
 def _search_sina(query: str, type_code: str) -> List[dict]:
     """搜索新浪接口 (type_code: 11=A股, 31=港股, 41=美股)"""
-    import requests
     results = []
     try:
         url = ""
@@ -231,7 +281,7 @@ def _search_sina(query: str, type_code: str) -> List[dict]:
         else:
              url = f"http://suggest3.sinajs.cn/suggest/type={type_code}&key={query}&name=suggestdata_{int(time.time())}"
              
-        r = requests.get(url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_search", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         r.encoding = 'gbk'
         if r.status_code == 200:
             results = _parse_sina_response(r.text, type_code)
@@ -241,11 +291,15 @@ def _search_sina(query: str, type_code: str) -> List[dict]:
 
 def _search_fund(query: str) -> List[dict]:
     """搜索基金"""
-    import requests
     results = []
     try:
         fund_url = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx'
-        r = requests.get(fund_url, params={'m': 1, 'key': query}, timeout=config.API_TIMEOUT)
+        r = monitored_http_get(
+            "eastmoney_fund_search",
+            fund_url,
+            params={'m': 1, 'key': query},
+            timeout=config.API_TIMEOUT,
+        )
         if r.status_code == 200:
             data = r.json()
             if data.get('Datas'):
