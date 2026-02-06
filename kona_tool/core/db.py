@@ -138,7 +138,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS daily_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL UNIQUE,
+                date TEXT NOT NULL,
                 total_asset REAL NOT NULL,
                 total_invest REAL NOT NULL,
                 total_cash REAL NOT NULL,
@@ -146,8 +146,9 @@ class DatabaseManager:
                 total_liability REAL NOT NULL,
                 total_pnl REAL NOT NULL,
                 day_pnl REAL NOT NULL,
-                user_id TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                user_id TEXT NOT NULL DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, user_id)
             )
         ''')
 
@@ -163,7 +164,7 @@ class DatabaseManager:
         _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
         _ensure_column('liabilities', 'user_id', 'user_id TEXT')
-        _ensure_column('daily_snapshots', 'user_id', 'user_id TEXT')
+        _ensure_column('daily_snapshots', 'user_id', "user_id TEXT DEFAULT ''")
         _ensure_column('users', 'nickname', 'nickname TEXT')
         _ensure_column('users', 'avatar', 'avatar TEXT')
         _ensure_column('users', 'register_method', 'register_method TEXT')
@@ -180,8 +181,12 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_cash_assets_user_id ON cash_assets(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_other_assets_user_id ON other_assets(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_liabilities_user_id ON liabilities(user_id)')
+        # 修复旧表结构（date 全局唯一）并统一快照唯一键：(date, user_id)
+        self._ensure_daily_snapshots_schema(cursor)
+
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
+        cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
@@ -227,6 +232,62 @@ class DatabaseManager:
                 logger.info(f"Backfilled asset_type for {len(rows)} records")
         except Exception as e:
             logger.warning(f"Failed to ensure asset_type column: {e}")
+
+    def _ensure_daily_snapshots_schema(self, cursor) -> None:
+        """
+        统一 daily_snapshots 表结构到：
+        - user_id 非空（默认 ''）
+        - 唯一键 UNIQUE(date, user_id)
+        并对历史重复数据做去重（保留最新 id）。
+        """
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_snapshots'")
+        row = cursor.fetchone()
+        table_sql = (row[0] or '').upper() if row and row[0] else ''
+        has_old_date_unique = 'DATE TEXT NOT NULL UNIQUE' in table_sql
+        has_new_unique = 'UNIQUE(DATE, USER_ID)' in table_sql
+
+        if has_old_date_unique or not has_new_unique:
+            logger.info("Migrating daily_snapshots schema to UNIQUE(date, user_id)")
+            cursor.execute('DROP TABLE IF EXISTS daily_snapshots_new')
+            cursor.execute('''
+                CREATE TABLE daily_snapshots_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    total_asset REAL NOT NULL,
+                    total_invest REAL NOT NULL,
+                    total_cash REAL NOT NULL,
+                    total_other REAL NOT NULL,
+                    total_liability REAL NOT NULL,
+                    total_pnl REAL NOT NULL,
+                    day_pnl REAL NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT '',
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(date, user_id)
+                )
+            ''')
+
+            # 按 (date, user_id) 去重，保留最新一条
+            cursor.execute('''
+                INSERT INTO daily_snapshots_new (
+                    date, total_asset, total_invest, total_cash,
+                    total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
+                )
+                SELECT
+                    d.date, d.total_asset, d.total_invest, d.total_cash,
+                    d.total_other, d.total_liability, d.total_pnl, d.day_pnl,
+                    COALESCE(d.user_id, '') AS user_id,
+                    d.updated_at
+                FROM daily_snapshots d
+                INNER JOIN (
+                    SELECT MAX(id) AS id
+                    FROM daily_snapshots
+                    GROUP BY date, COALESCE(user_id, '')
+                ) t ON d.id = t.id
+            ''')
+
+            cursor.execute('DROP TABLE daily_snapshots')
+            cursor.execute('ALTER TABLE daily_snapshots_new RENAME TO daily_snapshots')
+            logger.info("daily_snapshots schema migration completed")
     
     def get_portfolio(self, asset_type: str = 'all', user_id: str = None) -> List[Dict[str, Any]]:
         """获取持仓数据，支持按类型筛选"""
@@ -989,92 +1050,39 @@ class DatabaseManager:
             conn.close()
 
     def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
-        """保存每日资产快照（如果当日已存在则更新）"""
+        """保存每日资产快照（按 date + user_id upsert）"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         today = datetime.now().strftime('%Y-%m-%d')
+        uid = user_id or ''
         
         try:
-            if user_id:
-                cursor.execute('''
-                    SELECT id FROM daily_snapshots WHERE date = ? AND user_id = ?
-                ''', (today, user_id))
-                
-                if cursor.fetchone():
-                    cursor.execute('''
-                        UPDATE daily_snapshots SET
-                            total_asset=?, total_invest=?, total_cash=?,
-                            total_other=?, total_liability=?, total_pnl=?,
-                            day_pnl=?, updated_at=CURRENT_TIMESTAMP
-                        WHERE date = ? AND user_id = ?
-                    ''', (
-                        data.get('total_asset', 0),
-                        data.get('total_invest', 0),
-                        data.get('total_cash', 0),
-                        data.get('total_other', 0),
-                        data.get('total_liability', 0),
-                        data.get('total_pnl', 0),
-                        data.get('day_pnl', 0),
-                        today,
-                        user_id
-                    ))
-                else:
-                    cursor.execute('''
-                        INSERT INTO daily_snapshots (
-                            date, total_asset, total_invest, total_cash, 
-                            total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ''', (
-                        today,
-                        data.get('total_asset', 0),
-                        data.get('total_invest', 0),
-                        data.get('total_cash', 0),
-                        data.get('total_other', 0),
-                        data.get('total_liability', 0),
-                        data.get('total_pnl', 0),
-                        data.get('day_pnl', 0),
-                        user_id
-                    ))
-            else:
-                # 对于无 user_id 的情况 (兼容旧版)
-                cursor.execute('''
-                    SELECT id FROM daily_snapshots WHERE date = ? AND (user_id IS NULL OR user_id = '')
-                ''', (today,))
-                
-                if cursor.fetchone():
-                    cursor.execute('''
-                        UPDATE daily_snapshots SET
-                            total_asset=?, total_invest=?, total_cash=?,
-                            total_other=?, total_liability=?, total_pnl=?,
-                            day_pnl=?, updated_at=CURRENT_TIMESTAMP
-                        WHERE date = ? AND (user_id IS NULL OR user_id = '')
-                    ''', (
-                        data.get('total_asset', 0),
-                        data.get('total_invest', 0),
-                        data.get('total_cash', 0),
-                        data.get('total_other', 0),
-                        data.get('total_liability', 0),
-                        data.get('total_pnl', 0),
-                        data.get('day_pnl', 0),
-                        today
-                    ))
-                else:
-                    cursor.execute('''
-                        INSERT INTO daily_snapshots (
-                            date, total_asset, total_invest, total_cash, 
-                            total_other, total_liability, total_pnl, day_pnl, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ''', (
-                        today,
-                        data.get('total_asset', 0),
-                        data.get('total_invest', 0),
-                        data.get('total_cash', 0),
-                        data.get('total_other', 0),
-                        data.get('total_liability', 0),
-                        data.get('total_pnl', 0),
-                        data.get('day_pnl', 0)
-                    ))
+            cursor.execute('''
+                INSERT INTO daily_snapshots (
+                    date, total_asset, total_invest, total_cash,
+                    total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(date, user_id) DO UPDATE SET
+                    total_asset = excluded.total_asset,
+                    total_invest = excluded.total_invest,
+                    total_cash = excluded.total_cash,
+                    total_other = excluded.total_other,
+                    total_liability = excluded.total_liability,
+                    total_pnl = excluded.total_pnl,
+                    day_pnl = excluded.day_pnl,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (
+                today,
+                data.get('total_asset', 0),
+                data.get('total_invest', 0),
+                data.get('total_cash', 0),
+                data.get('total_other', 0),
+                data.get('total_liability', 0),
+                data.get('total_pnl', 0),
+                data.get('day_pnl', 0),
+                uid
+            ))
             
             conn.commit()
             logger.info(f"Daily snapshot saved for {today}")
