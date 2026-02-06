@@ -321,9 +321,9 @@ class AppState extends ChangeNotifier {
         _userId = result['user_id'];
         _userNumber = result['user_number'];
         _nickname = result['nickname'];
-        _avatar = result['avatar'];
         _api.setToken(result['token']);
         notifyListeners();
+        _loadProfileSilently();
         return true;
       }
       return false;
@@ -334,6 +334,26 @@ class AppState extends ChangeNotifier {
 
   Future<bool> sendLoginCode(String email) async {
     return await _api.sendLoginCode(email);
+  }
+
+  Future<void> _loadProfileSilently() async {
+    final profile = await _api.getProfile();
+    if (profile != null) {
+      _nickname = profile['nickname'];
+      _avatar = profile['avatar'];
+      notifyListeners();
+    }
+  }
+
+  Future<bool> fetchProfile() async {
+    final profile = await _api.getProfile();
+    if (profile != null) {
+      _nickname = profile['nickname'];
+      _avatar = profile['avatar'];
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   /// 更新用户资料

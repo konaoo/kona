@@ -113,6 +113,16 @@ class ApiService {
     }
   }
 
+  /// 获取当前用户资料
+  Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final data = await _get(ApiConfig.profileMe);
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // ============================================================
   // 资产相关
   // ============================================================

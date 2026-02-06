@@ -721,7 +721,6 @@ def auth_login():
         "user_number": user_number,
         "email": email,
         "nickname": profile.get("nickname"),
-        "avatar": profile.get("avatar"),
         "register_method": profile.get("register_method"),
         "phone": profile.get("phone"),
         "created_at": profile.get("created_at"),

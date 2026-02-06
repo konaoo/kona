@@ -20,6 +20,20 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
+  bool _profileLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final appState = context.read<AppState>();
+      if (appState.isLoggedIn && !_profileLoaded) {
+        _profileLoaded = true;
+        appState.fetchProfile();
+      }
+    });
+  }
   Future<void> _pickAvatar(AppState appState) async {
     try {
       final file = await _picker.pickImage(
