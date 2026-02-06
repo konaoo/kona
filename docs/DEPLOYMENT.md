@@ -4,15 +4,33 @@ This project deploys the **backend** (kona_tool) to AWS using GitHub Actions.
 
 ---
 
+## CI + CD Pipeline
+
+- `pull_request -> main`:
+  - Run `backend-gate` (compile + unit tests, Python 3.9/3.11)
+  - Run `frontend-gate` (pub get + analyze + test + debug apk build)
+  - **No deploy on PR**
+
+- `push -> main`:
+  - Run both gates above
+  - Only if both pass, run `deploy`
+
+- `workflow_dispatch`:
+  - Also runs both gates first
+  - Deploy starts only after gates pass
+
+---
+
 ## Current Deployment Flow
 
 1. Push to GitHub `main`
-2. GitHub Actions connects to AWS via SSH
-3. Pulls latest code in `/home/ec2-user/portfolio/kona_tool`
-4. Installs dependencies (including `gunicorn`)
-5. Writes/updates `systemd` service (`kona.service`)
-6. Restarts backend via `systemctl`
-7. Performs health check
+2. `backend-gate` and `frontend-gate` must both pass
+3. GitHub Actions connects to AWS via SSH
+4. Pulls latest code in `/home/ec2-user/portfolio/kona_tool`
+5. Installs dependencies (including `gunicorn`)
+6. Writes/updates `systemd` service (`kona.service`)
+7. Restarts backend via `systemctl`
+8. Performs health check
 
 Workflow file:
 ```
