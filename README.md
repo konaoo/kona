@@ -17,8 +17,12 @@
 - 仓库根目录：`/Users/kona/Desktop/ko/kona_repo`
 - 后端目录：`/Users/kona/Desktop/ko/kona_repo/kona_tool`
 - 前端目录：`/Users/kona/Desktop/ko/kona_repo/flutter`
-- 线上后端（AWS）：通过 `systemd` 管理主服务，支持异常自动重启
+- 线上后端（AWS）：`systemd + gunicorn` 管理，支持异常自动重启
+- CI/CD：`main` 分支必须通过后端门禁 + 前端门禁后才允许部署
 - 每日快照：使用 `systemd timer` 定时触发（北京 07:00）
+- 价格健康监控：`/api/system/price_health` 已上线（用于运维告警）
+- 告警体系：服务故障、健康检查失败、快照缺失、价格健康异常均可邮件告警
+- 备份恢复：SQLite 每日自动压缩备份 + 一键恢复演练脚本已上线
 - 旧版前端 `HI`：已归档到 `archive/HI`，不参与运行
 
 ---
@@ -110,9 +114,40 @@ kona_repo/
 
 ### 3.8 运维稳定性
 
-- 后端服务改为 `systemd` 托管（自动拉起）
+- 后端服务改为 `systemd + gunicorn` 托管（自动拉起）
 - 每日快照改为 `systemd timer`
-- 继续保留 GitHub Actions 自动部署
+- CI 门禁改为“先测试、后部署”
+
+### 3.9 CI/CD 门禁（今天新增）
+
+- GitHub Actions 拆分为三段：`backend-gate`、`frontend-gate`、`deploy`
+- `push main` 必须先通过两道门禁，部署才会执行
+- `pull_request` 只跑门禁，不部署
+- 前端门禁包含：`flutter analyze`、`flutter test`、`flutter build apk --debug`
+
+### 3.10 安全与限流（今天新增）
+
+- 登录/发码接口新增双层限流（IP + 邮箱维度）
+- 限流后端支持 Redis（生产可横向共享计数）
+- 增加安全审计日志：登录失败、限流命中、发码失败等
+- 强制要求 `JWT_SECRET`（生产）
+
+### 3.11 监控与告警（今天新增）
+
+- 新增运行指标接口：`GET /api/system/price_health`
+- 已接入 `kona` 服务失败告警
+- 已接入健康检查失败告警
+- 已接入快照缺失告警
+- 已接入价格健康阈值告警（network_fail/stale_hits/source fail）
+- 告警通道使用邮箱（`ALERT_NOTIFY_TO`）
+
+### 3.12 备份与恢复（今天新增）
+
+- 新增 SQLite 自动备份脚本（gzip 压缩）
+- 新增每日备份 timer（北京 07:20）
+- 新增一键恢复脚本（默认恢复最新备份）
+- 恢复前自动生成 `pre_restore` 安全副本
+- 已修复恢复脚本跨分区 `Errno 18` 问题（临时文件改为目标目录内创建）
 
 ---
 
@@ -184,6 +219,16 @@ python3 app.py
 - `ENABLE_BACKGROUND_SNAPSHOT`（建议 `false`）
 - `ENABLE_STARTUP_SNAPSHOT`（建议 `false`）
 - `KONA_DATABASE_PATH`（可选）
+- `RATELIMIT_STORAGE_URL`（建议 `redis://127.0.0.1:6379/0`）
+- `ALERT_NOTIFY_TO`（告警邮箱，可多个）
+- `KONA_HEALTH_URL`（健康探活 URL）
+- `PRICE_HEALTH_URL`（价格健康指标 URL）
+- `PRICE_HEALTH_NETWORK_FAIL_DELTA_THRESHOLD`（默认 20）
+- `PRICE_HEALTH_STALE_HITS_DELTA_THRESHOLD`（默认 30）
+- `PRICE_HEALTH_SOURCE_CONSEC_FAIL_THRESHOLD`（默认 5）
+- `KONA_BACKUP_DIR`（备份目录）
+- `KONA_BACKUP_RETENTION_DAYS`（默认 14）
+- `PRICE_HEALTH_TOKEN`（可选；留空即不鉴权）
 
 ---
 
@@ -238,22 +283,28 @@ python3 app.py
 触发方式：
 
 - push 到 `main`
+- pull request 到 `main`（仅门禁，不部署）
 - 手动触发 `workflow_dispatch`
 
 流程：
 
-1. SSH 登录 AWS
-2. `git pull`
-3. 安装依赖
-4. 重启后端
-5. 健康检查 `/api/rates`
+1. 先跑 `backend-gate`（Python compile + unittest）
+2. 再跑 `frontend-gate`（flutter analyze + test + debug build）
+3. 仅当门禁全绿时，执行 `deploy` 到 AWS
+4. SSH 登录 AWS，`git pull` + `pip install`
+5. 刷新 `kona.service` 并重启
+6. 健康检查 `/api/rates`
 
 ### 7.2 生产运行（服务托管）
 
 推荐用 `systemd`（已在线上启用）：
 
 - 主服务：`kona.service`
+- 价格健康巡检：`kona-healthcheck.timer` / `kona-healthcheck.service`
+- 快照缺失巡检：`kona-snapshot-verify.timer` / `kona-snapshot-verify.service`
+- 价格阈值巡检：`kona-price-health-alert.timer` / `kona-price-health-alert.service`
 - 每日快照：`kona-snapshot.service` + `kona-snapshot.timer`
+- 每日备份：`kona-db-backup.service` + `kona-db-backup.timer`
 
 优势：
 
@@ -301,7 +352,7 @@ sudo systemctl restart kona
 ### 9.3 定时器状态
 
 ```bash
-sudo systemctl list-timers | grep kona-snapshot
+sudo systemctl list-timers | grep kona
 sudo journalctl -u kona-snapshot.service -n 50
 ```
 
@@ -315,7 +366,30 @@ curl -s -X POST http://127.0.0.1:5003/api/snapshot/trigger
 
 ```bash
 curl -s http://127.0.0.1:5003/api/rates
+curl -s http://127.0.0.1:5003/health
+curl -s http://127.0.0.1:5003/api/system/price_health
 ```
+
+### 9.6 告警与备份巡检日志
+
+```bash
+sudo journalctl -u kona-healthcheck.service -n 80 --no-pager
+sudo journalctl -u kona-snapshot-verify.service -n 80 --no-pager
+sudo journalctl -u kona-price-health-alert.service -n 80 --no-pager
+sudo journalctl -u kona-db-backup.service -n 80 --no-pager
+```
+
+### 9.7 手动恢复演练
+
+```bash
+sudo systemctl stop kona
+python3 /home/ec2-user/portfolio/kona_tool/scripts/restore_portfolio_db.py
+sudo systemctl start kona
+curl -i --max-time 5 http://127.0.0.1:5003/health
+```
+
+恢复成功后会生成：
+- `portfolio.db.pre_restore_<timestamp>`
 
 ---
 
@@ -373,7 +447,7 @@ LOGIN_BYPASS_EMAILS=konaeee@gmail.com
 3. 前端：`flutter pub get`、确认 API 地址、运行
 4. 打开 App 验证：登录 -> 首页 -> 投资 -> 分析 -> 快讯
 5. 如需上线：push 到 `main`，看 Actions 是否绿灯
-6. 上 AWS 检查 `kona.service` 与 `kona-snapshot.timer`
+6. 上 AWS 检查 `kona.service`、`kona-snapshot.timer`、`kona-db-backup.timer`
 
 ---
 
@@ -389,19 +463,33 @@ LOGIN_BYPASS_EMAILS=konaeee@gmail.com
 
 ## 14. 当前已知限制
 
-- 后端仍是 Flask 开发服务器方式启动（非 gunicorn/nginx），适合现阶段、后续可升级
+- 后端目前是 `gunicorn + systemd`，未接入 `nginx` 反向代理（后续可补）
 - SQLite 适合当前单机部署，未来多实例需迁移数据库
 - 外部行情源会偶发超时（代码已做 fallback）
+- Flutter `analyze` 当前存在若干 warning/info（不阻塞 CI），建议分批清理
 
 ---
 
-## 15. 结论
+## 15. 今日改动（2026-02-06）
+
+1. CI/CD 升级为“先测试后部署”。
+2. 登录/发码接口加限流与安全审计日志，支持 Redis 存储限流状态。
+3. 上线运维告警链路（服务失败、健康检查失败、快照缺失、价格阈值异常）。
+4. 上线 SQLite 自动备份（每日定时 + 保留天数清理）。
+5. 完成恢复演练流程，脚本支持恢复前自动备份。
+6. 修复恢复脚本跨分区错误 `Invalid cross-device link (Errno 18)`。
+
+---
+
+## 16. 结论
 
 当前项目已经具备：
 
 - 可持续开发（前后端分离、文档齐全）
-- 可自动部署（GitHub Actions）
-- 可稳定运行（systemd 自动重启）
-- 可稳定产出统计（定时快照）
+- 可自动部署（GitHub Actions + 门禁）
+- 可稳定运行（gunicorn + systemd 自动重启）
+- 可观测（健康接口 + 邮件告警）
+- 可恢复（每日备份 + 恢复演练）
+- 可稳定产出统计（定时快照 + 缺失巡检）
 
 如果你后续换电脑或让新成员接手，按本 README + `docs/` 可以完整恢复上下文并继续开发。
