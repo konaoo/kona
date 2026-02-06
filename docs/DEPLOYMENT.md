@@ -75,6 +75,49 @@ kona.service
 
 ---
 
+## Production Rate Limiting (Redis)
+
+Current code supports `Flask-Limiter` with configurable backend:
+
+```
+RATELIMIT_STORAGE_URL
+```
+
+Recommended production setup on AWS (Amazon Linux):
+
+```bash
+sudo dnf install -y redis6
+sudo systemctl enable --now redis6
+sudo systemctl status redis6 -l
+```
+
+Set backend `.env`:
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+grep '^RATELIMIT_STORAGE_URL=' .env || echo 'RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0' >> .env
+```
+
+Restart backend:
+
+```bash
+sudo systemctl restart kona
+sudo systemctl status kona -l
+```
+
+Quick verify:
+
+```bash
+redis-cli ping
+curl -s http://127.0.0.1:5003/health
+```
+
+Expected:
+- `redis-cli ping` returns `PONG`
+- `/health` returns `{"status":"ok",...}`
+
+---
+
 ## Log Rotation
 
 Script:

@@ -94,7 +94,7 @@ limiter = Limiter(
     app=app,
     default_limits=[],
     headers_enabled=True,
-    storage_uri=os.getenv("RATELIMIT_STORAGE_URL", "memory://"),
+    storage_uri=config.RATELIMIT_STORAGE_URL,
 )
 
 # 应用版本号，用于强制刷新缓存
