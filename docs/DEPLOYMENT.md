@@ -199,3 +199,62 @@ Logs are stored in:
 ```
 kona_tool/archive/logs/
 ```
+
+---
+
+## DB Backup & Restore (SQLite)
+
+Goal:
+- automatic daily compressed backup
+- retention cleanup
+- one-command restore from latest backup
+
+Scripts:
+```
+kona_tool/scripts/backup_portfolio_db.py
+kona_tool/scripts/restore_portfolio_db.py
+kona_tool/scripts/install_backup_systemd.sh
+```
+
+### 1) Configure backup env
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+grep '^KONA_BACKUP_DIR=' .env || echo 'KONA_BACKUP_DIR=/home/ec2-user/portfolio/kona_tool/archive/backups' >> .env
+grep '^KONA_BACKUP_RETENTION_DAYS=' .env || echo 'KONA_BACKUP_RETENTION_DAYS=14' >> .env
+```
+
+### 2) Install daily backup timer
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+chmod +x scripts/install_backup_systemd.sh
+bash scripts/install_backup_systemd.sh
+sudo systemctl start kona-db-backup.service
+sudo systemctl list-timers | grep kona-db-backup
+```
+
+Schedule:
+- `kona-db-backup.timer` runs daily at `23:20 UTC` (`07:20 Beijing`)
+
+### 3) Manual backup
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+python3 scripts/backup_portfolio_db.py
+ls -lt archive/backups | head
+```
+
+### 4) Restore drill (latest backup)
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+sudo systemctl stop kona
+python3 scripts/restore_portfolio_db.py
+sudo systemctl start kona
+curl -s http://127.0.0.1:5003/health
+```
+
+Notes:
+- restore script creates a safety copy: `portfolio.db.pre_restore_<UTC timestamp>`
+- restore source defaults to latest `portfolio_*.db.gz` in `KONA_BACKUP_DIR`
