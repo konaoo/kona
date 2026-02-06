@@ -18,22 +18,41 @@ jobs:
           script: |
             cd ${{ secrets.APP_DIR }}
             git pull
-            pip3 install -r requirements.txt
+            python3 -m pip install --user -r requirements.txt
 
-            if [ -f app.pid ]; then
-              kill $(cat app.pid) || true
-              rm -f app.pid
-            fi
+            cat > /tmp/kona.service <<'EOF'
+            [Unit]
+            Description=Kona Backend (Gunicorn)
+            After=network.target
 
-            nohup python3 app.py > app.log 2>&1 </dev/null &
-            echo $! > app.pid
+            [Service]
+            Type=simple
+            User=ec2-user
+            WorkingDirectory=${{ secrets.APP_DIR }}
+            EnvironmentFile=${{ secrets.APP_DIR }}/.env
+            Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/ec2-user/.local/bin
+            ExecStart=/home/ec2-user/.local/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5003 --timeout 120 wsgi:app
+            Restart=always
+            RestartSec=3
 
-            sleep 2
+            [Install]
+            WantedBy=multi-user.target
+            EOF
 
-            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/api/rates)
-            if [ "$status" != "200" ]; then
-              echo "Health check failed: HTTP $status"
-              exit 1
-            fi
+            sudo mv /tmp/kona.service /etc/systemd/system/kona.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable kona
+            sudo systemctl restart kona
 
-            exit 0
+            for i in {1..20}; do
+              status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/api/rates || true)
+              if [ "$status" = "200" ]; then
+                echo "Health check passed."
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo "Health check failed after restart."
+            sudo systemctl status kona -l --no-pager || true
+            exit 1

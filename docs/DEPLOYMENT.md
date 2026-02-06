@@ -9,8 +9,10 @@ This project deploys the **backend** (kona_tool) to AWS using GitHub Actions.
 1. Push to GitHub `main`
 2. GitHub Actions connects to AWS via SSH
 3. Pulls latest code in `/home/ec2-user/portfolio/kona_tool`
-4. Installs dependencies
-5. Restarts backend and performs health check
+4. Installs dependencies (including `gunicorn`)
+5. Writes/updates `systemd` service (`kona.service`)
+6. Restarts backend via `systemctl`
+7. Performs health check
 
 Workflow file:
 ```
@@ -42,13 +44,16 @@ If the response code is `200`, deployment is considered successful.
 
 ## AWS Runtime
 
-The backend is started with:
+The backend is started by `systemd` using `gunicorn`:
 
 ```
-python3 app.py
+/home/ec2-user/.local/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5003 --timeout 120 wsgi:app
 ```
 
-The workflow writes the PID to `app.pid` and uses it for safe restarts.
+Service name:
+```
+kona.service
+```
 
 ---
 
