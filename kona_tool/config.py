@@ -140,6 +140,9 @@ LOGIN_BYPASS_EMAILS = [
 # RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
 
+# 运行指标接口鉴权（为空表示不鉴权；生产建议设置）
+PRICE_HEALTH_TOKEN = os.getenv("PRICE_HEALTH_TOKEN", "").strip()
+
 # 快照后台任务开关
 # 说明：如果你使用 cron 在固定时间触发快照（例如 07:00），建议关闭后台任务。
 ENABLE_BACKGROUND_SNAPSHOT = os.getenv("ENABLE_BACKGROUND_SNAPSHOT", "false").lower() == "true"

@@ -6,6 +6,7 @@ import logging
 import threading
 import webbrowser
 import time
+import secrets
 from flask import Flask, render_template, jsonify, request, make_response, send_file, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -14,7 +15,14 @@ import os
 
 import config
 from core.db import DatabaseManager
-from core.price import get_price, batch_get_prices, get_forex_rates, search_stocks
+from core.price import (
+    get_price,
+    batch_get_prices,
+    get_forex_rates,
+    search_stocks,
+    get_price_runtime_metrics,
+    get_price_source_health,
+)
 from core.parser import parse_code, get_display_code
 from core.asset_type import infer_asset_type
 from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed, is_weekend
@@ -129,6 +137,21 @@ def _auth_audit(event: str, outcome: str, email: str = '', reason: str = '', lev
         logger.warning(msg)
     else:
         logger.info(msg)
+
+
+def _metrics_token_ok() -> bool:
+    """校验运行指标接口访问令牌。"""
+    expected = config.PRICE_HEALTH_TOKEN
+    if not expected:
+        return True
+    token = request.headers.get('X-Kona-Metrics-Token', '').strip()
+    if not token:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+    if not token:
+        return False
+    return secrets.compare_digest(token, expected)
 
 
 @app.errorhandler(429)
@@ -910,6 +933,27 @@ def auth_send_code():
 def health():
     """健康检查"""
     return jsonify({"status": "ok", "version": config.APP_VERSION})
+
+
+@app.route('/api/system/price_health')
+def api_price_health():
+    """行情运行健康指标。"""
+    if not _metrics_token_ok():
+        _auth_audit(
+            event='metrics_access',
+            outcome='blocked',
+            reason='invalid_or_missing_token',
+            level='warning',
+        )
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return jsonify({
+        "status": "ok",
+        "version": config.APP_VERSION,
+        "server_time_utc": datetime.now(timezone.utc).isoformat(),
+        "runtime": get_price_runtime_metrics(),
+        "sources": get_price_source_health(),
+    })
 
 
 # ============================================================
