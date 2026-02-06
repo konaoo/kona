@@ -51,14 +51,19 @@ def restore_backup(db_path: str, backup_file: str) -> dict:
     else:
         pre_restore = None
 
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+    target_dir = db.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        suffix=".db",
+        dir=str(target_dir),
+        delete=False,
+    ) as tmp:
         tmp_db = tmp.name
 
     try:
         with gzip.open(backup_file, "rb") as gz, open(tmp_db, "wb") as out:
             shutil.copyfileobj(gz, out)
         _validate_sqlite(tmp_db)
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         os.replace(tmp_db, db_path)
     finally:
         Path(tmp_db).unlink(missing_ok=True)

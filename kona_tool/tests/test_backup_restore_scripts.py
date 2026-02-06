@@ -1,6 +1,9 @@
 import importlib.util
 import tempfile
 import time
+import gzip
+import sqlite3
+import errno
 from pathlib import Path
 import unittest
 
@@ -68,6 +71,42 @@ class BackupRestoreScriptTests(unittest.TestCase):
 
             latest = restore_module.find_latest_backup(str(backup_dir))
             self.assertEqual(latest, str(f2))
+
+    def test_restore_uses_same_directory_temp_file(self):
+        restore_module = _load_module(RESTORE_SCRIPT, "restore_portfolio_db")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            db_path = root / "portfolio.db"
+            backup_file = root / "portfolio_20260206_000000.db.gz"
+            source_db = root / "source.db"
+
+            conn = sqlite3.connect(source_db)
+            try:
+                conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+                conn.execute("INSERT INTO t(v) VALUES ('ok')")
+                conn.commit()
+            finally:
+                conn.close()
+
+            with open(source_db, "rb") as src, gzip.open(backup_file, "wb") as out:
+                out.write(src.read())
+
+            # Simulate cross-device failure when source and target dirs differ.
+            real_replace = restore_module.os.replace
+
+            def guarded_replace(src, dst):
+                if Path(src).parent != Path(dst).parent:
+                    raise OSError(errno.EXDEV, "Invalid cross-device link")
+                return real_replace(src, dst)
+
+            restore_module.os.replace = guarded_replace
+            try:
+                result = restore_module.restore_backup(str(db_path), str(backup_file))
+            finally:
+                restore_module.os.replace = real_replace
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(db_path.exists())
 
 
 if __name__ == "__main__":
