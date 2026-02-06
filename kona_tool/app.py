@@ -7,6 +7,8 @@ import threading
 import webbrowser
 import time
 from flask import Flask, render_template, jsonify, request, make_response, send_file, g
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from pathlib import Path
 import os
 
@@ -22,7 +24,7 @@ from core.auth import login_required, optional_auth, generate_token, get_or_crea
 from core.email import send_verification_email
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # 邮箱验证码缓存（内存）
 _EMAIL_CODE_STORE = {}
@@ -31,17 +33,18 @@ def _generate_code() -> str:
     return f"{random.randint(0, 999999):06d}"
 
 def _store_code(email: str, code: str):
+    now_utc = datetime.now(timezone.utc)
     _EMAIL_CODE_STORE[email] = {
         "code": code,
-        "expires": datetime.utcnow() + timedelta(minutes=10),
-        "last_send": datetime.utcnow(),
+        "expires": now_utc + timedelta(minutes=10),
+        "last_send": now_utc,
     }
 
 def _verify_code(email: str, code: str) -> bool:
     info = _EMAIL_CODE_STORE.get(email)
     if not info:
         return False
-    if datetime.utcnow() > info["expires"]:
+    if datetime.now(timezone.utc) > info["expires"]:
         _EMAIL_CODE_STORE.pop(email, None)
         return False
     if info["code"] != code:
@@ -64,6 +67,36 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
 
+
+def _client_ip() -> str:
+    """获取客户端 IP，优先读取反向代理头。"""
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    xri = request.headers.get('X-Real-IP')
+    if xri:
+        return xri.strip()
+    return request.remote_addr or 'unknown'
+
+
+def _rate_limit_key() -> str:
+    return _client_ip() or get_remote_address()
+
+
+def _email_limit_key() -> str:
+    data = request.get_json(silent=True) or {}
+    email = str(data.get('email', '')).strip().lower()
+    return f"email:{email}" if email else f"ip:{_rate_limit_key()}"
+
+
+limiter = Limiter(
+    key_func=_rate_limit_key,
+    app=app,
+    default_limits=[],
+    headers_enabled=True,
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URL", "memory://"),
+)
+
 # 应用版本号，用于强制刷新缓存
 APP_VERSION = config.APP_VERSION
 
@@ -71,6 +104,43 @@ APP_VERSION = config.APP_VERSION
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
     logger.info("Importing backup data from CSV...")
     db.backup_from_csv(str(config.BACKUP_CSV_PATH))
+
+
+def _mask_email(email: str) -> str:
+    """邮箱脱敏，避免日志暴露完整地址。"""
+    if not email or '@' not in email:
+        return ''
+    local, domain = email.split('@', 1)
+    if len(local) <= 2:
+        masked_local = local[0] + '*'
+    else:
+        masked_local = local[:2] + '***'
+    return f"{masked_local}@{domain}"
+
+
+def _auth_audit(event: str, outcome: str, email: str = '', reason: str = '', level: str = 'info'):
+    """认证相关安全审计日志。"""
+    msg = (
+        f"SECURITY event={event} outcome={outcome} "
+        f"ip={_client_ip()} email={_mask_email(email)} reason={reason} "
+        f"path={request.path} ua={request.headers.get('User-Agent', '-')[:120]}"
+    )
+    if level == 'warning':
+        logger.warning(msg)
+    else:
+        logger.info(msg)
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """限流统一返回与审计日志。"""
+    _auth_audit(
+        event='rate_limit',
+        outcome='blocked',
+        reason=str(getattr(e, 'description', 'too many requests'))[:120],
+        level='warning'
+    )
+    return jsonify({"error": "Too many requests"}), 429
 
 
 def open_browser():
@@ -664,6 +734,8 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
 # ============================================================
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("20 per 10 minute")
+@limiter.limit("8 per 10 minute", key_func=_email_limit_key)
 def auth_login():
     """
     用户登录（从前端验证码登录成功后调用）
@@ -682,18 +754,24 @@ def auth_login():
             "email": "用户邮箱"
         }
     """
-    data = request.json
+    data = request.get_json(silent=True)
 
     if not data or 'email' not in data:
+        _auth_audit(event='auth_login', outcome='failed', reason='missing_email', level='warning')
         return jsonify({"error": "Missing email"}), 400
 
     email = data['email'].strip().lower()
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        _auth_audit(event='auth_login', outcome='failed', email=email, reason='invalid_email', level='warning')
+        return jsonify({"error": "Invalid email"}), 400
     is_bypass = email in config.LOGIN_BYPASS_EMAILS
     code = data.get('code', '')
     if not is_bypass and not code:
+        _auth_audit(event='auth_login', outcome='failed', email=email, reason='missing_code', level='warning')
         return jsonify({"error": "Missing code"}), 400
     frontend_user_id = data.get('user_id') or email
     if not is_bypass and not _verify_code(email, code):
+        _auth_audit(event='auth_login', outcome='failed', email=email, reason='invalid_or_expired_code', level='warning')
         return jsonify({"error": "Invalid or expired code"}), 400
     nickname = data.get('nickname')
     register_method = data.get('register_method')
@@ -712,6 +790,7 @@ def auth_login():
     # 使用实际的 user_id 生成 JWT token
     token = generate_token(actual_user_id, email)
     
+    _auth_audit(event='auth_login', outcome='success', email=email, reason=f'user_id={actual_user_id}')
     logger.info(f"User logged in: {actual_user_id} ({email}) Num: {user_number}")
     
     profile = get_user_profile(db, actual_user_id) or {}
@@ -743,6 +822,7 @@ def auth_me():
 
 @app.route('/api/auth/profile', methods=['POST'])
 @login_required
+@limiter.limit("30 per 10 minute")
 def update_profile():
     """更新用户资料（昵称/头像）"""
     data = request.json or {}
@@ -750,6 +830,7 @@ def update_profile():
     avatar = data.get('avatar')
 
     if nickname is None and avatar is None:
+        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='no_fields', level='warning')
         return jsonify({"error": "No fields to update"}), 400
 
     if isinstance(nickname, str):
@@ -757,6 +838,7 @@ def update_profile():
 
     # 简单大小限制，避免超大头像
     if isinstance(avatar, str) and len(avatar) > 1_500_000:
+        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='avatar_too_large', level='warning')
         return jsonify({"error": "Avatar too large"}), 400
 
     conn = db.get_connection()
@@ -771,13 +853,16 @@ def update_profile():
             updates.append("avatar = ?")
             params.append(avatar)
         if not updates:
+            _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='no_effective_fields', level='warning')
             return jsonify({"error": "No fields to update"}), 400
 
         params.append(g.user_id)
         cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
         conn.commit()
+        _auth_audit(event='auth_profile_update', outcome='success', email=g.email, reason=f'user_id={g.user_id}')
     except Exception as e:
         logger.error(f"Failed to update profile: {e}")
+        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='db_update_failed', level='warning')
         conn.rollback()
         return jsonify({"error": "Update failed"}), 500
     finally:
@@ -788,27 +873,35 @@ def update_profile():
 
 
 @app.route('/api/auth/send_code', methods=['POST'])
+@limiter.limit("5 per 10 minute")
+@limiter.limit("1 per minute", key_func=_email_limit_key)
 def auth_send_code():
     """发送邮箱验证码"""
-    data = request.json
+    data = request.get_json(silent=True)
     if not data or 'email' not in data:
+        _auth_audit(event='auth_send_code', outcome='failed', reason='missing_email', level='warning')
         return jsonify({"error": "Missing email"}), 400
     email = data['email'].strip().lower()
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='invalid_email', level='warning')
         return jsonify({"error": "Invalid email"}), 400
     if email in config.LOGIN_BYPASS_EMAILS:
+        _auth_audit(event='auth_send_code', outcome='bypass', email=email, reason='whitelisted_email')
         return jsonify({"status": "ok", "bypass": True})
 
     info = _EMAIL_CODE_STORE.get(email)
-    if info and (datetime.utcnow() - info["last_send"]).total_seconds() < 60:
+    if info and (datetime.now(timezone.utc) - info["last_send"]).total_seconds() < 60:
+        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='email_cooldown_60s', level='warning')
         return jsonify({"error": "Too many requests"}), 429
 
     code = _generate_code()
     _store_code(email, code)
     try:
         send_verification_email(email, code)
+        _auth_audit(event='auth_send_code', outcome='success', email=email)
     except Exception as e:
         logger.error(f"Send code failed: {e}")
+        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='smtp_send_failed', level='warning')
         return jsonify({"error": "Send failed"}), 500
     return jsonify({"status": "ok"})
 
