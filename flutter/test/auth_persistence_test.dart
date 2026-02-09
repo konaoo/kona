@@ -9,7 +9,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     final appState = AppState();
 
-    appState.setLoggedIn(
+    await appState.setLoggedIn(
       token: 't123',
       email: 'u@example.com',
       userId: 'uid-1',

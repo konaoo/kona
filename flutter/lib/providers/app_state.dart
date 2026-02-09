@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
 
@@ -9,9 +10,11 @@ import '../models/asset.dart';
 class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
+  final SecureStorageService _secureStorage = SecureStorageService();
 
   AppState() {
     _loadTheme();
+    _restoreSession();
   }
 
   // 用户状态
@@ -322,6 +325,7 @@ class AppState extends ChangeNotifier {
         _userNumber = result['user_number'];
         _nickname = result['nickname'];
         _api.setToken(result['token']);
+        await _secureStorage.setToken(result['token']);
         notifyListeners();
         _loadProfileSilently();
         return true;
@@ -369,14 +373,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// 设置登录状态
-  void setLoggedIn({
+  Future<void> setLoggedIn({
     required String token,
     required String email,
     required String userId,
     int? userNumber,
     String? nickname,
     String? avatar,
-  }) {
+  }) async {
     _isLoggedIn = true;
     _token = token;
     _email = email;
@@ -385,6 +389,7 @@ class AppState extends ChangeNotifier {
     _nickname = nickname;
     _avatar = avatar;
     _api.setToken(token);
+    await _secureStorage.setToken(token);
     notifyListeners();
   }
 
@@ -404,6 +409,28 @@ class AppState extends ChangeNotifier {
     _otherAssets = [];
     _liabilities = [];
     _portfolioLoaded = false;
+    _secureStorage.clearToken();
+    notifyListeners();
+  }
+
+  Future<void> _restoreSession() async {
+    final token = await _secureStorage.getToken();
+    if (token == null || token.isEmpty) return;
+    _token = token;
+    _api.setToken(token);
+    final profile = await _api.getProfile();
+    if (profile == null) {
+      _token = null;
+      _api.clearToken();
+      await _secureStorage.clearToken();
+      return;
+    }
+    _isLoggedIn = true;
+    _email = profile['email'];
+    _userId = profile['id'];
+    _userNumber = profile['user_number'];
+    _nickname = profile['nickname'];
+    _avatar = profile['avatar'];
     notifyListeners();
   }
 
