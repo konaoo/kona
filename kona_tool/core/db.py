@@ -6,10 +6,18 @@ import sqlite3
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import datetime as dt
 from pathlib import Path
 import config  # 添加导入
 
 logger = logging.getLogger(__name__)
+
+
+def _is_weekend_date(date_str: str) -> bool:
+    try:
+        return dt.datetime.strptime(date_str, "%Y-%m-%d").weekday() >= 5
+    except Exception:
+        return False
 
 
 class DatabaseManager:
@@ -1282,11 +1290,15 @@ class DatabaseManager:
                 
                 prev_total = None
                 for row in cursor.fetchall():
-                    day = int(row['date'].split('-')[2])
+                    date_str = row['date']
+                    day = int(date_str.split('-')[2])
+                    is_weekend = _is_weekend_date(date_str)
                     pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0
-                    if (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
+                    if is_weekend:
+                        pnl = 0
+                    elif (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
                         pnl = float(row['total_pnl']) - prev_total
-                    if row['total_pnl'] is not None:
+                    if not is_weekend and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl
@@ -1304,6 +1316,8 @@ class DatabaseManager:
                 month_last = {}
                 for row in cursor.fetchall():
                     date = row['date']
+                    if _is_weekend_date(date):
+                        continue
                     m = int(date.split('-')[1])
                     tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
                     month_last[m] = tp
@@ -1338,11 +1352,21 @@ class DatabaseManager:
                     year_last = {}
                     for row in rows:
                         date = row['date']
+                        if _is_weekend_date(date):
+                            continue
                         y = int(date.split('-')[0])
                         tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
                         year_last[y] = tp
                     start_year = int(rows[0]['date'].split('-')[0])
-                    prev_total = float(rows[0]['total_pnl']) if rows[0]['total_pnl'] is not None else 0.0
+                    base_date = f"{start_year}-01-01"
+                    cursor.execute(f'''
+                        SELECT total_pnl FROM daily_snapshots
+                        WHERE date < ? AND {user_condition}
+                        ORDER BY date DESC
+                        LIMIT 1
+                    ''', (base_date,) + user_param)
+                    base_row = cursor.fetchone()
+                    prev_total = float(base_row['total_pnl']) if base_row and base_row['total_pnl'] is not None else 0.0
                     for y in range(start_year, today.year + 1):
                         current_total = year_last.get(y, prev_total)
                         pnl = current_total - prev_total
