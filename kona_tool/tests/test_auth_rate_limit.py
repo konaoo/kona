@@ -24,8 +24,12 @@ class AuthRateLimitTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
-        # Keep tests independent from in-memory auth state.
-        app_module._EMAIL_CODE_STORE.clear()
+        # Keep tests independent from persisted auth-code state.
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM email_verification_codes")
+        conn.commit()
+        conn.close()
 
     @patch.object(app_module, "send_verification_email", return_value=None)
     def test_send_code_ip_limit_blocks_6th_request(self, _mock_send):
@@ -73,6 +77,31 @@ class AuthRateLimitTests(unittest.TestCase):
         self.assertIn("SECURITY event=auth_send_code", joined)
         self.assertIn("outcome=failed", joined)
         self.assertIn("reason=invalid_email", joined)
+
+    @patch.object(app_module, "send_verification_email", return_value=None)
+    @patch.object(app_module, "_generate_code", return_value="123456")
+    def test_login_code_is_single_use(self, _mock_generate_code, _mock_send):
+        email = "single-use@example.com"
+
+        send_resp = self.client.post("/api/auth/send_code", json={"email": email})
+        self.assertEqual(send_resp.status_code, 200)
+        self.assertEqual(send_resp.get_json().get("status"), "ok")
+
+        first_login = self.client.post(
+            "/api/auth/login",
+            json={"user_id": email, "email": email, "code": "123456"},
+            headers={"X-Forwarded-For": "10.40.40.40"},
+        )
+        self.assertEqual(first_login.status_code, 200)
+        self.assertIsInstance(first_login.get_json().get("token"), str)
+
+        second_login = self.client.post(
+            "/api/auth/login",
+            json={"user_id": email, "email": email, "code": "123456"},
+            headers={"X-Forwarded-For": "10.40.40.41"},
+        )
+        self.assertEqual(second_login.status_code, 400)
+        self.assertEqual(second_login.get_json().get("error"), "Invalid or expired code")
 
     @patch.object(app_module.config, "LOGIN_BYPASS_EMAILS", [])
     def test_hardcoded_bypass_email_works_without_env_whitelist(self):
