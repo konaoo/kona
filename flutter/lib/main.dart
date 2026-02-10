@@ -50,37 +50,25 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isLoggedIn = false;
-
   @override
   void initState() {
     super.initState();
-    // 临时自动登录 - 方便测试
+    // 先加载缓存，登录态由 AppState 持久化恢复结果决定
     context.read<AppState>().hydrateFromCache();
-    _autoLogin();
-  }
-
-  Future<void> _autoLogin() async {
-    final appState = context.read<AppState>();
-    // 自动登录已关闭，防止跳过验证码
-    if (mounted) {
-      setState(() => _isLoggedIn = false);
-    }
   }
 
   void _onLoginSuccess() {
-    setState(() => _isLoggedIn = true);
     context.read<AppState>().refreshAll();
   }
 
   void _onLogout() {
     context.read<AppState>().logout();
-    setState(() => _isLoggedIn = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoggedIn) {
+    final isLoggedIn = context.watch<AppState>().isLoggedIn;
+    if (isLoggedIn) {
       return MainApp(onLogout: _onLogout);
     } else {
       return LoginPage(onLoginSuccess: _onLoginSuccess);
