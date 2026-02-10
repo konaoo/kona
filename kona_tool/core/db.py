@@ -37,6 +37,8 @@ class DatabaseManager:
     
     def get_connection(self) -> sqlite3.Connection:
         """获取数据库连接"""
+        db_parent = Path(self.db_path).expanduser().resolve().parent
+        db_parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
@@ -137,10 +139,43 @@ class DatabaseManager:
                 register_method TEXT,
                 phone TEXT,
                 user_number INTEGER,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP
             )
         ''')
+
+        # 创建后台审计日志表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_user_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_type TEXT,
+                target_id TEXT,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                ip TEXT,
+                request_body TEXT,
+                status_code INTEGER NOT NULL,
+                result TEXT NOT NULL,
+                error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 创建邮箱验证码表（多进程共享，避免内存态不一致）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS email_verification_codes (
+                email TEXT PRIMARY KEY,
+                code TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_send_at TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         
         # 创建每日快照表
         cursor.execute('''
@@ -178,8 +213,12 @@ class DatabaseManager:
         _ensure_column('users', 'register_method', 'register_method TEXT')
         _ensure_column('users', 'phone', 'phone TEXT')
         _ensure_column('users', 'user_number', 'user_number INTEGER')
+        _ensure_column('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
+        _ensure_column('users', 'status', "status TEXT NOT NULL DEFAULT 'active'")
         _ensure_column('users', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('users', 'last_login', 'last_login TIMESTAMP')
+        cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
+        cursor.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
 
         # 创建索引以优化查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)')
@@ -195,12 +234,170 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
         cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_email_verification_codes_expires_at ON email_verification_codes(expires_at)')
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
 
         conn.commit()
         conn.close()
+
+    def get_user_auth_info(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """获取用户的后台权限信息。"""
+        if not user_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT id, email, is_admin, status
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+            ''', (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'id': row['id'],
+                'email': row['email'],
+                'is_admin': bool(row['is_admin']),
+                'status': row['status'] or 'active',
+            }
+        finally:
+            conn.close()
+
+    def upsert_email_verification_code(
+        self,
+        email: str,
+        code: str,
+        expires_at: datetime,
+        last_send_at: datetime,
+    ) -> bool:
+        """写入/更新邮箱验证码。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                INSERT INTO email_verification_codes (email, code, expires_at, last_send_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(email) DO UPDATE SET
+                    code=excluded.code,
+                    expires_at=excluded.expires_at,
+                    last_send_at=excluded.last_send_at,
+                    updated_at=CURRENT_TIMESTAMP
+                ''',
+                (
+                    (email or '').strip().lower(),
+                    code,
+                    expires_at.astimezone(dt.timezone.utc).isoformat(),
+                    last_send_at.astimezone(dt.timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to upsert email verification code: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def get_email_verification_code(self, email: str) -> Optional[Dict[str, Any]]:
+        """读取邮箱验证码信息。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                SELECT email, code, expires_at, last_send_at
+                FROM email_verification_codes
+                WHERE email = ?
+                LIMIT 1
+                ''',
+                ((email or '').strip().lower(),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'email': row['email'],
+                'code': row['code'],
+                'expires_at': datetime.fromisoformat(row['expires_at']),
+                'last_send_at': datetime.fromisoformat(row['last_send_at']),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get email verification code: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def delete_email_verification_code(self, email: str) -> bool:
+        """删除邮箱验证码（消费后或过期后）。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                'DELETE FROM email_verification_codes WHERE email = ?',
+                ((email or '').strip().lower(),),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete email verification code: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def add_admin_audit_log(
+        self,
+        admin_user_id: str,
+        action: str,
+        method: str,
+        path: str,
+        status_code: int,
+        result: str,
+        target_type: str = '',
+        target_id: str = '',
+        ip: str = '',
+        request_body: str = '',
+        error: str = '',
+    ) -> bool:
+        """记录后台审计日志。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO admin_audit_logs (
+                    admin_user_id, action, target_type, target_id,
+                    method, path, ip, request_body, status_code, result, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                admin_user_id,
+                action,
+                target_type,
+                target_id,
+                method,
+                path,
+                ip,
+                request_body,
+                status_code,
+                result,
+                error,
+            ))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add admin audit log: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
 
     def get_user_ids(self) -> List[str]:
         """获取所有用户ID（用于批量快照）"""

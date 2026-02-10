@@ -16,7 +16,10 @@ from pathlib import Path
 import os
 
 import config
-from admin_routes import create_admin_blueprint
+try:
+    from admin_routes import create_admin_blueprint
+except ModuleNotFoundError:
+    create_admin_blueprint = None
 from core.db import DatabaseManager
 from core.price import (
     get_price,
@@ -43,8 +46,6 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 
-# 邮箱验证码缓存（内存）
-_EMAIL_CODE_STORE = {}
 _HARDCODED_LOGIN_BYPASS_EMAILS = {"konaeee@gmail.com"}
 
 def _generate_code() -> str:
@@ -52,22 +53,23 @@ def _generate_code() -> str:
 
 def _store_code(email: str, code: str):
     now_utc = datetime.now(timezone.utc)
-    _EMAIL_CODE_STORE[email] = {
-        "code": code,
-        "expires": now_utc + timedelta(minutes=10),
-        "last_send": now_utc,
-    }
+    db.upsert_email_verification_code(
+        email=email,
+        code=code,
+        expires_at=now_utc + timedelta(minutes=10),
+        last_send_at=now_utc,
+    )
 
 def _verify_code(email: str, code: str) -> bool:
-    info = _EMAIL_CODE_STORE.get(email)
+    info = db.get_email_verification_code(email)
     if not info:
         return False
-    if datetime.now(timezone.utc) > info["expires"]:
-        _EMAIL_CODE_STORE.pop(email, None)
+    if datetime.now(timezone.utc) > info["expires_at"]:
+        db.delete_email_verification_code(email)
         return False
     if info["code"] != code:
         return False
-    _EMAIL_CODE_STORE.pop(email, None)
+    db.delete_email_verification_code(email)
     return True
 
 
@@ -229,7 +231,10 @@ def admin_write_audit(action: str, target_type: str = ''):
     return decorator
 
 
-app.register_blueprint(create_admin_blueprint(db, admin_write_audit))
+if create_admin_blueprint is not None:
+    app.register_blueprint(create_admin_blueprint(db, admin_write_audit))
+else:
+    logger.warning("admin_routes module not found; admin APIs are disabled")
 
 
 def _metrics_token_ok() -> bool:
@@ -1041,8 +1046,8 @@ def auth_send_code():
         _auth_audit(event='auth_send_code', outcome='bypass', email=email, reason='whitelisted_email')
         return jsonify({"status": "ok", "bypass": True})
 
-    info = _EMAIL_CODE_STORE.get(email)
-    if info and (datetime.now(timezone.utc) - info["last_send"]).total_seconds() < 60:
+    info = db.get_email_verification_code(email)
+    if info and (datetime.now(timezone.utc) - info["last_send_at"]).total_seconds() < 60:
         _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='email_cooldown_60s', level='warning')
         return jsonify({"error": "Too many requests"}), 429
 
