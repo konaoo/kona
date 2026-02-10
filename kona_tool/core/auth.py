@@ -130,6 +130,66 @@ def optional_auth(f):
     return decorated
 
 
+def admin_required(f):
+    """
+    管理员验证装饰器
+
+    规则：
+    1. 必须通过登录认证
+    2. users.status 必须为 active
+    3. users.is_admin 必须为 1
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        # 仅本机开发模式：允许本机回环地址免登录访问后台
+        # 安全约束：一旦出现代理头，视为非本机直连，不走 bypass。
+        remote_addr = (request.remote_addr or '').strip()
+        has_proxy_headers = bool(request.headers.get('X-Forwarded-For') or request.headers.get('X-Real-IP'))
+        is_loopback = remote_addr in {'127.0.0.1', '::1', '::ffff:127.0.0.1'}
+        if getattr(config, 'ALLOW_LOCAL_ADMIN_BYPASS', False) and is_loopback and not has_proxy_headers:
+            g.user_id = 'admin_local_bypass'
+            g.email = 'admin@local'
+            g.is_admin = True
+            g.user_status = 'active'
+            return f(*args, **kwargs)
+
+        # 非本机 bypass 路径仍要求标准登录鉴权
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header:
+            return jsonify({'error': 'Missing Authorization header'}), 401
+
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != 'bearer':
+            return jsonify({'error': 'Invalid Authorization header format'}), 401
+
+        token = parts[1]
+        valid, payload = verify_token(token)
+        if not valid:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+
+        g.user_id = payload.get('user_id')
+        g.email = payload.get('email')
+
+        from core.db import db as global_db
+
+        auth_info = global_db.get_user_auth_info(g.user_id)
+        if not auth_info:
+            return jsonify({'error': 'User not found'}), 403
+
+        status = str(auth_info.get('status') or 'active').lower()
+        if status != 'active':
+            return jsonify({'error': 'User is disabled'}), 403
+
+        if not auth_info.get('is_admin'):
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        g.is_admin = True
+        g.user_status = status
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 # ============================================================
 # 用户管理
 # ============================================================
