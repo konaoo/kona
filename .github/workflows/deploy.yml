@@ -46,6 +46,7 @@ jobs:
         env:
           JWT_SECRET: ci_dummy_secret_for_tests_only
           PYTHONPATH: kona_tool
+          KONA_DATABASE_PATH: /tmp/kona_ci.db
         run: python -m unittest discover -s kona_tool/tests -p "test_*.py" -v
 
   frontend-gate:
