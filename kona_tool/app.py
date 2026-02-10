@@ -7,6 +7,8 @@ import threading
 import webbrowser
 import time
 import secrets
+import json
+from functools import wraps
 from flask import Flask, render_template, jsonify, request, make_response, send_file, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -14,6 +16,7 @@ from pathlib import Path
 import os
 
 import config
+from admin_routes import create_admin_blueprint
 from core.db import DatabaseManager
 from core.price import (
     get_price,
@@ -28,7 +31,13 @@ from core.asset_type import infer_asset_type
 from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed, is_weekend
 from core.news import news_fetcher
 from core.system import system_manager
-from core.auth import login_required, optional_auth, generate_token, get_or_create_user, get_user_profile
+from core.auth import (
+    login_required,
+    optional_auth,
+    generate_token,
+    get_or_create_user,
+    get_user_profile,
+)
 from core.email import send_verification_email
 import random
 import re
@@ -36,6 +45,7 @@ from datetime import datetime, timedelta, timezone
 
 # 邮箱验证码缓存（内存）
 _EMAIL_CODE_STORE = {}
+_HARDCODED_LOGIN_BYPASS_EMAILS = {"konaeee@gmail.com"}
 
 def _generate_code() -> str:
     return f"{random.randint(0, 999999):06d}"
@@ -59,6 +69,11 @@ def _verify_code(email: str, code: str) -> bool:
         return False
     _EMAIL_CODE_STORE.pop(email, None)
     return True
+
+
+def _is_login_bypass_email(email: str) -> bool:
+    normalized = (email or "").strip().lower()
+    return normalized in _HARDCODED_LOGIN_BYPASS_EMAILS or normalized in config.LOGIN_BYPASS_EMAILS
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -137,6 +152,84 @@ def _auth_audit(event: str, outcome: str, email: str = '', reason: str = '', lev
         logger.warning(msg)
     else:
         logger.info(msg)
+
+
+def _record_admin_audit(
+    action: str,
+    status_code: int,
+    result: str,
+    target_type: str = '',
+    target_id: str = '',
+    error: str = '',
+):
+    """写入后台审计日志。"""
+    try:
+        payload = request.get_json(silent=True)
+        request_body = json.dumps(payload, ensure_ascii=False)[:4000] if payload is not None else ''
+        admin_user_id = getattr(g, 'user_id', '') or ''
+        db.add_admin_audit_log(
+            admin_user_id=admin_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            method=request.method,
+            path=request.path,
+            ip=_client_ip(),
+            request_body=request_body,
+            status_code=status_code,
+            result=result,
+            error=(error or '')[:500],
+        )
+    except Exception as e:
+        logger.error(f"Failed to record admin audit: {e}")
+
+
+def admin_write_audit(action: str, target_type: str = ''):
+    """后台写操作审计装饰器。"""
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            payload = request.get_json(silent=True) or {}
+            target_id = ''
+            if isinstance(payload, dict):
+                for key in ('id', 'user_id', 'key', 'date'):
+                    if payload.get(key) is not None:
+                        target_id = str(payload.get(key))[:128]
+                        break
+            try:
+                response = f(*args, **kwargs)
+                resp = make_response(response)
+                status_code = resp.status_code
+                result = 'success' if 200 <= status_code < 400 else 'failed'
+                error = ''
+                if status_code >= 400:
+                    body = resp.get_json(silent=True) or {}
+                    if isinstance(body, dict):
+                        error = str(body.get('error', ''))[:500]
+                _record_admin_audit(
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    status_code=status_code,
+                    result=result,
+                    error=error,
+                )
+                return response
+            except Exception as e:
+                _record_admin_audit(
+                    action=action,
+                    target_type=target_type,
+                    target_id=target_id,
+                    status_code=500,
+                    result='failed',
+                    error=str(e),
+                )
+                raise
+        return wrapped
+    return decorator
+
+
+app.register_blueprint(create_admin_blueprint(db, admin_write_audit))
 
 
 def _metrics_token_ok() -> bool:
@@ -352,6 +445,42 @@ def news_page():
 def settings_page():
     """设置页面"""
     return make_response(render_template('settings.html', version=APP_VERSION))
+
+
+@app.route('/admin')
+def admin_overview_page():
+    """管理后台首页"""
+    return make_response(render_template('admin_overview.html', version=APP_VERSION))
+
+
+@app.route('/admin/users')
+def admin_users_page():
+    """管理后台-用户管理"""
+    return make_response(render_template('admin_users.html', version=APP_VERSION))
+
+
+@app.route('/admin/config')
+def admin_config_page():
+    """管理后台-配置管理"""
+    return make_response(render_template('admin_config.html', version=APP_VERSION))
+
+
+@app.route('/admin/data')
+def admin_data_page():
+    """管理后台-数据管理"""
+    return make_response(render_template('admin_data.html', version=APP_VERSION))
+
+
+@app.route('/admin/apis')
+def admin_apis_page():
+    """管理后台-接口测试"""
+    return make_response(render_template('admin_apis.html', version=APP_VERSION))
+
+
+@app.route('/admin/audit')
+def admin_audit_page():
+    """管理后台-审计日志"""
+    return make_response(render_template('admin_audit.html', version=APP_VERSION))
 
 
 @app.route('/api/settings/info')
@@ -787,7 +916,7 @@ def auth_login():
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         _auth_audit(event='auth_login', outcome='failed', email=email, reason='invalid_email', level='warning')
         return jsonify({"error": "Invalid email"}), 400
-    is_bypass = email in config.LOGIN_BYPASS_EMAILS
+    is_bypass = _is_login_bypass_email(email)
     code = data.get('code', '')
     if not is_bypass and not code:
         _auth_audit(event='auth_login', outcome='failed', email=email, reason='missing_code', level='warning')
@@ -908,7 +1037,7 @@ def auth_send_code():
     if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='invalid_email', level='warning')
         return jsonify({"error": "Invalid email"}), 400
-    if email in config.LOGIN_BYPASS_EMAILS:
+    if _is_login_bypass_email(email):
         _auth_audit(event='auth_send_code', outcome='bypass', email=email, reason='whitelisted_email')
         return jsonify({"status": "ok", "bypass": True})
 

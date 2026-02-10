@@ -3,12 +3,12 @@ class ApiConfig {
   /// API 基础地址
   static const String baseUrl = 'http://35.78.253.89:5003';
 
-  /// 免验证码登录邮箱（仅测试用）
+  /// 固定免验证码邮箱（产品规则）
   static const String loginBypassEmail = 'konaeee@gmail.com';
-  
+
   /// 请求超时时间（秒）
   static const int timeout = 10;
-  
+
   /// API 端点
   static const String login = '/api/auth/login';
   static const String sendCode = '/api/auth/send_code';

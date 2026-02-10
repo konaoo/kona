@@ -23,13 +23,24 @@ class ApiService {
 
   /// 获取请求头
   Map<String, String> _getHeaders() {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
+    final headers = <String, String>{'Content-Type': 'application/json'};
     if (_token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
+  }
+
+  String _extractErrorMessage(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final err = decoded['error'] ?? decoded['message'];
+        if (err is String && err.trim().isNotEmpty) {
+          return err.trim();
+        }
+      }
+    } catch (_) {}
+    return '请求失败: ${response.statusCode}';
   }
 
   /// 通用 GET 请求
@@ -47,7 +58,10 @@ class ApiService {
       } else if (response.statusCode == 401) {
         throw ApiException('未登录或登录已过期', statusCode: 401);
       } else {
-        throw ApiException('请求失败: ${response.statusCode}', statusCode: response.statusCode);
+        throw ApiException(
+          _extractErrorMessage(response),
+          statusCode: response.statusCode,
+        );
       }
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -71,7 +85,10 @@ class ApiService {
       } else if (response.statusCode == 401) {
         throw ApiException('未登录或登录已过期', statusCode: 401);
       } else {
-        throw ApiException('请求失败: ${response.statusCode}', statusCode: response.statusCode);
+        throw ApiException(
+          _extractErrorMessage(response),
+          statusCode: response.statusCode,
+        );
       }
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -84,24 +101,27 @@ class ApiService {
   // ============================================================
 
   /// 登录
-  Future<Map<String, dynamic>?> login(String userId, String email, String code) async {
-    try {
-      final data = await _post(ApiConfig.login, {
-        'user_id': userId,
-        'email': email,
-        'code': code,
-      });
-      if (data != null && data['token'] != null) {
-        _token = data['token'];
-      }
-      return data;
-    } catch (e) {
-      return null;
+  Future<Map<String, dynamic>?> login(
+    String userId,
+    String email,
+    String code,
+  ) async {
+    final data = await _post(ApiConfig.login, {
+      'user_id': userId,
+      'email': email,
+      'code': code,
+    });
+    if (data != null && data['token'] != null) {
+      _token = data['token'];
     }
+    return data;
   }
 
   /// 更新用户资料（昵称/头像）
-  Future<Map<String, dynamic>?> updateProfile({String? nickname, String? avatar}) async {
+  Future<Map<String, dynamic>?> updateProfile({
+    String? nickname,
+    String? avatar,
+  }) async {
     try {
       final data = await _post(ApiConfig.profileUpdate, {
         if (nickname != null) 'nickname': nickname,
@@ -191,7 +211,12 @@ class ApiService {
   }
 
   /// 修正资产（数量/成本/调整）
-  Future<bool> modifyPortfolioAsset(String code, double qty, double price, double adjustment) async {
+  Future<bool> modifyPortfolioAsset(
+    String code,
+    double qty,
+    double price,
+    double adjustment,
+  ) async {
     try {
       await _post(ApiConfig.portfolioModify, {
         'code': code,
@@ -236,7 +261,11 @@ class ApiService {
   }
 
   /// 添加现金资产
-  Future<bool> addCashAsset(String name, double amount, {String curr = 'CNY'}) async {
+  Future<bool> addCashAsset(
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
     try {
       await _post('${ApiConfig.cashAssets}/add', {
         'name': name,
@@ -250,7 +279,11 @@ class ApiService {
   }
 
   /// 添加其他资产
-  Future<bool> addOtherAsset(String name, double amount, {String curr = 'CNY'}) async {
+  Future<bool> addOtherAsset(
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
     try {
       await _post('${ApiConfig.otherAssets}/add', {
         'name': name,
@@ -264,7 +297,11 @@ class ApiService {
   }
 
   /// 添加负债
-  Future<bool> addLiability(String name, double amount, {String curr = 'CNY'}) async {
+  Future<bool> addLiability(
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
     try {
       await _post('${ApiConfig.liabilities}/add', {
         'name': name,
@@ -312,18 +349,28 @@ class ApiService {
   // ============================================================
 
   /// 获取盈亏概览
-  Future<Map<String, dynamic>> getAnalysisOverview({String period = 'all'}) async {
+  Future<Map<String, dynamic>> getAnalysisOverview({
+    String period = 'all',
+  }) async {
     return await _get('${ApiConfig.analysisOverview}?period=$period') ?? {};
   }
 
   /// 获取收益日历
-  Future<Map<String, dynamic>> getAnalysisCalendar({String timeType = 'day'}) async {
+  Future<Map<String, dynamic>> getAnalysisCalendar({
+    String timeType = 'day',
+  }) async {
     return await _get('${ApiConfig.analysisCalendar}?type=$timeType') ?? {};
   }
 
   /// 获取盈亏排行
-  Future<Map<String, dynamic>> getAnalysisRank({String rankType = 'all', String market = 'all'}) async {
-    return await _get('${ApiConfig.analysisRank}?type=$rankType&market=$market') ?? {};
+  Future<Map<String, dynamic>> getAnalysisRank({
+    String rankType = 'all',
+    String market = 'all',
+  }) async {
+    return await _get(
+          '${ApiConfig.analysisRank}?type=$rankType&market=$market',
+        ) ??
+        {};
   }
 
   // ============================================================
@@ -331,7 +378,10 @@ class ApiService {
   // ============================================================
 
   /// 获取最新快讯（支持分页）
-  Future<Map<String, dynamic>> getNews({int page = 1, int pageSize = 30}) async {
+  Future<Map<String, dynamic>> getNews({
+    int page = 1,
+    int pageSize = 30,
+  }) async {
     final data = await _get('${ApiConfig.news}?page=$page&page_size=$pageSize');
     if (data is Map<String, dynamic>) {
       return data;
@@ -340,25 +390,32 @@ class ApiService {
       return Map<String, dynamic>.from(data as Map);
     }
     if (data is List) {
-      return {"items": data, "page": page, "page_size": pageSize, "has_more": data.length >= pageSize};
+      return {
+        "items": data,
+        "page": page,
+        "page_size": pageSize,
+        "has_more": data.length >= pageSize,
+      };
     }
-    return {"items": [], "page": page, "page_size": pageSize, "has_more": false};
+    return {
+      "items": [],
+      "page": page,
+      "page_size": pageSize,
+      "has_more": false,
+    };
   }
 
   /// 发送登录验证码
   Future<bool> sendLoginCode(String email) async {
-    try {
-      await _post(ApiConfig.sendCode, {'email': email});
-      return true;
-    } catch (e) {
-      return false;
-    }
+    await _post(ApiConfig.sendCode, {'email': email});
+    return true;
   }
 
   /// 获取汇率
   Future<Map<String, dynamic>> getExchangeRates() async {
     try {
-      return await _get(ApiConfig.rates) ?? {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
+      return await _get(ApiConfig.rates) ??
+          {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
     } catch (e) {
       return {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
     }

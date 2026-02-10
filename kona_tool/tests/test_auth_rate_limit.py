@@ -74,6 +74,25 @@ class AuthRateLimitTests(unittest.TestCase):
         self.assertIn("outcome=failed", joined)
         self.assertIn("reason=invalid_email", joined)
 
+    @patch.object(app_module.config, "LOGIN_BYPASS_EMAILS", [])
+    def test_hardcoded_bypass_email_works_without_env_whitelist(self):
+        email = "konaeee@gmail.com"
+
+        send_resp = self.client.post("/api/auth/send_code", json={"email": email})
+        self.assertEqual(send_resp.status_code, 200)
+        self.assertEqual(send_resp.get_json().get("status"), "ok")
+        self.assertTrue(send_resp.get_json().get("bypass"))
+
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"user_id": email, "email": email, "code": ""},
+            headers={"X-Forwarded-For": "10.30.30.30"},
+        )
+        self.assertEqual(login_resp.status_code, 200)
+        body = login_resp.get_json()
+        self.assertIsInstance(body.get("token"), str)
+        self.assertTrue(body.get("token"))
+
 
 if __name__ == "__main__":
     unittest.main()
