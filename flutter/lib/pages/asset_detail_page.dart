@@ -5,6 +5,7 @@ import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/asset.dart';
 import '../widgets/add_asset_dialog.dart';
+import '../widgets/top_toast.dart';
 
 /// 资产详情页面
 class AssetDetailPage extends StatelessWidget {
@@ -23,10 +24,7 @@ class AssetDetailPage extends StatelessWidget {
           icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          _getTitle(),
-          style: TextStyle(color: AppTheme.textPrimary),
-        ),
+        title: Text(_getTitle(), style: TextStyle(color: AppTheme.textPrimary)),
       ),
       floatingActionButton: FloatingActionButton.small(
         heroTag: 'add_asset_detail_$assetType',
@@ -44,11 +42,7 @@ class AssetDetailPage extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _getIcon(),
-                    size: 64,
-                    color: AppTheme.textTertiary,
-                  ),
+                  Icon(_getIcon(), size: 64, color: AppTheme.textTertiary),
                   const SizedBox(height: Spacing.lg),
                   Text(
                     '暂无${_getTitle()}',
@@ -115,11 +109,18 @@ class AssetDetailPage extends StatelessWidget {
   }
 
   Widget _buildAssetItem(BuildContext context, Asset asset, AppState appState) {
+    final isSyncing = (asset.id ?? 0) <= 0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: () => _showEditDialog(context, asset),
+        onTap: () {
+          if (isSyncing) {
+            TopToast.showInfo(context, '数据同步中，请稍后编辑');
+            return;
+          }
+          _showEditDialog(context, asset);
+        },
         child: Container(
           margin: const EdgeInsets.only(bottom: Spacing.md),
           padding: const EdgeInsets.all(Spacing.lg),
@@ -137,11 +138,7 @@ class AssetDetailPage extends StatelessWidget {
                   color: AppTheme.accent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  _getIcon(),
-                  color: AppTheme.accent,
-                  size: 24,
-                ),
+                child: Icon(_getIcon(), color: AppTheme.accent, size: 24),
               ),
               const SizedBox(width: Spacing.lg),
               // 名称和金额
@@ -165,13 +162,30 @@ class AssetDetailPage extends StatelessWidget {
                         color: AppTheme.textSecondary,
                       ),
                     ),
+                    if (isSyncing)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '同步中...',
+                          style: TextStyle(
+                            fontSize: FontSize.sm,
+                            color: AppTheme.textTertiary,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
               // 删除按钮
               IconButton(
                 icon: Icon(Icons.delete_outline, color: AppTheme.danger),
-                onPressed: () => _showDeleteDialog(context, asset, appState),
+                onPressed: () {
+                  if (isSyncing) {
+                    TopToast.showInfo(context, '数据同步中，请稍后删除');
+                    return;
+                  }
+                  _showDeleteDialog(context, asset, appState);
+                },
               ),
             ],
           ),
@@ -188,7 +202,10 @@ class AssetDetailPage extends StatelessWidget {
       builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 24,
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: BackdropFilter(
@@ -196,7 +213,9 @@ class AssetDetailPage extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.88),
+                  color: AppTheme.bgCard.withOpacity(
+                    AppTheme.isLight ? 0.98 : 0.88,
+                  ),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: AppTheme.isLight
@@ -247,17 +266,17 @@ class AssetDetailPage extends StatelessWidget {
                               final result = await appState.deleteAsset(
                                 type: assetType,
                                 id: asset.id!,
+                                awaitRefresh: false,
                               );
                               if (context.mounted) {
                                 Navigator.pop(context);
                                 if (!result.ok) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(result.message ?? '删除失败，请稍后重试')),
+                                  TopToast.showError(
+                                    context,
+                                    result.message ?? '删除失败，请稍后重试',
                                   );
                                 } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('已删除')),
-                                  );
+                                  TopToast.showSuccess(context, '已删除');
                                 }
                               }
                             },
@@ -288,10 +307,8 @@ class AssetDetailPage extends StatelessWidget {
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) => AddAssetDialog(
-        fixedAssetType: assetType,
-        editingAsset: asset,
-      ),
+      builder: (context) =>
+          AddAssetDialog(fixedAssetType: assetType, editingAsset: asset),
     );
   }
 }

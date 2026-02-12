@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../models/asset.dart';
 import '../providers/app_state.dart';
+import 'top_toast.dart';
 
 class AddAssetDialog extends StatefulWidget {
   final String? fixedAssetType; // cash | other | liability
@@ -98,28 +99,28 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
             id: widget.editingAsset!.id!,
             name: name,
             amount: amount,
+            awaitRefresh: false,
           )
         : await appState.addAsset(
             type: _assetType,
             name: name,
             amount: amount,
+            awaitRefresh: false,
           );
+
+    if (!context.mounted) return;
 
     if (!result.ok) {
       setState(() {
         _saving = false;
         _errorText = result.message ?? '保存失败，请稍后重试';
       });
+      TopToast.showError(context, result.message ?? '保存失败，请稍后重试');
       return;
     }
 
-    if (!mounted) return;
+    TopToast.showSuccess(context, '已保存');
     Navigator.pop(context);
-    if (_isEdit) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已保存')),
-      );
-    }
   }
 
   Widget _buildTypeChips() {
@@ -161,7 +162,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     final appState = context.read<AppState>();
     final title = _isEdit
         ? '编辑${_typeLabel(_assetType)}'
-        : (widget.fixedAssetType == null ? '记一笔' : '添加${_typeLabel(_assetType)}');
+        : (widget.fixedAssetType == null
+              ? '记一笔'
+              : '添加${_typeLabel(_assetType)}');
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -173,7 +176,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.88),
+              color: AppTheme.bgCard.withOpacity(
+                AppTheme.isLight ? 0.98 : 0.88,
+              ),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppTheme.isLight
@@ -204,7 +209,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                 if (widget.fixedAssetType == null) ...[
                   Text(
                     '资产类型',
-                    style: TextStyle(fontSize: FontSize.base, color: AppTheme.textSecondary),
+                    style: TextStyle(
+                      fontSize: FontSize.base,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   _buildTypeChips(),
@@ -221,7 +229,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                 const SizedBox(height: Spacing.lg),
                 TextField(
                   controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   style: TextStyle(color: AppTheme.textPrimary),
                   decoration: const InputDecoration(
                     labelText: '金额',
@@ -232,7 +242,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                   const SizedBox(height: 8),
                   Text(
                     _errorText!,
-                    style: TextStyle(color: AppTheme.danger, fontSize: FontSize.base),
+                    style: TextStyle(
+                      color: AppTheme.danger,
+                      fontSize: FontSize.base,
+                    ),
                   ),
                 ],
                 const SizedBox(height: Spacing.xl),
@@ -240,7 +253,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: _saving ? null : () => Navigator.pop(context),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.pop(context),
                         child: Text('取消'),
                       ),
                     ),
@@ -252,7 +267,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : Text('保存'),
                       ),

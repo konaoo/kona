@@ -834,6 +834,11 @@ def _save_snapshot_for_user(user_id=None):
         logger.warning(f"Snapshot save failed: {e}")
 
 
+def _save_snapshot_for_user_async(user_id=None):
+    """异步保存用户快照，避免阻塞资产接口响应。"""
+    threading.Thread(target=_save_snapshot_for_user, args=(user_id,), daemon=True).start()
+
+
 def _handle_asset_add(add_func, asset_type, user_id=None):
     """处理资产添加的通用函数"""
     data = request.json
@@ -867,7 +872,7 @@ def _handle_asset_add(add_func, asset_type, user_id=None):
             return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
         success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id)
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             logger.info("[asset_add_success] type=%s user_id=%s", asset_type, user_id)
             return jsonify({"status": "ok"})
         logger.error("[asset_add_failed] type=%s user_id=%s", asset_type, user_id)
@@ -913,7 +918,7 @@ def _handle_asset_delete(delete_func, asset_type, user_id=None):
         )
         success = delete_func(asset_id, user_id)
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             logger.info(
                 "[asset_delete_success] type=%s user_id=%s id=%s",
                 asset_type,
@@ -982,7 +987,7 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
         )
         success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id)
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             logger.info(
                 "[asset_update_success] type=%s user_id=%s id=%s",
                 asset_type,

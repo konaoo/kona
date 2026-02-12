@@ -1,0 +1,139 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import '../config/theme.dart';
+
+enum TopToastType { success, error, info }
+
+class TopToast {
+  static OverlayEntry? _entry;
+  static Timer? _timer;
+
+  static void showSuccess(BuildContext context, String message) {
+    _show(
+      context,
+      message: message,
+      type: TopToastType.success,
+      duration: const Duration(milliseconds: 1800),
+    );
+  }
+
+  static void showError(BuildContext context, String message) {
+    _show(
+      context,
+      message: message,
+      type: TopToastType.error,
+      duration: const Duration(milliseconds: 2500),
+    );
+  }
+
+  static void showInfo(BuildContext context, String message) {
+    _show(
+      context,
+      message: message,
+      type: TopToastType.info,
+      duration: const Duration(milliseconds: 2000),
+    );
+  }
+
+  static void _show(
+    BuildContext context, {
+    required String message,
+    required TopToastType type,
+    required Duration duration,
+  }) {
+    _timer?.cancel();
+    _removeCurrent();
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+
+    final Color bgColor;
+    final IconData icon;
+    switch (type) {
+      case TopToastType.success:
+        bgColor = AppTheme.success;
+        icon = Icons.check_circle_outline;
+        break;
+      case TopToastType.error:
+        bgColor = AppTheme.danger;
+        icon = Icons.error_outline;
+        break;
+      case TopToastType.info:
+        bgColor = AppTheme.accent;
+        icon = Icons.info_outline;
+        break;
+    }
+
+    _entry = OverlayEntry(
+      builder: (ctx) {
+        final topPadding = MediaQuery.of(ctx).padding.top;
+        return Positioned(
+          top: topPadding + 10,
+          left: 16,
+          right: 16,
+          child: Material(
+            color: Colors.transparent,
+            child: _ToastCard(message: message, icon: icon, bgColor: bgColor),
+          ),
+        );
+      },
+    );
+
+    overlay.insert(_entry!);
+    _timer = Timer(duration, _removeCurrent);
+  }
+
+  static void _removeCurrent() {
+    _entry?.remove();
+    _entry = null;
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+class _ToastCard extends StatelessWidget {
+  final String message;
+  final IconData icon;
+  final Color bgColor;
+
+  const _ToastCard({
+    required this.message,
+    required this.icon,
+    required this.bgColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgColor.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

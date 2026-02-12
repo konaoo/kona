@@ -56,6 +56,7 @@ class AppState extends ChangeNotifier {
   List<Asset> _cashAssets = [];
   List<Asset> _otherAssets = [];
   List<Asset> _liabilities = [];
+  int _nextTempAssetId = -1;
 
   // 汇率
   Map<String, double> _exchangeRates = {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
@@ -670,24 +671,145 @@ class AppState extends ChangeNotifier {
     await Future.wait([refreshHomeData(), loadExchangeRates()]);
   }
 
+  _AssetSnapshot _captureAssetSnapshot() {
+    return _AssetSnapshot(
+      cashAssets: List<Asset>.from(_cashAssets),
+      otherAssets: List<Asset>.from(_otherAssets),
+      liabilities: List<Asset>.from(_liabilities),
+    );
+  }
+
+  void _restoreAssetSnapshot(_AssetSnapshot snapshot) {
+    _cashAssets = snapshot.cashAssets;
+    _otherAssets = snapshot.otherAssets;
+    _liabilities = snapshot.liabilities;
+    _recalculateAssetTotals();
+  }
+
+  void _recalculateAssetTotals() {
+    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    notifyListeners();
+  }
+
+  bool _optimisticAddAsset({
+    required String type,
+    required String name,
+    required double amount,
+  }) {
+    switch (type) {
+      case 'cash':
+        final tempAsset = Asset(
+          id: _nextTempAssetId--,
+          name: name,
+          amount: amount,
+        );
+        _cashAssets = [..._cashAssets, tempAsset];
+        return true;
+      case 'other':
+        final tempAsset = Asset(
+          id: _nextTempAssetId--,
+          name: name,
+          amount: amount,
+        );
+        _otherAssets = [..._otherAssets, tempAsset];
+        return true;
+      case 'liability':
+        final tempAsset = Asset(
+          id: _nextTempAssetId--,
+          name: name,
+          amount: amount,
+        );
+        _liabilities = [..._liabilities, tempAsset];
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _optimisticDeleteAsset({required String type, required int id}) {
+    switch (type) {
+      case 'cash':
+        final before = _cashAssets.length;
+        _cashAssets = _cashAssets.where((item) => item.id != id).toList();
+        return _cashAssets.length != before;
+      case 'other':
+        final before = _otherAssets.length;
+        _otherAssets = _otherAssets.where((item) => item.id != id).toList();
+        return _otherAssets.length != before;
+      case 'liability':
+        final before = _liabilities.length;
+        _liabilities = _liabilities.where((item) => item.id != id).toList();
+        return _liabilities.length != before;
+      default:
+        return false;
+    }
+  }
+
+  bool _optimisticUpdateAsset({
+    required String type,
+    required int id,
+    required String name,
+    required double amount,
+  }) {
+    bool updated = false;
+    List<Asset> updateList(List<Asset> source) {
+      return source.map((asset) {
+        if (asset.id != id) return asset;
+        updated = true;
+        return Asset(
+          id: asset.id,
+          name: name,
+          amount: amount,
+          curr: asset.curr,
+        );
+      }).toList();
+    }
+
+    switch (type) {
+      case 'cash':
+        _cashAssets = updateList(_cashAssets);
+        return updated;
+      case 'other':
+        _otherAssets = updateList(_otherAssets);
+        return updated;
+      case 'liability':
+        _liabilities = updateList(_liabilities);
+        return updated;
+      default:
+        return false;
+    }
+  }
+
   /// 添加资产（现金/其他/负债）
   Future<AssetActionResult> addAsset({
     required String type,
     required String name,
     required double amount,
+    bool awaitRefresh = true,
   }) async {
-    AssetActionResult result;
-    if (type == 'cash') {
-      result = await _api.addCashAsset(name, amount);
-    } else if (type == 'other') {
-      result = await _api.addOtherAsset(name, amount);
-    } else if (type == 'liability') {
-      result = await _api.addLiability(name, amount);
-    } else {
-      return const AssetActionResult.failure('不支持的资产类型');
+    final snapshot = _captureAssetSnapshot();
+    final changed = _optimisticAddAsset(type: type, name: name, amount: amount);
+    if (!changed) return const AssetActionResult.failure('不支持的资产类型');
+    _recalculateAssetTotals();
+
+    final result = switch (type) {
+      'cash' => await _api.addCashAsset(name, amount),
+      'other' => await _api.addOtherAsset(name, amount),
+      'liability' => await _api.addLiability(name, amount),
+      _ => const AssetActionResult.failure('不支持的资产类型'),
+    };
+    if (!result.ok) {
+      _restoreAssetSnapshot(snapshot);
+      return result;
     }
-    if (!result.ok) return result;
-    await refreshHomeData();
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return const AssetActionResult.success();
   }
 
@@ -695,7 +817,19 @@ class AppState extends ChangeNotifier {
   Future<AssetActionResult> deleteAsset({
     required String type,
     required int id,
+    bool awaitRefresh = true,
   }) async {
+    if (id <= 0) {
+      return const AssetActionResult.failure('数据同步中，请稍后重试');
+    }
+    final snapshot = _captureAssetSnapshot();
+    final changed = _optimisticDeleteAsset(type: type, id: id);
+    if (changed) {
+      _recalculateAssetTotals();
+    } else if (type != 'cash' && type != 'other' && type != 'liability') {
+      return const AssetActionResult.failure('不支持的资产类型');
+    }
+
     AssetActionResult result;
     if (type == 'cash') {
       result = await _api.deleteCashAsset(id);
@@ -706,8 +840,17 @@ class AppState extends ChangeNotifier {
     } else {
       return const AssetActionResult.failure('不支持的资产类型');
     }
-    if (!result.ok) return result;
-    await refreshHomeData();
+    if (!result.ok) {
+      if (changed) {
+        _restoreAssetSnapshot(snapshot);
+      }
+      return result;
+    }
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return const AssetActionResult.success();
   }
 
@@ -717,7 +860,24 @@ class AppState extends ChangeNotifier {
     required int id,
     required String name,
     required double amount,
+    bool awaitRefresh = true,
   }) async {
+    if (id <= 0) {
+      return const AssetActionResult.failure('数据同步中，请稍后重试');
+    }
+    final snapshot = _captureAssetSnapshot();
+    final changed = _optimisticUpdateAsset(
+      type: type,
+      id: id,
+      name: name,
+      amount: amount,
+    );
+    if (changed) {
+      _recalculateAssetTotals();
+    } else if (type != 'cash' && type != 'other' && type != 'liability') {
+      return const AssetActionResult.failure('不支持的资产类型');
+    }
+
     AssetActionResult result;
     if (type == 'cash') {
       result = await _api.updateCashAsset(id, name, amount);
@@ -728,8 +888,17 @@ class AppState extends ChangeNotifier {
     } else {
       return const AssetActionResult.failure('不支持的资产类型');
     }
-    if (!result.ok) return result;
-    await refreshHomeData();
+    if (!result.ok) {
+      if (changed) {
+        _restoreAssetSnapshot(snapshot);
+      }
+      return result;
+    }
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return const AssetActionResult.success();
   }
 
@@ -1045,4 +1214,16 @@ class AppState extends ChangeNotifier {
     final sign = value >= 0 ? '+' : '';
     return '$sign${value.toStringAsFixed(2)}%';
   }
+}
+
+class _AssetSnapshot {
+  final List<Asset> cashAssets;
+  final List<Asset> otherAssets;
+  final List<Asset> liabilities;
+
+  const _AssetSnapshot({
+    required this.cashAssets,
+    required this.otherAssets,
+    required this.liabilities,
+  });
 }
