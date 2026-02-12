@@ -110,18 +110,11 @@ class AssetDetailPage extends StatelessWidget {
   }
 
   Widget _buildAssetItem(BuildContext context, Asset asset, AppState appState) {
-    final isSyncing = (asset.id ?? 0) <= 0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: () {
-          if (isSyncing) {
-            TopToast.showInfo(context, '数据同步中，请稍后编辑');
-            return;
-          }
-          _showEditDialog(context, asset);
-        },
+        onTap: () => _showEditDialog(context, asset),
         child: Container(
           margin: const EdgeInsets.only(bottom: Spacing.md),
           padding: const EdgeInsets.all(Spacing.lg),
@@ -163,30 +156,13 @@ class AssetDetailPage extends StatelessWidget {
                         color: AppTheme.textSecondary,
                       ),
                     ),
-                    if (isSyncing)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '同步中...',
-                          style: TextStyle(
-                            fontSize: FontSize.sm,
-                            color: AppTheme.textTertiary,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
               // 删除按钮
               IconButton(
                 icon: Icon(Icons.delete_outline, color: AppTheme.danger),
-                onPressed: () {
-                  if (isSyncing) {
-                    TopToast.showInfo(context, '数据同步中，请稍后删除');
-                    return;
-                  }
-                  _showDeleteDialog(context, asset, appState);
-                },
+                onPressed: () => _showDeleteDialog(context, asset, appState),
               ),
             ],
           ),
@@ -269,7 +245,7 @@ class AssetDetailPage extends StatelessWidget {
                             ),
                             onPressed: () {
                               Navigator.pop(dialogContext);
-                              TopToast.showInfo(pageContext, '正在删除...');
+                              TopToast.showSuccess(pageContext, '已删除');
                               unawaited(() async {
                                 final result = await appState.deleteAsset(
                                   type: assetType,

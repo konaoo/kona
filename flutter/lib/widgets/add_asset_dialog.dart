@@ -116,7 +116,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
             awaitRefresh: false,
           );
 
-    TopToast.showInfo(toastContext, '正在保存...');
+    TopToast.showSuccess(toastContext, '已保存');
     if (context.mounted) {
       Navigator.pop(context);
     }

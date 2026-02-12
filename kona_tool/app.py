@@ -409,7 +409,7 @@ def add_asset():
     success = db.add_asset(data, user_id)
     
     if success:
-        _save_snapshot_for_user(user_id)
+        _save_snapshot_for_user_async(user_id)
         return jsonify({"status": "ok"})
     else:
         return jsonify({"error": "Failed to add asset"}), 500
@@ -430,7 +430,7 @@ def update_asset():
         success = db.update_asset(data['code'], data['field'], val, user_id)
         
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             return jsonify({"status": "ok"})
         else:
             return jsonify({"error": "Asset not found"}), 404
@@ -594,7 +594,7 @@ def modify_asset():
         success = db.modify_asset(data['code'], qty, price, adjustment, user_id)
         
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             return jsonify({"status": "ok"})
         else:
             return jsonify({"error": "Asset not found"}), 404
@@ -668,7 +668,7 @@ def delete_asset():
     success = db.delete_asset(data['code'], user_id)
     
     if success:
-        _save_snapshot_for_user(user_id)
+        _save_snapshot_for_user_async(user_id)
         return jsonify({"status": "ok"})
     else:
         return jsonify({"error": "Failed to delete asset"}), 500
@@ -690,7 +690,7 @@ def buy_asset():
         success = db.buy_asset(data['code'], price, qty, user_id)
         
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             return jsonify({"status": "ok"})
         else:
             return jsonify({"error": "Failed to buy asset"}), 500
@@ -714,7 +714,7 @@ def sell_asset():
         success = db.sell_asset(data['code'], price, qty, user_id)
         
         if success:
-            _save_snapshot_for_user(user_id)
+            _save_snapshot_for_user_async(user_id)
             return jsonify({"status": "ok"})
         else:
             return jsonify({"error": "Failed to sell asset"}), 500

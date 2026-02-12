@@ -5,12 +5,19 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/portfolio.dart';
+import 'top_toast.dart';
 
 class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
+  final BuildContext? hostContext;
 
-  const InvestTradeDialog({super.key, required this.mode, this.item});
+  const InvestTradeDialog({
+    super.key,
+    required this.mode,
+    this.item,
+    this.hostContext,
+  });
 
   @override
   State<InvestTradeDialog> createState() => _InvestTradeDialogState();
@@ -54,9 +61,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   String _formatDisplayCode(String code) {
-    const customMap = {
-      'ft_LU1116320737': 'BLK',
-    };
+    const customMap = {'ft_LU1116320737': 'BLK'};
     if (customMap.containsKey(code)) {
       return customMap[code]!;
     }
@@ -132,7 +137,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _selected = null;
     _errorText = null;
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () => _search(value.trim()));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _search(value.trim()),
+    );
   }
 
   Future<void> _search(String query) async {
@@ -148,6 +156,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   Future<void> _submit() async {
     final appState = context.read<AppState>();
+    final toastContext = widget.hostContext ?? context;
 
     double? price;
     double? qty;
@@ -157,7 +166,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _errorText = null;
     });
 
-    bool ok = false;
+    late final Future<bool> actionFuture;
     if (_isAdd) {
       final priceStr = _priceController.text.trim();
       final qtyStr = _qtyController.text.trim();
@@ -181,7 +190,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       final name = _selected?['name'] ?? '';
       final curr = _selected?['currency'];
       final assetType = _selected?['asset_type'];
-      ok = await appState.addInvestment(code: code, name: name, price: price, qty: qty, curr: curr, assetType: assetType);
+      actionFuture = appState.addInvestment(
+        code: code,
+        name: name,
+        price: price,
+        qty: qty,
+        curr: curr,
+        assetType: assetType,
+        awaitRefresh: false,
+      );
     } else {
       final code = widget.item?.code ?? '';
       if (code.isEmpty) {
@@ -204,7 +221,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         }
         final qtyVal = widget.item?.qty ?? 0;
         final priceVal = widget.item?.price ?? 0;
-        ok = await appState.modifyInvestment(code: code, qty: qtyVal, price: priceVal, adjustment: adjustVal);
+        actionFuture = appState.modifyInvestment(
+          code: code,
+          qty: qtyVal,
+          price: priceVal,
+          adjustment: adjustVal,
+          awaitRefresh: false,
+        );
       } else if (mode == 'buy') {
         final priceStr = _priceController.text.trim();
         final qtyStr = _qtyController.text.trim();
@@ -217,7 +240,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
-        ok = await appState.buyInvestment(code: code, price: price, qty: qty);
+        actionFuture = appState.buyInvestment(
+          code: code,
+          price: price,
+          qty: qty,
+          awaitRefresh: false,
+        );
       } else {
         final priceStr = _priceController.text.trim();
         final qtyStr = _qtyController.text.trim();
@@ -230,19 +258,25 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
-        ok = await appState.sellInvestment(code: code, price: price, qty: qty);
+        actionFuture = appState.sellInvestment(
+          code: code,
+          price: price,
+          qty: qty,
+          awaitRefresh: false,
+        );
       }
     }
 
-    if (!ok) {
-      setState(() {
-        _saving = false;
-        _errorText = '保存失败，请稍后重试';
-      });
-      return;
+    TopToast.showSuccess(toastContext, '已保存');
+    if (mounted) {
+      Navigator.pop(context);
     }
-
-    if (mounted) Navigator.pop(context);
+    unawaited(() async {
+      final ok = await actionFuture;
+      if (!ok && toastContext.mounted) {
+        TopToast.showError(toastContext, '保存失败，请稍后重试');
+      }
+    }());
   }
 
   Widget _buildSearchResults() {
@@ -278,7 +312,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 children: [
                   Text(
                     name,
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: FontSize.base),
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: FontSize.base,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -287,7 +324,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       const SizedBox(width: 6),
                       Text(
                         code,
-                        style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                        style: TextStyle(
+                          color: AppTheme.textTertiary,
+                          fontSize: FontSize.sm,
+                        ),
                       ),
                     ],
                   ),
@@ -311,10 +351,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: _tradeMode == 'buy' ? AppTheme.accent : Colors.transparent,
+                color: _tradeMode == 'buy'
+                    ? AppTheme.accent
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: _tradeMode == 'buy' ? AppTheme.accent : AppTheme.border,
+                  color: _tradeMode == 'buy'
+                      ? AppTheme.accent
+                      : AppTheme.border,
                   width: 1,
                 ),
               ),
@@ -322,7 +366,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 '买入',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _tradeMode == 'buy' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color: _tradeMode == 'buy'
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -337,10 +383,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: _tradeMode == 'sell' ? AppTheme.danger : Colors.transparent,
+                color: _tradeMode == 'sell'
+                    ? AppTheme.danger
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: _tradeMode == 'sell' ? AppTheme.danger : AppTheme.border,
+                  color: _tradeMode == 'sell'
+                      ? AppTheme.danger
+                      : AppTheme.border,
                   width: 1,
                 ),
               ),
@@ -348,7 +398,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 '卖出',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _tradeMode == 'sell' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color: _tradeMode == 'sell'
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -363,10 +415,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: _tradeMode == 'adjust' ? AppTheme.accent : Colors.transparent,
+                color: _tradeMode == 'adjust'
+                    ? AppTheme.accent
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: _tradeMode == 'adjust' ? AppTheme.accent : AppTheme.border,
+                  color: _tradeMode == 'adjust'
+                      ? AppTheme.accent
+                      : AppTheme.border,
                   width: 1,
                 ),
               ),
@@ -374,7 +430,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 '调整',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _tradeMode == 'adjust' ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color: _tradeMode == 'adjust'
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -390,13 +448,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final title = _isAdd
         ? '添加投资资产'
         : _isTrade
-            ? '买入 / 卖出 / 调整'
-            : _isBuy
-                ? '买入'
-                : '卖出';
+        ? '买入 / 卖出 / 调整'
+        : _isBuy
+        ? '买入'
+        : '卖出';
     final actionColor = (_isTrade ? _tradeMode == 'buy' : _isBuy)
         ? AppTheme.accent
-        : (_isTrade && _tradeMode == 'adjust' ? AppTheme.accent : AppTheme.danger);
+        : (_isTrade && _tradeMode == 'adjust'
+              ? AppTheme.accent
+              : AppTheme.danger);
     final canSave = !_saving && (!_isAdd || _selected != null);
 
     return Dialog(
@@ -409,7 +469,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.88),
+              color: AppTheme.bgCard.withOpacity(
+                AppTheme.isLight ? 0.98 : 0.88,
+              ),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: AppTheme.isLight
@@ -450,7 +512,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   if (_searching)
                     Padding(
                       padding: EdgeInsets.only(top: 8),
-                      child: Text('搜索中...', style: TextStyle(color: AppTheme.textTertiary)),
+                      child: Text(
+                        '搜索中...',
+                        style: TextStyle(color: AppTheme.textTertiary),
+                      ),
                     ),
                   _buildSearchResults(),
                   if (_selected != null) ...[
@@ -459,17 +524,26 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       children: [
                         Text(
                           '已选择：',
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: FontSize.sm,
+                          ),
                         ),
                         Text(
                           '${_selected?['name']}  ',
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: FontSize.sm,
+                          ),
                         ),
                         _marketBadge(_selected?['type_name'] ?? ''),
                         const SizedBox(width: 6),
                         Text(
                           _formatDisplayCode(_selected?['code'] ?? ''),
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.sm),
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: FontSize.sm,
+                          ),
                         ),
                       ],
                     ),
@@ -478,7 +552,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 ] else ...[
                   Text(
                     '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: FontSize.base),
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: FontSize.base,
+                    ),
                   ),
                   const SizedBox(height: Spacing.lg),
                 ],
@@ -487,21 +564,28 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 if (_isTrade && _isAdjust) ...[
                   TextField(
                     controller: _adjustController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '调整金额'),
                   ),
                 ] else ...[
                   TextField(
                     controller: _priceController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '价格'),
                   ),
                   const SizedBox(height: Spacing.lg),
                   TextField(
                     controller: _qtyController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '数量'),
                   ),
@@ -510,7 +594,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   const SizedBox(height: 8),
                   Text(
                     _errorText!,
-                    style: TextStyle(color: AppTheme.danger, fontSize: FontSize.base),
+                    style: TextStyle(
+                      color: AppTheme.danger,
+                      fontSize: FontSize.base,
+                    ),
                   ),
                 ],
                 const SizedBox(height: Spacing.xl),
@@ -518,20 +605,26 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: _saving ? null : () => Navigator.pop(context),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.pop(context),
                         child: Text('取消'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: actionColor),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: actionColor,
+                        ),
                         onPressed: canSave ? _submit : null,
                         child: _saving
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : Text('保存'),
                       ),

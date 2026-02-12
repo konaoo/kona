@@ -820,7 +820,7 @@ class AppState extends ChangeNotifier {
     bool awaitRefresh = true,
   }) async {
     if (id <= 0) {
-      return const AssetActionResult.failure('数据同步中，请稍后重试');
+      return const AssetActionResult.failure('操作失败，请稍后重试');
     }
     final snapshot = _captureAssetSnapshot();
     final changed = _optimisticDeleteAsset(type: type, id: id);
@@ -863,7 +863,7 @@ class AppState extends ChangeNotifier {
     bool awaitRefresh = true,
   }) async {
     if (id <= 0) {
-      return const AssetActionResult.failure('数据同步中，请稍后重试');
+      return const AssetActionResult.failure('操作失败，请稍后重试');
     }
     final snapshot = _captureAssetSnapshot();
     final changed = _optimisticUpdateAsset(
@@ -915,6 +915,7 @@ class AppState extends ChangeNotifier {
     required double qty,
     String? curr,
     String? assetType,
+    bool awaitRefresh = true,
   }) async {
     final ok = await _api.addPortfolioAsset(
       code,
@@ -925,7 +926,11 @@ class AppState extends ChangeNotifier {
       assetType: assetType,
     );
     if (!ok) return false;
-    await refreshHomeData();
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return true;
   }
 
@@ -934,10 +939,15 @@ class AppState extends ChangeNotifier {
     required String code,
     required double price,
     required double qty,
+    bool awaitRefresh = true,
   }) async {
     final ok = await _api.buyPortfolioAsset(code, price, qty);
     if (!ok) return false;
-    await refreshHomeData();
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return true;
   }
 
@@ -946,10 +956,15 @@ class AppState extends ChangeNotifier {
     required String code,
     required double price,
     required double qty,
+    bool awaitRefresh = true,
   }) async {
     final ok = await _api.sellPortfolioAsset(code, price, qty);
     if (!ok) return false;
-    await refreshHomeData();
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return true;
   }
 
@@ -959,10 +974,15 @@ class AppState extends ChangeNotifier {
     required double qty,
     required double price,
     required double adjustment,
+    bool awaitRefresh = true,
   }) async {
     final ok = await _api.modifyPortfolioAsset(code, qty, price, adjustment);
     if (!ok) return false;
-    await refreshHomeData();
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
     return true;
   }
 
