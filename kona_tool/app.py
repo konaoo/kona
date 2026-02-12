@@ -95,6 +95,9 @@ _snapshot_lock = threading.Lock()
 _snapshot_inflight = set()
 _snapshot_last_run_ts = {}
 _SNAPSHOT_MIN_INTERVAL_SECONDS = 3.0
+_idempotency_lock = threading.Lock()
+_idempotency_records = {}
+_IDEMPOTENCY_WINDOW_SECONDS = 20.0
 
 
 def _client_ip() -> str:
@@ -110,6 +113,47 @@ def _client_ip() -> str:
 
 def _rate_limit_key() -> str:
     return _client_ip() or get_remote_address()
+
+
+def _idempotency_begin(action: str, user_id: str, request_id: str):
+    request_id = (request_id or '').strip()
+    if not request_id:
+        return False, None, None
+    now = time.time()
+    key = (user_id or '', action, request_id)
+    with _idempotency_lock:
+        expired = [k for k, v in _idempotency_records.items() if v.get('expires_at', 0) < now]
+        for k in expired:
+            _idempotency_records.pop(k, None)
+        record = _idempotency_records.get(key)
+        if record:
+            if record.get('state') == 'done':
+                return True, record.get('payload', {"status": "ok"}), int(record.get('status_code', 200))
+            return True, {"status": "ok", "code": "REQUEST_DEDUP_IN_FLIGHT"}, 200
+        _idempotency_records[key] = {
+            'state': 'inflight',
+            'expires_at': now + _IDEMPOTENCY_WINDOW_SECONDS,
+        }
+    return False, None, None
+
+
+def _idempotency_finish(action: str, user_id: str, request_id: str, status_code: int, payload: dict):
+    request_id = (request_id or '').strip()
+    if not request_id:
+        return
+    key = (user_id or '', action, request_id)
+    with _idempotency_lock:
+        _idempotency_records[key] = {
+            'state': 'done',
+            'status_code': int(status_code),
+            'payload': payload,
+            'expires_at': time.time() + _IDEMPOTENCY_WINDOW_SECONDS,
+        }
+
+
+def _idempotent_response(action: str, user_id: str, request_id: str, payload: dict, status_code: int = 200):
+    _idempotency_finish(action, user_id, request_id, status_code, payload)
+    return jsonify(payload), status_code
 
 
 def _email_limit_key() -> str:
@@ -388,9 +432,14 @@ def add_asset():
     """添加资产"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data or 'qty' not in data or 'price' not in data:
         return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_add', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     # 解析代码
     parsed = parse_code(data['code'], data.get('curr', ''))
@@ -410,9 +459,15 @@ def add_asset():
     
     if success:
         _save_snapshot_for_user_async(user_id)
-        return jsonify({"status": "ok"})
+        return _idempotent_response('portfolio_add', user_id, request_id, {"status": "ok"})
     else:
-        return jsonify({"error": "Failed to add asset"}), 500
+        return _idempotent_response(
+            'portfolio_add',
+            user_id,
+            request_id,
+            {"error": "Failed to add asset", "code": "ASSET_ADD_FAILED"},
+            500,
+        )
 
 
 @app.route('/api/portfolio/update', methods=['POST'])
@@ -421,9 +476,14 @@ def update_asset():
     """更新资产"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data or 'field' not in data or 'val' not in data:
         return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_update', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     try:
         val = float(data['val'])
@@ -431,11 +491,23 @@ def update_asset():
         
         if success:
             _save_snapshot_for_user_async(user_id)
-            return jsonify({"status": "ok"})
+            return _idempotent_response('portfolio_update', user_id, request_id, {"status": "ok"})
         else:
-            return jsonify({"error": "Asset not found"}), 404
+            return _idempotent_response(
+                'portfolio_update',
+                user_id,
+                request_id,
+                {"error": "Asset not found", "code": "ASSET_NOT_FOUND"},
+                404,
+            )
     except ValueError:
-        return jsonify({"error": "Invalid value"}), 400
+        return _idempotent_response(
+            'portfolio_update',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
 
 
 @app.route('/analysis')
@@ -582,9 +654,14 @@ def modify_asset():
     """修正资产（数量、成本、调整值）"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data or 'qty' not in data or 'price' not in data or 'adjustment' not in data:
         return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_modify', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     try:
         qty = float(data['qty'])
@@ -595,11 +672,23 @@ def modify_asset():
         
         if success:
             _save_snapshot_for_user_async(user_id)
-            return jsonify({"status": "ok"})
+            return _idempotent_response('portfolio_modify', user_id, request_id, {"status": "ok"})
         else:
-            return jsonify({"error": "Asset not found"}), 404
+            return _idempotent_response(
+                'portfolio_modify',
+                user_id,
+                request_id,
+                {"error": "Asset not found", "code": "ASSET_NOT_FOUND"},
+                404,
+            )
     except ValueError:
-        return jsonify({"error": "Invalid value"}), 400
+        return _idempotent_response(
+            'portfolio_modify',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
 
 
 @app.route('/api/snapshot/save', methods=['POST'])
@@ -661,17 +750,66 @@ def delete_asset():
     """删除资产"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data:
         return jsonify({"error": "Missing code"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_delete', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     success = db.delete_asset(data['code'], user_id)
     
     if success:
         _save_snapshot_for_user_async(user_id)
-        return jsonify({"status": "ok"})
+        return _idempotent_response('portfolio_delete', user_id, request_id, {"status": "ok"})
     else:
-        return jsonify({"error": "Failed to delete asset"}), 500
+        return _idempotent_response(
+            'portfolio_delete',
+            user_id,
+            request_id,
+            {"error": "Failed to delete asset", "code": "ASSET_DELETE_FAILED"},
+            500,
+        )
+
+
+@app.route('/api/portfolio/delete_corrective', methods=['POST'])
+@optional_auth
+def delete_asset_corrective():
+    """删除资产并清理历史交易和快照污染"""
+    data = request.json
+    user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
+
+    if not data or 'code' not in data:
+        return jsonify({"error": "Missing code"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_delete_corrective', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
+
+    result = db.delete_asset_corrective(data['code'], user_id)
+    if result:
+        _save_snapshot_for_user_async(user_id)
+        payload = {
+            "status": "ok",
+            "code": "CORRECTIVE_DELETE_DONE",
+            "deleted": {
+                "portfolio": result.get('portfolio', 0),
+                "transactions": result.get('transactions', 0),
+                "snapshots": result.get('snapshots', 0),
+            },
+            "from_date": result.get('from_date'),
+        }
+        return _idempotent_response('portfolio_delete_corrective', user_id, request_id, payload)
+    return _idempotent_response(
+        'portfolio_delete_corrective',
+        user_id,
+        request_id,
+        {"error": "Failed to delete asset corrective", "code": "ASSET_CORRECTIVE_DELETE_FAILED"},
+        500,
+    )
 
 
 @app.route('/api/portfolio/buy', methods=['POST'])
@@ -680,9 +818,14 @@ def buy_asset():
     """加仓"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data or 'price' not in data or 'qty' not in data:
         return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_buy', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     try:
         price = float(data['price'])
@@ -691,11 +834,23 @@ def buy_asset():
         
         if success:
             _save_snapshot_for_user_async(user_id)
-            return jsonify({"status": "ok"})
+            return _idempotent_response('portfolio_buy', user_id, request_id, {"status": "ok"})
         else:
-            return jsonify({"error": "Failed to buy asset"}), 500
+            return _idempotent_response(
+                'portfolio_buy',
+                user_id,
+                request_id,
+                {"error": "Failed to buy asset", "code": "ASSET_BUY_FAILED"},
+                500,
+            )
     except ValueError:
-        return jsonify({"error": "Invalid value"}), 400
+        return _idempotent_response(
+            'portfolio_buy',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
 
 
 @app.route('/api/portfolio/sell', methods=['POST'])
@@ -704,9 +859,14 @@ def sell_asset():
     """减仓"""
     data = request.json
     user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
     
     if not data or 'code' not in data or 'price' not in data or 'qty' not in data:
         return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_sell', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
     
     try:
         price = float(data['price'])
@@ -715,11 +875,23 @@ def sell_asset():
         
         if success:
             _save_snapshot_for_user_async(user_id)
-            return jsonify({"status": "ok"})
+            return _idempotent_response('portfolio_sell', user_id, request_id, {"status": "ok"})
         else:
-            return jsonify({"error": "Failed to sell asset"}), 500
+            return _idempotent_response(
+                'portfolio_sell',
+                user_id,
+                request_id,
+                {"error": "Failed to sell asset", "code": "ASSET_SELL_FAILED"},
+                500,
+            )
     except ValueError:
-        return jsonify({"error": "Invalid value"}), 400
+        return _idempotent_response(
+            'portfolio_sell',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
 
 
 @app.route('/api/transactions', methods=['GET'])

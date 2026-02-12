@@ -902,13 +902,146 @@ class AppState extends ChangeNotifier {
     return const AssetActionResult.success();
   }
 
+  _PortfolioSnapshot _capturePortfolioSnapshot() {
+    return _PortfolioSnapshot(portfolio: List<PortfolioItem>.from(_portfolio));
+  }
+
+  void _restorePortfolioSnapshot(_PortfolioSnapshot snapshot) {
+    _portfolio = snapshot.portfolio;
+    _recalculatePortfolioTotals();
+  }
+
+  void _recalculatePortfolioTotals() {
+    _totalInvest = investTotalMV;
+    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    notifyListeners();
+  }
+
+  int _portfolioIndexByCode(String code) {
+    return _portfolio.indexWhere((item) => item.code == code);
+  }
+
+  bool _optimisticAddInvestment({
+    required String code,
+    required String name,
+    required double price,
+    required double qty,
+    String? curr,
+    String? assetType,
+  }) {
+    final next = PortfolioItem(
+      code: code,
+      name: name,
+      qty: qty,
+      price: price,
+      adjustment: 0,
+      curr: (curr == null || curr.isEmpty) ? 'CNY' : curr,
+      assetType: (assetType == null || assetType.isEmpty) ? '' : assetType,
+    );
+    final index = _portfolioIndexByCode(code);
+    if (index >= 0) {
+      final updated = List<PortfolioItem>.from(_portfolio);
+      updated[index] = next;
+      _portfolio = updated;
+      return true;
+    }
+    _portfolio = [..._portfolio, next];
+    return true;
+  }
+
+  bool _optimisticBuyInvestment({
+    required String code,
+    required double price,
+    required double qty,
+  }) {
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) return false;
+    final old = _portfolio[index];
+    final newQty = old.qty + qty;
+    if (newQty <= 0) return false;
+    final newPrice = (old.qty * old.price + qty * price) / newQty;
+    final updated = List<PortfolioItem>.from(_portfolio);
+    updated[index] = PortfolioItem(
+      id: old.id,
+      code: old.code,
+      name: old.name,
+      qty: newQty,
+      price: newPrice,
+      adjustment: old.adjustment,
+      curr: old.curr,
+      assetType: old.assetType,
+    );
+    _portfolio = updated;
+    return true;
+  }
+
+  bool _optimisticSellInvestment({
+    required String code,
+    required double price,
+    required double qty,
+  }) {
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) return false;
+    final old = _portfolio[index];
+    if (qty > old.qty + 1e-6) return false;
+    final pnl = (price - old.price) * qty;
+    final newQty = old.qty - qty;
+    final updated = List<PortfolioItem>.from(_portfolio);
+    if (newQty < 0.001) {
+      updated.removeAt(index);
+    } else {
+      updated[index] = PortfolioItem(
+        id: old.id,
+        code: old.code,
+        name: old.name,
+        qty: newQty,
+        price: old.price,
+        adjustment: old.adjustment + pnl,
+        curr: old.curr,
+        assetType: old.assetType,
+      );
+    }
+    _portfolio = updated;
+    return true;
+  }
+
+  bool _optimisticModifyInvestment({
+    required String code,
+    required double qty,
+    required double price,
+    required double adjustment,
+  }) {
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) return false;
+    final old = _portfolio[index];
+    final updated = List<PortfolioItem>.from(_portfolio);
+    updated[index] = PortfolioItem(
+      id: old.id,
+      code: old.code,
+      name: old.name,
+      qty: qty,
+      price: price,
+      adjustment: adjustment,
+      curr: old.curr,
+      assetType: old.assetType,
+    );
+    _portfolio = updated;
+    return true;
+  }
+
+  bool _optimisticDeleteInvestment({required String code}) {
+    final before = _portfolio.length;
+    _portfolio = _portfolio.where((item) => item.code != code).toList();
+    return _portfolio.length != before;
+  }
+
   /// 搜索股票/基金
   Future<List<dynamic>> searchStocks(String query) async {
     return await _api.searchStocks(query);
   }
 
   /// 添加投资资产
-  Future<bool> addInvestment({
+  Future<AssetActionResult> addInvestment({
     required String code,
     required String name,
     required double price,
@@ -917,7 +1050,19 @@ class AppState extends ChangeNotifier {
     String? assetType,
     bool awaitRefresh = true,
   }) async {
-    final ok = await _api.addPortfolioAsset(
+    final snapshot = _capturePortfolioSnapshot();
+    final changed = _optimisticAddInvestment(
+      code: code,
+      name: name,
+      price: price,
+      qty: qty,
+      curr: curr,
+      assetType: assetType,
+    );
+    if (!changed) return const AssetActionResult.failure('添加失败，请稍后重试');
+    _recalculatePortfolioTotals();
+
+    final result = await _api.addPortfolioAsset(
       code,
       name,
       price,
@@ -925,65 +1070,134 @@ class AppState extends ChangeNotifier {
       curr: curr,
       assetType: assetType,
     );
-    if (!ok) return false;
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot);
+      return result;
+    }
     if (awaitRefresh) {
       await refreshHomeData();
     } else {
       unawaited(refreshHomeData());
     }
-    return true;
+    return const AssetActionResult.success();
   }
 
   /// 买入（加仓）
-  Future<bool> buyInvestment({
+  Future<AssetActionResult> buyInvestment({
     required String code,
     required double price,
     required double qty,
     bool awaitRefresh = true,
   }) async {
-    final ok = await _api.buyPortfolioAsset(code, price, qty);
-    if (!ok) return false;
+    if (_portfolioIndexByCode(code) < 0) {
+      return const AssetActionResult.failure('未找到该持仓');
+    }
+    final snapshot = _capturePortfolioSnapshot();
+    final changed = _optimisticBuyInvestment(code: code, price: price, qty: qty);
+    if (!changed) return const AssetActionResult.failure('买入失败，请稍后重试');
+    _recalculatePortfolioTotals();
+
+    final result = await _api.buyPortfolioAsset(code, price, qty);
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot);
+      return result;
+    }
     if (awaitRefresh) {
       await refreshHomeData();
     } else {
       unawaited(refreshHomeData());
     }
-    return true;
+    return const AssetActionResult.success();
   }
 
   /// 卖出（减仓）
-  Future<bool> sellInvestment({
+  Future<AssetActionResult> sellInvestment({
     required String code,
     required double price,
     required double qty,
     bool awaitRefresh = true,
   }) async {
-    final ok = await _api.sellPortfolioAsset(code, price, qty);
-    if (!ok) return false;
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) return const AssetActionResult.failure('未找到该持仓');
+    if (qty > _portfolio[index].qty + 1e-6) {
+      return const AssetActionResult.failure('卖出数量超过持仓数量');
+    }
+    final snapshot = _capturePortfolioSnapshot();
+    final changed = _optimisticSellInvestment(code: code, price: price, qty: qty);
+    if (!changed) return const AssetActionResult.failure('卖出失败，请稍后重试');
+    _recalculatePortfolioTotals();
+
+    final result = await _api.sellPortfolioAsset(code, price, qty);
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot);
+      return result;
+    }
     if (awaitRefresh) {
       await refreshHomeData();
     } else {
       unawaited(refreshHomeData());
     }
-    return true;
+    return const AssetActionResult.success();
   }
 
   /// 手动调整（数量/成本/调整）
-  Future<bool> modifyInvestment({
+  Future<AssetActionResult> modifyInvestment({
     required String code,
     required double qty,
     required double price,
     required double adjustment,
     bool awaitRefresh = true,
   }) async {
-    final ok = await _api.modifyPortfolioAsset(code, qty, price, adjustment);
-    if (!ok) return false;
+    if (_portfolioIndexByCode(code) < 0) {
+      return const AssetActionResult.failure('未找到该持仓');
+    }
+    final snapshot = _capturePortfolioSnapshot();
+    final changed = _optimisticModifyInvestment(
+      code: code,
+      qty: qty,
+      price: price,
+      adjustment: adjustment,
+    );
+    if (!changed) return const AssetActionResult.failure('调整失败，请稍后重试');
+    _recalculatePortfolioTotals();
+
+    final result = await _api.modifyPortfolioAsset(code, qty, price, adjustment);
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot);
+      return result;
+    }
     if (awaitRefresh) {
       await refreshHomeData();
     } else {
       unawaited(refreshHomeData());
     }
-    return true;
+    return const AssetActionResult.success();
+  }
+
+  /// 删除投资资产
+  Future<AssetActionResult> deleteInvestment({
+    required String code,
+    bool corrective = false,
+    bool awaitRefresh = true,
+  }) async {
+    final snapshot = _capturePortfolioSnapshot();
+    final changed = _optimisticDeleteInvestment(code: code);
+    if (!changed) return const AssetActionResult.failure('未找到该持仓');
+    _recalculatePortfolioTotals();
+
+    final result = corrective
+        ? await _api.deletePortfolioAssetCorrective(code)
+        : await _api.deletePortfolioAsset(code);
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot);
+      return result;
+    }
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
+    return const AssetActionResult.success();
   }
 
   /// 计算历史统计数据
@@ -1246,4 +1460,10 @@ class _AssetSnapshot {
     required this.otherAssets,
     required this.liabilities,
   });
+}
+
+class _PortfolioSnapshot {
+  final List<PortfolioItem> portfolio;
+
+  const _PortfolioSnapshot({required this.portfolio});
 }

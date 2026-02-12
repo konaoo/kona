@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+from datetime import datetime, timedelta
 
 # Ensure kona_tool is on sys.path so app.py can import config/core
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +25,18 @@ class ApiBaselineTests(unittest.TestCase):
     def setUpClass(cls):
         app_module.app.testing = True
         cls.client = app_module.app.test_client()
+
+    def setUp(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM cash_assets")
+        cursor.execute("DELETE FROM other_assets")
+        cursor.execute("DELETE FROM liabilities")
+        cursor.execute("DELETE FROM transactions")
+        cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM daily_snapshots")
+        conn.commit()
+        conn.close()
 
     def test_health(self):
         resp = self.client.get('/health')
@@ -107,6 +120,109 @@ class ApiBaselineTests(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data.get('error'), 'Invalid amount')
         self.assertEqual(data.get('code'), 'INVALID_AMOUNT')
+
+    def test_buy_idempotent_request_id_prevents_duplicate_qty(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600000',
+            'name': '浦发银行',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        request_id = 'req-buy-dedup-1'
+        buy_first = self.client.post('/api/portfolio/buy', json={
+            'code': 'sh600000',
+            'price': 12.0,
+            'qty': 5.0,
+            'request_id': request_id,
+        })
+        self.assertEqual(buy_first.status_code, 200)
+        self.assertEqual(buy_first.get_json().get('status'), 'ok')
+
+        buy_second = self.client.post('/api/portfolio/buy', json={
+            'code': 'sh600000',
+            'price': 12.0,
+            'qty': 5.0,
+            'request_id': request_id,
+        })
+        self.assertEqual(buy_second.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600000'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target['qty']), 15.0)
+
+    def test_delete_corrective_removes_transactions_and_future_snapshots(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600001',
+            'name': '测试纠错',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        buy_resp = self.client.post('/api/portfolio/buy', json={
+            'code': 'sh600001',
+            'price': 11.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        d1 = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        d2 = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1, 1, 0, 0, 0, 0, '')
+            """,
+            (d1,),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1, 1, 0, 0, 0, 0, '')
+            """,
+            (d2,),
+        )
+        conn.commit()
+        conn.close()
+
+        delete_resp = self.client.post('/api/portfolio/delete_corrective', json={
+            'code': 'sh600001',
+            'request_id': 'req-corrective-1',
+        })
+        self.assertEqual(delete_resp.status_code, 200)
+        payload = delete_resp.get_json()
+        self.assertEqual(payload.get('status'), 'ok')
+        self.assertEqual(payload.get('code'), 'CORRECTIVE_DELETE_DONE')
+        self.assertIn('deleted', payload)
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        self.assertFalse(any(item.get('code') == 'sh600001' for item in portfolio_items))
+
+        tx_resp = self.client.get('/api/transactions')
+        self.assertEqual(tx_resp.status_code, 200)
+        tx_items = tx_resp.get_json() or []
+        self.assertFalse(any(item.get('code') == 'sh600001' for item in tx_items))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(1) AS cnt FROM daily_snapshots WHERE date IN (?, ?) AND (user_id IS NULL OR user_id = '')",
+            (d1, d2),
+        )
+        remaining = int(cursor.fetchone()['cnt'])
+        conn.close()
+        self.assertEqual(remaining, 0)
 
 
 if __name__ == '__main__':

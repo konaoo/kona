@@ -281,6 +281,7 @@ class AssetDetailPage extends StatelessWidget {
   void _showAddDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (dialogContext) =>
           AddAssetDialog(fixedAssetType: assetType, hostContext: context),
@@ -290,6 +291,7 @@ class AssetDetailPage extends StatelessWidget {
   void _showEditDialog(BuildContext context, Asset asset) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (dialogContext) => AddAssetDialog(
         fixedAssetType: assetType,

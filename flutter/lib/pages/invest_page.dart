@@ -259,6 +259,11 @@ class _InvestPageState extends State<InvestPage> {
     );
   }
 
+  String _formatDisplayPrice(double value) {
+    final decimals = value.abs() < 10 ? 3 : 2;
+    return value.toStringAsFixed(decimals);
+  }
+
   Widget _buildCategoryTabs(AppState appState) {
     final categories = [
       ('all', '全部'),
@@ -337,6 +342,7 @@ class _InvestPageState extends State<InvestPage> {
       child: InkWell(
         onTap: () => showDialog(
           context: context,
+          barrierDismissible: false,
           barrierColor: Colors.black.withOpacity(0.5),
           builder: (_) => InvestTradeDialog(mode: 'trade', item: item),
         ),
@@ -420,7 +426,7 @@ class _InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${currentPrice.toStringAsFixed(2)}',
+                        '${item.currencySymbol}${_formatDisplayPrice(currentPrice)}',
                         style: TextStyle(
                           fontSize: valueSize,
                           color: AppTheme.textPrimary,
@@ -431,7 +437,7 @@ class _InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${item.price.toStringAsFixed(2)}',
+                        '${item.currencySymbol}${_formatDisplayPrice(item.price)}',
                         style: TextStyle(
                           fontSize: subValueSize,
                           color: AppTheme.textTertiary,

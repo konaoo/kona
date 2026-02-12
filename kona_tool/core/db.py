@@ -756,6 +756,129 @@ class DatabaseManager:
             return False
         finally:
             conn.close()
+
+    def delete_asset_corrective(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
+        """删除资产并清理该资产交易历史与受影响快照区间"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            if user_id:
+                cursor.execute(
+                    '''
+                    SELECT time
+                    FROM transactions
+                    WHERE code = ? AND user_id = ?
+                    ORDER BY time ASC
+                    LIMIT 1
+                    ''',
+                    (code, user_id),
+                )
+                tx_row = cursor.fetchone()
+                cursor.execute(
+                    '''
+                    SELECT created_at, updated_at
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    LIMIT 1
+                    ''',
+                    (code, user_id),
+                )
+                pf_row = cursor.fetchone()
+            else:
+                cursor.execute(
+                    '''
+                    SELECT time
+                    FROM transactions
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ORDER BY time ASC
+                    LIMIT 1
+                    ''',
+                    (code,),
+                )
+                tx_row = cursor.fetchone()
+                cursor.execute(
+                    '''
+                    SELECT created_at, updated_at
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    LIMIT 1
+                    ''',
+                    (code,),
+                )
+                pf_row = cursor.fetchone()
+
+            from_date = datetime.now().strftime('%Y-%m-%d')
+            tx_time = str(tx_row['time']) if tx_row and tx_row['time'] else ''
+            if len(tx_time) >= 10:
+                from_date = tx_time[:10]
+            elif pf_row:
+                pf_time = str(pf_row['updated_at'] or pf_row['created_at'] or '')
+                if len(pf_time) >= 10:
+                    from_date = pf_time[:10]
+
+            if user_id:
+                cursor.execute(
+                    'DELETE FROM portfolio WHERE code = ? AND user_id = ?',
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                    (code,),
+                )
+            portfolio_deleted = cursor.rowcount
+
+            if user_id:
+                cursor.execute(
+                    'DELETE FROM transactions WHERE code = ? AND user_id = ?',
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM transactions WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                    (code,),
+                )
+            tx_deleted = cursor.rowcount
+
+            if portfolio_deleted <= 0 and tx_deleted <= 0:
+                conn.rollback()
+                logger.warning(f"Corrective delete found no records: {code}")
+                return None
+
+            if user_id:
+                cursor.execute(
+                    'DELETE FROM daily_snapshots WHERE date >= ? AND user_id = ?',
+                    (from_date, user_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM daily_snapshots WHERE date >= ? AND (user_id IS NULL OR user_id = '')",
+                    (from_date,),
+                )
+            snapshots_deleted = cursor.rowcount
+
+            conn.commit()
+            logger.info(
+                "Corrective delete done: code=%s from_date=%s portfolio=%s tx=%s snapshots=%s",
+                code,
+                from_date,
+                portfolio_deleted,
+                tx_deleted,
+                snapshots_deleted,
+            )
+            return {
+                'portfolio': int(portfolio_deleted),
+                'transactions': int(tx_deleted),
+                'snapshots': int(snapshots_deleted),
+                'from_date': from_date,
+            }
+        except Exception as e:
+            logger.error(f"Failed to corrective delete asset: {e}")
+            conn.rollback()
+            return None
+        finally:
+            conn.close()
     
     def buy_asset(self, code: str, price: float, qty: float, user_id: str = None) -> bool:
         """加仓"""

@@ -102,7 +102,11 @@ class StartupSplashPage extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.account_balance_wallet, size: 56, color: Colors.white),
+                const Icon(
+                  Icons.account_balance_wallet,
+                  size: 56,
+                  color: Colors.white,
+                ),
                 const SizedBox(height: 12),
                 const Text(
                   '咔咔记账',
@@ -119,7 +123,9 @@ class StartupSplashPage extends StatelessWidget {
                   height: 22,
                   child: CircularProgressIndicator(
                     strokeWidth: 2.5,
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
                     backgroundColor: Colors.white.withOpacity(0.3),
                   ),
                 ),
@@ -164,7 +170,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _startPriceTimer();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _stopPriceTimer();
     }
   }
@@ -215,16 +222,19 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void _showQuickAdd() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) => const AddAssetDialog(),
+      builder: (dialogContext) => AddAssetDialog(hostContext: context),
     );
   }
 
   void _showAddInvestment() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) => const InvestTradeDialog(mode: 'add'),
+      builder: (dialogContext) =>
+          InvestTradeDialog(hostContext: context, mode: 'add'),
     );
   }
 
@@ -239,10 +249,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         child: IndexedStack(
           index: _currentIndex,
           children: [
-            HomePage(
-              onNavigate: _navigateTo,
-              onSwitchTab: _switchTab,
-            ),
+            HomePage(onNavigate: _navigateTo, onSwitchTab: _switchTab),
             const InvestPage(),
             const AnalysisPage(),
             const NewsPage(),
@@ -253,7 +260,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       floatingActionButton: _currentIndex == 0 || _currentIndex == 1
           ? FloatingActionButton.small(
               heroTag: _currentIndex == 0 ? 'add_asset_home' : 'add_investment',
-              onPressed: _currentIndex == 0 ? _showQuickAdd : _showAddInvestment,
+              onPressed: _currentIndex == 0
+                  ? _showQuickAdd
+                  : _showAddInvestment,
               backgroundColor: AppTheme.accent,
               child: Icon(
                 Icons.add,
@@ -267,7 +276,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         decoration: BoxDecoration(
           color: AppTheme.navBg,
           border: Border(
-            top: BorderSide(color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.3), width: 1),
+            top: BorderSide(
+              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.3),
+              width: 1,
+            ),
           ),
           boxShadow: AppTheme.navShadow,
         ),
@@ -278,8 +290,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.home_outlined, Icons.home, '首页'),
-                _buildNavItem(1, Icons.business_center_outlined, Icons.business_center, '投资'),
-                _buildNavItem(2, Icons.insert_chart_outlined, Icons.insert_chart, '分析'),
+                _buildNavItem(
+                  1,
+                  Icons.business_center_outlined,
+                  Icons.business_center,
+                  '投资',
+                ),
+                _buildNavItem(
+                  2,
+                  Icons.insert_chart_outlined,
+                  Icons.insert_chart,
+                  '分析',
+                ),
                 _buildNavItem(3, Icons.flash_on_outlined, Icons.flash_on, '快讯'),
                 _buildNavItem(4, Icons.person_outline, Icons.person, '我的'),
               ],
@@ -290,7 +312,12 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    IconData activeIcon,
+    String label,
+  ) {
     final isSelected = _currentIndex == index;
     return Expanded(
       child: Material(

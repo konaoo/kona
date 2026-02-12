@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
+import '../models/asset_action_result.dart';
 import '../models/portfolio.dart';
 import 'top_toast.dart';
 
@@ -39,14 +40,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
+  bool get _isSell => widget.mode == 'sell';
   bool get _isTrade => widget.mode == 'trade';
   bool get _isAdjust => _tradeMode == 'adjust';
 
   @override
   void initState() {
     super.initState();
-    if (_isTrade && widget.item != null) {
-      _adjustController.text = widget.item!.adjustment.toStringAsFixed(2);
+    if (!_isAdd && widget.item != null) {
+      _prefillPriceFromCurrent();
+      if (_isTrade) {
+        _tradeMode = 'buy';
+        _adjustController.clear();
+      }
     }
   }
 
@@ -154,7 +160,37 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
   }
 
+  String _formatInputNumber(double value) {
+    final text = value.toStringAsFixed(3);
+    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  void _prefillPriceFromCurrent() {
+    final item = widget.item;
+    if (item == null) return;
+    final appState = context.read<AppState>();
+    final livePrice = appState.prices[item.code]?.price ?? 0;
+    final defaultPrice = livePrice > 0 ? livePrice : item.price;
+    if (defaultPrice > 0) {
+      _priceController.text = _formatInputNumber(defaultPrice);
+    }
+  }
+
+  void _setTradeMode(String mode) {
+    if (_saving || _tradeMode == mode) return;
+    setState(() {
+      _tradeMode = mode;
+      _errorText = null;
+      if (mode == 'adjust') {
+        _adjustController.clear();
+      } else if (_priceController.text.trim().isEmpty) {
+        _prefillPriceFromCurrent();
+      }
+    });
+  }
+
   Future<void> _submit() async {
+    if (_saving) return;
     final appState = context.read<AppState>();
     final toastContext = widget.hostContext ?? context;
 
@@ -166,7 +202,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _errorText = null;
     });
 
-    late final Future<bool> actionFuture;
+    late final Future<AssetActionResult> actionFuture;
     if (_isAdd) {
       final priceStr = _priceController.text.trim();
       final qtyStr = _qtyController.text.trim();
@@ -272,9 +308,59 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       Navigator.pop(context);
     }
     unawaited(() async {
-      final ok = await actionFuture;
-      if (!ok && toastContext.mounted) {
-        TopToast.showError(toastContext, '保存失败，请稍后重试');
+      final result = await actionFuture;
+      if (!toastContext.mounted) return;
+      if (!result.ok) {
+        TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
+      }
+    }());
+  }
+
+  Future<void> _confirmCorrectiveDelete() async {
+    if (_saving) return;
+    final item = widget.item;
+    if (item == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('删除并清理历史'),
+          content: Text(
+            '将删除「${item.name}」持仓、相关交易记录，并清理受影响快照区间。此操作不可撤销，是否继续？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    // ignore: use_build_context_synchronously
+    final appState = context.read<AppState>();
+    // ignore: use_build_context_synchronously
+    final toastContext = widget.hostContext ?? context;
+    // ignore: use_build_context_synchronously
+    Navigator.of(context).pop();
+    // ignore: use_build_context_synchronously
+    TopToast.showSuccess(toastContext, '已删除');
+    unawaited(() async {
+      final result = await appState.deleteInvestment(
+        code: item.code,
+        corrective: true,
+        awaitRefresh: false,
+      );
+      // ignore: use_build_context_synchronously
+      if (!toastContext.mounted) return;
+      if (!result.ok) {
+        TopToast.showError(toastContext, result.message ?? '删除失败，请稍后重试');
       }
     }());
   }
@@ -346,7 +432,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       children: [
         Expanded(
           child: InkWell(
-            onTap: () => setState(() => _tradeMode = 'buy'),
+            onTap: () => _setTradeMode('buy'),
             borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -378,7 +464,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         const SizedBox(width: 8),
         Expanded(
           child: InkWell(
-            onTap: () => setState(() => _tradeMode = 'sell'),
+            onTap: () => _setTradeMode('sell'),
             borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -410,7 +496,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         const SizedBox(width: 8),
         Expanded(
           child: InkWell(
-            onTap: () => setState(() => _tradeMode = 'adjust'),
+            onTap: () => _setTradeMode('adjust'),
             borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -451,7 +537,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         ? '买入 / 卖出 / 调整'
         : _isBuy
         ? '买入'
-        : '卖出';
+        : (_isSell ? '卖出' : '买入 / 卖出 / 调整');
     final actionColor = (_isTrade ? _tradeMode == 'buy' : _isBuy)
         ? AppTheme.accent
         : (_isTrade && _tradeMode == 'adjust'
@@ -588,6 +674,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '数量'),
+                  ),
+                ],
+                if (_isTrade) ...[
+                  const SizedBox(height: Spacing.md),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : _confirmCorrectiveDelete,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.danger,
+                        side: BorderSide(
+                          color: AppTheme.danger.withOpacity(0.7),
+                          width: 1,
+                        ),
+                      ),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('删除并清理历史'),
+                    ),
                   ),
                 ],
                 if (_errorText != null) ...[

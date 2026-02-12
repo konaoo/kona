@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/asset_action_result.dart';
@@ -149,6 +150,28 @@ class ApiService {
     return AssetActionResult.failure(fallback);
   }
 
+  String _newRequestId() {
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final rand = Random.secure().nextInt(0x7fffffff).toRadixString(16);
+    return '$ts-$rand';
+  }
+
+  Map<String, dynamic> _toMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
+  AssetActionResult _okResultOrFailure(dynamic response) {
+    final data = _toMap(response);
+    if (data.isEmpty) return const AssetActionResult.success();
+    final status = data['status']?.toString().trim();
+    if (status == 'ok') return const AssetActionResult.success();
+    final error = data['error']?.toString().trim();
+    final message = (error != null && error.isNotEmpty) ? error : '操作失败，请稍后重试';
+    return AssetActionResult.failure(message);
+  }
+
   // ============================================================
   // 认证相关
   // ============================================================
@@ -212,84 +235,122 @@ class ApiService {
   }
 
   /// 添加投资资产
-  Future<bool> addPortfolioAsset(
+  Future<AssetActionResult> addPortfolioAsset(
     String code,
     String name,
     double price,
     double qty, {
     String? curr,
     String? assetType,
+    String? requestId,
   }) async {
     try {
-      await _post(ApiConfig.portfolioAdd, {
+      final response = await _post(ApiConfig.portfolioAdd, {
         'code': code,
         'name': name,
         'price': price,
         'qty': qty,
         if (curr != null && curr.isNotEmpty) 'curr': curr,
         if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
+        'request_id': requestId ?? _newRequestId(),
       });
-      return true;
+      return _okResultOrFailure(response);
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 买入（加仓）
-  Future<bool> buyPortfolioAsset(String code, double price, double qty) async {
+  Future<AssetActionResult> buyPortfolioAsset(
+    String code,
+    double price,
+    double qty, {
+    String? requestId,
+  }) async {
     try {
-      await _post(ApiConfig.portfolioBuy, {
+      final response = await _post(ApiConfig.portfolioBuy, {
         'code': code,
         'price': price,
         'qty': qty,
+        'request_id': requestId ?? _newRequestId(),
       });
-      return true;
+      return _okResultOrFailure(response);
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 卖出（减仓）
-  Future<bool> sellPortfolioAsset(String code, double price, double qty) async {
+  Future<AssetActionResult> sellPortfolioAsset(
+    String code,
+    double price,
+    double qty, {
+    String? requestId,
+  }) async {
     try {
-      await _post(ApiConfig.portfolioSell, {
+      final response = await _post(ApiConfig.portfolioSell, {
         'code': code,
         'price': price,
         'qty': qty,
+        'request_id': requestId ?? _newRequestId(),
       });
-      return true;
+      return _okResultOrFailure(response);
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 修正资产（数量/成本/调整）
-  Future<bool> modifyPortfolioAsset(
+  Future<AssetActionResult> modifyPortfolioAsset(
     String code,
     double qty,
     double price,
     double adjustment,
+    {String? requestId}
   ) async {
     try {
-      await _post(ApiConfig.portfolioModify, {
+      final response = await _post(ApiConfig.portfolioModify, {
         'code': code,
         'qty': qty,
         'price': price,
         'adjustment': adjustment,
+        'request_id': requestId ?? _newRequestId(),
       });
-      return true;
+      return _okResultOrFailure(response);
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 删除持仓
-  Future<bool> deletePortfolioAsset(String code) async {
+  Future<AssetActionResult> deletePortfolioAsset(
+    String code, {
+    String? requestId,
+  }) async {
     try {
-      await _post(ApiConfig.portfolioDelete, {'code': code});
-      return true;
+      final response = await _post(ApiConfig.portfolioDelete, {
+        'code': code,
+        'request_id': requestId ?? _newRequestId(),
+      });
+      return _okResultOrFailure(response);
     } catch (e) {
-      return false;
+      return _failureResult(e);
+    }
+  }
+
+  /// 删除持仓并清理历史交易/快照污染
+  Future<AssetActionResult> deletePortfolioAssetCorrective(
+    String code, {
+    String? requestId,
+  }) async {
+    try {
+      final response = await _post(ApiConfig.portfolioDeleteCorrective, {
+        'code': code,
+        'request_id': requestId ?? _newRequestId(),
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
     }
   }
 
