@@ -330,7 +330,8 @@ class AppState extends ChangeNotifier {
         (key, value) => MapEntry(key, {
           'price': value.price,
           'yclose': value.yclose,
-          'chg': value.change,
+          'amt': value.change,
+          'chg': value.changePct,
         }),
       ),
     });
