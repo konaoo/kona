@@ -98,9 +98,15 @@ class ApiService {
   }
 
   /// 通用 POST 请求
-  Future<dynamic> _post(String endpoint, Map<String, dynamic> data) async {
+  /// 注意：非幂等写操作默认不重试，避免重复提交。
+  Future<dynamic> _post(
+    String endpoint,
+    Map<String, dynamic> data, {
+    bool retryOnTransient = false,
+  }) async {
     Object? lastError;
-    for (int attempt = 0; attempt < 2; attempt++) {
+    final maxAttempts = retryOnTransient ? 2 : 1;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         final response = await _client
             .post(
@@ -123,7 +129,7 @@ class ApiService {
       } catch (e) {
         if (e is ApiException) rethrow;
         lastError = e;
-        if (_isRetryableError(e) && attempt == 0) {
+        if (_isRetryableError(e) && attempt < maxAttempts - 1) {
           await Future<void>.delayed(const Duration(milliseconds: 300));
           continue;
         }
@@ -404,7 +410,7 @@ class ApiService {
         'name': name,
         'amount': amount,
         'curr': curr,
-      });
+      }, retryOnTransient: true);
       return const AssetActionResult.success();
     } catch (e) {
       return _failureResult(e);
@@ -424,7 +430,7 @@ class ApiService {
         'name': name,
         'amount': amount,
         'curr': curr,
-      });
+      }, retryOnTransient: true);
       return const AssetActionResult.success();
     } catch (e) {
       return _failureResult(e);
@@ -444,7 +450,7 @@ class ApiService {
         'name': name,
         'amount': amount,
         'curr': curr,
-      });
+      }, retryOnTransient: true);
       return const AssetActionResult.success();
     } catch (e) {
       return _failureResult(e);
