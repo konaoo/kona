@@ -1185,9 +1185,13 @@ class AppState extends ChangeNotifier {
     if (!changed) return const AssetActionResult.failure('未找到该持仓');
     _recalculatePortfolioTotals();
 
-    final result = corrective
+    var result = corrective
         ? await _api.deletePortfolioAssetCorrective(code)
         : await _api.deletePortfolioAsset(code);
+    if (!result.ok && corrective) {
+      // 纠错删除失败时回退到普通删除，避免列表回弹。
+      result = await _api.deletePortfolioAsset(code);
+    }
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot);
       return result;

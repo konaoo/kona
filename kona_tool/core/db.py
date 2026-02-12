@@ -842,9 +842,7 @@ class DatabaseManager:
             tx_deleted = cursor.rowcount
 
             if portfolio_deleted <= 0 and tx_deleted <= 0:
-                conn.rollback()
-                logger.warning(f"Corrective delete found no records: {code}")
-                return None
+                logger.info(f"Corrective delete noop: {code}")
 
             if user_id:
                 cursor.execute(
