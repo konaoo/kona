@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/asset_action_result.dart';
@@ -44,57 +46,91 @@ class ApiService {
     return '请求失败: ${response.statusCode}';
   }
 
+  bool _isRetryableError(Object error) {
+    return error is TimeoutException ||
+        error is SocketException ||
+        error is http.ClientException;
+  }
+
+  ApiException _mapNetworkError(Object error) {
+    if (error is TimeoutException) {
+      return ApiException('请求超时，请稍后重试');
+    }
+    if (error is SocketException || error is http.ClientException) {
+      return ApiException('网络连接异常，请检查网络后重试');
+    }
+    return ApiException('网络连接失败: $error');
+  }
+
   /// 通用 GET 请求
   Future<dynamic> _get(String endpoint) async {
-    try {
-      final response = await _client
-          .get(
-            Uri.parse('${ApiConfig.baseUrl}$endpoint'),
-            headers: _getHeaders(),
-          )
-          .timeout(const Duration(seconds: ApiConfig.timeout));
+    Object? lastError;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client
+            .get(
+              Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+              headers: _getHeaders(),
+            )
+            .timeout(const Duration(seconds: ApiConfig.timeout));
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else if (response.statusCode == 401) {
-        throw ApiException('未登录或登录已过期', statusCode: 401);
-      } else {
-        throw ApiException(
-          _extractErrorMessage(response),
-          statusCode: response.statusCode,
-        );
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else if (response.statusCode == 401) {
+          throw ApiException('未登录或登录已过期', statusCode: 401);
+        } else {
+          throw ApiException(
+            _extractErrorMessage(response),
+            statusCode: response.statusCode,
+          );
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        lastError = e;
+        if (_isRetryableError(e) && attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          continue;
+        }
+        throw _mapNetworkError(e);
       }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('网络连接失败: $e');
     }
+    throw _mapNetworkError(lastError ?? 'unknown error');
   }
 
   /// 通用 POST 请求
   Future<dynamic> _post(String endpoint, Map<String, dynamic> data) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse('${ApiConfig.baseUrl}$endpoint'),
-            headers: _getHeaders(),
-            body: jsonEncode(data),
-          )
-          .timeout(const Duration(seconds: ApiConfig.timeout));
+    Object? lastError;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+              headers: _getHeaders(),
+              body: jsonEncode(data),
+            )
+            .timeout(const Duration(seconds: ApiConfig.timeout));
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else if (response.statusCode == 401) {
-        throw ApiException('未登录或登录已过期', statusCode: 401);
-      } else {
-        throw ApiException(
-          _extractErrorMessage(response),
-          statusCode: response.statusCode,
-        );
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else if (response.statusCode == 401) {
+          throw ApiException('未登录或登录已过期', statusCode: 401);
+        } else {
+          throw ApiException(
+            _extractErrorMessage(response),
+            statusCode: response.statusCode,
+          );
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        lastError = e;
+        if (_isRetryableError(e) && attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          continue;
+        }
+        throw _mapNetworkError(e);
       }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('网络连接失败: $e');
     }
+    throw _mapNetworkError(lastError ?? 'unknown error');
   }
 
   AssetActionResult _failureResult(
