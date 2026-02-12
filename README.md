@@ -295,6 +295,19 @@ python3 app.py
 5. 刷新 `kona.service` 并重启
 6. 健康检查 `/api/rates`
 
+### 7.1.1 分支与 AWS 自动拉取约定（很重要）
+
+- 当前线上自动部署/自动拉取以 `main` 为准
+- 推送到 `codex/*` 或其他功能分支，不会触发线上自动更新
+- 若修复先在功能分支完成，必须再合入 `main`（merge 或 cherry-pick）并 `push origin main`
+
+推荐发布顺序：
+
+1. 在功能分支开发与验证
+2. 通过 PR 合并到 `main`（或将提交 cherry-pick 到 `main`）
+3. push `main` 后等待 Actions 门禁与部署
+4. 在 AWS 检查服务状态与关键页面
+
 ### 7.2 生产运行（服务托管）
 
 推荐用 `systemd`（已在线上启用）：
@@ -458,6 +471,7 @@ LOGIN_BYPASS_EMAILS=konaeee@gmail.com
 - 不要把 `.env`、数据库、私钥提交到仓库
 - 每次改 API，更新 `docs/API.md` 与 `docs/API_DETAILS.md`
 - 涉及统计口径改动，必须记录“实时/快照”来源
+- 涉及线上发布时，最终上线提交必须确认已进入 `main`
 
 ---
 
