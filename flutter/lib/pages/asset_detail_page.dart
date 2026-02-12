@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
@@ -194,12 +195,16 @@ class AssetDetailPage extends StatelessWidget {
     );
   }
 
-  void _showDeleteDialog(BuildContext context, Asset asset, AppState appState) {
+  void _showDeleteDialog(
+    BuildContext pageContext,
+    Asset asset,
+    AppState appState,
+  ) {
     if (asset.id == null) return;
     showDialog(
-      context: context,
+      context: pageContext,
       barrierColor: Colors.black.withOpacity(0.55),
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(
@@ -252,7 +257,7 @@ class AssetDetailPage extends StatelessWidget {
                       children: [
                         Expanded(
                           child: TextButton(
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: () => Navigator.pop(dialogContext),
                             child: Text('取消'),
                           ),
                         ),
@@ -262,23 +267,25 @@ class AssetDetailPage extends StatelessWidget {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.danger,
                             ),
-                            onPressed: () async {
-                              final result = await appState.deleteAsset(
-                                type: assetType,
-                                id: asset.id!,
-                                awaitRefresh: false,
-                              );
-                              if (context.mounted) {
-                                Navigator.pop(context);
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              TopToast.showInfo(pageContext, '正在删除...');
+                              unawaited(() async {
+                                final result = await appState.deleteAsset(
+                                  type: assetType,
+                                  id: asset.id!,
+                                  awaitRefresh: false,
+                                );
+                                if (!pageContext.mounted) return;
                                 if (!result.ok) {
                                   TopToast.showError(
-                                    context,
+                                    pageContext,
                                     result.message ?? '删除失败，请稍后重试',
                                   );
                                 } else {
-                                  TopToast.showSuccess(context, '已删除');
+                                  TopToast.showSuccess(pageContext, '已删除');
                                 }
-                              }
+                              }());
                             },
                             child: Text('删除'),
                           ),
@@ -299,7 +306,8 @@ class AssetDetailPage extends StatelessWidget {
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) => AddAssetDialog(fixedAssetType: assetType),
+      builder: (dialogContext) =>
+          AddAssetDialog(fixedAssetType: assetType, hostContext: context),
     );
   }
 
@@ -307,8 +315,11 @@ class AssetDetailPage extends StatelessWidget {
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (context) =>
-          AddAssetDialog(fixedAssetType: assetType, editingAsset: asset),
+      builder: (dialogContext) => AddAssetDialog(
+        fixedAssetType: assetType,
+        editingAsset: asset,
+        hostContext: context,
+      ),
     );
   }
 }

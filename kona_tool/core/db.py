@@ -39,8 +39,19 @@ class DatabaseManager:
         """获取数据库连接"""
         db_parent = Path(self.db_path).expanduser().resolve().parent
         db_parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        timeout = float(getattr(config, "SQLITE_TIMEOUT_SECONDS", 1.5))
+        busy_timeout = int(getattr(config, "SQLITE_BUSY_TIMEOUT_MS", 1500))
+        journal_mode = str(getattr(config, "SQLITE_JOURNAL_MODE", "WAL")).upper()
+        synchronous = str(getattr(config, "SQLITE_SYNCHRONOUS", "NORMAL")).upper()
+        conn = sqlite3.connect(
+            self.db_path,
+            timeout=timeout,
+            check_same_thread=False,
+        )
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout={busy_timeout}")
+        conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        conn.execute(f"PRAGMA synchronous={synchronous}")
         return conn
     
     def __enter__(self):

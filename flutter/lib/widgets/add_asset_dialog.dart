@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +10,14 @@ import 'top_toast.dart';
 class AddAssetDialog extends StatefulWidget {
   final String? fixedAssetType; // cash | other | liability
   final Asset? editingAsset;
+  final BuildContext? hostContext;
 
-  const AddAssetDialog({super.key, this.fixedAssetType, this.editingAsset});
+  const AddAssetDialog({
+    super.key,
+    this.fixedAssetType,
+    this.editingAsset,
+    this.hostContext,
+  });
 
   @override
   State<AddAssetDialog> createState() => _AddAssetDialogState();
@@ -93,34 +100,41 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
       return;
     }
 
-    final result = _isEdit
-        ? await appState.updateAsset(
+    final toastContext = widget.hostContext ?? context;
+    final actionFuture = _isEdit
+        ? appState.updateAsset(
             type: _assetType,
             id: widget.editingAsset!.id!,
             name: name,
             amount: amount,
             awaitRefresh: false,
           )
-        : await appState.addAsset(
+        : appState.addAsset(
             type: _assetType,
             name: name,
             amount: amount,
             awaitRefresh: false,
           );
 
-    if (!context.mounted) return;
-
-    if (!result.ok) {
-      setState(() {
-        _saving = false;
-        _errorText = result.message ?? '保存失败，请稍后重试';
-      });
-      TopToast.showError(context, result.message ?? '保存失败，请稍后重试');
-      return;
+    TopToast.showInfo(toastContext, '正在保存...');
+    if (context.mounted) {
+      Navigator.pop(context);
     }
 
-    TopToast.showSuccess(context, '已保存');
-    Navigator.pop(context);
+    unawaited(() async {
+      try {
+        final result = await actionFuture;
+        if (!toastContext.mounted) return;
+        if (!result.ok) {
+          TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
+          return;
+        }
+        TopToast.showSuccess(toastContext, '已保存');
+      } catch (e) {
+        if (!toastContext.mounted) return;
+        TopToast.showError(toastContext, '保存失败，请稍后重试');
+      }
+    }());
   }
 
   Widget _buildTypeChips() {

@@ -91,6 +91,10 @@ app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 db = DatabaseManager(str(config.DATABASE_PATH))
+_snapshot_lock = threading.Lock()
+_snapshot_inflight = set()
+_snapshot_last_run_ts = {}
+_SNAPSHOT_MIN_INTERVAL_SECONDS = 3.0
 
 
 def _client_ip() -> str:
@@ -836,7 +840,27 @@ def _save_snapshot_for_user(user_id=None):
 
 def _save_snapshot_for_user_async(user_id=None):
     """异步保存用户快照，避免阻塞资产接口响应。"""
-    threading.Thread(target=_save_snapshot_for_user, args=(user_id,), daemon=True).start()
+    uid = user_id or ''
+    now = time.time()
+    with _snapshot_lock:
+        last_run = _snapshot_last_run_ts.get(uid, 0.0)
+        if uid in _snapshot_inflight:
+            logger.info("[snapshot_skip_inflight] user_id=%s", uid)
+            return
+        if now - last_run < _SNAPSHOT_MIN_INTERVAL_SECONDS:
+            logger.info("[snapshot_skip_throttle] user_id=%s interval=%.2fs", uid, now - last_run)
+            return
+        _snapshot_inflight.add(uid)
+
+    def _worker():
+        try:
+            _save_snapshot_for_user(user_id if uid else None)
+        finally:
+            with _snapshot_lock:
+                _snapshot_inflight.discard(uid)
+                _snapshot_last_run_ts[uid] = time.time()
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _handle_asset_add(add_func, asset_type, user_id=None):
