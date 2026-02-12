@@ -67,12 +67,68 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoggedIn = context.watch<AppState>().isLoggedIn;
-    if (isLoggedIn) {
-      return MainApp(onLogout: _onLogout);
-    } else {
-      return LoginPage(onLoginSuccess: _onLoginSuccess);
+    final appState = context.watch<AppState>();
+    switch (appState.sessionBootState) {
+      case SessionBootState.initializing:
+        return const StartupSplashPage();
+      case SessionBootState.authenticated:
+        return MainApp(onLogout: _onLogout);
+      case SessionBootState.unauthenticated:
+        return LoginPage(onLoginSuccess: _onLoginSuccess);
     }
+  }
+}
+
+class StartupSplashPage extends StatelessWidget {
+  const StartupSplashPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppTheme.accent.withOpacity(0.9),
+              AppTheme.accent.withOpacity(0.65),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.account_balance_wallet, size: 56, color: Colors.white),
+                const SizedBox(height: 12),
+                const Text(
+                  '咔咔记账',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    backgroundColor: Colors.white.withOpacity(0.3),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

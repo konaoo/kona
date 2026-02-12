@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
@@ -6,19 +8,29 @@ import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
 
+enum SessionBootState { initializing, authenticated, unauthenticated }
+
 /// 应用状态管理
 class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
   final SecureStorageService _secureStorage = SecureStorageService();
+  final Future<String?> Function()? _tokenLoaderOverride;
+  final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
 
-  AppState() {
+  AppState({
+    Future<String?> Function()? tokenLoader,
+    Future<Map<String, dynamic>?> Function()? profileLoader,
+  }) : _tokenLoaderOverride = tokenLoader,
+       _profileLoaderOverride = profileLoader {
     _loadTheme();
     _restoreSession();
   }
 
   // 用户状态
   bool _isLoggedIn = false;
+  SessionBootState _sessionBootState = SessionBootState.initializing;
+  bool _isSessionChecking = false;
   String? _token;
   String? _email;
   String? _userId;
@@ -67,6 +79,8 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   bool get isLoggedIn => _isLoggedIn;
+  SessionBootState get sessionBootState => _sessionBootState;
+  bool get isSessionReady => _sessionBootState != SessionBootState.initializing;
   String? get token => _token;
   String? get email => _email;
   String? get userId => _userId;
@@ -122,7 +136,9 @@ class AppState extends ChangeNotifier {
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
     if (_currentCategory == 'all') return _portfolio;
-    return _portfolio.where((item) => item.marketType == _currentCategory).toList();
+    return _portfolio
+        .where((item) => item.marketType == _currentCategory)
+        .toList();
   }
 
   /// 投资总市值
@@ -209,17 +225,23 @@ class AppState extends ChangeNotifier {
 
     final cachedCash = await _cache.getJson('cache_cash_assets');
     if (cachedCash != null && cachedCash['items'] is List) {
-      _cashAssets = (cachedCash['items'] as List).map((e) => Asset.fromJson(e)).toList();
+      _cashAssets = (cachedCash['items'] as List)
+          .map((e) => Asset.fromJson(e))
+          .toList();
     }
 
     final cachedOther = await _cache.getJson('cache_other_assets');
     if (cachedOther != null && cachedOther['items'] is List) {
-      _otherAssets = (cachedOther['items'] as List).map((e) => Asset.fromJson(e)).toList();
+      _otherAssets = (cachedOther['items'] as List)
+          .map((e) => Asset.fromJson(e))
+          .toList();
     }
 
     final cachedLiabilities = await _cache.getJson('cache_liabilities');
     if (cachedLiabilities != null && cachedLiabilities['items'] is List) {
-      _liabilities = (cachedLiabilities['items'] as List).map((e) => Asset.fromJson(e)).toList();
+      _liabilities = (cachedLiabilities['items'] as List)
+          .map((e) => Asset.fromJson(e))
+          .toList();
     }
 
     final cachedPrices = await _cache.getJson('cache_prices');
@@ -270,7 +292,10 @@ class AppState extends ChangeNotifier {
     _themeMode = mode;
     AppTheme.setMode(mode);
     if (save) {
-      await _cache.setString('theme_mode', mode == ThemeMode.light ? 'light' : 'dark');
+      await _cache.setString(
+        'theme_mode',
+        mode == ThemeMode.light ? 'light' : 'dark',
+      );
     }
     notifyListeners();
   }
@@ -298,18 +323,16 @@ class AppState extends ChangeNotifier {
     await _cache.setJson('cache_liabilities', {
       'items': _liabilities.map((e) => e.toJson()).toList(),
     });
-    await _cache.setJson('cache_history', {
-      'items': history,
-    });
-    await _cache.setJson('cache_exchange_rates', {
-      'rates': _exchangeRates,
-    });
+    await _cache.setJson('cache_history', {'items': history});
+    await _cache.setJson('cache_exchange_rates', {'rates': _exchangeRates});
     await _cache.setJson('cache_prices', {
-      'items': _prices.map((key, value) => MapEntry(key, {
-        'price': value.price,
-        'yclose': value.yclose,
-        'chg': value.change,
-      })),
+      'items': _prices.map(
+        (key, value) => MapEntry(key, {
+          'price': value.price,
+          'yclose': value.yclose,
+          'chg': value.change,
+        }),
+      ),
     });
   }
 
@@ -325,13 +348,21 @@ class AppState extends ChangeNotifier {
         _userNumber = result['user_number'];
         _nickname = result['nickname'];
         _api.setToken(result['token']);
-        await _secureStorage.setToken(result['token']);
+        _sessionBootState = SessionBootState.authenticated;
+        try {
+          await _secureStorage.setToken(result['token']);
+        } catch (e) {
+          // 登录应以服务端结果为准，持久化失败只影响下次自动登录。
+          debugPrint('保存 token 失败（不影响本次登录）: $e');
+        }
         notifyListeners();
         _loadProfileSilently();
         return true;
       }
+      debugPrint('登录失败：接口未返回 token');
       return false;
     } catch (e) {
+      debugPrint('登录异常: $e');
       return false;
     }
   }
@@ -389,6 +420,7 @@ class AppState extends ChangeNotifier {
     _nickname = nickname;
     _avatar = avatar;
     _api.setToken(token);
+    _sessionBootState = SessionBootState.authenticated;
     await _secureStorage.setToken(token);
     notifyListeners();
   }
@@ -396,6 +428,7 @@ class AppState extends ChangeNotifier {
   /// 退出登录
   void logout() {
     _isLoggedIn = false;
+    _sessionBootState = SessionBootState.unauthenticated;
     _token = null;
     _email = null;
     _userId = null;
@@ -409,29 +442,83 @@ class AppState extends ChangeNotifier {
     _otherAssets = [];
     _liabilities = [];
     _portfolioLoaded = false;
-    _secureStorage.clearToken();
+    unawaited(_secureStorage.clearToken());
     notifyListeners();
   }
 
   Future<void> _restoreSession() async {
-    final token = await _secureStorage.getToken();
-    if (token == null || token.isEmpty) return;
-    _token = token;
-    _api.setToken(token);
-    final profile = await _api.getProfile();
-    if (profile == null) {
-      _token = null;
-      _api.clearToken();
-      await _secureStorage.clearToken();
+    if (_isSessionChecking) return;
+    _isSessionChecking = true;
+
+    String? token;
+    try {
+      token = _tokenLoaderOverride != null
+          ? await _tokenLoaderOverride!()
+          : await _secureStorage.getToken();
+    } catch (e) {
+      debugPrint('读取 token 失败，跳过自动登录: $e');
+      _sessionBootState = SessionBootState.unauthenticated;
+      _isSessionChecking = false;
+      notifyListeners();
       return;
     }
+
+    if (token == null || token.isEmpty) {
+      _sessionBootState = SessionBootState.unauthenticated;
+      _isSessionChecking = false;
+      notifyListeners();
+      return;
+    }
+
+    _token = token;
     _isLoggedIn = true;
-    _email = profile['email'];
-    _userId = profile['id'];
-    _userNumber = profile['user_number'];
-    _nickname = profile['nickname'];
-    _avatar = profile['avatar'];
+    _api.setToken(token);
+    _sessionBootState = SessionBootState.authenticated;
+    _isSessionChecking = false;
     notifyListeners();
+    unawaited(_validateSessionInBackground());
+  }
+
+  Future<void> _validateSessionInBackground() async {
+    final profile = _profileLoaderOverride != null
+        ? await _profileLoaderOverride!()
+        : await _api.getProfile();
+    if (profile == null) {
+      await _clearSessionAndUnauthenticated();
+      return;
+    }
+
+    _email = profile['email']?.toString();
+    _userId = profile['id']?.toString() ?? profile['user_id']?.toString();
+    final userNumberRaw = profile['user_number'];
+    if (userNumberRaw is num) {
+      _userNumber = userNumberRaw.toInt();
+    } else {
+      _userNumber = null;
+    }
+    _nickname = profile['nickname']?.toString();
+    _avatar = profile['avatar']?.toString();
+    _isLoggedIn = true;
+    _sessionBootState = SessionBootState.authenticated;
+    notifyListeners();
+  }
+
+  Future<void> _clearSessionAndUnauthenticated() async {
+    _isLoggedIn = false;
+    _token = null;
+    _email = null;
+    _userId = null;
+    _userNumber = null;
+    _nickname = null;
+    _avatar = null;
+    _sessionBootState = SessionBootState.unauthenticated;
+    _api.clearToken();
+    notifyListeners();
+    try {
+      await _secureStorage.clearToken();
+    } catch (e) {
+      debugPrint('清理失效 token 失败: $e');
+    }
   }
 
   /// 切换金额隐藏
@@ -443,10 +530,7 @@ class AppState extends ChangeNotifier {
   /// 格式化金额（支持隐藏）
   String formatAmount(double value, {String prefix = '¥'}) {
     if (_amountHidden) return '****';
-    return '$prefix${value.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}';
+    return '$prefix${value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
   }
 
   /// 设置分类
@@ -478,9 +562,15 @@ class AppState extends ChangeNotifier {
       ]);
 
       _cashAssets = (results[0] as List).map((e) => Asset.fromJson(e)).toList();
-      _otherAssets = (results[1] as List).map((e) => Asset.fromJson(e)).toList();
-      _liabilities = (results[2] as List).map((e) => Asset.fromJson(e)).toList();
-      _portfolio = (results[3] as List).map((e) => PortfolioItem.fromJson(e)).toList();
+      _otherAssets = (results[1] as List)
+          .map((e) => Asset.fromJson(e))
+          .toList();
+      _liabilities = (results[2] as List)
+          .map((e) => Asset.fromJson(e))
+          .toList();
+      _portfolio = (results[3] as List)
+          .map((e) => PortfolioItem.fromJson(e))
+          .toList();
 
       // 获取价格
       if (_portfolio.isNotEmpty) {
@@ -510,7 +600,9 @@ class AppState extends ChangeNotifier {
           if (pricesData.containsKey(apiCode)) {
             try {
               _prices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
-              debugPrint('成功解析价格: $originalCode (API: $apiCode) = ${pricesData[apiCode]}');
+              debugPrint(
+                '成功解析价格: $originalCode (API: $apiCode) = ${pricesData[apiCode]}',
+              );
             } catch (e) {
               debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
             }
@@ -573,10 +665,7 @@ class AppState extends ChangeNotifier {
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll() async {
-    await Future.wait([
-      refreshHomeData(),
-      loadExchangeRates(),
-    ]);
+    await Future.wait([refreshHomeData(), loadExchangeRates()]);
   }
 
   /// 添加资产（现金/其他/负债）
@@ -599,10 +688,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 删除资产（现金/其他/负债）
-  Future<bool> deleteAsset({
-    required String type,
-    required int id,
-  }) async {
+  Future<bool> deleteAsset({required String type, required int id}) async {
     bool ok = false;
     if (type == 'cash') {
       ok = await _api.deleteCashAsset(id);
@@ -630,7 +716,14 @@ class AppState extends ChangeNotifier {
     String? curr,
     String? assetType,
   }) async {
-    final ok = await _api.addPortfolioAsset(code, name, price, qty, curr: curr, assetType: assetType);
+    final ok = await _api.addPortfolioAsset(
+      code,
+      name,
+      price,
+      qty,
+      curr: curr,
+      assetType: assetType,
+    );
     if (!ok) return false;
     await refreshHomeData();
     return true;
@@ -698,17 +791,23 @@ class AppState extends ChangeNotifier {
 
     // 按日期排序
     final sortedHistory = List<Map<String, dynamic>>.from(
-      history.map((e) => e as Map<String, dynamic>)
+      history.map((e) => e as Map<String, dynamic>),
     );
     sortedHistory.sort((a, b) => a['date'].compareTo(b['date']));
 
     final latestSnapshotAsset = sortedHistory.last['total_asset'] as num;
     final currentSnapshot = latestSnapshotAsset.toDouble();
-    debugPrint('历史数据计算: 当前日期=${now.toString().substring(0,10)}, 快照总资产=$currentSnapshot');
+    debugPrint(
+      '历史数据计算: 当前日期=${now.toString().substring(0, 10)}, 快照总资产=$currentSnapshot',
+    );
     debugPrint('历史数据条数: ${sortedHistory.length}');
     if (sortedHistory.isNotEmpty) {
-      debugPrint('最早记录: ${sortedHistory.first['date']}, 资产=${sortedHistory.first['total_asset']}');
-      debugPrint('最新记录: ${sortedHistory.last['date']}, 资产=${sortedHistory.last['total_asset']}');
+      debugPrint(
+        '最早记录: ${sortedHistory.first['date']}, 资产=${sortedHistory.first['total_asset']}',
+      );
+      debugPrint(
+        '最新记录: ${sortedHistory.last['date']}, 资产=${sortedHistory.last['total_asset']}',
+      );
     }
 
     for (var item in sortedHistory) {
@@ -724,7 +823,10 @@ class AppState extends ChangeNotifier {
       }
 
       // 本月初数据（找到本月第一条记录）
-      if (date.year == now.year && date.month == now.month && monthStart == null && totalAsset != 0) {
+      if (date.year == now.year &&
+          date.month == now.month &&
+          monthStart == null &&
+          totalAsset != 0) {
         monthStart = totalAsset;
         monthFromCurrent = true;
         debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
@@ -761,7 +863,9 @@ class AppState extends ChangeNotifier {
     _monthChange = monthStart != null ? currentSnapshot - monthStart : 0;
     _yearChange = yearStart != null ? currentSnapshot - yearStart : 0;
 
-    debugPrint('计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)');
+    debugPrint(
+      '计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)',
+    );
   }
 
   /// 刷新投资组合
@@ -773,7 +877,9 @@ class AppState extends ChangeNotifier {
       if (_portfolio.isNotEmpty) {
         final codes = _portfolio.map((e) => e.code).toList();
         final pricesData = await _api.getPricesBatch(codes);
-        _prices = pricesData.map((key, value) => MapEntry(key, PriceInfo.fromJson(value)));
+        _prices = pricesData.map(
+          (key, value) => MapEntry(key, PriceInfo.fromJson(value)),
+        );
       }
 
       _totalInvest = investTotalMV;
@@ -813,10 +919,12 @@ class AppState extends ChangeNotifier {
     if (_amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
-    final text = absVal.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final text = absVal
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     return '$sign$text';
   }
 
@@ -825,15 +933,21 @@ class AppState extends ChangeNotifier {
     if (_amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
-    final text = absVal.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final text = absVal
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     return '$sign$symbol$text';
   }
 
   /// 格式化金额（紧凑：万/亿）
-  String formatCompactAmount(double value, {String prefix = '', int decimals = 1}) {
+  String formatCompactAmount(
+    double value, {
+    String prefix = '',
+    int decimals = 1,
+  }) {
     if (_amountHidden) return '****';
     final absVal = value.abs();
     if (absVal >= 100000000) {
@@ -842,15 +956,21 @@ class AppState extends ChangeNotifier {
     if (absVal >= 10000) {
       return '$prefix${(absVal / 10000).toStringAsFixed(decimals)}万';
     }
-    final text = absVal.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final text = absVal
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     return '$prefix$text';
   }
 
   /// 格式化盈亏（紧凑：万/亿 + 币种）
-  String formatCompactPnlWithCurrency(double value, String symbol, {int decimals = 1}) {
+  String formatCompactPnlWithCurrency(
+    double value,
+    String symbol, {
+    int decimals = 1,
+  }) {
     if (_amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
@@ -860,10 +980,12 @@ class AppState extends ChangeNotifier {
     if (absVal >= 10000) {
       return '$sign$symbol${(absVal / 10000).toStringAsFixed(decimals)}万';
     }
-    final text = absVal.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final text = absVal
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     return '$sign$symbol$text';
   }
 
@@ -878,10 +1000,12 @@ class AppState extends ChangeNotifier {
     if (absVal >= 10000) {
       return '$sign¥${(absVal / 10000).toStringAsFixed(0)}万';
     }
-    final text = absVal.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final text = absVal
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     return '$sign¥$text';
   }
 
