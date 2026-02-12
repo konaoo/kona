@@ -115,60 +115,67 @@ class AssetDetailPage extends StatelessWidget {
   }
 
   Widget _buildAssetItem(BuildContext context, Asset asset, AppState appState) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: Spacing.md),
-      padding: const EdgeInsets.all(Spacing.lg),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Row(
-        children: [
-          // 图标
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.accent.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _getIcon(),
-              color: AppTheme.accent,
-              size: 24,
-            ),
+        onTap: () => _showEditDialog(context, asset),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: Spacing.md),
+          padding: const EdgeInsets.all(Spacing.lg),
+          decoration: BoxDecoration(
+            color: AppTheme.bgCard,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
-          const SizedBox(width: Spacing.lg),
-          // 名称和金额
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  asset.name,
-                  style: TextStyle(
-                    fontSize: FontSize.lg,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
+          child: Row(
+            children: [
+              // 图标
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  asset.amount.toStringAsFixed(2),
-                  style: TextStyle(
-                    fontSize: FontSize.base,
-                    color: AppTheme.textSecondary,
-                  ),
+                child: Icon(
+                  _getIcon(),
+                  color: AppTheme.accent,
+                  size: 24,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: Spacing.lg),
+              // 名称和金额
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      asset.name,
+                      style: TextStyle(
+                        fontSize: FontSize.lg,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      asset.amount.toStringAsFixed(2),
+                      style: TextStyle(
+                        fontSize: FontSize.base,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 删除按钮
+              IconButton(
+                icon: Icon(Icons.delete_outline, color: AppTheme.danger),
+                onPressed: () => _showDeleteDialog(context, asset, appState),
+              ),
+            ],
           ),
-          // 删除按钮
-          IconButton(
-            icon: Icon(Icons.delete_outline, color: AppTheme.danger),
-            onPressed: () => _showDeleteDialog(context, asset, appState),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -237,15 +244,19 @@ class AssetDetailPage extends StatelessWidget {
                               backgroundColor: AppTheme.danger,
                             ),
                             onPressed: () async {
-                              final ok = await appState.deleteAsset(
+                              final result = await appState.deleteAsset(
                                 type: assetType,
                                 id: asset.id!,
                               );
                               if (context.mounted) {
                                 Navigator.pop(context);
-                                if (!ok) {
+                                if (!result.ok) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('删除失败，请稍后重试')),
+                                    SnackBar(content: Text(result.message ?? '删除失败，请稍后重试')),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('已删除')),
                                   );
                                 }
                               }
@@ -270,6 +281,17 @@ class AssetDetailPage extends StatelessWidget {
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (context) => AddAssetDialog(fixedAssetType: assetType),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, Asset asset) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => AddAssetDialog(
+        fixedAssetType: assetType,
+        editingAsset: asset,
+      ),
     );
   }
 }

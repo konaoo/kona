@@ -2,12 +2,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
+import '../models/asset.dart';
 import '../providers/app_state.dart';
 
 class AddAssetDialog extends StatefulWidget {
   final String? fixedAssetType; // cash | other | liability
+  final Asset? editingAsset;
 
-  const AddAssetDialog({super.key, this.fixedAssetType});
+  const AddAssetDialog({super.key, this.fixedAssetType, this.editingAsset});
 
   @override
   State<AddAssetDialog> createState() => _AddAssetDialogState();
@@ -20,12 +22,17 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
   String _assetType = 'cash';
   bool _saving = false;
   String? _errorText;
+  bool get _isEdit => widget.editingAsset != null;
 
   @override
   void initState() {
     super.initState();
     if (widget.fixedAssetType != null) {
       _assetType = widget.fixedAssetType!;
+    }
+    if (widget.editingAsset != null) {
+      _nameController.text = widget.editingAsset!.name;
+      _amountController.text = _formatAmountInput(widget.editingAsset!.amount);
     }
   }
 
@@ -49,6 +56,14 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     }
   }
 
+  String _formatAmountInput(double amount) {
+    final rounded = amount.roundToDouble();
+    if (rounded == amount) {
+      return rounded.toStringAsFixed(0);
+    }
+    return amount.toString();
+  }
+
   Future<void> _save(AppState appState) async {
     final name = _nameController.text.trim();
     final amountStr = _amountController.text.trim();
@@ -69,21 +84,42 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
       _errorText = null;
     });
 
-    final ok = await appState.addAsset(
-      type: _assetType,
-      name: name,
-      amount: amount,
-    );
-
-    if (!ok) {
+    if (_isEdit && widget.editingAsset?.id == null) {
       setState(() {
         _saving = false;
-        _errorText = '保存失败，请稍后重试';
+        _errorText = '资产ID无效，无法保存';
       });
       return;
     }
 
-    if (mounted) Navigator.pop(context);
+    final result = _isEdit
+        ? await appState.updateAsset(
+            type: _assetType,
+            id: widget.editingAsset!.id!,
+            name: name,
+            amount: amount,
+          )
+        : await appState.addAsset(
+            type: _assetType,
+            name: name,
+            amount: amount,
+          );
+
+    if (!result.ok) {
+      setState(() {
+        _saving = false;
+        _errorText = result.message ?? '保存失败，请稍后重试';
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.pop(context);
+    if (_isEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已保存')),
+      );
+    }
   }
 
   Widget _buildTypeChips() {
@@ -123,7 +159,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
   @override
   Widget build(BuildContext context) {
     final appState = context.read<AppState>();
-    final title = widget.fixedAssetType == null ? '记一笔' : '添加${_typeLabel(_assetType)}';
+    final title = _isEdit
+        ? '编辑${_typeLabel(_assetType)}'
+        : (widget.fixedAssetType == null ? '记一笔' : '添加${_typeLabel(_assetType)}');
 
     return Dialog(
       backgroundColor: Colors.transparent,

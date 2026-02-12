@@ -7,6 +7,7 @@ import '../services/cache_service.dart';
 import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
+import '../models/asset_action_result.dart';
 
 enum SessionBootState { initializing, authenticated, unauthenticated }
 
@@ -670,37 +671,66 @@ class AppState extends ChangeNotifier {
   }
 
   /// 添加资产（现金/其他/负债）
-  Future<bool> addAsset({
+  Future<AssetActionResult> addAsset({
     required String type,
     required String name,
     required double amount,
   }) async {
-    bool ok = false;
+    AssetActionResult result;
     if (type == 'cash') {
-      ok = await _api.addCashAsset(name, amount);
+      result = await _api.addCashAsset(name, amount);
     } else if (type == 'other') {
-      ok = await _api.addOtherAsset(name, amount);
+      result = await _api.addOtherAsset(name, amount);
     } else if (type == 'liability') {
-      ok = await _api.addLiability(name, amount);
+      result = await _api.addLiability(name, amount);
+    } else {
+      return const AssetActionResult.failure('不支持的资产类型');
     }
-    if (!ok) return false;
+    if (!result.ok) return result;
     await refreshHomeData();
-    return true;
+    return const AssetActionResult.success();
   }
 
   /// 删除资产（现金/其他/负债）
-  Future<bool> deleteAsset({required String type, required int id}) async {
-    bool ok = false;
+  Future<AssetActionResult> deleteAsset({
+    required String type,
+    required int id,
+  }) async {
+    AssetActionResult result;
     if (type == 'cash') {
-      ok = await _api.deleteCashAsset(id);
+      result = await _api.deleteCashAsset(id);
     } else if (type == 'other') {
-      ok = await _api.deleteOtherAsset(id);
+      result = await _api.deleteOtherAsset(id);
     } else if (type == 'liability') {
-      ok = await _api.deleteLiability(id);
+      result = await _api.deleteLiability(id);
+    } else {
+      return const AssetActionResult.failure('不支持的资产类型');
     }
-    if (!ok) return false;
+    if (!result.ok) return result;
     await refreshHomeData();
-    return true;
+    return const AssetActionResult.success();
+  }
+
+  /// 更新资产（现金/其他/负债）
+  Future<AssetActionResult> updateAsset({
+    required String type,
+    required int id,
+    required String name,
+    required double amount,
+  }) async {
+    AssetActionResult result;
+    if (type == 'cash') {
+      result = await _api.updateCashAsset(id, name, amount);
+    } else if (type == 'other') {
+      result = await _api.updateOtherAsset(id, name, amount);
+    } else if (type == 'liability') {
+      result = await _api.updateLiability(id, name, amount);
+    } else {
+      return const AssetActionResult.failure('不支持的资产类型');
+    }
+    if (!result.ok) return result;
+    await refreshHomeData();
+    return const AssetActionResult.success();
   }
 
   /// 搜索股票/基金

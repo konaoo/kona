@@ -839,16 +839,55 @@ def _handle_asset_add(add_func, asset_type, user_id=None):
     data = request.json
     
     if not data or 'name' not in data or 'amount' not in data:
-        return jsonify({"error": "Missing required fields"}), 400
+        logger.warning(
+            "[asset_add_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
+            asset_type,
+            user_id,
+            data,
+        )
+        return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
     
     try:
+        logger.info(
+            "[asset_add_request] type=%s user_id=%s name=%s amount=%s curr=%s",
+            asset_type,
+            user_id,
+            data.get('name'),
+            data.get('amount'),
+            data.get('curr', 'CNY'),
+        )
         amount = float(data['amount'])
+        if amount <= 0:
+            logger.warning(
+                "[asset_add_invalid_amount] type=%s user_id=%s amount=%s",
+                asset_type,
+                user_id,
+                data.get('amount'),
+            )
+            return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
         success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id)
         if success:
             _save_snapshot_for_user(user_id)
-        return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to add {asset_type}"}), 500
+            logger.info("[asset_add_success] type=%s user_id=%s", asset_type, user_id)
+            return jsonify({"status": "ok"})
+        logger.error("[asset_add_failed] type=%s user_id=%s", asset_type, user_id)
+        return jsonify({"error": f"Failed to add {asset_type}", "code": "ASSET_ADD_FAILED"}), 500
     except ValueError:
-        return jsonify({"error": "Invalid amount"}), 400
+        logger.warning(
+            "[asset_add_invalid_amount] type=%s user_id=%s amount=%s",
+            asset_type,
+            user_id,
+            data.get('amount'),
+        )
+        return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
+    except Exception as e:
+        logger.exception(
+            "[asset_add_exception] type=%s user_id=%s error=%s",
+            asset_type,
+            user_id,
+            e,
+        )
+        return jsonify({"error": f"Failed to add {asset_type}", "code": "ASSET_ADD_EXCEPTION"}), 500
 
 
 def _handle_asset_delete(delete_func, asset_type, user_id=None):
@@ -856,16 +895,55 @@ def _handle_asset_delete(delete_func, asset_type, user_id=None):
     data = request.json
     
     if not data or 'id' not in data:
-        return jsonify({"error": "Missing id"}), 400
+        logger.warning(
+            "[asset_delete_invalid_request] type=%s user_id=%s reason=missing_id payload=%s",
+            asset_type,
+            user_id,
+            data,
+        )
+        return jsonify({"error": "Missing id", "code": "MISSING_ID"}), 400
     
     try:
         asset_id = int(data['id'])
+        logger.info(
+            "[asset_delete_request] type=%s user_id=%s id=%s",
+            asset_type,
+            user_id,
+            asset_id,
+        )
         success = delete_func(asset_id, user_id)
         if success:
             _save_snapshot_for_user(user_id)
-        return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to delete {asset_type}"}), 500
+            logger.info(
+                "[asset_delete_success] type=%s user_id=%s id=%s",
+                asset_type,
+                user_id,
+                asset_id,
+            )
+            return jsonify({"status": "ok"})
+        logger.error(
+            "[asset_delete_failed] type=%s user_id=%s id=%s",
+            asset_type,
+            user_id,
+            asset_id,
+        )
+        return jsonify({"error": f"Failed to delete {asset_type}", "code": "ASSET_DELETE_FAILED"}), 500
     except ValueError:
-        return jsonify({"error": "Invalid id"}), 400
+        logger.warning(
+            "[asset_delete_invalid_id] type=%s user_id=%s id=%s",
+            asset_type,
+            user_id,
+            data.get('id'),
+        )
+        return jsonify({"error": "Invalid id", "code": "INVALID_ID"}), 400
+    except Exception as e:
+        logger.exception(
+            "[asset_delete_exception] type=%s user_id=%s error=%s",
+            asset_type,
+            user_id,
+            e,
+        )
+        return jsonify({"error": f"Failed to delete {asset_type}", "code": "ASSET_DELETE_EXCEPTION"}), 500
 
 
 def _handle_asset_update(update_func, asset_type, user_id=None):
@@ -873,17 +951,69 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
     data = request.json
     
     if not data or 'id' not in data or 'name' not in data or 'amount' not in data:
-        return jsonify({"error": "Missing required fields"}), 400
+        logger.warning(
+            "[asset_update_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
+            asset_type,
+            user_id,
+            data,
+        )
+        return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
     
     try:
         asset_id = int(data['id'])
         amount = float(data['amount'])
+        if amount <= 0:
+            logger.warning(
+                "[asset_update_invalid_amount] type=%s user_id=%s id=%s amount=%s",
+                asset_type,
+                user_id,
+                data.get('id'),
+                data.get('amount'),
+            )
+            return jsonify({"error": "Invalid amount", "code": "INVALID_VALUE"}), 400
+        logger.info(
+            "[asset_update_request] type=%s user_id=%s id=%s name=%s amount=%s curr=%s",
+            asset_type,
+            user_id,
+            asset_id,
+            data.get('name'),
+            amount,
+            data.get('curr', 'CNY'),
+        )
         success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id)
         if success:
             _save_snapshot_for_user(user_id)
-        return jsonify({"status": "ok"}) if success else jsonify({"error": f"Failed to update {asset_type}"}), 500
+            logger.info(
+                "[asset_update_success] type=%s user_id=%s id=%s",
+                asset_type,
+                user_id,
+                asset_id,
+            )
+            return jsonify({"status": "ok"})
+        logger.error(
+            "[asset_update_failed] type=%s user_id=%s id=%s",
+            asset_type,
+            user_id,
+            asset_id,
+        )
+        return jsonify({"error": f"Failed to update {asset_type}", "code": "ASSET_UPDATE_FAILED"}), 500
     except ValueError:
-        return jsonify({"error": "Invalid value"}), 400
+        logger.warning(
+            "[asset_update_invalid_value] type=%s user_id=%s id=%s amount=%s",
+            asset_type,
+            user_id,
+            data.get('id'),
+            data.get('amount'),
+        )
+        return jsonify({"error": "Invalid value", "code": "INVALID_VALUE"}), 400
+    except Exception as e:
+        logger.exception(
+            "[asset_update_exception] type=%s user_id=%s error=%s",
+            asset_type,
+            user_id,
+            e,
+        )
+        return jsonify({"error": f"Failed to update {asset_type}", "code": "ASSET_UPDATE_EXCEPTION"}), 500
 
 
 # ============================================================

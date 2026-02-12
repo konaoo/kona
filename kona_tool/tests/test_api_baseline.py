@@ -62,6 +62,52 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertIn('sh600000', data)
             self.assertEqual(data['sh600000']['price'], 10)
 
+    def test_cash_asset_add_update_delete(self):
+        add_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '测试现金',
+            'amount': 1234.56,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        self.assertEqual(add_resp.get_json().get('status'), 'ok')
+
+        list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        self.assertTrue(len(items) > 0)
+        asset_id = items[-1]['id']
+
+        update_resp = self.client.post('/api/cash_assets/update', json={
+            'id': asset_id,
+            'name': '测试现金-更新',
+            'amount': 2345.67,
+            'curr': 'CNY',
+        })
+        self.assertEqual(update_resp.status_code, 200)
+        self.assertEqual(update_resp.get_json().get('status'), 'ok')
+
+        delete_resp = self.client.post('/api/cash_assets/delete', json={'id': asset_id})
+        self.assertEqual(delete_resp.status_code, 200)
+        self.assertEqual(delete_resp.get_json().get('status'), 'ok')
+
+    def test_other_asset_missing_required_fields_has_code(self):
+        resp = self.client.post('/api/other_assets/add', json={'name': '缺少金额'})
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json()
+        self.assertEqual(data.get('error'), 'Missing required fields')
+        self.assertEqual(data.get('code'), 'MISSING_REQUIRED_FIELDS')
+
+    def test_liability_invalid_amount_has_code(self):
+        resp = self.client.post('/api/liabilities/add', json={
+            'name': '测试负债',
+            'amount': 0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json()
+        self.assertEqual(data.get('error'), 'Invalid amount')
+        self.assertEqual(data.get('code'), 'INVALID_AMOUNT')
+
 
 if __name__ == '__main__':
     unittest.main()

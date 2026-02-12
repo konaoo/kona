@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import '../models/asset_action_result.dart';
 
 /// API 服务 - 封装所有后端 API 调用
 class ApiService {
@@ -94,6 +95,16 @@ class ApiService {
       if (e is ApiException) rethrow;
       throw ApiException('网络连接失败: $e');
     }
+  }
+
+  AssetActionResult _failureResult(
+    Object error, {
+    String fallback = '操作失败，请稍后再试',
+  }) {
+    if (error is ApiException) {
+      return AssetActionResult.failure(error.message);
+    }
+    return AssetActionResult.failure(fallback);
   }
 
   // ============================================================
@@ -261,7 +272,7 @@ class ApiService {
   }
 
   /// 添加现金资产
-  Future<bool> addCashAsset(
+  Future<AssetActionResult> addCashAsset(
     String name,
     double amount, {
     String curr = 'CNY',
@@ -272,14 +283,14 @@ class ApiService {
         'amount': amount,
         'curr': curr,
       });
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 添加其他资产
-  Future<bool> addOtherAsset(
+  Future<AssetActionResult> addOtherAsset(
     String name,
     double amount, {
     String curr = 'CNY',
@@ -290,14 +301,14 @@ class ApiService {
         'amount': amount,
         'curr': curr,
       });
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 添加负债
-  Future<bool> addLiability(
+  Future<AssetActionResult> addLiability(
     String name,
     double amount, {
     String curr = 'CNY',
@@ -308,39 +319,99 @@ class ApiService {
         'amount': amount,
         'curr': curr,
       });
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 删除现金资产
-  Future<bool> deleteCashAsset(int id) async {
+  Future<AssetActionResult> deleteCashAsset(int id) async {
     try {
       await _post('${ApiConfig.cashAssets}/delete', {'id': id});
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 删除其他资产
-  Future<bool> deleteOtherAsset(int id) async {
+  Future<AssetActionResult> deleteOtherAsset(int id) async {
     try {
       await _post('${ApiConfig.otherAssets}/delete', {'id': id});
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
     }
   }
 
   /// 删除负债
-  Future<bool> deleteLiability(int id) async {
+  Future<AssetActionResult> deleteLiability(int id) async {
     try {
       await _post('${ApiConfig.liabilities}/delete', {'id': id});
-      return true;
+      return const AssetActionResult.success();
     } catch (e) {
-      return false;
+      return _failureResult(e);
+    }
+  }
+
+  /// 更新现金资产
+  Future<AssetActionResult> updateCashAsset(
+    int id,
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
+    try {
+      await _post('${ApiConfig.cashAssets}/update', {
+        'id': id,
+        'name': name,
+        'amount': amount,
+        'curr': curr,
+      });
+      return const AssetActionResult.success();
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 更新其他资产
+  Future<AssetActionResult> updateOtherAsset(
+    int id,
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
+    try {
+      await _post('${ApiConfig.otherAssets}/update', {
+        'id': id,
+        'name': name,
+        'amount': amount,
+        'curr': curr,
+      });
+      return const AssetActionResult.success();
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 更新负债
+  Future<AssetActionResult> updateLiability(
+    int id,
+    String name,
+    double amount, {
+    String curr = 'CNY',
+  }) async {
+    try {
+      await _post('${ApiConfig.liabilities}/update', {
+        'id': id,
+        'name': name,
+        'amount': amount,
+        'curr': curr,
+      });
+      return const AssetActionResult.success();
+    } catch (e) {
+      return _failureResult(e);
     }
   }
 
