@@ -207,6 +207,15 @@ class DatabaseManager:
         _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
         _ensure_column('liabilities', 'user_id', 'user_id TEXT')
+        _ensure_column('cash_assets', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
+        _ensure_column('other_assets', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
+        _ensure_column('liabilities', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
+        _ensure_column('cash_assets', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('cash_assets', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('other_assets', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('other_assets', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('liabilities', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        _ensure_column('liabilities', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('daily_snapshots', 'user_id', "user_id TEXT DEFAULT ''")
         _ensure_column('users', 'nickname', 'nickname TEXT')
         _ensure_column('users', 'avatar', 'avatar TEXT')
@@ -973,10 +982,18 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT INTO cash_assets (name, amount, curr, user_id)
-                VALUES (?, ?, ?, ?)
-            ''', (name, amount, curr, user_id))
+            try:
+                cursor.execute('''
+                    INSERT INTO cash_assets (name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (name, amount, curr, user_id))
+            except sqlite3.OperationalError as e:
+                # 兼容旧库列缺失：回退到最小列写入
+                logger.warning(f"cash_assets insert fallback due to schema mismatch: {e}")
+                cursor.execute('''
+                    INSERT INTO cash_assets (name, amount)
+                    VALUES (?, ?)
+                ''', (name, amount))
             
             conn.commit()
             logger.info(f"Cash asset added: {name}, amount={amount}")
@@ -1046,10 +1063,17 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT INTO other_assets (name, amount, curr, user_id)
-                VALUES (?, ?, ?, ?)
-            ''', (name, amount, curr, user_id))
+            try:
+                cursor.execute('''
+                    INSERT INTO other_assets (name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (name, amount, curr, user_id))
+            except sqlite3.OperationalError as e:
+                logger.warning(f"other_assets insert fallback due to schema mismatch: {e}")
+                cursor.execute('''
+                    INSERT INTO other_assets (name, amount)
+                    VALUES (?, ?)
+                ''', (name, amount))
             
             conn.commit()
             logger.info(f"Other asset added: {name}, amount={amount}")
@@ -1087,16 +1111,23 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            if user_id:
+            try:
+                if user_id:
+                    cursor.execute('''
+                        UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    ''', (name, amount, curr, asset_id, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    ''', (name, amount, curr, asset_id))
+            except sqlite3.OperationalError as e:
+                logger.warning(f"cash_assets update fallback due to schema mismatch: {e}")
                 cursor.execute('''
-                    UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (name, amount, curr, asset_id, user_id))
-            else:
-                cursor.execute('''
-                    UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                ''', (name, amount, curr, asset_id))
+                    UPDATE cash_assets SET name = ?, amount = ?
+                    WHERE id = ?
+                ''', (name, amount, asset_id))
             
             conn.commit()
             logger.info(f"Cash asset updated: {asset_id}")
@@ -1114,16 +1145,23 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            if user_id:
+            try:
+                if user_id:
+                    cursor.execute('''
+                        UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    ''', (name, amount, curr, asset_id, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    ''', (name, amount, curr, asset_id))
+            except sqlite3.OperationalError as e:
+                logger.warning(f"other_assets update fallback due to schema mismatch: {e}")
                 cursor.execute('''
-                    UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (name, amount, curr, asset_id, user_id))
-            else:
-                cursor.execute('''
-                    UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                ''', (name, amount, curr, asset_id))
+                    UPDATE other_assets SET name = ?, amount = ?
+                    WHERE id = ?
+                ''', (name, amount, asset_id))
             
             conn.commit()
             logger.info(f"Other asset updated: {asset_id}")
@@ -1173,10 +1211,17 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT INTO liabilities (name, amount, curr, user_id)
-                VALUES (?, ?, ?, ?)
-            ''', (name, amount, curr, user_id))
+            try:
+                cursor.execute('''
+                    INSERT INTO liabilities (name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (name, amount, curr, user_id))
+            except sqlite3.OperationalError as e:
+                logger.warning(f"liabilities insert fallback due to schema mismatch: {e}")
+                cursor.execute('''
+                    INSERT INTO liabilities (name, amount)
+                    VALUES (?, ?)
+                ''', (name, amount))
             
             conn.commit()
             logger.info(f"Liability added: {name}, amount={amount}")
@@ -1214,16 +1259,23 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            if user_id:
+            try:
+                if user_id:
+                    cursor.execute('''
+                        UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    ''', (name, amount, curr, liability_id, user_id))
+                else:
+                    cursor.execute('''
+                        UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    ''', (name, amount, curr, liability_id))
+            except sqlite3.OperationalError as e:
+                logger.warning(f"liabilities update fallback due to schema mismatch: {e}")
                 cursor.execute('''
-                    UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (name, amount, curr, liability_id, user_id))
-            else:
-                cursor.execute('''
-                    UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                ''', (name, amount, curr, liability_id))
+                    UPDATE liabilities SET name = ?, amount = ?
+                    WHERE id = ?
+                ''', (name, amount, liability_id))
             
             conn.commit()
             logger.info(f"Liability updated: {liability_id}")
