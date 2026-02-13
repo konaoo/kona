@@ -407,7 +407,7 @@ class DatabaseManager:
                         row.get("avatar"),
                         row.get("register_method") or "legacy_email_otp",
                         row.get("phone"),
-                        row.get("user_number") or (10000 + idx),
+                        row.get("user_number") or (9999 + idx),
                         int(row.get("is_admin") or 0),
                         row.get("status") or "active",
                         row.get("created_at"),
@@ -594,7 +594,7 @@ class DatabaseManager:
                 "SELECT MAX(user_number) AS max_num FROM users"
             )
             row = cursor.fetchone()
-            max_num = int(row["max_num"] or 10000) if row else 10000
+            max_num = int(row["max_num"] or 9999) if row else 9999
             user_number = max_num + 1
             cursor.execute(
                 """

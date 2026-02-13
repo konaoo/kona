@@ -39,6 +39,13 @@
 - `api.portfolio`（240/min）
 - `api.news`（120/min）
 
+### 2.3 用户编号规则（Migration 011）
+- `user_number` 作为对外用户编号
+- 编号起始：`10000`
+- 分配规则：每新注册用户 `+1`
+- 迁移脚本：`migrations/011_resequence_user_numbers.py`
+  - 会将现有用户按 `created_at,id` 重排为 `10000..`
+
 ## 3. Admin API（新增/增强）
 
 ### 3.1 用户管理
