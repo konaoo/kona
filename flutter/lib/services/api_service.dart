@@ -145,7 +145,12 @@ class ApiService {
     String fallback = '操作失败，请稍后再试',
   }) {
     if (error is ApiException) {
-      return AssetActionResult.failure(error.message);
+      return AssetActionResult.failure(
+        error.message,
+        data: {
+          if (error.statusCode != null) 'status_code': error.statusCode,
+        },
+      );
     }
     return AssetActionResult.failure(fallback);
   }
@@ -376,6 +381,28 @@ class ApiService {
         'code': code,
         'price': price,
         'qty': qty,
+        'request_id': requestId ?? _newRequestId(),
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 指定现金账户卖出（减仓 + 回款）
+  Future<AssetActionResult> sellPortfolioAssetToCash(
+    String code,
+    double price,
+    double qty, {
+    required int cashAssetId,
+    String? requestId,
+  }) async {
+    try {
+      final response = await _post(ApiConfig.portfolioSellToCash, {
+        'code': code,
+        'price': price,
+        'qty': qty,
+        'cash_asset_id': cashAssetId,
         'request_id': requestId ?? _newRequestId(),
       });
       return _okResultOrFailure(response);

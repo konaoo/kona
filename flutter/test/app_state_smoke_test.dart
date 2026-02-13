@@ -40,6 +40,15 @@ void main() {
       );
       expect(sellResult.ok, isFalse);
 
+      final sellToCashResult = await state.sellInvestmentToCash(
+        code: 'sh600000',
+        price: 10,
+        qty: 1,
+        cashAssetId: 1,
+        awaitRefresh: false,
+      );
+      expect(sellToCashResult.ok, isFalse);
+
       final deleteResult = await state.deleteInvestment(
         code: 'sh600000',
         awaitRefresh: false,

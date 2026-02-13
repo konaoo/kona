@@ -1397,6 +1397,84 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<AssetActionResult> _legacyBuyWithCashFallback({
+    required String code,
+    required String name,
+    required double price,
+    required double qty,
+    required Asset cashAsset,
+    required double cashDeductAmount,
+  }) async {
+    final buyResult = await _api.buyPortfolioAsset(code, price, qty);
+    if (!buyResult.ok) return buyResult;
+
+    final cashId = cashAsset.id;
+    if (cashId == null || cashId <= 0) {
+      // 尽力回滚买入，避免现金未扣减造成数据偏差。
+      await _api.sellPortfolioAsset(code, price, qty);
+      return const AssetActionResult.failure('现金账户无效，请稍后重试');
+    }
+
+    final updateResult = await _api.updateCashAsset(
+      cashId,
+      cashAsset.name,
+      cashAsset.amount - cashDeductAmount,
+      curr: cashAsset.curr,
+    );
+    if (updateResult.ok) {
+      return const AssetActionResult.success(
+        data: {'code': 'LEGACY_BUY_WITH_CASH'},
+      );
+    }
+
+    final rollbackSell = await _api.sellPortfolioAsset(code, price, qty);
+    if (!rollbackSell.ok) {
+      return const AssetActionResult.failure('现金扣减失败，且买入回滚失败，请手动核对账户和持仓');
+    }
+    return AssetActionResult.failure(updateResult.message ?? '现金扣减失败，已回滚买入');
+  }
+
+  Future<AssetActionResult> _legacySellToCashFallback({
+    required String code,
+    required double price,
+    required double qty,
+    required Asset cashAsset,
+    required double cashCreditAmount,
+  }) async {
+    final cashId = cashAsset.id;
+    if (cashId == null || cashId <= 0) {
+      return const AssetActionResult.failure('现金账户无效，请稍后重试');
+    }
+
+    final updateCashResult = await _api.updateCashAsset(
+      cashId,
+      cashAsset.name,
+      cashAsset.amount + cashCreditAmount,
+      curr: cashAsset.curr,
+    );
+    if (!updateCashResult.ok) {
+      return updateCashResult;
+    }
+
+    final sellResult = await _api.sellPortfolioAsset(code, price, qty);
+    if (sellResult.ok) {
+      return const AssetActionResult.success(
+        data: {'code': 'LEGACY_SELL_TO_CASH'},
+      );
+    }
+
+    final rollbackCash = await _api.updateCashAsset(
+      cashId,
+      cashAsset.name,
+      cashAsset.amount,
+      curr: cashAsset.curr,
+    );
+    if (!rollbackCash.ok) {
+      return const AssetActionResult.failure('卖出失败，且回款回滚失败，请手动核对现金账户');
+    }
+    return sellResult;
+  }
+
   /// 搜索股票/基金
   Future<List<dynamic>> searchStocks(String query) async {
     return await _api.searchStocks(query);
@@ -1524,10 +1602,127 @@ class AppState extends ChangeNotifier {
       assetType: assetType,
     );
     if (!result.ok) {
+      final statusCode = result.data?['status_code'];
+      if (statusCode == 404) {
+        final fallbackResult = await _legacyBuyWithCashFallback(
+          code: code,
+          name: name,
+          price: price,
+          qty: qty,
+          cashAsset: cashAsset,
+          cashDeductAmount: cashDeductAmount,
+        );
+        if (!fallbackResult.ok) {
+          _restoreAssetSnapshot(assetSnapshot);
+          _restorePortfolioSnapshot(portfolioSnapshot);
+          return fallbackResult;
+        }
+        if (awaitRefresh) {
+          await refreshHomeData();
+        } else {
+          unawaited(refreshHomeData());
+        }
+        return fallbackResult;
+      }
       _restoreAssetSnapshot(assetSnapshot);
       _restorePortfolioSnapshot(portfolioSnapshot);
       return result;
     }
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
+    return _extractUndoInfo(result);
+  }
+
+  /// 卖出到指定现金账户（同一事务减仓 + 回款）
+  Future<AssetActionResult> sellInvestmentToCash({
+    required String code,
+    required double price,
+    required double qty,
+    required int cashAssetId,
+    bool awaitRefresh = true,
+  }) async {
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) return const AssetActionResult.failure('未找到该持仓');
+    if (qty <= 0 || price <= 0) {
+      return const AssetActionResult.failure('请输入有效价格和数量');
+    }
+    final current = _portfolio[index];
+    if (qty > current.qty + 1e-6) {
+      return const AssetActionResult.failure('卖出数量超过持仓数量');
+    }
+    if (cashAssetId <= 0) {
+      return const AssetActionResult.failure('请选择回款账户');
+    }
+    final cashIndex = _cashAssets.indexWhere((asset) => asset.id == cashAssetId);
+    if (cashIndex < 0) {
+      return const AssetActionResult.failure('未找到回款账户');
+    }
+    final cashAsset = _cashAssets[cashIndex];
+    final sellAmount = price * qty;
+    final cashCreditAmount = _convertAmountByCurrency(
+      amount: sellAmount,
+      fromCurr: current.curr,
+      toCurr: cashAsset.curr,
+    );
+    if (cashCreditAmount <= 0) {
+      return const AssetActionResult.failure('回款金额计算失败');
+    }
+
+    final assetSnapshot = _captureAssetSnapshot();
+    final portfolioSnapshot = _capturePortfolioSnapshot();
+    final portfolioChanged = _optimisticSellInvestment(
+      code: code,
+      price: price,
+      qty: qty,
+    );
+    final cashChanged = _optimisticAdjustCashAssetAmount(
+      cashAssetId: cashAssetId,
+      deltaAmount: cashCreditAmount,
+    );
+    if (!portfolioChanged || !cashChanged) {
+      _restoreAssetSnapshot(assetSnapshot);
+      _restorePortfolioSnapshot(portfolioSnapshot);
+      return const AssetActionResult.failure('卖出失败，请稍后重试');
+    }
+    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _recalculatePortfolioTotals();
+
+    final result = await _api.sellPortfolioAssetToCash(
+      code,
+      price,
+      qty,
+      cashAssetId: cashAssetId,
+    );
+    if (!result.ok) {
+      final statusCode = result.data?['status_code'];
+      if (statusCode == 404) {
+        final fallbackResult = await _legacySellToCashFallback(
+          code: code,
+          price: price,
+          qty: qty,
+          cashAsset: cashAsset,
+          cashCreditAmount: cashCreditAmount,
+        );
+        if (!fallbackResult.ok) {
+          _restoreAssetSnapshot(assetSnapshot);
+          _restorePortfolioSnapshot(portfolioSnapshot);
+          return fallbackResult;
+        }
+        if (awaitRefresh) {
+          await refreshHomeData();
+        } else {
+          unawaited(refreshHomeData());
+        }
+        return fallbackResult;
+      }
+      _restoreAssetSnapshot(assetSnapshot);
+      _restorePortfolioSnapshot(portfolioSnapshot);
+      return result;
+    }
+
     if (awaitRefresh) {
       await refreshHomeData();
     } else {

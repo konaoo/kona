@@ -23,6 +23,7 @@ class ApiConfig {
   static const String portfolioBuy = '/api/portfolio/buy';
   static const String portfolioBuyWithCash = '/api/portfolio/buy_with_cash';
   static const String portfolioSell = '/api/portfolio/sell';
+  static const String portfolioSellToCash = '/api/portfolio/sell_to_cash';
   static const String portfolioModify = '/api/portfolio/modify';
   static const String portfolioDelete = '/api/portfolio/delete';
   static const String portfolioDeleteCorrective = '/api/portfolio/delete_corrective';

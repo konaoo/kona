@@ -197,7 +197,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   bool _requiresCashSource(String mode) {
-    return _isAdd || mode == 'buy';
+    return _isAdd || mode == 'buy' || mode == 'sell';
+  }
+
+  InputDecoration _compactDecoration(String labelText, {String? hintText}) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    );
   }
 
   void _prefillPriceFromCurrent() {
@@ -342,10 +351,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
-        actionFuture = appState.sellInvestment(
+        actionFuture = appState.sellInvestmentToCash(
           code: code,
           price: price,
           qty: qty,
+          cashAssetId: _selectedCashAssetId!,
           awaitRefresh: false,
         );
       }
@@ -394,7 +404,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('删除并清理历史'),
-          content: Text('将删除「${item.name}」持仓、相关交易记录，并清理受影响快照区间。此操作不可撤销，是否继续？'),
+          content: Text(
+            '仅用于误录入纠错：将删除「${item.name}」持仓、相关交易记录，并清理受影响快照。\n'
+            '注意：不会回款到现金账户。\n'
+            '如果是正常平仓，请使用“卖出”并选择回款账户。',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -402,7 +416,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('确认删除'),
+              child: const Text('仍要纠错删除'),
             ),
           ],
         );
@@ -635,37 +649,43 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         (!_isAdd || _selected != null) &&
         (!needsCashSource || _selectedCashAssetId != null);
 
+    final maxDialogHeight = MediaQuery.of(context).size.height * 0.72;
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppTheme.bgCard.withOpacity(
-                AppTheme.isLight ? 0.98 : 0.88,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxDialogHeight),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard.withOpacity(
+                  AppTheme.isLight ? 0.98 : 0.88,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppTheme.isLight
+                      ? AppTheme.border.withOpacity(0.7)
+                      : Colors.white.withOpacity(0.08),
+                  width: 1,
+                ),
+                gradient: LinearGradient(
+                  colors: AppTheme.dialogGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: AppTheme.cardShadow,
               ),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppTheme.isLight
-                    ? AppTheme.border.withOpacity(0.7)
-                    : Colors.white.withOpacity(0.08),
-                width: 1,
-              ),
-              gradient: LinearGradient(
-                colors: AppTheme.dialogGradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: AppTheme.cardShadow,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 Row(
                   children: [
                     Expanded(
@@ -699,7 +719,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    '删除并清理历史',
+                                    '纠错删除（不回款）',
                                     style: TextStyle(color: AppTheme.danger),
                                   ),
                                 ],
@@ -710,14 +730,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       ),
                   ],
                 ),
-                const SizedBox(height: Spacing.lg),
+                const SizedBox(height: Spacing.md),
                 if (_isAdd) ...[
                   TextField(
                     controller: _queryController,
                     onChanged: _onQueryChanged,
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: '股票代码/名称',
+                    decoration: _compactDecoration(
+                      '股票代码/名称',
                       hintText: '输入代码或名称搜索',
                     ),
                   ),
@@ -760,7 +780,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       ],
                     ),
                   ],
-                  const SizedBox(height: Spacing.lg),
+                  const SizedBox(height: Spacing.md),
                 ] else ...[
                   Text(
                     '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
@@ -769,15 +789,18 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       fontSize: FontSize.base,
                     ),
                   ),
-                  const SizedBox(height: Spacing.lg),
+                  const SizedBox(height: Spacing.md),
                 ],
                 _buildTradeToggle(),
-                if (_isTrade) const SizedBox(height: Spacing.lg),
+                if (_isTrade) const SizedBox(height: Spacing.md),
                 if (needsCashSource) ...[
                   DropdownButtonFormField<int>(
                     value: _selectedCashAssetId,
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: '资金来源账户'),
+                    isDense: true,
+                    decoration: _compactDecoration(
+                      actionMode == 'sell' ? '回款账户' : '资金来源账户',
+                    ),
                     items: cashOptions.map((asset) {
                       return DropdownMenuItem<int>(
                         value: asset.id,
@@ -794,14 +817,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   if (cashOptions.isEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
-                      '请先添加现金资产账户',
+                      actionMode == 'sell' ? '请先添加回款现金账户' : '请先添加现金资产账户',
                       style: TextStyle(
                         color: AppTheme.danger,
                         fontSize: FontSize.sm,
                       ),
                     ),
                   ],
-                  const SizedBox(height: Spacing.lg),
+                  const SizedBox(height: Spacing.md),
                 ],
                 if (_isTrade && _isAdjust) ...[
                   TextField(
@@ -811,7 +834,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       signed: true,
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(labelText: '调整金额'),
+                    decoration: _compactDecoration('调整金额'),
                   ),
                 ] else ...[
                   TextField(
@@ -820,16 +843,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       decimal: true,
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(labelText: '价格'),
+                    decoration: _compactDecoration('价格'),
                   ),
-                  const SizedBox(height: Spacing.lg),
+                  const SizedBox(height: Spacing.md),
                   TextField(
                     controller: _qtyController,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(labelText: '数量'),
+                    decoration: _compactDecoration('数量'),
                   ),
                 ],
                 if (_errorText != null) ...[
@@ -842,7 +865,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ),
                   ),
                 ],
-                const SizedBox(height: Spacing.xl),
+                const SizedBox(height: Spacing.lg),
                 Row(
                   children: [
                     Expanded(
@@ -873,7 +896,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ),
                   ],
                 ),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         ),
