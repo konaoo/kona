@@ -82,7 +82,10 @@ jobs:
   deploy:
     name: Deploy to AWS
     needs: [ backend-gate, frontend-gate ]
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.backend-gate.result == 'success' &&
+      needs.frontend-gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
