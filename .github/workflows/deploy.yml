@@ -96,8 +96,18 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd ${{ secrets.APP_DIR }}
-            git pull
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.APP_DIR }}"
+            if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
+              echo "Invalid APP_DIR: $APP_DIR"
+              exit 1
+            fi
+
+            cd "$APP_DIR"
+            echo "Deploy dir: $(pwd)"
+            git fetch origin main
+            git reset --hard origin/main
             python3 -m pip install --user -r requirements.txt
 
             cat > /tmp/kona.service <<'EOF'
@@ -124,8 +134,9 @@ jobs:
             sudo systemctl enable kona
             sudo systemctl restart kona
 
-            for i in {1..20}; do
-              status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/api/rates || true)
+            for i in {1..30}; do
+              status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/health || true)
+              echo "health attempt $i -> $status"
               if [ "$status" = "200" ]; then
                 echo "Health check passed."
                 exit 0
