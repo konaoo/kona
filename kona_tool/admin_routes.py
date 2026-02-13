@@ -826,7 +826,7 @@ def create_admin_blueprint(db, admin_write_audit):
             missing = target - inserted_total
             generated = []
             seen = set()
-            while len(generated) < missing * 2:
+            while len(generated) < missing:
                 code = _make_invite_code(10)
                 if code in seen:
                     continue
