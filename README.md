@@ -631,7 +631,105 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 13. 详细交接文档：
     - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
 
-## 19. 线上入口与快速验收（当前）
+---
+
+## 19. 今日改动（2026-02-13，分析口径一致性与验收修复）
+
+本节对应你在真机验收中提出的核心问题：  
+“收益日历月/年是 `2.1万`，但分析页顶部卡片切到本月/今年/全部出现 `-745`，口径对不上”。
+
+### 19.1 已确认并落地的最终口径
+
+1. 首页“本月收益/今年收益”唯一真值：`GET /api/analysis/overview` 的 `month.pnl` / `year.pnl`。  
+2. 分析页顶部卡片（本月/今年/全部）使用同一套 `overview` 数据源。  
+3. 收益日历（月/年汇总）与顶部卡片必须同口径，不能再出现同周期数值冲突。
+
+### 19.2 初始化基线能力状态（最终）
+
+1. “设为初始化基线 / 清除初始化基线”能力已整体下线（前后端同步）。  
+2. 基线接口已移除：  
+   - `GET /api/analysis/baseline`  
+   - `POST /api/analysis/baseline`  
+3. 旧客户端若仍调用上述接口会得到 `404`（符合预期）。
+
+### 19.3 本次根因与修复（你本次验收对应）
+
+#### 根因 1：当前周期统计边界不一致
+- `overview` 的 month/year 原本只统计到“今天”。  
+- `calendar` 的 month/year 在当前周期可能读到“今天之后”的快照（例如测试或补录产生的未来日期），导致同周期结果不一致。
+
+修复：
+- `calendar` 的当前月/当前年查询边界统一截断到 `today`。  
+- `year` 视图同样限制到 `date <= today`。
+
+#### 根因 2：月初/年初“无前置快照”时基准不一致
+- `overview` 旧逻辑：无前置快照时，用当期第一条快照当基准，容易得到 `-745` 这类结果。  
+- `calendar` 旧逻辑：当期按 0 基线累计，得到 `2.1万`。
+
+修复：
+- `overview` month/year 在“无前置快照”时改为 0 基线累计，与日历一致。  
+- 同时保留收益率分母逻辑（优先使用当期可用 `total_invest`）。
+
+#### 根因 3：周末快照影响不一致
+- 周末快照在不同统计路径上处理不一致，会造成月/年偏差。
+
+修复：
+- `overview` month/year 与 `calendar` month/year 统一忽略周末快照影响。
+
+#### 根因 4：分析页顶部卡片可能显示旧缓存
+- 分析页使用 `IndexedStack`，切换到“本月/今年/全部”可能读到旧概览缓存。
+
+修复：
+- 切换到非“当日”周期时，强制刷新 `overview`，避免旧值滞留。
+
+### 19.4 你关心的“月=年都 2.1万是否正确”
+
+在当前数据下是可能正确的，常见场景：
+1. 只有当年数据，没有往年快照。  
+2. 今年当前只有一个有收益的月份（例如 2 月）。  
+
+此时：
+- `本年累计` = `当月累计`  
+属于正常业务结果，不是 bug。
+
+### 19.5 收益日历（年月选择器）最终交互定义
+
+1. 选择器位置：收益日历标题下方。  
+2. 维度：保留 `日 / 月 / 年`。  
+3. 日期筛选：底部弹层滚轮（年/月），仅展示有快照数据的项。  
+4. 空周期：不可选择。  
+5. 当前周期无数据：默认跳最近有数据周期。  
+6. 实时当日盈亏覆盖：仅在“日视图且所选为当前年月”时覆盖当天格子；历史月份不覆盖。
+
+### 19.6 后端接口当前定义（分析相关）
+
+1. `GET /api/analysis/overview?period=all|day|month|year`  
+2. `GET /api/analysis/calendar?type=day|month|year&year=<int>&month=<int>`（`year/month` 为可选）  
+3. `calendar` 响应新增并保留：  
+   - `period`（当前实际周期）  
+   - `selectable`（可选年/月集合）
+
+### 19.7 本次验证记录（已执行）
+
+后端：
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
+.venv/bin/python -m unittest -q tests/test_api_baseline.py
+.venv/bin/python -m unittest -q tests/test_calendar_weekend.py
+```
+
+前端：
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
+flutter test test/analysis_calendar_picker_test.dart
+```
+
+以上测试均通过；新增回归用例覆盖了：
+1. 当前周期存在未来日期快照时，`overview` 与 `calendar` 仍一致。  
+2. 无年初前置快照时，`overview year` 与 `calendar month total` 一致。  
+3. 周末快照不再污染 month/year 汇总。
+
+## 20. 线上入口与快速验收（当前）
 
 - 后端健康：`http://57.180.79.186:5003/health`
 - 后台登录：`http://57.180.79.186:5003/admin/login`
@@ -645,7 +743,7 @@ ss -ltnp | grep :5003 || true
 curl -sS http://127.0.0.1:5003/health
 ```
 
-## 20. 结论
+## 21. 结论
 
 当前项目已经具备：
 
