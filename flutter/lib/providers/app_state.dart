@@ -871,6 +871,7 @@ class AppState extends ChangeNotifier {
         _api.getLiabilities(),
         _api.getPortfolio(),
         _api.getHistory(),
+        _api.getAnalysisOverview(period: 'all'),
       ]);
 
       _cashAssets = (results[0] as List).map((e) => Asset.fromJson(e)).toList();
@@ -934,6 +935,7 @@ class AppState extends ChangeNotifier {
       // 处理历史数据（必须在总资产计算之后）
       final history = results[4] as List;
       _calculateHistoryStats(history);
+      applyOverviewMilestones(results[5] as Map<String, dynamic>?);
 
       await saveHomeCache(history);
 
@@ -942,6 +944,27 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('刷新首页数据失败: $e');
     }
+  }
+
+  /// 用分析概览覆盖首页里程碑（月/年改为收益口径）。
+  /// 若接口数据异常则保留历史差值口径结果（回退行为）。
+  void applyOverviewMilestones(Map<String, dynamic>? overview) {
+    final data = overview ?? const <String, dynamic>{};
+    final month = data['month'];
+    final year = data['year'];
+    double? _extractPnl(dynamic node) {
+      if (node is! Map) return null;
+      final raw = node['pnl'];
+      if (raw is num) return raw.toDouble();
+      if (raw is String) return double.tryParse(raw.trim());
+      return null;
+    }
+
+    final monthPnl = _extractPnl(month);
+    final yearPnl = _extractPnl(year);
+    debugPrint('分析概览覆盖: monthPnl=$monthPnl, yearPnl=$yearPnl, raw=$data');
+    if (monthPnl != null) _monthChange = monthPnl;
+    if (yearPnl != null) _yearChange = yearPnl;
   }
 
   /// 仅刷新行情价格（用于定时更新今日盈亏/现价）

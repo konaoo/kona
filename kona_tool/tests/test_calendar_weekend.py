@@ -86,6 +86,49 @@ class CalendarWeekendTests(unittest.TestCase):
         year = [i for i in data["items"] if i["label"] == "2026"][0]
         self.assertEqual(year["pnl"], 100)
 
+    def test_day_view_supports_specific_year_month_and_selectable(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+        _insert_snapshot("2026-03-06", 120, 20)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 12, 1)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=2)
+
+        self.assertEqual(data["period"]["year"], 2026)
+        self.assertEqual(data["period"]["month"], 2)
+        self.assertEqual(data["title"], "2026年2月累计")
+        self.assertEqual(data["selectable"]["day"]["years"], [2026])
+        self.assertEqual(
+            data["selectable"]["day"]["months_by_year"].get("2026"),
+            [2, 3],
+        )
+
+    def test_month_view_supports_specific_year(self):
+        _insert_snapshot("2024-12-31", 100, 0)
+        _insert_snapshot("2025-01-15", 140, 0)
+        _insert_snapshot("2025-03-20", 180, 0)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("month", "u1", year=2025)
+
+        self.assertEqual(data["period"]["year"], 2025)
+        self.assertEqual(data["title"], "2025年累计")
+        self.assertEqual(len(data["items"]), 12)
+        self.assertEqual(data["items"][0]["label"], "1月")
+
+    def test_selected_empty_period_returns_invalid_code(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=12)
+
+        self.assertEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+
 
 if __name__ == "__main__":
     unittest.main()

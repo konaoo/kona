@@ -93,7 +93,7 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 
 - `GET /api/news/latest`
 - `GET /api/analysis/overview`
-- `GET /api/analysis/calendar`
+- `GET /api/analysis/calendar`（`type=day|month|year`，可选 `year`，`day` 视图可再传 `month`）
 - `GET /api/analysis/rank`
 
 

@@ -160,12 +160,12 @@ class HomePageState extends State<HomePage> {
                         Row(
                           children: [
                             _buildMilestone(
-                              '本月变动',
+                              '本月收益',
                               appState.monthChange,
                               appState,
                             ),
                             _buildMilestone(
-                              '今年变动',
+                              '今年收益',
                               appState.yearChange,
                               appState,
                             ),
@@ -237,9 +237,9 @@ class HomePageState extends State<HomePage> {
     final isHistoryPeak = label == '历史峰值';
     final hasBaseline =
         isHistoryPeak ||
-        (label == '本月变动'
+        (label == '本月收益'
             ? appState.hasMonthBaseline
-            : label == '今年变动'
+            : label == '今年收益'
             ? appState.hasYearBaseline
             : true);
     final displayText = hasBaseline

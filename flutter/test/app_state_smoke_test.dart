@@ -83,4 +83,14 @@ void main() {
       'CNY',
     );
   });
+
+  test('AppState applyOverviewMilestones overrides month/year by收益口径', () {
+    final state = AppState();
+    state.applyOverviewMilestones({
+      'month': {'pnl': 88.5},
+      'year': {'pnl': -12.0},
+    });
+    expect(state.monthChange, 88.5);
+    expect(state.yearChange, -12.0);
+  });
 }
