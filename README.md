@@ -11,12 +11,22 @@
 
 ---
 
+## 0. 新会话必读（Auth 改造）
+
+- 登录体系已切换到：`用户名 + 密码`（不再依赖邮箱验证码）
+- 注册体系已切换到：`用户名 + 密码 + 邀请码`
+- 会话策略：`365 天滑动 refresh` + `生物识别退出后重登`
+- 详细设计、字段释义、验收命令请直接看：
+  - `/Users/kona/Desktop/kaka/kona_repo/docs/README_AUTH_PERSISTENCE_BIOMETRIC.md`
+
+---
+
 ## 1. 当前状态（重要）
 
 - 代码主分支：`main`
-- 仓库根目录：`/Users/kona/Desktop/ko/kona_repo`
-- 后端目录：`/Users/kona/Desktop/ko/kona_repo/kona_tool`
-- 前端目录：`/Users/kona/Desktop/ko/kona_repo/flutter`
+- 仓库根目录：`/Users/kona/Desktop/kaka/kona_repo`
+- 后端目录：`/Users/kona/Desktop/kaka/kona_repo/kona_tool`
+- 前端目录：`/Users/kona/Desktop/kaka/kona_repo/flutter`
 - 线上后端（AWS）：`systemd + gunicorn` 管理，支持异常自动重启
 - CI/CD：`main` 分支必须通过后端门禁 + 前端门禁后才允许部署
 - 每日快照：使用 `systemd timer` 定时触发（北京 07:00）
@@ -100,8 +110,12 @@ kona_repo/
 
 ### 3.6 认证与用户资料
 
-- 邮箱验证码登录（SMTP）
-- 支持测试账号免验证码白名单（`LOGIN_BYPASS_EMAILS`）
+- 登录改为 `username + password`
+- 注册改为 `username + password + invite_code`
+- 邀请码支持前后端双校验（实时 validate + 注册时强校验）
+- `POST /api/auth/send_code` 已下线，返回 `410 Gone`
+- 会话采用 access + refresh，refresh 默认 365 天滑动续期
+- 生物识别由客户端系统能力实现，服务端不保存生物特征
 - 用户资料接口扩展：昵称、手机号、注册方式、头像
 - 头像上传/存储修复
 - 登录响应去除头像大字段，改为登录后单独拉取 `me/profile`
@@ -127,9 +141,9 @@ kona_repo/
 
 ### 3.10 安全与限流（今天新增）
 
-- 登录/发码接口新增双层限流（IP + 邮箱维度）
+- 登录/注册/refresh 接口增加限流与安全审计
 - 限流后端支持 Redis（生产可横向共享计数）
-- 增加安全审计日志：登录失败、限流命中、发码失败等
+- 增加安全审计日志：登录失败、注册、邀请码使用、改密、refresh、logout 等
 - 强制要求 `JWT_SECRET`（生产）
 
 ### 3.11 监控与告警（今天新增）
@@ -162,7 +176,7 @@ kona_repo/
 ### 4.2 本地运行
 
 ```bash
-cd /Users/kona/Desktop/ko/kona_repo/flutter
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
 flutter pub get
 flutter run
 ```
@@ -182,7 +196,7 @@ flutter install -d <device_id> --debug
 
 ### 4.4 API 地址配置
 
-文件：`/Users/kona/Desktop/ko/kona_repo/flutter/lib/config/api_config.dart`
+文件：`/Users/kona/Desktop/kaka/kona_repo/flutter/lib/config/api_config.dart`
 
 - 本地调试：`http://127.0.0.1:5003`
 - 线上联调：`http://<EC2公网IP>:5003`
@@ -199,7 +213,7 @@ flutter install -d <device_id> --debug
 ### 5.2 本地运行
 
 ```bash
-cd /Users/kona/Desktop/ko/kona_repo/kona_tool
+cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
 pip3 install -r requirements.txt
 python3 app.py
 ```
@@ -208,18 +222,18 @@ python3 app.py
 
 ### 5.3 关键环境变量
 
-参考模板：`/Users/kona/Desktop/ko/kona_repo/kona_tool/.env.example`
+参考模板：`/Users/kona/Desktop/kaka/kona_repo/kona_tool/.env.example`
 
 当前代码支持（重要项）：
 
 - `JWT_SECRET`
-- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`
-- `SMTP_FROM` / `SMTP_FROM_NAME` / `SMTP_USE_TLS`
-- `LOGIN_BYPASS_EMAILS`
+- `AUTH_REFRESH_TOKEN_DAYS`（默认 365）
+- `AUTH_REFRESH_TOKEN_RETENTION_DAYS`（默认 90）
 - `ENABLE_BACKGROUND_SNAPSHOT`（建议 `false`）
 - `ENABLE_STARTUP_SNAPSHOT`（建议 `false`）
 - `KONA_DATABASE_PATH`（可选）
 - `RATELIMIT_STORAGE_URL`（建议 `redis://127.0.0.1:6379/0`）
+- `ALLOW_LOCAL_ADMIN_BYPASS`（仅本机开发，生产建议 `false`）
 - `ALERT_NOTIFY_TO`（告警邮箱，可多个）
 - `KONA_HEALTH_URL`（健康探活 URL）
 - `PRICE_HEALTH_URL`（价格健康指标 URL）
@@ -229,6 +243,7 @@ python3 app.py
 - `KONA_BACKUP_DIR`（备份目录）
 - `KONA_BACKUP_RETENTION_DAYS`（默认 14）
 - `PRICE_HEALTH_TOKEN`（可选；留空即不鉴权）
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`（仅运维告警，不用于登录）
 
 ---
 
@@ -239,12 +254,17 @@ python3 app.py
 ### 6.1 users
 
 - `id`（用户 UUID）
-- `email`
+- `username`（唯一用户名）
+- `password_hash`（密码哈希，不存明文）
+- `legacy_needs_password_setup`（历史账号补设密码标记）
+- `password_updated_at`（最近改密时间）
 - `nickname`
+- `avatar`
 - `register_method`
 - `phone`
-- `avatar`（Base64 文本）
 - `user_number`
+- `is_admin`
+- `status`
 - `created_at`
 - `last_login`
 
@@ -278,7 +298,7 @@ python3 app.py
 
 ### 7.1 自动部署（代码发布）
 
-工作流文件：`/Users/kona/Desktop/ko/kona_repo/.github/workflows/deploy.yml`
+工作流文件：`/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml`
 
 触发方式：
 
@@ -406,50 +426,59 @@ curl -i --max-time 5 http://127.0.0.1:5003/health
 
 ---
 
-## 10. 登录与邮件（SMTP）
+## 10. 登录与会话（Auth V2）
 
 ### 10.1 现状
 
-- 已接入 SMTP 验证码发送
-- 测试账号可配置免验证码
+- 登录：`username + password`
+- 注册：`username + password + invite_code`
+- 邀请码：一次性消费，可作废，可导出 CSV 批量管理
+- 改密：必须提供原密码；成功后吊销该用户所有 refresh token
+- 生物识别：仅客户端本地校验（iOS/Android `local_auth`），服务端不存生物特征
+- 旧接口：`POST /api/auth/send_code` 已下线，返回 `410`
 
 ### 10.2 关键配置
 
-`.env` 示例：
+`.env` 示例（认证相关）：
 
 ```env
-SMTP_HOST=email-smtp.<region>.amazonaws.com
-SMTP_PORT=587
-SMTP_USER=<smtp_username>
-SMTP_PASS=<smtp_password>
-SMTP_FROM=<verified_sender_or_domain_mailbox>
-SMTP_FROM_NAME=Kaka
-SMTP_USE_TLS=true
-LOGIN_BYPASS_EMAILS=konaeee@gmail.com
+JWT_SECRET=<required_secret>
+AUTH_REFRESH_TOKEN_DAYS=365
+AUTH_REFRESH_TOKEN_RETENTION_DAYS=90
+RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 ```
 
 ### 10.3 接口
 
-- `POST /api/auth/send_code`
 - `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/invite/validate`
+- `POST /api/auth/password/change`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
 - `GET /api/auth/me`
 - `POST /api/auth/profile`
+
+管理员能力（`/api/admin/*`）：
+- 邀请码生成/列表/作废/导出
+- 历史数据归属迁移预览与执行
 
 ---
 
 ## 11. 文档索引（全部在 docs）
 
-- 结构说明：`/Users/kona/Desktop/ko/kona_repo/docs/STRUCTURE.md`
-- 运行手册：`/Users/kona/Desktop/ko/kona_repo/docs/RUNBOOK.md`
-- 部署说明：`/Users/kona/Desktop/ko/kona_repo/docs/DEPLOYMENT.md`
-- 前端环境：`/Users/kona/Desktop/ko/kona_repo/docs/FRONTEND_SETUP.md`
-- API 列表：`/Users/kona/Desktop/ko/kona_repo/docs/API.md`
-- API 参数：`/Users/kona/Desktop/ko/kona_repo/docs/API_DETAILS.md`
-- OpenAPI：`/Users/kona/Desktop/ko/kona_repo/docs/openapi.yaml`
-- Swagger：`/Users/kona/Desktop/ko/kona_repo/docs/swagger-ui.html`
-- 导入 Postman/Apifox：`/Users/kona/Desktop/ko/kona_repo/docs/API_IMPORT.md`
-- 后端模块说明：`/Users/kona/Desktop/ko/kona_repo/docs/CORE_MODULES.md`
-- 运维维护：`/Users/kona/Desktop/ko/kona_repo/docs/MAINTENANCE.md`
+- Auth 持久化专题（必读）：`/Users/kona/Desktop/kaka/kona_repo/docs/README_AUTH_PERSISTENCE_BIOMETRIC.md`
+- 结构说明：`/Users/kona/Desktop/kaka/kona_repo/docs/STRUCTURE.md`
+- 运行手册：`/Users/kona/Desktop/kaka/kona_repo/docs/RUNBOOK.md`
+- 部署说明：`/Users/kona/Desktop/kaka/kona_repo/docs/DEPLOYMENT.md`
+- 前端环境：`/Users/kona/Desktop/kaka/kona_repo/docs/FRONTEND_SETUP.md`
+- API 列表：`/Users/kona/Desktop/kaka/kona_repo/docs/API.md`
+- API 参数：`/Users/kona/Desktop/kaka/kona_repo/docs/API_DETAILS.md`
+- OpenAPI：`/Users/kona/Desktop/kaka/kona_repo/docs/openapi.yaml`
+- Swagger：`/Users/kona/Desktop/kaka/kona_repo/docs/swagger-ui.html`
+- 导入 Postman/Apifox：`/Users/kona/Desktop/kaka/kona_repo/docs/API_IMPORT.md`
+- 后端模块说明：`/Users/kona/Desktop/kaka/kona_repo/docs/CORE_MODULES.md`
+- 运维维护：`/Users/kona/Desktop/kaka/kona_repo/docs/MAINTENANCE.md`
 
 ---
 
