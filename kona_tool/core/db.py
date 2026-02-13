@@ -1451,9 +1451,17 @@ class DatabaseManager:
             cursor.execute('DROP TABLE daily_snapshots')
             cursor.execute('ALTER TABLE daily_snapshots_new RENAME TO daily_snapshots')
             logger.info("daily_snapshots schema migration completed")
-    
-    def get_portfolio(self, asset_type: str = 'all', user_id: str = None) -> List[Dict[str, Any]]:
-        """获取持仓数据，支持按类型筛选"""
+    def get_portfolio(
+        self,
+        asset_type: str = 'all',
+        user_id: str = None,
+        include_closed: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """获取持仓数据，支持按类型筛选。
+
+        默认只返回 qty > 0 的"当前持仓"。当 include_closed=True 时也包含 qty=0 的已清仓记录，
+        主要用于累计盈亏(total_pnl=未实现+已实现)计算。
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -1462,29 +1470,30 @@ class DatabaseManager:
         # 构建 user_id 条件
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        qty_condition = "" if include_closed else " AND qty > 0"
 
         if asset_type == 'all':
             cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE {user_condition}
+                WHERE {user_condition}{qty_condition}
                 ORDER BY code
             ''', user_param)
         elif asset_type in ('a', 'us', 'hk', 'fund'):
             cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE {user_condition} AND asset_type = ?
+                WHERE {user_condition}{qty_condition} AND asset_type = ?
                 ORDER BY code
             ''', user_param + (asset_type,))
         else:
             cursor.execute(f'''
                 SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE {user_condition}
+                WHERE {user_condition}{qty_condition}
                 ORDER BY code
             ''', user_param)
-        
+
         data = []
         for row in cursor.fetchall():
             data.append({
@@ -1501,6 +1510,7 @@ class DatabaseManager:
 
         conn.close()
         return data
+
     
     def get_asset(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
         """获取单个资产信息"""
@@ -2066,12 +2076,24 @@ class DatabaseManager:
             pnl = (price - old_price) * qty
             new_qty = old_qty - qty
             if new_qty < 0.001:
+                # 不删除记录：保留 qty=0 + adjustment 累积的已实现收益，避免累计收益丢失。
                 if user_id:
-                    cursor.execute('DELETE FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+                    cursor.execute(
+                        '''
+                        UPDATE portfolio
+                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND user_id = ?
+                        ''',
+                        (pnl, code, user_id),
+                    )
                 else:
                     cursor.execute(
-                        "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                        (code,),
+                        '''
+                        UPDATE portfolio
+                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        ''',
+                        (pnl, code),
                     )
                 after_asset = None
             else:
@@ -2932,18 +2954,21 @@ class DatabaseManager:
             return False
         finally:
             conn.close()
-    def get_today_realized_pnl(self) -> float:
+    def get_today_realized_pnl(self, user_id: str = None) -> float:
         """获取今日已实现盈亏（卖出产生的盈亏）"""
         conn = self.get_connection()
         cursor = conn.cursor()
         today = datetime.now().strftime('%Y-%m-%d')
-        
+
+        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
         try:
             cursor.execute('''
-                SELECT SUM(pnl) 
-                FROM transactions 
+                SELECT SUM(pnl)
+                FROM transactions
                 WHERE type = '减仓' AND time LIKE ?
-            ''', (f'{today}%',))
+            ''' + f" {user_condition}", (f'{today}%',) + user_param)
             result = cursor.fetchone()[0]
             return float(result) if result else 0.0
         except Exception as e:
@@ -2951,6 +2976,7 @@ class DatabaseManager:
             return 0.0
         finally:
             conn.close()
+
 
     def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
         """保存每日资产快照（按 date + user_id upsert）"""

@@ -546,6 +546,38 @@ class ApiBaselineTests(unittest.TestCase):
         conn.close()
         self.assertEqual(remaining, 0)
 
+    def test_sell_all_keeps_realized_pnl_in_cumulative_total(self):
+        # Add a holding then sell all. The realized pnl must remain in cumulative pnl (total_pnl),
+        # even though the holding disappears from portfolio list.
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600010',
+            'name': '测试清仓',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        sell_resp = self.client.post('/api/portfolio/sell', json={
+            'code': 'sh600010',
+            'price': 12.0,
+            'qty': 10.0,
+            'request_id': 'req-sellall-1',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+        self.assertEqual(sell_resp.get_json().get('status'), 'ok')
+
+        # Portfolio API should not show closed positions.
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        self.assertFalse(any(item.get('code') == 'sh600010' for item in items))
+
+        # Take snapshot synchronously and verify cumulative pnl includes realized pnl (20.0).
+        with patch('core.snapshot.batch_get_prices', return_value={'sh600010': (12.0, 12.0, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                stats = app_module.calculate_portfolio_stats(None)
+        self.assertAlmostEqual(float(stats.get('total_pnl') or 0.0), 20.0, places=2)
+
     def test_buy_with_cash_and_undo_restores_cash_and_portfolio(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={
             'name': '银行卡',

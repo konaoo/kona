@@ -53,7 +53,7 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
         }
     """
     # 1. 获取所有基础数据
-    portfolio = db.get_portfolio(user_id=user_id)
+    portfolio = db.get_portfolio(user_id=user_id, include_closed=True)
     cash_assets = db.get_cash_assets(user_id=user_id)
     other_assets = db.get_other_assets(user_id=user_id)
     liabilities = db.get_liabilities(user_id=user_id)
@@ -106,7 +106,7 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     total_liability = sum(abs(a['amount']) for a in liabilities)
     
     # 5. 获取今日已实现盈亏（卖出）
-    realized_pnl = db.get_today_realized_pnl()
+    realized_pnl = db.get_today_realized_pnl(user_id=user_id)
     day_pnl += realized_pnl
     # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
     # adjustment 字段通常用于存储 "已实现盈亏 + 分红" 等历史调整。
