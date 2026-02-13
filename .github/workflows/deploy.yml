@@ -96,7 +96,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            set -euo pipefail
+            set -eu
 
             APP_DIR="${{ secrets.APP_DIR }}"
             if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
@@ -106,44 +106,65 @@ jobs:
 
             cd "$APP_DIR"
             echo "Deploy dir: $(pwd)"
-            git fetch origin main
-            git reset --hard origin/main
-            python3 -m pip install --user -r requirements.txt
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              echo "WARN: $APP_DIR is not a git repository, skip git sync."
+            fi
 
-            cat > /tmp/kona.service <<'EOF'
-            [Unit]
-            Description=Kona Backend (Gunicorn)
-            After=network.target
+            REQ_FILE="requirements.txt"
+            if [ ! -f "$REQ_FILE" ] && [ -f "kona_tool/requirements.txt" ]; then
+              REQ_FILE="kona_tool/requirements.txt"
+            fi
+            if [ ! -f "$REQ_FILE" ]; then
+              echo "requirements file not found in $APP_DIR"
+              exit 1
+            fi
+            python3 -m pip install --user -r "$REQ_FILE"
 
-            [Service]
-            Type=simple
-            User=ec2-user
-            WorkingDirectory=${{ secrets.APP_DIR }}
-            EnvironmentFile=${{ secrets.APP_DIR }}/.env
-            Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/ec2-user/.local/bin
-            ExecStart=/home/ec2-user/.local/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5003 --timeout 120 wsgi:app
-            Restart=always
-            RestartSec=3
+            if ! sudo test -f /etc/systemd/system/kona.service; then
+              cat > /tmp/kona.service <<'EOF'
+              [Unit]
+              Description=Kona Backend (Gunicorn)
+              After=network.target
 
-            [Install]
-            WantedBy=multi-user.target
-            EOF
+              [Service]
+              Type=simple
+              User=ec2-user
+              WorkingDirectory=${{ secrets.APP_DIR }}
+              EnvironmentFile=${{ secrets.APP_DIR }}/.env
+              Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/ec2-user/.local/bin
+              ExecStart=/home/ec2-user/.local/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5003 --timeout 120 wsgi:app
+              Restart=always
+              RestartSec=3
 
-            sudo mv /tmp/kona.service /etc/systemd/system/kona.service
-            sudo systemctl daemon-reload
-            sudo systemctl enable kona
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+              sudo mv /tmp/kona.service /etc/systemd/system/kona.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable kona
+            else
+              echo "Existing /etc/systemd/system/kona.service detected, keep current unit."
+            fi
             sudo systemctl restart kona
 
-            for i in {1..30}; do
-              status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5003/health || true)
+            i=1
+            while [ "$i" -le 60 ]; do
+              status=$(curl -sS -o /tmp/kona_health.json -w "%{http_code}" --max-time 2 http://127.0.0.1:5003/health || true)
               echo "health attempt $i -> $status"
               if [ "$status" = "200" ]; then
+                cat /tmp/kona_health.json || true
+                echo
                 echo "Health check passed."
                 exit 0
               fi
+              i=$((i + 1))
               sleep 1
             done
 
             echo "Health check failed after restart."
             sudo systemctl status kona -l --no-pager || true
+            sudo journalctl -u kona -n 120 --no-pager || true
             exit 1
