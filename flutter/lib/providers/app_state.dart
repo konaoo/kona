@@ -79,6 +79,7 @@ class AppState extends ChangeNotifier {
   double _historyPeak = 0;
   bool _hasMonthBaseline = false;
   bool _hasYearBaseline = false;
+  bool _overviewMilestonesReady = false;
   bool _monthFromFirst = false;
   bool _yearFromFirst = false;
 
@@ -131,6 +132,7 @@ class AppState extends ChangeNotifier {
   double get historyPeak => _historyPeak;
   bool get hasMonthBaseline => _hasMonthBaseline;
   bool get hasYearBaseline => _hasYearBaseline;
+  bool get overviewMilestonesReady => _overviewMilestonesReady;
   bool get monthFromFirst => _monthFromFirst;
   bool get yearFromFirst => _yearFromFirst;
 
@@ -298,6 +300,12 @@ class AppState extends ChangeNotifier {
     if (cachedHistory != null && cachedHistory['items'] is List) {
       _calculateHistoryStats(cachedHistory['items'] as List);
     }
+    final cachedOverview = await _cache.getJson('cache_analysis_overview');
+    if (cachedOverview != null && cachedOverview['data'] is Map) {
+      applyOverviewMilestones(
+        Map<String, dynamic>.from(cachedOverview['data'] as Map),
+      );
+    }
 
     final cachedRates = await _cache.getJson('cache_exchange_rates');
     if (cachedRates != null && cachedRates['rates'] is Map) {
@@ -350,7 +358,10 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  Future<void> saveHomeCache(List<dynamic> history) async {
+  Future<void> saveHomeCache(
+    List<dynamic> history, {
+    Map<String, dynamic>? overview,
+  }) async {
     await _cache.setJson('cache_portfolio', {
       'items': _portfolio.map((e) => e.toJson()).toList(),
     });
@@ -375,6 +386,9 @@ class AppState extends ChangeNotifier {
         }),
       ),
     });
+    if (overview != null && overview.isNotEmpty) {
+      await _cache.setJson('cache_analysis_overview', {'data': overview});
+    }
   }
 
   Future<void> _applyAuthResult(Map<String, dynamic> result) async {
@@ -864,7 +878,7 @@ class AppState extends ChangeNotifier {
   /// 刷新首页数据
   Future<void> refreshHomeData() async {
     try {
-      // 并行获取数据
+      // 核心数据优先返回，避免被慢行情阻塞。
       final results = await Future.wait([
         _api.getCashAssets(),
         _api.getOtherAssets(),
@@ -885,62 +899,26 @@ class AppState extends ChangeNotifier {
           .map((e) => PortfolioItem.fromJson(e))
           .toList();
 
-      // 获取价格
-      if (_portfolio.isNotEmpty) {
-        final codes = _portfolio.map((e) => e.code).toList();
-
-        // 代码转换：将前端代码转换为价格API需要的格式
-        final priceApiCodes = codes.map((code) {
-          // gb_boxx -> boxx (去掉 gb_ 前缀)
-          if (code.startsWith('gb_')) {
-            return code.substring(3); // 去掉 "gb_" 前缀
-          }
-          return code;
-        }).toList();
-
-        debugPrint('请求价格的代码列表: $codes');
-        debugPrint('价格API代码转换: $priceApiCodes');
-
-        final pricesData = await _api.getPricesBatch(priceApiCodes);
-        debugPrint('价格API返回数据: ${pricesData.keys.toList()}');
-
-        // 转换价格数据，将价格API的key映射回原始代码
-        _prices = {};
-        for (int i = 0; i < codes.length; i++) {
-          final originalCode = codes[i];
-          final apiCode = priceApiCodes[i];
-
-          if (pricesData.containsKey(apiCode)) {
-            try {
-              _prices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
-              debugPrint(
-                '成功解析价格: $originalCode (API: $apiCode) = ${pricesData[apiCode]}',
-              );
-            } catch (e) {
-              debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
-            }
-          } else {
-            debugPrint('警告: 价格API未返回代码 $apiCode (原始: $originalCode)');
-          }
-        }
-      }
-
       // 计算总额（必须在历史数据计算之前）
       _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
       _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
       _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
-      _totalInvest = investTotalMV;
+      _totalInvest = _portfolioCostMV;
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
 
       // 处理历史数据（必须在总资产计算之后）
       final history = results[4] as List;
+      final overview = (results[5] as Map?)?.cast<String, dynamic>();
       _calculateHistoryStats(history);
-      applyOverviewMilestones(results[5] as Map<String, dynamic>?);
+      applyOverviewMilestones(overview);
 
-      await saveHomeCache(history);
+      await saveHomeCache(history, overview: overview);
 
       _portfolioLoaded = true;
       notifyListeners();
+
+      // 行情慢时后台更新，不影响首页收益首屏展示。
+      unawaited(_refreshPortfolioPricesInBackground());
     } catch (e) {
       debugPrint('刷新首页数据失败: $e');
     }
@@ -952,7 +930,7 @@ class AppState extends ChangeNotifier {
     final data = overview ?? const <String, dynamic>{};
     final month = data['month'];
     final year = data['year'];
-    double? _extractPnl(dynamic node) {
+    double? extractPnl(dynamic node) {
       if (node is! Map) return null;
       final raw = node['pnl'];
       if (raw is num) return raw.toDouble();
@@ -960,17 +938,32 @@ class AppState extends ChangeNotifier {
       return null;
     }
 
-    final monthPnl = _extractPnl(month);
-    final yearPnl = _extractPnl(year);
+    final monthPnl = extractPnl(month);
+    final yearPnl = extractPnl(year);
+    _overviewMilestonesReady = monthPnl != null || yearPnl != null;
     debugPrint('分析概览覆盖: monthPnl=$monthPnl, yearPnl=$yearPnl, raw=$data');
     if (monthPnl != null) _monthChange = monthPnl;
     if (yearPnl != null) _yearChange = yearPnl;
   }
 
-  /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
-  Future<void> refreshPricesOnly() async {
+  double get _portfolioCostMV {
+    double total = 0;
+    for (var item in _portfolio) {
+      final rate = _rateForCurrency(item.curr);
+      total += item.price * item.qty * rate;
+    }
+    return total;
+  }
+
+  Future<void> _refreshPortfolioPricesInBackground() async {
     try {
-      if (_portfolio.isEmpty) return;
+      if (_portfolio.isEmpty) {
+        _prices = {};
+        _totalInvest = 0;
+        _totalAsset = _totalCash + _totalOther - _totalLiability;
+        notifyListeners();
+        return;
+      }
 
       final codes = _portfolio.map((e) => e.code).toList();
       final priceApiCodes = codes.map((code) {
@@ -981,21 +974,31 @@ class AppState extends ChangeNotifier {
       }).toList();
 
       final pricesData = await _api.getPricesBatch(priceApiCodes);
-      _prices = {};
+      final nextPrices = <String, PriceInfo>{};
       for (int i = 0; i < codes.length; i++) {
         final originalCode = codes[i];
         final apiCode = priceApiCodes[i];
         if (pricesData.containsKey(apiCode)) {
-          _prices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
+          try {
+            nextPrices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
+          } catch (e) {
+            debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
+          }
         }
       }
 
+      _prices = nextPrices;
       _totalInvest = investTotalMV;
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
       notifyListeners();
     } catch (e) {
-      debugPrint('刷新行情价格失败: $e');
+      debugPrint('后台刷新行情失败: $e');
     }
+  }
+
+  /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
+  Future<void> refreshPricesOnly() async {
+    await _refreshPortfolioPricesInBackground();
   }
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
@@ -1904,6 +1907,7 @@ class AppState extends ChangeNotifier {
 
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
+    _overviewMilestonesReady = false;
     if (history.isEmpty) {
       _monthChange = 0;
       _yearChange = 0;
@@ -1922,8 +1926,6 @@ class AppState extends ChangeNotifier {
     double peak = 0;
     double? firstNonZero;
     String? firstNonZeroDate;
-    bool monthFromCurrent = false;
-    bool yearFromCurrent = false;
 
     // 按日期排序
     final sortedHistory = List<Map<String, dynamic>>.from(
@@ -1964,14 +1966,12 @@ class AppState extends ChangeNotifier {
           monthStart == null &&
           totalAsset != 0) {
         monthStart = totalAsset;
-        monthFromCurrent = true;
         debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
       }
 
       // 今年初数据（找到今年第一条记录）
       if (date.year == now.year && yearStart == null && totalAsset != 0) {
         yearStart = totalAsset;
-        yearFromCurrent = true;
         debugPrint('找到今年数据: ${item['date']}, 资产=$totalAsset');
       }
     }

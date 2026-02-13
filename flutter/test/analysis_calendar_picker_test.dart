@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tool/pages/analysis_page.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/widgets/calendar_period_wheel_sheet.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
 
   Future<Map<String, dynamic>> overviewLoader(String _) async {
     return {
@@ -216,5 +221,55 @@ void main() {
     expect(calls.last['type'], 'day');
     expect(calls.last['year'], 2026);
     expect(calls.last['month'], 3);
+  });
+
+  testWidgets('历史周期命中持久缓存后重建页面无需再次请求网络', (tester) async {
+    int firstLoaderCalls = 0;
+    final historical = {
+      'items': [
+        {'label': '1日', 'pnl': 12.0},
+      ],
+      'total_pnl': 12,
+      'total_rate': 1.2,
+      'title': '2001年1月',
+      'period': {'year': 2001, 'month': 1},
+      'selectable': {
+        'day': {
+          'years': [2001],
+          'months_by_year': {
+            '2001': [1],
+          },
+        },
+        'month': {
+          'years': [2001],
+        },
+      },
+    };
+
+    await tester.pumpWidget(
+      buildTestPage(
+        calendarLoader: ({required timeType, year, month}) async {
+          firstLoaderCalls += 1;
+          return historical;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(firstLoaderCalls, 1);
+    expect(find.text('2001年01月'), findsOneWidget);
+
+    int secondLoaderCalls = 0;
+    await tester.pumpWidget(
+      buildTestPage(
+        calendarLoader: ({required timeType, year, month}) async {
+          secondLoaderCalls += 1;
+          throw Exception('should not request network when persistent cache exists');
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(secondLoaderCalls, 0);
+    expect(find.text('2001年01月'), findsOneWidget);
   });
 }

@@ -729,6 +729,54 @@ flutter test test/analysis_calendar_picker_test.dart
 2. 无年初前置快照时，`overview year` 与 `calendar month total` 一致。  
 3. 周末快照不再污染 month/year 汇总。
 
+### 19.8 追加修复（首屏收益纠偏 + 日历持久缓存 + all 口径修正）
+
+你在后续验收里又反馈了三个问题：
+1. 首页首开时“本月收益/今年收益”先出现 10w+，随后才回落。  
+2. 分析页日历首次加载慢，偶发只看到今天有值。  
+3. 分析页顶部“全部/累计盈亏”与预期不一致。  
+
+本轮已落地修复如下（代码已合入本地）：
+
+#### A. 首页收益首屏不再先显示错误大值
+
+1. `AppState` 新增 `overviewMilestonesReady` 状态，月/年收益仅在拿到 `overview` 有效值后展示。  
+2. `hydrateFromCache()` 增加读取 `cache_analysis_overview`，冷启动优先显示上次正确收益口径。  
+3. `refreshHomeData()` 改为两阶段：
+   - 核心数据（资产/持仓/历史/overview）先返回并 `notify`；
+   - 行情价格改为后台刷新（不阻塞首页收益首屏）。  
+4. 首页月/年里程碑显示条件从“有历史基线”改为“`overviewMilestonesReady` 为真”。  
+
+#### B. 分析页日历增加持久缓存（历史秒开）
+
+1. 分析页接入 `CacheService`，新增持久缓存键：
+   - `analysis_calendar_v1:{userId}:day:{yyyy}-{mm}`
+   - `analysis_calendar_v1:{userId}:month:{yyyy}`
+   - `analysis_calendar_v1:{userId}:year`
+2. 加载策略：
+   - 先读内存缓存；
+   - 再读本地持久缓存并立即渲染；
+   - 当前月/当前年后台增量刷新；
+   - 历史周期命中缓存时不阻塞页面等待网络。  
+3. 修复“只显示今天”误导：只有在 `items` 非空且确为当月 `day` 视图时，才覆盖当天实时值。  
+
+#### C. `overview all` 口径修正
+
+1. 后端 `get_pnl_overview(period='all')` 仅统计 `date <= today` 的快照，忽略未来日期快照。  
+2. `all.pnl` 改为“截至今天最后一条快照的 `total_pnl`（累计值）”，不再做首尾差值。  
+3. `all.pnl_rate` 分母优先最新 `total_invest`，无则回退首条 `total_invest`，再兜底 `1`。  
+
+#### D. 对应测试补充
+
+后端新增/调整了 `test_api_baseline.py` 用例，覆盖：
+1. `all` 忽略未来快照。  
+2. `all` 返回最新 `total_pnl` 累计值而非差值。  
+3. `all` 与日历累计在同数据集下保持一致。  
+
+前端测试补充：
+1. `AppState` 覆盖 `overviewMilestonesReady` 的有效/无效状态。  
+2. 分析页历史周期命中持久缓存后，重建页面不再重复请求网络。  
+
 ## 20. 线上入口与快速验收（当前）
 
 - 后端健康：`http://57.180.79.186:5003/health`

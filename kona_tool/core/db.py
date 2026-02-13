@@ -3186,17 +3186,19 @@ class DatabaseManager:
                 cursor.execute(
                     f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
-                    WHERE {user_condition}
+                    WHERE date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
-                    user_param,
+                    (today_str,) + user_param,
                 )
                 rows = cursor.fetchall()
                 if rows:
-                    first = rows[0]
                     last = rows[-1]
-                    pnl = float(last['total_pnl']) - float(first['total_pnl'])
-                    base = float(first['total_invest']) if first['total_invest'] else 1
+                    # total_pnl 本身就是累计口径；all 应返回当前累计值而非差值。
+                    pnl = float(last['total_pnl'] or 0.0)
+                    latest_invest = float(last['total_invest'] or 0.0)
+                    first_invest = float(rows[0]['total_invest'] or 0.0)
+                    base = latest_invest or first_invest or 1
                     return {
                         'pnl': pnl,
                         'pnl_rate': round(pnl / base * 100, 2) if base else 0,

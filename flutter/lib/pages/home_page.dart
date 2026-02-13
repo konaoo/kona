@@ -235,17 +235,15 @@ class HomePageState extends State<HomePage> {
   Widget _buildMilestone(String label, double value, AppState appState) {
     final color = value >= 0 ? AppTheme.success : AppTheme.danger;
     final isHistoryPeak = label == '历史峰值';
-    final hasBaseline =
+    final hasData =
         isHistoryPeak ||
-        (label == '本月收益'
-            ? appState.hasMonthBaseline
-            : label == '今年收益'
-            ? appState.hasYearBaseline
+        (label == '本月收益' || label == '今年收益'
+            ? appState.overviewMilestonesReady
             : true);
-    final displayText = hasBaseline
+    final displayText = hasData
         ? appState.formatAmount(value, prefix: '')
         : '--';
-    final displayColor = hasBaseline
+    final displayColor = hasData
         ? (isHistoryPeak ? AppTheme.textPrimary : color)
         : AppTheme.textTertiary;
 

@@ -92,5 +92,12 @@ void main() {
     });
     expect(state.monthChange, 88.5);
     expect(state.yearChange, -12.0);
+    expect(state.overviewMilestonesReady, isTrue);
+  });
+
+  test('AppState applyOverviewMilestones marks unready when payload invalid', () {
+    final state = AppState();
+    state.applyOverviewMilestones(const {});
+    expect(state.overviewMilestonesReady, isFalse);
   });
 }

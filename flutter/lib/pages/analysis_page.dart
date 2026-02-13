@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../services/cache_service.dart';
 import '../providers/app_state.dart';
 import '../widgets/calendar_period_wheel_sheet.dart';
 
@@ -23,6 +26,7 @@ class AnalysisPage extends StatefulWidget {
 
 class _AnalysisPageState extends State<AnalysisPage> {
   final ApiService _api = ApiService();
+  final CacheService _cache = CacheService();
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
@@ -69,18 +73,39 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Future<void> _loadCalendar({bool force = false}) async {
-    final cacheKey = _calendarCacheKey();
-    if (_calendarCache.containsKey(cacheKey) && !force) {
-      final cached = _calendarCache[cacheKey] ?? {};
-      setState(() {
-        _syncCalendarMetaFromData(cached);
-        _normalizeCalendarSelections();
-        _calendarData = cached;
-        _calendarLoading = false;
-      });
+    final requestCacheKey = _calendarCacheKey();
+    final requestStorageKey = _calendarStorageKey(requestCacheKey);
+    var renderedByCache = false;
+
+    if (!force) {
+      var cached = _calendarCache[requestCacheKey];
+      if (cached == null) {
+        cached = await _loadCalendarFromStorage(requestStorageKey);
+        if (cached != null) {
+          _calendarCache[requestCacheKey] = cached;
+        }
+      }
+      if (cached != null && mounted) {
+        final cachedData = cached;
+        setState(() {
+          _syncCalendarMetaFromData(cachedData);
+          _normalizeCalendarSelections();
+          _calendarData = cachedData;
+          _calendarLoading = false;
+        });
+        renderedByCache = true;
+      }
+    }
+
+    final shouldRefreshFromNetwork =
+        force || !renderedByCache || _isCurrentCalendarPeriod();
+    if (!shouldRefreshFromNetwork) {
       return;
     }
-    setState(() => _calendarLoading = true);
+
+    if (!renderedByCache) {
+      setState(() => _calendarLoading = true);
+    }
     try {
       final data = widget.calendarLoader != null
           ? await widget.calendarLoader!(
@@ -94,17 +119,73 @@ class _AnalysisPageState extends State<AnalysisPage> {
               month: _currentCalendarRequestMonth,
             );
       debugPrint('收益日历数据: $data');
+      if (!mounted) return;
       setState(() {
         _syncCalendarMetaFromData(data);
         _normalizeCalendarSelections();
         _calendarData = data;
-        _calendarCache[_calendarCacheKey()] = data;
+        final resolvedCacheKey = _calendarCacheKey();
+        _calendarCache[resolvedCacheKey] = data;
         _calendarLoading = false;
       });
+      final resolvedStorageKey = _calendarStorageKey(_calendarCacheKey());
+      unawaited(_saveCalendarToStorage(resolvedStorageKey, data));
     } catch (e) {
       debugPrint('加载收益日历失败: $e');
-      setState(() => _calendarLoading = false);
+      if (!mounted) return;
+      if (!renderedByCache) {
+        setState(() => _calendarLoading = false);
+      }
     }
+  }
+
+  String _calendarStorageKey(String cacheKey) {
+    final rawUserId = context.read<AppState>().userId?.trim();
+    final userId = (rawUserId == null || rawUserId.isEmpty)
+        ? 'guest'
+        : rawUserId;
+    return 'analysis_calendar_v1:$userId:$cacheKey';
+  }
+
+  Future<Map<String, dynamic>?> _loadCalendarFromStorage(String key) async {
+    try {
+      final payload = await _cache.getJson(key);
+      if (payload == null) return null;
+      final data = payload['data'];
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (e) {
+      debugPrint('读取日历持久缓存失败: $e');
+    }
+    return null;
+  }
+
+  Future<void> _saveCalendarToStorage(
+    String key,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await _cache.setJson(key, {
+        'saved_at': DateTime.now().millisecondsSinceEpoch,
+        'data': data,
+      });
+    } catch (e) {
+      debugPrint('写入日历持久缓存失败: $e');
+    }
+  }
+
+  bool _isCurrentCalendarPeriod() {
+    final now = DateTime.now();
+    if (_calendarTimeType == 'day') {
+      final year = _selectedDayYear ?? now.year;
+      final month = _selectedDayMonth ?? now.month;
+      return year == now.year && month == now.month;
+    }
+    if (_calendarTimeType == 'month') {
+      final year = _selectedMonthYear ?? now.year;
+      return year == now.year;
+    }
+    return false;
   }
 
   String _calendarCacheKey() {
@@ -486,6 +567,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
     // 当天数据始终用实时日盈亏，确保与“今日盈亏”一致
     if (_calendarTimeType == 'day' &&
+        items.isNotEmpty &&
         dayYear == now.year &&
         dayMonth == now.month) {
       final todayKey = DateTime.now().day;
