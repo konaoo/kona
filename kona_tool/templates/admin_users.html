@@ -1,0 +1,179 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'users' %}
+
+{% block title %}Admin 用户管理{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1 class="title">用户管理（运营视角）</h1>
+    <div class="hint">真实注册用户列表、详情、启用/禁用</div>
+</div>
+
+<div class="grid-3">
+    <div class="card"><div class="muted">累计用户</div><div class="kpi" id="mTotal">-</div></div>
+    <div class="card"><div class="muted">今日新增</div><div class="kpi" id="mNewToday">-</div></div>
+    <div class="card"><div class="muted">DAU</div><div class="kpi" id="mDau">-</div></div>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <input id="q" placeholder="搜索 用户名/昵称/手机号/user_number" style="min-width:280px;">
+        <select id="status">
+            <option value="all">全部状态</option>
+            <option value="active">active</option>
+            <option value="disabled">disabled</option>
+        </select>
+        <button onclick="loadUsers()">查询</button>
+        <button class="secondary" onclick="resetFilters()">重置</button>
+        <div class="muted" id="listMeta" style="align-self:center;">-</div>
+    </div>
+
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>用户ID</th>
+                    <th>用户名</th>
+                    <th>昵称</th>
+                    <th>手机号</th>
+                    <th>编号</th>
+                    <th>注册方式</th>
+                    <th>注册时间</th>
+                    <th>最近登录</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="userRows"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card" id="detailCard" style="display:none;">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">用户详情</h3>
+        <button class="secondary" onclick="hideDetail()">关闭</button>
+    </div>
+    <table>
+        <tbody id="detailRows"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function statusPill(status) {
+        const cls = status === 'active' ? 'status-active' : 'status-disabled';
+        return `<span class="status-pill ${cls}">${status}</span>`;
+    }
+
+    function hideDetail() {
+        document.getElementById('detailCard').style.display = 'none';
+        document.getElementById('detailRows').innerHTML = '';
+    }
+
+    async function loadMetrics() {
+        try {
+            const m = await adminFetch('/api/admin/users/metrics');
+            document.getElementById('mTotal').innerText = m.user_total ?? 0;
+            document.getElementById('mNewToday').innerText = m.new_today ?? 0;
+            document.getElementById('mDau').innerText = m.dau ?? 0;
+        } catch (e) {
+            showToast(`指标加载失败: ${e.message}`, true);
+        }
+    }
+
+    async function setStatus(userId, status) {
+        try {
+            await adminFetch('/api/admin/users/status', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId, status })
+            });
+            showToast(status === 'active' ? '已启用' : '已禁用');
+            await loadUsers();
+        } catch (e) {
+            showToast(`状态更新失败: ${e.message}`, true);
+        }
+    }
+
+    async function showDetail(userId) {
+        try {
+            const data = await adminFetch(`/api/admin/users/${encodeURIComponent(userId)}`);
+            const rows = [
+                ['用户ID', data.id || ''],
+                ['用户名', data.username || ''],
+                ['昵称', data.nickname || ''],
+                ['手机号', data.phone || ''],
+                ['用户编号', data.user_number ?? ''],
+                ['注册方式', data.register_method || ''],
+                ['状态', data.status || ''],
+                ['注册时间', data.created_at || ''],
+                ['最近登录', data.last_login || ''],
+            ];
+            document.getElementById('detailRows').innerHTML = rows
+                .map((r) => `<tr><td style="width:120px;">${r[0]}</td><td>${r[1]}</td></tr>`)
+                .join('');
+            document.getElementById('detailCard').style.display = 'block';
+        } catch (e) {
+            showToast(`详情加载失败: ${e.message}`, true);
+        }
+    }
+
+    function renderUsers(data) {
+        const items = data.items || [];
+        const tbody = document.getElementById('userRows');
+        tbody.innerHTML = '';
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="muted">暂无数据</td></tr>';
+            document.getElementById('listMeta').innerText = '共 0 条';
+            return;
+        }
+        for (const u of items) {
+            const tr = document.createElement('tr');
+            const toStatus = u.status === 'active' ? 'disabled' : 'active';
+            const canManage = !!u.can_manage;
+            tr.innerHTML = `
+                <td>${u.id || ''}</td>
+                <td>${u.username || ''}</td>
+                <td>${u.nickname || ''}</td>
+                <td>${u.phone || ''}</td>
+                <td>${u.user_number ?? ''}</td>
+                <td>${u.register_method || ''}</td>
+                <td>${u.created_at || ''}</td>
+                <td>${u.last_login || ''}</td>
+                <td>${statusPill(u.status || 'active')}</td>
+                <td>
+                    <button class="secondary" onclick="showDetail('${u.id}')">详情</button>
+                    ${canManage
+                        ? `<button class="${u.status === 'active' ? 'warn' : 'ok'}" onclick="setStatus('${u.id}', '${toStatus}')">${u.status === 'active' ? '禁用' : '启用'}</button>`
+                        : `<span class="muted">只读</span>`}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+        document.getElementById('listMeta').innerText = `共 ${data.total ?? items.length} 条`;
+    }
+
+    async function loadUsers() {
+        const q = encodeURIComponent(document.getElementById('q').value.trim());
+        const status = encodeURIComponent(document.getElementById('status').value);
+        const url = `/api/admin/users?q=${q}&status=${status}&limit=200&offset=0`;
+        try {
+            const data = await adminFetch(url);
+            renderUsers(data);
+            await loadMetrics();
+        } catch (e) {
+            showToast(`加载失败: ${e.message}`, true);
+        }
+    }
+
+    function resetFilters() {
+        document.getElementById('q').value = '';
+        document.getElementById('status').value = 'all';
+        hideDetail();
+        loadUsers();
+    }
+
+    loadUsers();
+</script>
+{% endblock %}

@@ -3,7 +3,6 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 KONA_TOOL = ROOT / "kona_tool"
@@ -11,116 +10,127 @@ if str(KONA_TOOL) not in sys.path:
     sys.path.insert(0, str(KONA_TOOL))
 
 _tmp_dir = tempfile.TemporaryDirectory()
-os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test_rate_limit.db")
+os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test_auth_v2.db")
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
 
 
-class AuthRateLimitTests(unittest.TestCase):
+class AuthV2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         app_module.app.testing = True
         cls.client = app_module.app.test_client()
 
     def setUp(self):
-        # Keep tests independent from persisted auth-code state.
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM email_verification_codes")
+        cursor.execute("DELETE FROM auth_refresh_tokens")
+        cursor.execute("DELETE FROM invite_codes")
+        cursor.execute("DELETE FROM users")
         conn.commit()
         conn.close()
 
-    @patch.object(app_module, "send_verification_email", return_value=None)
-    def test_send_code_ip_limit_blocks_6th_request(self, _mock_send):
-        # 5 requests allowed, 6th should be rate-limited by IP.
-        headers = {"X-Forwarded-For": "10.10.10.10"}
-        for i in range(5):
-            email = f"ratelimit{i}@example.com"
-            resp = self.client.post(
-                "/api/auth/send_code",
-                json={"email": email},
-                headers=headers,
-            )
-            self.assertEqual(resp.status_code, 200)
-            self.assertEqual(resp.get_json().get("status"), "ok")
+    def _seed_invite(self, code: str = "INVITE2026A") -> str:
+        app_module.db.insert_invite_codes([code], batch_id="t_batch", created_by="tester")
+        return code
 
-        blocked = self.client.post(
-            "/api/auth/send_code",
-            json={"email": "ratelimit_block@example.com"},
-            headers=headers,
+    def test_send_code_is_deprecated(self):
+        resp = self.client.post("/api/auth/send_code", json={"email": "x@example.com"})
+        self.assertEqual(resp.status_code, 410)
+        self.assertEqual(resp.get_json().get("code"), "AUTH_EMAIL_OTP_REMOVED")
+
+    def test_register_consumes_invite_and_login_works(self):
+        code = self._seed_invite()
+
+        reg = self.client.post(
+            "/api/auth/register",
+            json={"username": "kona_user", "password": "Abcd1234", "invite_code": code},
         )
-        self.assertEqual(blocked.status_code, 429)
-        self.assertEqual(blocked.get_json().get("error"), "Too many requests")
+        self.assertEqual(reg.status_code, 200)
+        reg_body = reg.get_json()
+        self.assertIsInstance(reg_body.get("access_token"), str)
+        self.assertIsInstance(reg_body.get("refresh_token"), str)
 
-    def test_login_email_limit_blocks_9th_request(self):
-        # Email-specific threshold is 8 per 10 min.
-        payload = {"email": "login-limit@example.com", "code": ""}
-        headers = {"X-Forwarded-For": "10.20.20.20"}
+        reg2 = self.client.post(
+            "/api/auth/register",
+            json={"username": "kona_user2", "password": "Abcd1234", "invite_code": code},
+        )
+        self.assertEqual(reg2.status_code, 400)
 
-        for _ in range(8):
-            resp = self.client.post("/api/auth/login", json=payload, headers=headers)
-            self.assertEqual(resp.status_code, 400)
-            self.assertEqual(resp.get_json().get("error"), "Missing code")
-
-        blocked = self.client.post("/api/auth/login", json=payload, headers=headers)
-        self.assertEqual(blocked.status_code, 429)
-        self.assertEqual(blocked.get_json().get("error"), "Too many requests")
-
-    def test_security_log_written_for_invalid_email(self):
-        with self.assertLogs(app_module.logger, level="WARNING") as logs:
-            resp = self.client.post("/api/auth/send_code", json={"email": "bad-email"})
-            self.assertEqual(resp.status_code, 400)
-            self.assertEqual(resp.get_json().get("error"), "Invalid email")
-
-        joined = "\n".join(logs.output)
-        self.assertIn("SECURITY event=auth_send_code", joined)
-        self.assertIn("outcome=failed", joined)
-        self.assertIn("reason=invalid_email", joined)
-
-    @patch.object(app_module, "send_verification_email", return_value=None)
-    @patch.object(app_module, "_generate_code", return_value="123456")
-    def test_login_code_is_single_use(self, _mock_generate_code, _mock_send):
-        email = "single-use@example.com"
-
-        send_resp = self.client.post("/api/auth/send_code", json={"email": email})
-        self.assertEqual(send_resp.status_code, 200)
-        self.assertEqual(send_resp.get_json().get("status"), "ok")
-
-        first_login = self.client.post(
+        bad_login = self.client.post(
             "/api/auth/login",
-            json={"user_id": email, "email": email, "code": "123456"},
-            headers={"X-Forwarded-For": "10.40.40.40"},
+            json={"username": "kona_user", "password": "Wrong1234"},
         )
-        self.assertEqual(first_login.status_code, 200)
-        self.assertIsInstance(first_login.get_json().get("token"), str)
+        self.assertEqual(bad_login.status_code, 401)
 
-        second_login = self.client.post(
+        ok_login = self.client.post(
             "/api/auth/login",
-            json={"user_id": email, "email": email, "code": "123456"},
-            headers={"X-Forwarded-For": "10.40.40.41"},
+            json={"username": "kona_user", "password": "Abcd1234"},
         )
-        self.assertEqual(second_login.status_code, 400)
-        self.assertEqual(second_login.get_json().get("error"), "Invalid or expired code")
+        self.assertEqual(ok_login.status_code, 200)
+        self.assertIsInstance(ok_login.get_json().get("access_token"), str)
 
-    @patch.object(app_module.config, "LOGIN_BYPASS_EMAILS", [])
-    def test_hardcoded_bypass_email_works_without_env_whitelist(self):
-        email = "konaeee@gmail.com"
+    def test_change_password_revokes_refresh_tokens(self):
+        code = self._seed_invite("INVITE2026B")
+        reg = self.client.post(
+            "/api/auth/register",
+            json={"username": "pw_user", "password": "Abcd1234", "invite_code": code},
+        )
+        self.assertEqual(reg.status_code, 200)
+        body = reg.get_json()
+        access = body.get("access_token")
 
-        send_resp = self.client.post("/api/auth/send_code", json={"email": email})
-        self.assertEqual(send_resp.status_code, 200)
-        self.assertEqual(send_resp.get_json().get("status"), "ok")
-        self.assertTrue(send_resp.get_json().get("bypass"))
+        change = self.client.post(
+            "/api/auth/password/change",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"old_password": "Abcd1234", "new_password": "Zzzz1234"},
+        )
+        self.assertEqual(change.status_code, 200)
 
-        login_resp = self.client.post(
+        old_login = self.client.post(
             "/api/auth/login",
-            json={"user_id": email, "email": email, "code": ""},
-            headers={"X-Forwarded-For": "10.30.30.30"},
+            json={"username": "pw_user", "password": "Abcd1234"},
         )
-        self.assertEqual(login_resp.status_code, 200)
-        body = login_resp.get_json()
-        self.assertIsInstance(body.get("token"), str)
-        self.assertTrue(body.get("token"))
+        self.assertEqual(old_login.status_code, 401)
+
+        new_login = self.client.post(
+            "/api/auth/login",
+            json={"username": "pw_user", "password": "Zzzz1234"},
+        )
+        self.assertEqual(new_login.status_code, 200)
+
+    def test_refresh_and_logout(self):
+        code = self._seed_invite("INVITE2026C")
+        reg = self.client.post(
+            "/api/auth/register",
+            json={"username": "refresh_user", "password": "Abcd1234", "invite_code": code},
+        )
+        self.assertEqual(reg.status_code, 200)
+        body = reg.get_json()
+        access = body.get("access_token")
+        refresh = body.get("refresh_token")
+
+        refresh_resp = self.client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": refresh},
+        )
+        self.assertEqual(refresh_resp.status_code, 200)
+        new_refresh = refresh_resp.get_json().get("refresh_token")
+        self.assertIsInstance(new_refresh, str)
+
+        logout = self.client.post(
+            "/api/auth/logout",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"refresh_token": new_refresh},
+        )
+        self.assertEqual(logout.status_code, 200)
+
+        refresh_after_logout = self.client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": new_refresh},
+        )
+        self.assertEqual(refresh_after_logout.status_code, 401)
 
 
 if __name__ == "__main__":

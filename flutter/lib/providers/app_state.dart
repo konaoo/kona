@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
+import '../services/biometric_service.dart';
 import '../services/cache_service.dart';
 import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
@@ -16,6 +17,7 @@ class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
   final SecureStorageService _secureStorage = SecureStorageService();
+  final BiometricService _biometric = BiometricService();
   final Future<String?> Function()? _tokenLoaderOverride;
   final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
 
@@ -33,11 +35,13 @@ class AppState extends ChangeNotifier {
   SessionBootState _sessionBootState = SessionBootState.initializing;
   bool _isSessionChecking = false;
   String? _token;
-  String? _email;
+  String? _refreshToken;
+  String? _username;
   String? _userId;
   int? _userNumber;
   String? _nickname;
   String? _avatar;
+  bool _biometricEnabled = false;
 
   // 资产数据
   double _totalAsset = 0;
@@ -84,11 +88,13 @@ class AppState extends ChangeNotifier {
   SessionBootState get sessionBootState => _sessionBootState;
   bool get isSessionReady => _sessionBootState != SessionBootState.initializing;
   String? get token => _token;
-  String? get email => _email;
+  String? get refreshToken => _refreshToken;
+  String? get username => _username;
   String? get userId => _userId;
   int? get userNumber => _userNumber;
   String? get nickname => _nickname;
   String? get avatar => _avatar;
+  bool get biometricEnabled => _biometricEnabled;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -361,53 +367,131 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  /// 登录
-  Future<bool> login(String userId, String email, String code) async {
+  Future<void> _applyAuthResult(Map<String, dynamic> result) async {
+    final accessToken = result['access_token']?.toString();
+    final refreshToken = result['refresh_token']?.toString();
+    final user = (result['user'] is Map<String, dynamic>)
+        ? (result['user'] as Map<String, dynamic>)
+        : <String, dynamic>{};
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('缺少 access_token');
+    }
+    if (refreshToken == null || refreshToken.isEmpty) {
+      throw Exception('缺少 refresh_token');
+    }
+
+    _isLoggedIn = true;
+    _token = accessToken;
+    _refreshToken = refreshToken;
+    _username = user['username']?.toString();
+    _userId = user['id']?.toString() ?? user['user_id']?.toString();
+    final userNumberRaw = user['user_number'];
+    _userNumber = userNumberRaw is num ? userNumberRaw.toInt() : null;
+    _nickname = user['nickname']?.toString();
+    _avatar = user['avatar']?.toString();
+    _api.setToken(accessToken);
+    _sessionBootState = SessionBootState.authenticated;
+
+    await _secureStorage.setToken(accessToken);
+    await _secureStorage.setRefreshToken(refreshToken);
+    if (_username != null && _username!.isNotEmpty) {
+      await _secureStorage.setUsername(_username!);
+    }
+    notifyListeners();
+  }
+
+  /// 用户名密码登录
+  Future<bool> login({
+    required String username,
+    required String password,
+  }) async {
     try {
-      final result = await _api.login(userId, email, code);
-      if (result != null && result['token'] != null) {
-        _isLoggedIn = true;
-        _token = result['token'];
-        _email = result['email'];
-        _userId = result['user_id'];
-        _userNumber = result['user_number'];
-        _nickname = result['nickname'];
-        _api.setToken(result['token']);
-        _sessionBootState = SessionBootState.authenticated;
-        try {
-          await _secureStorage.setToken(result['token']);
-        } catch (e) {
-          // 登录应以服务端结果为准，持久化失败只影响下次自动登录。
-          debugPrint('保存 token 失败（不影响本次登录）: $e');
-        }
-        notifyListeners();
-        _loadProfileSilently();
-        return true;
-      }
-      debugPrint('登录失败：接口未返回 token');
-      return false;
+      final result = await _api.login(username: username, password: password);
+      if (result == null) return false;
+      await _applyAuthResult(result);
+      return true;
     } catch (e) {
       debugPrint('登录异常: $e');
       return false;
     }
   }
 
-  Future<bool> sendLoginCode(String email) async {
-    return await _api.sendLoginCode(email);
+  /// 邀请码注册
+  Future<bool> register({
+    required String username,
+    required String password,
+    required String inviteCode,
+  }) async {
+    try {
+      final result = await _api.register(
+        username: username,
+        password: password,
+        inviteCode: inviteCode,
+      );
+      if (result == null) return false;
+      await _applyAuthResult(result);
+      return true;
+    } catch (e) {
+      debugPrint('注册异常: $e');
+      return false;
+    }
   }
 
-  Future<void> _loadProfileSilently() async {
-    final profile = await _api.getProfile();
-    if (profile != null) {
-      _nickname = profile['nickname'];
-      _avatar = profile['avatar'];
+  Future<bool> validateInviteCode(String inviteCode) async {
+    try {
+      return await _api.validateInviteCode(inviteCode);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await _api.changePassword(oldPassword: oldPassword, newPassword: newPassword);
+      await _secureStorage.clearBiometricEnabled();
+      _biometricEnabled = false;
       notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('修改密码失败: $e');
+      return false;
+    }
+  }
+
+  Future<bool> setBiometricEnabled(bool enabled) async {
+    if (enabled) {
+      final canUse = await _biometric.canUseBiometrics();
+      if (!canUse) return false;
+    }
+    _biometricEnabled = enabled;
+    await _secureStorage.setBiometricEnabled(enabled);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> tryBiometricLogin() async {
+    if (!_biometricEnabled || _refreshToken == null || _refreshToken!.isEmpty) {
+      return false;
+    }
+    final ok = await _biometric.authenticate();
+    if (!ok) return false;
+    try {
+      final result = await _api.refreshSession(refreshToken: _refreshToken!);
+      if (result == null) return false;
+      await _applyAuthResult(result);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
   Future<bool> fetchProfile() async {
     final profile = await _api.getProfile();
     if (profile != null) {
+      _username = profile['username']?.toString() ?? _username;
       _nickname = profile['nickname'];
       _avatar = profile['avatar'];
       notifyListeners();
@@ -420,6 +504,7 @@ class AppState extends ChangeNotifier {
   Future<bool> updateProfile({String? nickname, String? avatar}) async {
     final result = await _api.updateProfile(nickname: nickname, avatar: avatar);
     if (result != null) {
+      _username = result['username']?.toString() ?? _username;
       _nickname = result['nickname'];
       _avatar = result['avatar'];
       notifyListeners();
@@ -431,7 +516,8 @@ class AppState extends ChangeNotifier {
   /// 设置登录状态
   Future<void> setLoggedIn({
     required String token,
-    required String email,
+    required String refreshToken,
+    required String username,
     required String userId,
     int? userNumber,
     String? nickname,
@@ -439,7 +525,8 @@ class AppState extends ChangeNotifier {
   }) async {
     _isLoggedIn = true;
     _token = token;
-    _email = email;
+    _refreshToken = refreshToken;
+    _username = username;
     _userId = userId;
     _userNumber = userNumber;
     _nickname = nickname;
@@ -447,15 +534,26 @@ class AppState extends ChangeNotifier {
     _api.setToken(token);
     _sessionBootState = SessionBootState.authenticated;
     await _secureStorage.setToken(token);
+    await _secureStorage.setRefreshToken(refreshToken);
+    await _secureStorage.setUsername(username);
     notifyListeners();
   }
 
   /// 退出登录
   void logout() {
+    final currentRefreshToken = _refreshToken;
+    unawaited(() async {
+      try {
+        await _api.logout(refreshToken: currentRefreshToken);
+      } catch (_) {
+        // 本地会话已清理，后端登出失败不阻断前端退出流程。
+      }
+    }());
     _isLoggedIn = false;
     _sessionBootState = SessionBootState.unauthenticated;
     _token = null;
-    _email = null;
+    _refreshToken = null;
+    _username = null;
     _userId = null;
     _userNumber = null;
     _nickname = null;
@@ -467,7 +565,7 @@ class AppState extends ChangeNotifier {
     _otherAssets = [];
     _liabilities = [];
     _portfolioLoaded = false;
-    unawaited(_secureStorage.clearToken());
+    unawaited(_secureStorage.clearAllAuth());
     notifyListeners();
   }
 
@@ -476,10 +574,15 @@ class AppState extends ChangeNotifier {
     _isSessionChecking = true;
 
     String? token;
+    String? refreshToken;
+    String? username;
     try {
       token = _tokenLoaderOverride != null
-          ? await _tokenLoaderOverride!()
+          ? await _tokenLoaderOverride()
           : await _secureStorage.getToken();
+      refreshToken = await _secureStorage.getRefreshToken();
+      username = await _secureStorage.getUsername();
+      _biometricEnabled = await _secureStorage.isBiometricEnabled();
     } catch (e) {
       debugPrint('读取 token 失败，跳过自动登录: $e');
       _sessionBootState = SessionBootState.unauthenticated;
@@ -488,7 +591,7 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    if (token == null || token.isEmpty) {
+    if (token == null || token.isEmpty || refreshToken == null || refreshToken.isEmpty) {
       _sessionBootState = SessionBootState.unauthenticated;
       _isSessionChecking = false;
       notifyListeners();
@@ -496,6 +599,8 @@ class AppState extends ChangeNotifier {
     }
 
     _token = token;
+    _refreshToken = refreshToken;
+    _username = username;
     _isLoggedIn = true;
     _api.setToken(token);
     _sessionBootState = SessionBootState.authenticated;
@@ -505,15 +610,26 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _validateSessionInBackground() async {
-    final profile = _profileLoaderOverride != null
-        ? await _profileLoaderOverride!()
+    Map<String, dynamic>? profile = _profileLoaderOverride != null
+        ? await _profileLoaderOverride()
         : await _api.getProfile();
+    if (profile == null && _refreshToken != null && _refreshToken!.isNotEmpty) {
+      try {
+        final refreshed = await _api.refreshSession(refreshToken: _refreshToken!);
+        if (refreshed != null) {
+          await _applyAuthResult(refreshed);
+          profile = refreshed['user'] is Map<String, dynamic>
+              ? refreshed['user'] as Map<String, dynamic>
+              : await _api.getProfile();
+        }
+      } catch (_) {}
+    }
     if (profile == null) {
       await _clearSessionAndUnauthenticated();
       return;
     }
 
-    _email = profile['email']?.toString();
+    _username = profile['username']?.toString() ?? _username;
     _userId = profile['id']?.toString() ?? profile['user_id']?.toString();
     final userNumberRaw = profile['user_number'];
     if (userNumberRaw is num) {
@@ -531,7 +647,8 @@ class AppState extends ChangeNotifier {
   Future<void> _clearSessionAndUnauthenticated() async {
     _isLoggedIn = false;
     _token = null;
-    _email = null;
+    _refreshToken = null;
+    _username = null;
     _userId = null;
     _userNumber = null;
     _nickname = null;
@@ -540,7 +657,7 @@ class AppState extends ChangeNotifier {
     _api.clearToken();
     notifyListeners();
     try {
-      await _secureStorage.clearToken();
+      await _secureStorage.clearAllAuth();
     } catch (e) {
       debugPrint('清理失效 token 失败: $e');
     }

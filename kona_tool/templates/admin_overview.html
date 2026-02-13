@@ -1,0 +1,115 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'overview' %}
+
+{% block title %}Admin 用户总览{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1 class="title">用户运营总览</h1>
+    <div class="hint">真实注册用户：累计、新增、活跃、登录分布</div>
+</div>
+
+<div class="grid-3">
+    <div class="card"><div class="muted">累计用户</div><div class="kpi" id="kTotal">-</div></div>
+    <div class="card"><div class="muted">今日新增</div><div class="kpi" id="kNewToday">-</div></div>
+    <div class="card"><div class="muted">7日新增</div><div class="kpi" id="kNew7d">-</div></div>
+    <div class="card"><div class="muted">30日新增</div><div class="kpi" id="kNew30d">-</div></div>
+    <div class="card"><div class="muted">DAU (今日活跃)</div><div class="kpi" id="kDau">-</div></div>
+    <div class="card"><div class="muted">WAU (7日活跃)</div><div class="kpi" id="kWau">-</div></div>
+    <div class="card"><div class="muted">MAU (30日活跃)</div><div class="kpi" id="kMau">-</div></div>
+    <div class="card"><div class="muted">快照总数</div><div class="kpi" id="kSnapshots">-</div></div>
+    <div class="card"><div class="muted">最近快照日期</div><div class="kpi" id="kLatest" style="font-size:18px;">-</div></div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="toolbar" style="margin-bottom:8px;">
+            <h3 style="margin:0;">最近登录时间分布</h3>
+            <button class="secondary" onclick="loadOverview()">刷新</button>
+        </div>
+        <table>
+            <tbody id="distRows"></tbody>
+        </table>
+        <div class="muted" id="asOf" style="margin-top:8px;">统计时间：-</div>
+    </div>
+
+    <div class="card">
+        <div class="toolbar" style="margin-bottom:8px;">
+            <h3 style="margin:0;">最近审计日志</h3>
+        </div>
+        <div style="max-height:330px; overflow:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>管理员</th>
+                        <th>动作</th>
+                        <th>结果</th>
+                        <th>时间</th>
+                    </tr>
+                </thead>
+                <tbody id="auditTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function renderAudit(rows) {
+        const tbody = document.getElementById('auditTable');
+        tbody.innerHTML = '';
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="muted">暂无记录</td></tr>';
+            return;
+        }
+        for (const r of rows) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${r.id ?? ''}</td>
+                <td>${r.admin_user_id ?? ''}</td>
+                <td>${r.action ?? ''}</td>
+                <td>${r.result ?? ''}</td>
+                <td>${r.created_at ?? ''}</td>
+            `;
+            tbody.appendChild(tr);
+        }
+    }
+
+    function renderDist(dist) {
+        const rows = [
+            ['1天内', dist.within_1d ?? 0],
+            ['7天内', dist.within_7d ?? 0],
+            ['30天内', dist.within_30d ?? 0],
+            ['30天以上', dist.over_30d ?? 0],
+            ['从未登录', dist.never_login ?? 0],
+        ];
+        const tbody = document.getElementById('distRows');
+        tbody.innerHTML = rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+    }
+
+    async function loadOverview() {
+        try {
+            const data = await adminFetch('/api/admin/overview');
+            const m = data.user_ops || {};
+            document.getElementById('kTotal').innerText = m.user_total ?? 0;
+            document.getElementById('kNewToday').innerText = m.new_today ?? 0;
+            document.getElementById('kNew7d').innerText = m.new_7d ?? 0;
+            document.getElementById('kNew30d').innerText = m.new_30d ?? 0;
+            document.getElementById('kDau').innerText = m.dau ?? 0;
+            document.getElementById('kWau').innerText = m.wau ?? 0;
+            document.getElementById('kMau').innerText = m.mau ?? 0;
+            document.getElementById('kSnapshots').innerText = data.snapshots?.total ?? 0;
+            document.getElementById('kLatest').innerText = data.snapshots?.latest_date || '-';
+            renderDist(m.last_login_distribution || {});
+            document.getElementById('asOf').innerText = `统计时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+            renderAudit(data.recent_audits || []);
+        } catch (e) {
+            showToast(`加载失败: ${e.message}`, true);
+        }
+    }
+
+    loadOverview();
+</script>
+{% endblock %}

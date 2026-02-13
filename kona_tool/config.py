@@ -13,8 +13,10 @@ BACKUP_CSV_PATH = BASE_DIR / "portfolio.csv"
 TRANSACTION_PATH = BASE_DIR / "transactions.csv"
 
 # 服务器配置
-HOST = "0.0.0.0"
-PORT = 5003
+# 优先读取 KONA_HOST/KONA_PORT，兼容旧变量 HOST/PORT
+# 默认改为仅本机回环地址，避免与其他项目冲突
+HOST = os.getenv("KONA_HOST", os.getenv("HOST", "127.0.0.1"))
+PORT = int(os.getenv("KONA_PORT", os.getenv("PORT", "52345")))
 DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
@@ -24,7 +26,8 @@ if not JWT_SECRET:
     raise RuntimeError(
         "JWT_SECRET is required. Please set JWT_SECRET in environment (.env)."
     )
-JWT_EXPIRY_HOURS = 24 * 7  # 7 天
+JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "2"))  # access token 默认 2 小时
+AUTH_REFRESH_TOKEN_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_DAYS", "30"))
 
 # API配置
 API_TIMEOUT = 3
@@ -119,7 +122,7 @@ LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_FILE = BASE_DIR / "app.log"
 
-# SMTP 邮件配置（用于验证码）
+# SMTP 邮件配置（用于运维告警等非登录场景）
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -128,13 +131,6 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "咔咔记账")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 
-# 免验证码登录白名单（逗号分隔邮箱）
-LOGIN_BYPASS_EMAILS = [
-    e.strip().lower()
-    for e in os.getenv("LOGIN_BYPASS_EMAILS", "").split(",")
-    if e.strip()
-]
-
 # 限流存储后端（生产建议 Redis）
 # 本地开发可用 memory://，生产建议：
 # RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
@@ -142,6 +138,10 @@ RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
 
 # 运行指标接口鉴权（为空表示不鉴权；生产建议设置）
 PRICE_HEALTH_TOKEN = os.getenv("PRICE_HEALTH_TOKEN", "").strip()
+
+# 仅本机开发使用：允许本地回环地址直接访问 /api/admin/*（免登录）
+# 生产环境务必保持 false
+ALLOW_LOCAL_ADMIN_BYPASS = os.getenv("ALLOW_LOCAL_ADMIN_BYPASS", "false").lower() == "true"
 
 # 快照后台任务开关
 # 说明：如果你使用 cron 在固定时间触发快照（例如 07:00），建议关闭后台任务。

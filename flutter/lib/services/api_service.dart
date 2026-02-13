@@ -176,21 +176,77 @@ class ApiService {
   // 认证相关
   // ============================================================
 
-  /// 登录
-  Future<Map<String, dynamic>?> login(
-    String userId,
-    String email,
-    String code,
-  ) async {
+  Future<Map<String, dynamic>?> login({
+    required String username,
+    required String password,
+    String? deviceId,
+  }) async {
     final data = await _post(ApiConfig.login, {
-      'user_id': userId,
-      'email': email,
-      'code': code,
+      'username': username,
+      'password': password,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
-    if (data != null && data['token'] != null) {
-      _token = data['token'];
+    if (data != null && data['access_token'] != null) {
+      _token = data['access_token'];
     }
     return data;
+  }
+
+  Future<Map<String, dynamic>?> register({
+    required String username,
+    required String password,
+    required String inviteCode,
+    String? deviceId,
+  }) async {
+    final data = await _post(ApiConfig.register, {
+      'username': username,
+      'password': password,
+      'invite_code': inviteCode,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+    });
+    if (data != null && data['access_token'] != null) {
+      _token = data['access_token'];
+    }
+    return data;
+  }
+
+  Future<bool> validateInviteCode(String inviteCode) async {
+    final data = await _post(ApiConfig.inviteValidate, {'invite_code': inviteCode});
+    return data != null && data['valid'] == true;
+  }
+
+  Future<Map<String, dynamic>?> refreshSession({
+    required String refreshToken,
+    String? deviceId,
+  }) async {
+    final data = await _post(ApiConfig.refresh, {
+      'refresh_token': refreshToken,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+    });
+    if (data != null && data['access_token'] != null) {
+      _token = data['access_token'];
+    }
+    return data;
+  }
+
+  Future<bool> logout({String? refreshToken}) async {
+    await _post(ApiConfig.logout, {
+      if (refreshToken != null && refreshToken.isNotEmpty)
+        'refresh_token': refreshToken,
+    });
+    _token = null;
+    return true;
+  }
+
+  Future<bool> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    await _post(ApiConfig.changePassword, {
+      'old_password': oldPassword,
+      'new_password': newPassword,
+    });
+    return true;
   }
 
   /// 更新用户资料（昵称/头像）
@@ -577,12 +633,6 @@ class ApiService {
       "page_size": pageSize,
       "has_more": false,
     };
-  }
-
-  /// 发送登录验证码
-  Future<bool> sendLoginCode(String email) async {
-    await _post(ApiConfig.sendCode, {'email': email});
-    return true;
   }
 
   /// 获取汇率

@@ -18,6 +18,8 @@ dependencies:
   shared_preferences: ^2.2.2
   # 安全存储
   flutter_secure_storage: ^9.2.2
+  # 生物识别
+  local_auth: ^2.2.0
   # 选择头像
   image_picker: ^1.0.7
   # 图表

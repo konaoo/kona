@@ -1,0 +1,241 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'apis' %}
+
+{% block title %}Admin 接口测试{% endblock %}
+
+{% block styles %}
+<style>
+    .api-wrap {
+        background: #16263b;
+        border: 1px solid #304760;
+        border-radius: 14px;
+        padding: 22px;
+        color: #e8eff9;
+        max-width: 1100px;
+    }
+
+    .api-wrap .title {
+        color: #f4f8ff;
+        font-size: 36px;
+        margin-bottom: 12px;
+    }
+
+    .api-desc {
+        margin: 0 0 20px 0;
+        color: #a7b8cf;
+        font-size: 16px;
+        line-height: 1.5;
+    }
+
+    .api-item {
+        background: #2f435c;
+        border: 1px solid #45607f;
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .api-name {
+        font-size: 18px;
+        font-weight: 700;
+        color: #f5f9ff;
+    }
+
+    .api-domain {
+        margin-top: 6px;
+        font-size: 13px;
+        color: #9fb1c9;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .api-meta {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #9fb1c9;
+    }
+
+    .api-status {
+        min-width: 128px;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    .api-status.ok {
+        background: rgba(16, 185, 129, 0.18);
+        color: #2ed8a7;
+    }
+
+    .api-status.err {
+        background: rgba(220, 38, 38, 0.2);
+        color: #ff9b9b;
+    }
+
+    .api-status.pending {
+        background: rgba(148, 163, 184, 0.2);
+        color: #d6e1f2;
+    }
+
+    .api-actions {
+        margin-top: 4px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .api-actions button {
+        border-radius: 10px;
+        padding: 9px 14px;
+    }
+
+    .api-ops {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #b2c2d7;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="api-wrap">
+    <h1 class="title">🌐 API 接口检测</h1>
+    <p class="api-desc">检测当前使用的数据源连通性。如果行情或快讯无法加载，请在此检查接口状态。</p>
+
+    <div class="api-item">
+        <div>
+            <div class="api-name">股价接口 (Sina/Tencent)</div>
+            <div class="api-domain">hq.sinajs.cn</div>
+            <div id="meta-price" class="api-meta">等待检测</div>
+        </div>
+        <div id="status-price" class="api-status pending">检测中...</div>
+    </div>
+
+    <div class="api-item">
+        <div>
+            <div class="api-name">汇率接口</div>
+            <div class="api-domain">hq.sinajs.cn (Forex)</div>
+            <div id="meta-rate" class="api-meta">等待检测</div>
+        </div>
+        <div id="status-rate" class="api-status pending">检测中...</div>
+    </div>
+
+    <div class="api-item">
+        <div>
+            <div class="api-name">快讯接口 (Sina)</div>
+            <div class="api-domain">zhibo.sina.com.cn</div>
+            <div id="meta-news" class="api-meta">等待检测</div>
+        </div>
+        <div id="status-news" class="api-status pending">检测中...</div>
+    </div>
+
+    <div class="api-actions">
+        <button id="btn-health" onclick="loadHealth(true)">🔄 重新检测</button>
+        <button id="btn-smoke" class="secondary" onclick="runSmokeTest()">执行冒烟测试</button>
+    </div>
+
+    <div id="opsHint" class="api-ops">自动检测：每 60 秒刷新一次</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let healthTimer = null;
+
+    function nowText() {
+        const d = new Date();
+        return d.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function setButtonLoading(btnId, loading, loadingText, normalText) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.disabled = loading;
+        btn.innerText = loading ? loadingText : normalText;
+    }
+
+    function setItemStatus(key, info) {
+        const statusEl = document.getElementById(`status-${key}`);
+        const metaEl = document.getElementById(`meta-${key}`);
+        if (!statusEl || !metaEl) return;
+
+        if (info && info.ok) {
+            const latency = typeof info.latency === 'number' ? `${info.latency}ms` : '-';
+            statusEl.className = 'api-status ok';
+            statusEl.innerText = `正常 (${latency})`;
+            metaEl.innerText = `最后检测：${nowText()}`;
+            return;
+        }
+
+        const reason = info && info.error ? info.error : '请求失败';
+        statusEl.className = 'api-status err';
+        statusEl.innerText = '异常';
+        statusEl.title = reason;
+        metaEl.innerText = `最后检测：${nowText()} | 原因：${reason}`;
+    }
+
+    function setPending() {
+        ['price', 'rate', 'news'].forEach((key) => {
+            const statusEl = document.getElementById(`status-${key}`);
+            const metaEl = document.getElementById(`meta-${key}`);
+            if (!statusEl || !metaEl) return;
+            statusEl.className = 'api-status pending';
+            statusEl.innerText = '检测中...';
+            statusEl.title = '';
+            metaEl.innerText = '正在检测...';
+        });
+    }
+
+    async function loadHealth(manual = false) {
+        setButtonLoading('btn-health', true, '检测中...', '🔄 重新检测');
+        setPending();
+        try {
+            const data = await adminFetch('/api/admin/apis/health');
+            const upstream = data.upstream || {};
+            setItemStatus('price', upstream.price);
+            setItemStatus('rate', upstream.rate);
+            setItemStatus('news', upstream.news);
+            if (manual) {
+                showToast(`健康状态: ${data.status || 'unknown'}`);
+            }
+        } catch (e) {
+            ['price', 'rate', 'news'].forEach((key) => {
+                const statusEl = document.getElementById(`status-${key}`);
+                const metaEl = document.getElementById(`meta-${key}`);
+                if (!statusEl || !metaEl) return;
+                statusEl.className = 'api-status err';
+                statusEl.innerText = '异常';
+                statusEl.title = e.message;
+                metaEl.innerText = `最后检测：${nowText()} | 原因：${e.message}`;
+            });
+            showToast(`健康检测失败: ${e.message}`, true);
+        } finally {
+            setButtonLoading('btn-health', false, '检测中...', '🔄 重新检测');
+        }
+    }
+
+    async function runSmokeTest() {
+        setButtonLoading('btn-smoke', true, '执行中...', '执行冒烟测试');
+        try {
+            const data = await adminFetch('/api/admin/apis/smoke_test', { method: 'POST', body: '{}' });
+            const items = Array.isArray(data.items) ? data.items : [];
+            const okCount = items.filter((x) => x && x.ok).length;
+            const failCount = items.length - okCount;
+            showToast(`冒烟测试完成：通过 ${okCount}，失败 ${failCount}`);
+            await loadHealth(false);
+        } catch (e) {
+            showToast(`冒烟测试失败: ${e.message}`, true);
+        } finally {
+            setButtonLoading('btn-smoke', false, '执行中...', '执行冒烟测试');
+        }
+    }
+
+    loadHealth(false);
+    healthTimer = setInterval(() => loadHealth(false), 60000);
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'config' %}
+
+{% block title %}Admin 配置管理{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1 class="title">配置管理</h1>
+    <div class="hint">仅白名单配置项，不展示密钥</div>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <button onclick="loadConfig()">刷新配置</button>
+    </div>
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>说明</th>
+                    <th>类型</th>
+                    <th>当前值</th>
+                    <th>更新</th>
+                </tr>
+            </thead>
+            <tbody id="configRows"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function inputHtml(item) {
+        const value = item.value ?? '';
+        if (item.type === 'bool') {
+            return `<select id="cfg_${item.key}">
+                <option value="true" ${value ? 'selected' : ''}>true</option>
+                <option value="false" ${!value ? 'selected' : ''}>false</option>
+            </select>`;
+        }
+        if (item.type === 'int') {
+            return `<input id="cfg_${item.key}" type="number" value="${value}">`;
+        }
+        return `<input id="cfg_${item.key}" value="${value}">`;
+    }
+
+    async function saveConfig(key, type) {
+        let value = document.getElementById(`cfg_${key}`).value;
+        if (type === 'int') {
+            value = Number(value);
+        } else if (type === 'bool') {
+            value = value === 'true';
+        }
+        try {
+            await adminFetch('/api/admin/config/update', {
+                method: 'POST',
+                body: JSON.stringify({ key, value })
+            });
+            showToast(`已更新 ${key}`);
+            loadConfig();
+        } catch (e) {
+            showToast(`更新失败: ${e.message}`, true);
+        }
+    }
+
+    function renderConfig(items) {
+        const tbody = document.getElementById('configRows');
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="muted">无可展示配置</td></tr>';
+            return;
+        }
+        for (const item of items) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code>${item.key}</code></td>
+                <td>${item.description || ''}</td>
+                <td>${item.type || ''}</td>
+                <td>${String(item.value)}</td>
+                <td>
+                    ${inputHtml(item)}
+                    <button onclick="saveConfig('${item.key}', '${item.type}')">保存</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+    }
+
+    async function loadConfig() {
+        try {
+            const data = await adminFetch('/api/admin/config');
+            renderConfig(data.items || []);
+        } catch (e) {
+            showToast(`加载失败: ${e.message}`, true);
+        }
+    }
+
+    loadConfig();
+</script>
+{% endblock %}

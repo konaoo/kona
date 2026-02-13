@@ -1,0 +1,162 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'data' %}
+
+{% block title %}Admin 数据管理{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1 class="title">数据管理</h1>
+    <div class="hint">快照列表、手动快照、周末快照清理、备份恢复入口</div>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">快照列表</h3>
+    <div class="controls">
+        <input id="snap_user_id" placeholder="user_id（可选）">
+        <input id="snap_start" placeholder="start_date: YYYY-MM-DD">
+        <input id="snap_end" placeholder="end_date: YYYY-MM-DD">
+        <button onclick="loadSnapshots()">查询</button>
+    </div>
+    <div style="overflow:auto; max-height: 360px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>用户</th>
+                    <th>总资产</th>
+                    <th>累计盈亏</th>
+                    <th>日盈亏</th>
+                    <th>更新时间</th>
+                </tr>
+            </thead>
+            <tbody id="snapshotRows"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h3 style="margin-top:0;">手动快照与周末清理</h3>
+        <div class="controls">
+            <button onclick="triggerSnapshot()">手动触发快照</button>
+        </div>
+        <div class="controls">
+            <input id="cleanup_user_id" placeholder="user_id（可选）">
+            <input id="cleanup_start" placeholder="start_date（可选）">
+            <input id="cleanup_end" placeholder="end_date（可选）">
+            <button class="warn" onclick="cleanupWeekend()">清理周末 day_pnl</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">备份与恢复</h3>
+        <div class="controls">
+            <input id="backup_retention" type="number" value="14" placeholder="retention_days">
+            <button onclick="runBackup()">创建备份</button>
+        </div>
+        <div class="controls">
+            <input id="restore_file" placeholder="backup_file（可选，空=最新）" style="min-width:360px;">
+            <button class="danger" onclick="runRestore()">执行恢复</button>
+        </div>
+        <pre id="backupResult" class="muted" style="white-space:pre-wrap;"></pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function renderSnapshots(items) {
+        const tbody = document.getElementById('snapshotRows');
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无快照</td></tr>';
+            return;
+        }
+        for (const s of items) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${s.date || ''}</td>
+                <td>${s.user_id || ''}</td>
+                <td>${s.total_asset ?? ''}</td>
+                <td>${s.total_pnl ?? ''}</td>
+                <td>${s.day_pnl ?? ''}</td>
+                <td>${s.updated_at || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        }
+    }
+
+    async function loadSnapshots() {
+        const userId = encodeURIComponent(document.getElementById('snap_user_id').value.trim());
+        const start = encodeURIComponent(document.getElementById('snap_start').value.trim());
+        const end = encodeURIComponent(document.getElementById('snap_end').value.trim());
+        const url = `/api/admin/data/snapshots?user_id=${userId}&start_date=${start}&end_date=${end}&limit=200`;
+        try {
+            const data = await adminFetch(url);
+            renderSnapshots(data.items || []);
+        } catch (e) {
+            showToast(`加载失败: ${e.message}`, true);
+        }
+    }
+
+    async function triggerSnapshot() {
+        try {
+            const data = await adminFetch('/api/admin/data/snapshot/trigger', { method: 'POST', body: '{}' });
+            showToast(data.message || '触发完成');
+            loadSnapshots();
+        } catch (e) {
+            showToast(`触发失败: ${e.message}`, true);
+        }
+    }
+
+    async function cleanupWeekend() {
+        const payload = {
+            user_id: document.getElementById('cleanup_user_id').value.trim(),
+            start_date: document.getElementById('cleanup_start').value.trim(),
+            end_date: document.getElementById('cleanup_end').value.trim(),
+        };
+        try {
+            const data = await adminFetch('/api/admin/data/snapshot/cleanup_weekend', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            showToast(`已清理 ${data.cleaned} 条周末快照`);
+            loadSnapshots();
+        } catch (e) {
+            showToast(`清理失败: ${e.message}`, true);
+        }
+    }
+
+    async function runBackup() {
+        const retention = Number(document.getElementById('backup_retention').value || '14');
+        try {
+            const data = await adminFetch('/api/admin/data/backup', {
+                method: 'POST',
+                body: JSON.stringify({ retention_days: retention }),
+            });
+            document.getElementById('backupResult').innerText = JSON.stringify(data, null, 2);
+            showToast('备份完成');
+        } catch (e) {
+            showToast(`备份失败: ${e.message}`, true);
+        }
+    }
+
+    async function runRestore() {
+        if (!confirm('恢复会覆盖当前数据库，确认继续？')) return;
+        const backupFile = document.getElementById('restore_file').value.trim();
+        try {
+            const data = await adminFetch('/api/admin/data/restore', {
+                method: 'POST',
+                body: JSON.stringify({ backup_file: backupFile }),
+            });
+            document.getElementById('backupResult').innerText = JSON.stringify(data, null, 2);
+            showToast('恢复完成，建议刷新页面');
+            loadSnapshots();
+        } catch (e) {
+            showToast(`恢复失败: ${e.message}`, true);
+        }
+    }
+
+    loadSnapshots();
+</script>
+{% endblock %}

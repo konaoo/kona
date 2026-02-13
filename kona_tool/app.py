@@ -38,44 +38,17 @@ from core.auth import (
     login_required,
     optional_auth,
     generate_token,
-    get_or_create_user,
     get_user_profile,
+    normalize_username,
+    is_valid_username,
+    validate_password,
+    verify_password,
+    hash_password,
+    generate_refresh_token,
+    hash_refresh_token,
 )
-from core.email import send_verification_email
-import random
 import re
 from datetime import datetime, timedelta, timezone
-
-_HARDCODED_LOGIN_BYPASS_EMAILS = {"konaeee@gmail.com"}
-
-def _generate_code() -> str:
-    return f"{random.randint(0, 999999):06d}"
-
-def _store_code(email: str, code: str):
-    now_utc = datetime.now(timezone.utc)
-    db.upsert_email_verification_code(
-        email=email,
-        code=code,
-        expires_at=now_utc + timedelta(minutes=10),
-        last_send_at=now_utc,
-    )
-
-def _verify_code(email: str, code: str) -> bool:
-    info = db.get_email_verification_code(email)
-    if not info:
-        return False
-    if datetime.now(timezone.utc) > info["expires_at"]:
-        db.delete_email_verification_code(email)
-        return False
-    if info["code"] != code:
-        return False
-    db.delete_email_verification_code(email)
-    return True
-
-
-def _is_login_bypass_email(email: str) -> bool:
-    normalized = (email or "").strip().lower()
-    return normalized in _HARDCODED_LOGIN_BYPASS_EMAILS or normalized in config.LOGIN_BYPASS_EMAILS
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -156,10 +129,10 @@ def _idempotent_response(action: str, user_id: str, request_id: str, payload: di
     return jsonify(payload), status_code
 
 
-def _email_limit_key() -> str:
+def _username_limit_key() -> str:
     data = request.get_json(silent=True) or {}
-    email = str(data.get('email', '')).strip().lower()
-    return f"email:{email}" if email else f"ip:{_rate_limit_key()}"
+    username = normalize_username(str(data.get('username', '')))
+    return f"username:{username}" if username else f"ip:{_rate_limit_key()}"
 
 
 limiter = Limiter(
@@ -179,29 +152,71 @@ if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
     db.backup_from_csv(str(config.BACKUP_CSV_PATH))
 
 
-def _mask_email(email: str) -> str:
-    """邮箱脱敏，避免日志暴露完整地址。"""
-    if not email or '@' not in email:
+def _mask_username(username: str) -> str:
+    """用户名脱敏，避免日志暴露完整标识。"""
+    u = (username or "").strip().lower()
+    if not u:
         return ''
-    local, domain = email.split('@', 1)
-    if len(local) <= 2:
-        masked_local = local[0] + '*'
-    else:
-        masked_local = local[:2] + '***'
-    return f"{masked_local}@{domain}"
+    if len(u) <= 2:
+        return f"{u[0]}*"
+    return f"{u[:2]}***"
 
 
-def _auth_audit(event: str, outcome: str, email: str = '', reason: str = '', level: str = 'info'):
+def _auth_audit(event: str, outcome: str, username: str = '', reason: str = '', level: str = 'info'):
     """认证相关安全审计日志。"""
     msg = (
         f"SECURITY event={event} outcome={outcome} "
-        f"ip={_client_ip()} email={_mask_email(email)} reason={reason} "
+        f"ip={_client_ip()} username={_mask_username(username)} reason={reason} "
         f"path={request.path} ua={request.headers.get('User-Agent', '-')[:120]}"
     )
     if level == 'warning':
         logger.warning(msg)
     else:
         logger.info(msg)
+
+
+def _refresh_token_expiry_days() -> int:
+    return int(getattr(config, "AUTH_REFRESH_TOKEN_DAYS", 30))
+
+
+def _is_refresh_token_valid(token_row: dict) -> bool:
+    if not token_row:
+        return False
+    if token_row.get("revoked_at"):
+        return False
+    expires_at = token_row.get("expires_at")
+    if not expires_at:
+        return False
+    try:
+        expire_dt = datetime.fromisoformat(str(expires_at))
+    except Exception:
+        return False
+    if expire_dt.tzinfo is not None:
+        expire_dt = expire_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return expire_dt > datetime.utcnow()
+
+
+def _issue_auth_tokens(user_id: str, username: str, device_id: str = "") -> dict:
+    access_token = generate_token(user_id, username)
+    refresh_token = generate_refresh_token()
+    refresh_hash = hash_refresh_token(refresh_token)
+    expires_at = datetime.utcnow() + timedelta(days=_refresh_token_expiry_days())
+    db.create_refresh_token(
+        user_id=user_id,
+        token_hash=refresh_hash,
+        expires_at=expires_at,
+        device_id=device_id,
+    )
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "refresh_expires_at": expires_at.isoformat(),
+    }
+
+
+def _generate_invite_code(length: int = 10) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _record_admin_audit(
@@ -544,6 +559,12 @@ def admin_users_page():
 def admin_config_page():
     """管理后台-配置管理"""
     return make_response(render_template('admin_config.html', version=APP_VERSION))
+
+
+@app.route('/admin/invites')
+def admin_invites_page():
+    """管理后台-邀请码管理"""
+    return make_response(render_template('admin_invites.html', version=APP_VERSION))
 
 
 @app.route('/admin/data')
@@ -1223,76 +1244,126 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
 
 @app.route('/api/auth/login', methods=['POST'])
 @limiter.limit("20 per 10 minute")
-@limiter.limit("8 per 10 minute", key_func=_email_limit_key)
+@limiter.limit("8 per 10 minute", key_func=_username_limit_key)
 def auth_login():
-    """
-    用户登录（从前端验证码登录成功后调用）
-    
-    请求体:
-        {
-            "user_id": "用户唯一ID",
-            "email": "用户邮箱",
-            "access_token": "前端生成的 token（可选）"
-        }
-    
-    返回:
-        {
-            "token": "JWT token",
-            "user_id": "用户ID",
-            "email": "用户邮箱"
-        }
-    """
     data = request.get_json(silent=True)
+    if not data:
+        _auth_audit(event='auth_login', outcome='failed', reason='missing_payload', level='warning')
+        return jsonify({"error": "Missing payload"}), 400
 
-    if not data or 'email' not in data:
-        _auth_audit(event='auth_login', outcome='failed', reason='missing_email', level='warning')
-        return jsonify({"error": "Missing email"}), 400
+    username = normalize_username(data.get("username", ""))
+    password = str(data.get("password", ""))
+    device_id = str(data.get("device_id", "")).strip()[:128]
+    if not username or not password:
+        _auth_audit(event='auth_login', outcome='failed', username=username, reason='missing_credentials', level='warning')
+        return jsonify({"error": "Missing username or password"}), 400
 
-    email = data['email'].strip().lower()
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        _auth_audit(event='auth_login', outcome='failed', email=email, reason='invalid_email', level='warning')
-        return jsonify({"error": "Invalid email"}), 400
-    is_bypass = _is_login_bypass_email(email)
-    code = data.get('code', '')
-    if not is_bypass and not code:
-        _auth_audit(event='auth_login', outcome='failed', email=email, reason='missing_code', level='warning')
-        return jsonify({"error": "Missing code"}), 400
-    frontend_user_id = data.get('user_id') or email
-    if not is_bypass and not _verify_code(email, code):
-        _auth_audit(event='auth_login', outcome='failed', email=email, reason='invalid_or_expired_code', level='warning')
-        return jsonify({"error": "Invalid or expired code"}), 400
-    nickname = data.get('nickname')
-    register_method = data.get('register_method')
-    phone = data.get('phone')
-    
-    # 获取或创建用户记录（返回实际使用的 user_id 和 数字ID）
-    actual_user_id, user_number = get_or_create_user(
-        db,
-        frontend_user_id,
-        email,
-        nickname=nickname,
-        register_method=register_method,
-        phone=phone,
-    )
-    
-    # 使用实际的 user_id 生成 JWT token
-    token = generate_token(actual_user_id, email)
-    
-    _auth_audit(event='auth_login', outcome='success', email=email, reason=f'user_id={actual_user_id}')
-    logger.info(f"User logged in: {actual_user_id} ({email}) Num: {user_number}")
-    
-    profile = get_user_profile(db, actual_user_id) or {}
+    user = db.get_user_by_username(username)
+    if not user:
+        _auth_audit(event='auth_login', outcome='failed', username=username, reason='user_not_found', level='warning')
+        return jsonify({"error": "Invalid username or password"}), 401
+    if str(user.get("status") or "active").lower() != "active":
+        _auth_audit(event='auth_login', outcome='failed', username=username, reason='user_disabled', level='warning')
+        return jsonify({"error": "User is disabled"}), 403
+    if user.get("legacy_needs_password_setup") or not user.get("password_hash"):
+        _auth_audit(event='auth_login', outcome='failed', username=username, reason='password_not_setup', level='warning')
+        return jsonify({"error": "Password not set. Please bootstrap credentials."}), 403
+    if not verify_password(password, str(user.get("password_hash") or "")):
+        _auth_audit(event='auth_login', outcome='failed', username=username, reason='bad_password', level='warning')
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    db.update_last_login(user["id"])
+    tokens = _issue_auth_tokens(user["id"], username, device_id=device_id)
+    profile = get_user_profile(db, user["id"]) or {}
+    _auth_audit(event='auth_login', outcome='success', username=username, reason=f"user_id={user['id']}")
     return jsonify({
-        "token": token,
-        "user_id": actual_user_id,
-        "user_number": user_number,
-        "email": email,
-        "nickname": profile.get("nickname"),
-        "register_method": profile.get("register_method"),
-        "phone": profile.get("phone"),
-        "created_at": profile.get("created_at"),
-        "last_login": profile.get("last_login"),
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "refresh_expires_at": tokens["refresh_expires_at"],
+        "user": profile,
     })
+
+
+@app.route('/api/auth/register', methods=['POST'])
+@limiter.limit("10 per 10 minute")
+@limiter.limit("5 per 10 minute", key_func=_username_limit_key)
+def auth_register():
+    data = request.get_json(silent=True) or {}
+    username = normalize_username(data.get("username", ""))
+    password = str(data.get("password", ""))
+    invite_code = str(data.get("invite_code", "")).strip().upper()
+    device_id = str(data.get("device_id", "")).strip()[:128]
+
+    if not is_valid_username(username):
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='invalid_username', level='warning')
+        return jsonify({"error": "Invalid username"}), 400
+    ok, msg = validate_password(password)
+    if not ok:
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='weak_password', level='warning')
+        return jsonify({"error": msg}), 400
+    if not invite_code:
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='missing_invite', level='warning')
+        return jsonify({"error": "Missing invite code"}), 400
+    if db.get_user_by_username(username):
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='username_exists', level='warning')
+        return jsonify({"error": "Username already exists"}), 409
+    invite = db.get_invite_code(invite_code)
+    if not invite or invite.get("status") != "active" or invite.get("used_by_user_id"):
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='invalid_invite', level='warning')
+        return jsonify({"error": "Invite code invalid or already used"}), 400
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(1) AS c FROM users WHERE COALESCE(password_hash, '') != ''")
+        pwd_user_count = int(cursor.fetchone()["c"] or 0)
+    finally:
+        conn.close()
+    is_first_password_user = pwd_user_count == 0
+
+    user_id = secrets.token_hex(16)
+    password_h = hash_password(password)
+    try:
+        created = db.create_user(
+            username=username,
+            password_hash=password_h,
+            register_method="password_invite",
+            is_admin=is_first_password_user,
+            user_id=user_id,
+        )
+    except Exception:
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='create_user_failed', level='warning')
+        return jsonify({"error": "Registration failed"}), 500
+
+    consumed, reason = db.consume_invite_code(invite_code, created["id"])
+    if not consumed:
+        db.delete_user(created["id"])
+        _auth_audit(event='auth_register', outcome='failed', username=username, reason='consume_invite_failed', level='warning')
+        return jsonify({"error": reason or "Invite code invalid or already used"}), 400
+
+    db.update_last_login(created["id"])
+    tokens = _issue_auth_tokens(created["id"], username, device_id=device_id)
+    profile = get_user_profile(db, created["id"]) or {}
+    _auth_audit(event='auth_register', outcome='success', username=username, reason=f"user_id={created['id']}")
+    return jsonify({
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "refresh_expires_at": tokens["refresh_expires_at"],
+        "user": profile,
+    })
+
+
+@app.route('/api/auth/invite/validate', methods=['POST'])
+@limiter.limit("30 per 10 minute")
+def auth_validate_invite():
+    data = request.get_json(silent=True) or {}
+    invite_code = str(data.get("invite_code", "")).strip().upper()
+    if not re.match(r"^[A-Z0-9]{8,16}$", invite_code):
+        return jsonify({"valid": False, "error": "Invalid invite code format"}), 400
+    invite = db.get_invite_code(invite_code)
+    if not invite or invite.get("status") != "active" or invite.get("used_by_user_id"):
+        return jsonify({"valid": False, "error": "Invite code invalid or already used"}), 404
+    return jsonify({"valid": True, "code": invite_code, "batch_id": invite.get("batch_id")})
 
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -1304,7 +1375,7 @@ def auth_me():
         return jsonify(profile)
     return jsonify({
         "user_id": g.user_id,
-        "email": g.email
+        "username": g.username
     })
 
 
@@ -1318,7 +1389,7 @@ def update_profile():
     avatar = data.get('avatar')
 
     if nickname is None and avatar is None:
-        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='no_fields', level='warning')
+        _auth_audit(event='auth_profile_update', outcome='failed', username=g.username, reason='no_fields', level='warning')
         return jsonify({"error": "No fields to update"}), 400
 
     if isinstance(nickname, str):
@@ -1326,72 +1397,124 @@ def update_profile():
 
     # 简单大小限制，避免超大头像
     if isinstance(avatar, str) and len(avatar) > 1_500_000:
-        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='avatar_too_large', level='warning')
+        _auth_audit(event='auth_profile_update', outcome='failed', username=g.username, reason='avatar_too_large', level='warning')
         return jsonify({"error": "Avatar too large"}), 400
 
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    try:
-        updates = []
-        params = []
-        if nickname is not None:
-            updates.append("nickname = ?")
-            params.append(nickname)
-        if avatar is not None:
-            updates.append("avatar = ?")
-            params.append(avatar)
-        if not updates:
-            _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='no_effective_fields', level='warning')
-            return jsonify({"error": "No fields to update"}), 400
-
-        params.append(g.user_id)
-        cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
-        conn.commit()
-        _auth_audit(event='auth_profile_update', outcome='success', email=g.email, reason=f'user_id={g.user_id}')
-    except Exception as e:
-        logger.error(f"Failed to update profile: {e}")
-        _auth_audit(event='auth_profile_update', outcome='failed', email=g.email, reason='db_update_failed', level='warning')
-        conn.rollback()
+    ok = db.update_user_profile(g.user_id, nickname=nickname, avatar=avatar)
+    if not ok:
+        _auth_audit(event='auth_profile_update', outcome='failed', username=g.username, reason='db_update_failed', level='warning')
         return jsonify({"error": "Update failed"}), 500
-    finally:
-        conn.close()
+    _auth_audit(event='auth_profile_update', outcome='success', username=g.username, reason=f'user_id={g.user_id}')
 
     profile = get_user_profile(db, g.user_id) or {}
     return jsonify(profile)
 
 
+@app.route('/api/auth/bootstrap_credentials', methods=['POST'])
+@login_required
+@limiter.limit("8 per 10 minute")
+def auth_bootstrap_credentials():
+    data = request.get_json(silent=True) or {}
+    username = normalize_username(data.get("username", ""))
+    new_password = str(data.get("password", ""))
+    if not is_valid_username(username):
+        _auth_audit(event='auth_bootstrap', outcome='failed', username=username, reason='invalid_username', level='warning')
+        return jsonify({"error": "Invalid username"}), 400
+    ok, msg = validate_password(new_password)
+    if not ok:
+        _auth_audit(event='auth_bootstrap', outcome='failed', username=username, reason='weak_password', level='warning')
+        return jsonify({"error": msg}), 400
+    success, reason = db.bootstrap_credentials(g.user_id, username, hash_password(new_password))
+    if not success:
+        _auth_audit(event='auth_bootstrap', outcome='failed', username=username, reason=reason or 'bootstrap_failed', level='warning')
+        return jsonify({"error": reason or "Bootstrap failed"}), 400
+    db.revoke_all_refresh_tokens(g.user_id)
+    db.update_last_login(g.user_id)
+    tokens = _issue_auth_tokens(g.user_id, username)
+    profile = get_user_profile(db, g.user_id) or {}
+    _auth_audit(event='auth_bootstrap', outcome='success', username=username, reason=f'user_id={g.user_id}')
+    return jsonify({
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "refresh_expires_at": tokens["refresh_expires_at"],
+        "user": profile,
+    })
+
+
+@app.route('/api/auth/password/change', methods=['POST'])
+@login_required
+@limiter.limit("10 per 10 minute")
+def auth_change_password():
+    data = request.get_json(silent=True) or {}
+    old_password = str(data.get("old_password", ""))
+    new_password = str(data.get("new_password", ""))
+    if not old_password or not new_password:
+        return jsonify({"error": "Missing old_password or new_password"}), 400
+    ok, msg = validate_password(new_password)
+    if not ok:
+        return jsonify({"error": msg}), 400
+    user = db.get_user_by_id(g.user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    if not verify_password(old_password, str(user.get("password_hash") or "")):
+        _auth_audit(event='auth_password_change', outcome='failed', username=user.get("username") or g.username, reason='bad_old_password', level='warning')
+        return jsonify({"error": "Old password is incorrect"}), 400
+    if not db.set_user_password(g.user_id, hash_password(new_password)):
+        return jsonify({"error": "Failed to update password"}), 500
+    revoked = db.revoke_all_refresh_tokens(g.user_id)
+    _auth_audit(event='auth_password_change', outcome='success', username=user.get("username") or g.username, reason=f'revoked={revoked}')
+    return jsonify({"status": "ok", "revoked_refresh_tokens": revoked})
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+@limiter.limit("20 per 10 minute")
+def auth_refresh():
+    data = request.get_json(silent=True) or {}
+    refresh_token = str(data.get("refresh_token", "")).strip()
+    device_id = str(data.get("device_id", "")).strip()[:128]
+    if not refresh_token:
+        return jsonify({"error": "Missing refresh_token"}), 400
+    token_hash = hash_refresh_token(refresh_token)
+    token_row = db.get_refresh_token(token_hash)
+    if not _is_refresh_token_valid(token_row):
+        _auth_audit(event='auth_refresh', outcome='failed', reason='invalid_refresh_token', level='warning')
+        return jsonify({"error": "Invalid refresh token"}), 401
+    user = db.get_user_by_id(token_row.get("user_id"))
+    if not user or str(user.get("status") or "active").lower() != "active":
+        _auth_audit(event='auth_refresh', outcome='failed', reason='user_disabled_or_missing', level='warning')
+        return jsonify({"error": "User not available"}), 403
+    db.revoke_refresh_token(token_hash)
+    db.touch_refresh_token(token_hash)
+    tokens = _issue_auth_tokens(user["id"], user["username"], device_id=device_id or (token_row.get("device_id") or ""))
+    db.update_last_login(user["id"])
+    _auth_audit(event='auth_refresh', outcome='success', username=user["username"], reason=f'user_id={user["id"]}')
+    return jsonify({
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "refresh_expires_at": tokens["refresh_expires_at"],
+        "user": get_user_profile(db, user["id"]) or {},
+    })
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def auth_logout():
+    data = request.get_json(silent=True) or {}
+    refresh_token = str(data.get("refresh_token", "")).strip()
+    revoked = 0
+    if refresh_token:
+        if db.revoke_refresh_token(hash_refresh_token(refresh_token)):
+            revoked = 1
+    else:
+        revoked = db.revoke_all_refresh_tokens(g.user_id)
+    _auth_audit(event='auth_logout', outcome='success', username=g.username, reason=f'revoked={revoked}')
+    return jsonify({"status": "ok", "revoked_refresh_tokens": revoked})
+
+
 @app.route('/api/auth/send_code', methods=['POST'])
-@limiter.limit("5 per 10 minute")
-@limiter.limit("1 per minute", key_func=_email_limit_key)
 def auth_send_code():
-    """发送邮箱验证码"""
-    data = request.get_json(silent=True)
-    if not data or 'email' not in data:
-        _auth_audit(event='auth_send_code', outcome='failed', reason='missing_email', level='warning')
-        return jsonify({"error": "Missing email"}), 400
-    email = data['email'].strip().lower()
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='invalid_email', level='warning')
-        return jsonify({"error": "Invalid email"}), 400
-    if _is_login_bypass_email(email):
-        _auth_audit(event='auth_send_code', outcome='bypass', email=email, reason='whitelisted_email')
-        return jsonify({"status": "ok", "bypass": True})
-
-    info = db.get_email_verification_code(email)
-    if info and (datetime.now(timezone.utc) - info["last_send_at"]).total_seconds() < 60:
-        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='email_cooldown_60s', level='warning')
-        return jsonify({"error": "Too many requests"}), 429
-
-    code = _generate_code()
-    _store_code(email, code)
-    try:
-        send_verification_email(email, code)
-        _auth_audit(event='auth_send_code', outcome='success', email=email)
-    except Exception as e:
-        logger.error(f"Send code failed: {e}")
-        _auth_audit(event='auth_send_code', outcome='failed', email=email, reason='smtp_send_failed', level='warning')
-        return jsonify({"error": "Send failed"}), 500
-    return jsonify({"status": "ok"})
+    """Deprecated: email verification login has been removed."""
+    return jsonify({"error": "Deprecated endpoint", "code": "AUTH_EMAIL_OTP_REMOVED"}), 410
 
 
 @app.route('/health')

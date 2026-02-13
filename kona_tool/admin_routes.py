@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import importlib.util
+import csv
+import io
+import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request, g, current_app
+from flask import Blueprint, jsonify, request, g, current_app, make_response
 
 import config
 from core.auth import admin_required
@@ -31,6 +34,11 @@ CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
 }
 
 _RUNTIME_CONFIG_OVERRIDES: Dict[str, Any] = {}
+
+
+def _make_invite_code(length: int = 10) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _load_script_module(path: Path, module_name: str):
@@ -100,7 +108,7 @@ def _real_user_where(alias: str = "") -> str:
     return (
         "NOT ("
         f"COALESCE({prefix}is_admin, 0) = 1 "
-        f"AND LOWER(COALESCE({prefix}email, '')) LIKE '%@admin.local'"
+        f"AND LOWER(COALESCE({prefix}username, '')) LIKE 'admin_local%'"
         ")"
     )
 
@@ -219,7 +227,7 @@ def create_admin_blueprint(db, admin_write_audit):
         params: List[Any] = []
         if q:
             where.append(
-                "(bu.email LIKE ? OR COALESCE(bu.nickname, '') LIKE ? OR COALESCE(bu.phone, '') LIKE ? OR CAST(COALESCE(bu.user_number, '') AS TEXT) LIKE ? OR bu.id LIKE ?)"
+                "(bu.username LIKE ? OR COALESCE(bu.nickname, '') LIKE ? OR COALESCE(bu.phone, '') LIKE ? OR CAST(COALESCE(bu.user_number, '') AS TEXT) LIKE ? OR bu.id LIKE ?)"
             )
             q_like = f"%{q}%"
             params.extend([q_like, q_like, q_like, q_like, q_like])
@@ -236,7 +244,7 @@ def create_admin_blueprint(db, admin_write_audit):
                 WITH base_users AS (
                     SELECT
                         u.id,
-                        u.email,
+                        u.username,
                         COALESCE(u.nickname, '') AS nickname,
                         u.phone,
                         u.user_number,
@@ -250,7 +258,7 @@ def create_admin_blueprint(db, admin_write_audit):
                     UNION ALL
                     SELECT
                         '__local__' AS id,
-                        'local@device' AS email,
+                        'local_user' AS username,
                         '本机未登录用户' AS nickname,
                         '' AS phone,
                         NULL AS user_number,
@@ -281,7 +289,7 @@ def create_admin_blueprint(db, admin_write_audit):
                 WITH base_users AS (
                     SELECT
                         u.id,
-                        u.email,
+                        u.username,
                         COALESCE(u.nickname, '') AS nickname,
                         u.phone,
                         u.user_number,
@@ -295,7 +303,7 @@ def create_admin_blueprint(db, admin_write_audit):
                     UNION ALL
                     SELECT
                         '__local__' AS id,
-                        'local@device' AS email,
+                        'local_user' AS username,
                         '本机未登录用户' AS nickname,
                         '' AS phone,
                         NULL AS user_number,
@@ -315,7 +323,7 @@ def create_admin_blueprint(db, admin_write_audit):
                 )
                 SELECT
                     bu.id,
-                    bu.email,
+                    bu.username,
                     bu.nickname,
                     bu.phone,
                     bu.user_number,
@@ -361,7 +369,7 @@ def create_admin_blueprint(db, admin_write_audit):
                 if _has_local_anonymous_user(cursor):
                     return jsonify({
                         "id": "__local__",
-                        "email": "local@device",
+                        "username": "local_user",
                         "nickname": "本机未登录用户",
                         "phone": "",
                         "user_number": None,
@@ -376,7 +384,7 @@ def create_admin_blueprint(db, admin_write_audit):
                 f"""
                 SELECT
                     u.id,
-                    u.email,
+                    u.username,
                     COALESCE(u.nickname, '') AS nickname,
                     COALESCE(u.phone, '') AS phone,
                     u.user_number,
@@ -480,7 +488,7 @@ def create_admin_blueprint(db, admin_write_audit):
             conn.commit()
             cursor.execute(
                 f"""
-                SELECT id, email, nickname, phone, user_number, is_admin, status, created_at, last_login
+                SELECT id, username, nickname, phone, user_number, is_admin, status, created_at, last_login
                 FROM users
                 WHERE id = ? AND {_real_user_where()}
                 LIMIT 1
@@ -795,6 +803,125 @@ def create_admin_blueprint(db, admin_write_audit):
 
         all_ok = all(item.get("ok") for item in results)
         return jsonify({"status": "ok" if all_ok else "degraded", "items": results})
+
+    @bp.route("/invites/generate", methods=["POST"])
+    @admin_write_audit(action="admin.invites.generate", target_type="invite")
+    @admin_required
+    def admin_invites_generate():
+        data = _json_body()
+        try:
+            count = int(data.get("count", 1000))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid count"}), 400
+        if count < 1 or count > 10000:
+            return jsonify({"error": "count must be 1-10000"}), 400
+        batch_id = str(data.get("batch_id", "")).strip() or datetime.now().strftime("batch-%Y%m%d-%H%M%S")
+        note = str(data.get("note", "")).strip()[:200]
+
+        target = count
+        inserted_total = 0
+        generated_all: List[str] = []
+        safety_rounds = 0
+        while inserted_total < target and safety_rounds < 8:
+            missing = target - inserted_total
+            generated = []
+            seen = set()
+            while len(generated) < missing * 2:
+                code = _make_invite_code(10)
+                if code in seen:
+                    continue
+                seen.add(code)
+                generated.append(code)
+            inserted = db.insert_invite_codes(
+                generated,
+                batch_id=batch_id,
+                created_by=getattr(g, "user_id", "") or "",
+                note=note,
+            )
+            inserted_total += inserted
+            generated_all.extend(generated[:inserted])
+            safety_rounds += 1
+
+        return jsonify({
+            "status": "ok",
+            "batch_id": batch_id,
+            "requested": target,
+            "inserted": inserted_total,
+            "codes": generated_all[:inserted_total],
+        })
+
+    @bp.route("/invites", methods=["GET"])
+    @admin_required
+    def admin_invites_list():
+        status = request.args.get("status", "all").strip().lower()
+        batch_id = request.args.get("batch_id", "").strip()
+        limit = max(1, min(request.args.get("limit", 200, type=int), 2000))
+        offset = max(0, request.args.get("offset", 0, type=int))
+        payload = db.list_invite_codes(status=status, batch_id=batch_id, limit=limit, offset=offset)
+        return jsonify(payload)
+
+    @bp.route("/invites/revoke", methods=["POST"])
+    @admin_write_audit(action="admin.invites.revoke", target_type="invite")
+    @admin_required
+    def admin_invites_revoke():
+        data = _json_body()
+        code = str(data.get("code", "")).strip().upper()
+        if not code:
+            return jsonify({"error": "Missing code"}), 400
+        if not db.revoke_invite_code(code):
+            return jsonify({"error": "Invite code not active or not found"}), 404
+        return jsonify({"status": "ok", "code": code})
+
+    @bp.route("/invites/export", methods=["GET"])
+    @admin_required
+    def admin_invites_export():
+        status = request.args.get("status", "all").strip().lower()
+        batch_id = request.args.get("batch_id", "").strip()
+        payload = db.list_invite_codes(status=status, batch_id=batch_id, limit=50000, offset=0)
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["code", "batch_id", "status", "created_by", "created_at", "used_by_user_id", "used_at", "note"])
+        for item in payload.get("items", []):
+            writer.writerow([
+                item.get("code", ""),
+                item.get("batch_id", ""),
+                item.get("status", ""),
+                item.get("created_by", ""),
+                item.get("created_at", ""),
+                item.get("used_by_user_id", ""),
+                item.get("used_at", ""),
+                item.get("note", ""),
+            ])
+        csv_content = output.getvalue()
+        resp = make_response(csv_content)
+        resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+        filename = batch_id or "all"
+        resp.headers["Content-Disposition"] = f"attachment; filename=invites-{filename}.csv"
+        return resp
+
+    @bp.route("/data/rebind/preview", methods=["GET"])
+    @admin_required
+    def admin_data_rebind_preview():
+        target_user_id = request.args.get("target_user_id", "").strip()
+        if not target_user_id:
+            return jsonify({"error": "Missing target_user_id"}), 400
+        payload = db.preview_rebind_to_user(target_user_id)
+        if payload.get("error"):
+            return jsonify(payload), 404
+        return jsonify(payload)
+
+    @bp.route("/data/rebind/execute", methods=["POST"])
+    @admin_write_audit(action="admin.data.rebind.execute", target_type="user")
+    @admin_required
+    def admin_data_rebind_execute():
+        data = _json_body()
+        target_user_id = str(data.get("target_user_id", "")).strip()
+        if not target_user_id:
+            return jsonify({"error": "Missing target_user_id"}), 400
+        payload = db.execute_rebind_to_user(target_user_id)
+        if payload.get("error"):
+            return jsonify(payload), 400
+        return jsonify({"status": "ok", "result": payload})
 
     @bp.route("/audit/logs", methods=["GET"])
     @admin_required

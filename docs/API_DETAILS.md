@@ -174,3 +174,72 @@ This is a best-effort extraction; verify against code for edge cases.
   - `type`, default: 'day'
 
 ---
+
+## `/api/auth/login`
+
+**Methods**: POST
+
+**Request Body**
+- required: `username`, `password`
+- optional: `device_id`
+
+**Response**
+- `access_token`, `refresh_token`, `refresh_expires_at`, `user`
+
+---
+
+## `/api/auth/register`
+
+**Methods**: POST
+
+**Request Body**
+- required: `username`, `password`, `invite_code`
+- optional: `device_id`
+
+---
+
+## `/api/auth/invite/validate`
+
+**Methods**: POST
+
+**Request Body**
+- required: `invite_code`
+
+---
+
+## `/api/auth/password/change`
+
+**Methods**: POST
+
+**Request Body**
+- required: `old_password`, `new_password`
+
+---
+
+## `/api/auth/refresh`
+
+**Methods**: POST
+
+**Request Body**
+- required: `refresh_token`
+- optional: `device_id`
+
+---
+
+## `/api/auth/logout`
+
+**Methods**: POST
+
+**Request Body**
+- optional: `refresh_token`
+
+---
+
+## `/api/auth/send_code`
+
+**Methods**: POST
+
+**Status**
+- Deprecated, always returns `410`
+
+---

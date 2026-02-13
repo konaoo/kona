@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,6 +20,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   testWidgets('无 token 时：启动页后进入登录页', (tester) async {
@@ -39,6 +41,10 @@ void main() {
   });
 
   testWidgets('有 token 且校验成功：不出现登录页闪现', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'auth_refresh_token': 'refresh-ok',
+      'auth_username': 'demo',
+    });
     final appState = AppState(
       tokenLoader: () async {
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -47,7 +53,7 @@ void main() {
       profileLoader: () async {
         await Future<void>.delayed(const Duration(milliseconds: 30));
         return {
-          'email': 'demo@example.com',
+          'username': 'demo',
           'id': 'u-1',
           'user_number': 1,
           'nickname': 'demo',
@@ -69,6 +75,10 @@ void main() {
   });
 
   testWidgets('有 token 但校验失败：回退到登录页', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'auth_refresh_token': 'refresh-expired',
+      'auth_username': 'demo',
+    });
     final appState = AppState(
       tokenLoader: () async {
         await Future<void>.delayed(const Duration(milliseconds: 10));

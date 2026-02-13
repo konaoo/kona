@@ -45,7 +45,15 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 ## Auth
 
 - `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/invite/validate`
+- `POST /api/auth/password/change`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
 - `GET /api/auth/me`
+- `POST /api/auth/profile`
+- `POST /api/auth/bootstrap_credentials`
+- `POST /api/auth/send_code` (deprecated, returns 410)
 
 
 ## Analysis & News
@@ -90,4 +98,3 @@ See `docs/API_DETAILS.md` for parameters and response formats.
 ## Health
 
 - `GET /health`
-

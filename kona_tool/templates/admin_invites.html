@@ -1,0 +1,177 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'invites' %}
+
+{% block title %}Admin 邀请码{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1 class="title">邀请码管理</h1>
+    <div class="hint">生成、导出、作废邀请码；并支持历史数据归属迁移</div>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <input id="batchId" placeholder="batch_id（可空自动生成）" style="min-width:240px;" />
+        <input id="inviteCount" type="number" value="1000" min="1" max="10000" style="width:120px;" />
+        <button onclick="generateInvites()">生成邀请码</button>
+        <button class="secondary" onclick="exportInvites()">导出CSV</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <select id="statusFilter">
+            <option value="all">全部状态</option>
+            <option value="active">active</option>
+            <option value="used">used</option>
+            <option value="revoked">revoked</option>
+        </select>
+        <input id="batchFilter" placeholder="按 batch_id 过滤" />
+        <button onclick="loadInvites()">查询</button>
+    </div>
+
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>code</th>
+                    <th>batch_id</th>
+                    <th>status</th>
+                    <th>used_by</th>
+                    <th>used_at</th>
+                    <th>created_at</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="inviteRows"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">历史数据归属迁移</h3>
+        <div class="hint">将现有业务数据统一归属到目标 user_id（一次性操作）</div>
+    </div>
+    <div class="controls">
+        <input id="targetUserId" placeholder="目标 user_id" style="min-width:220px;" />
+        <button class="secondary" onclick="previewRebind()">预览迁移</button>
+        <button class="warn" onclick="executeRebind()">执行迁移</button>
+    </div>
+    <pre id="rebindOutput" class="muted" style="white-space:pre-wrap; background:#f8fafc; border:1px solid #dbe3ee; border-radius:10px; padding:10px;">尚未执行预览</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function statusPill(status) {
+        const cls = status === 'active' ? 'status-active' : (status === 'used' ? 'status-disabled' : 'status-disabled');
+        return `<span class="status-pill ${cls}">${status}</span>`;
+    }
+
+    async function generateInvites() {
+        const batchId = document.getElementById('batchId').value.trim();
+        const count = parseInt(document.getElementById('inviteCount').value || '1000', 10);
+        try {
+            const data = await adminFetch('/api/admin/invites/generate', {
+                method: 'POST',
+                body: JSON.stringify({ batch_id: batchId, count })
+            });
+            showToast(`生成完成: ${data.inserted}/${data.requested}`);
+            if (!batchId && data.batch_id) {
+                document.getElementById('batchId').value = data.batch_id;
+                document.getElementById('batchFilter').value = data.batch_id;
+            }
+            loadInvites();
+        } catch (e) {
+            showToast(`生成失败: ${e.message}`, true);
+        }
+    }
+
+    async function loadInvites() {
+        const status = encodeURIComponent(document.getElementById('statusFilter').value);
+        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
+        const url = `/api/admin/invites?status=${status}&batch_id=${batch}&limit=500&offset=0`;
+        try {
+            const data = await adminFetch(url);
+            const rows = data.items || [];
+            const tbody = document.getElementById('inviteRows');
+            tbody.innerHTML = '';
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无数据</td></tr>';
+                return;
+            }
+            for (const r of rows) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${r.code || ''}</td>
+                    <td>${r.batch_id || ''}</td>
+                    <td>${statusPill(r.status || '')}</td>
+                    <td>${r.used_by_user_id || ''}</td>
+                    <td>${r.used_at || ''}</td>
+                    <td>${r.created_at || ''}</td>
+                    <td>${r.status === 'active' ? `<button class="warn" onclick="revokeInvite('${r.code}')">作废</button>` : '<span class="muted">-</span>'}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            showToast(`加载失败: ${e.message}`, true);
+        }
+    }
+
+    async function revokeInvite(code) {
+        try {
+            await adminFetch('/api/admin/invites/revoke', {
+                method: 'POST',
+                body: JSON.stringify({ code })
+            });
+            showToast('已作废');
+            loadInvites();
+        } catch (e) {
+            showToast(`作废失败: ${e.message}`, true);
+        }
+    }
+
+    function exportInvites() {
+        const status = encodeURIComponent(document.getElementById('statusFilter').value);
+        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
+        window.open(`/api/admin/invites/export?status=${status}&batch_id=${batch}`, '_blank');
+    }
+
+    async function previewRebind() {
+        const target = document.getElementById('targetUserId').value.trim();
+        if (!target) {
+            showToast('请输入目标 user_id', true);
+            return;
+        }
+        try {
+            const data = await adminFetch(`/api/admin/data/rebind/preview?target_user_id=${encodeURIComponent(target)}`);
+            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
+            showToast('预览完成');
+        } catch (e) {
+            showToast(`预览失败: ${e.message}`, true);
+        }
+    }
+
+    async function executeRebind() {
+        const target = document.getElementById('targetUserId').value.trim();
+        if (!target) {
+            showToast('请输入目标 user_id', true);
+            return;
+        }
+        if (!confirm('确认执行数据归属迁移？此操作会写入数据库。')) return;
+        try {
+            const data = await adminFetch('/api/admin/data/rebind/execute', {
+                method: 'POST',
+                body: JSON.stringify({ target_user_id: target })
+            });
+            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
+            showToast('迁移执行完成');
+        } catch (e) {
+            showToast(`迁移失败: ${e.message}`, true);
+        }
+    }
+
+    loadInvites();
+</script>
+{% endblock %}

@@ -4,7 +4,9 @@
 """
 import sqlite3
 import logging
-from typing import List, Dict, Any, Optional
+import uuid
+import re
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import datetime as dt
 from pathlib import Path
@@ -140,11 +142,14 @@ class DatabaseManager:
             )
         ''')
 
-        # 创建用户表
+        # 创建用户表（v2: username + password）
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT,
+                legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0,
+                password_updated_at TIMESTAMP,
                 nickname TEXT,
                 avatar TEXT,
                 register_method TEXT,
@@ -176,14 +181,31 @@ class DatabaseManager:
             )
         ''')
 
-        # 创建邮箱验证码表（多进程共享，避免内存态不一致）
+        # 邀请码表
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS email_verification_codes (
-                email TEXT PRIMARY KEY,
-                code TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                last_send_at TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS invite_codes (
+                code TEXT PRIMARY KEY,
+                batch_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_by_user_id TEXT,
+                used_at TIMESTAMP,
+                note TEXT
+            )
+        ''')
+
+        # Refresh token 表（仅存 hash）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                token_hash TEXT UNIQUE NOT NULL,
+                device_id TEXT,
+                issued_at TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP,
+                last_used_at TIMESTAMP
             )
         ''')
 
@@ -228,17 +250,7 @@ class DatabaseManager:
         _ensure_column('liabilities', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('liabilities', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('daily_snapshots', 'user_id', "user_id TEXT DEFAULT ''")
-        _ensure_column('users', 'nickname', 'nickname TEXT')
-        _ensure_column('users', 'avatar', 'avatar TEXT')
-        _ensure_column('users', 'register_method', 'register_method TEXT')
-        _ensure_column('users', 'phone', 'phone TEXT')
-        _ensure_column('users', 'user_number', 'user_number INTEGER')
-        _ensure_column('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
-        _ensure_column('users', 'status', "status TEXT NOT NULL DEFAULT 'active'")
-        _ensure_column('users', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-        _ensure_column('users', 'last_login', 'last_login TIMESTAMP')
-        cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
-        cursor.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
+        self._ensure_users_schema(cursor)
 
         # 创建索引以优化查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)')
@@ -257,13 +269,162 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_email_verification_codes_expires_at ON email_verification_codes(expires_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_status ON invite_codes(status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_batch_id ON invite_codes(batch_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at ON auth_refresh_tokens(expires_at)')
+        cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
 
         conn.commit()
         conn.close()
+
+    def _normalize_username_seed(self, seed: str) -> str:
+        s = (seed or "").strip().lower()
+        if "@" in s:
+            s = s.split("@", 1)[0]
+        s = re.sub(r"[^a-z0-9_]", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        if not s:
+            s = "user"
+        if not s[0].isalpha():
+            s = f"u_{s}"
+        if len(s) < 4:
+            s = (s + "user")[:4]
+        return s[:24]
+
+    def _next_unique_username(self, base: str, used: set) -> str:
+        candidate = base
+        idx = 1
+        while candidate in used:
+            suffix = f"_{idx}"
+            candidate = f"{base[:24-len(suffix)]}{suffix}"
+            idx += 1
+        used.add(candidate)
+        return candidate
+
+    def _ensure_users_schema(self, cursor) -> None:
+        cursor.execute("PRAGMA table_info(users)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if not cols:
+            return
+
+        expected_cols = {
+            "id",
+            "username",
+            "password_hash",
+            "legacy_needs_password_setup",
+            "password_updated_at",
+            "nickname",
+            "avatar",
+            "register_method",
+            "phone",
+            "user_number",
+            "is_admin",
+            "status",
+            "created_at",
+            "last_login",
+        }
+        needs_rebuild = ("email" in cols) or any(c not in cols for c in expected_cols)
+        if needs_rebuild:
+            cursor.execute("SELECT * FROM users")
+            rows = [dict(r) for r in cursor.fetchall()]
+            cursor.execute("DROP TABLE IF EXISTS users_new")
+            cursor.execute(
+                """
+                CREATE TABLE users_new (
+                    id TEXT PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT,
+                    legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0,
+                    password_updated_at TIMESTAMP,
+                    nickname TEXT,
+                    avatar TEXT,
+                    register_method TEXT,
+                    phone TEXT,
+                    user_number INTEGER,
+                    is_admin INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                )
+                """
+            )
+            used = set()
+            for idx, row in enumerate(rows, start=1):
+                user_id = str(row.get("id") or uuid.uuid4().hex)
+                seed = row.get("username") or row.get("email") or user_id
+                base = self._normalize_username_seed(str(seed))
+                username = self._next_unique_username(base, used)
+                password_hash = row.get("password_hash")
+                legacy_flag = 1 if not password_hash else int(
+                    row.get("legacy_needs_password_setup") or 0
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO users_new (
+                        id, username, password_hash, legacy_needs_password_setup,
+                        password_updated_at, nickname, avatar, register_method, phone,
+                        user_number, is_admin, status, created_at, last_login
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        username,
+                        password_hash,
+                        legacy_flag,
+                        row.get("password_updated_at"),
+                        row.get("nickname"),
+                        row.get("avatar"),
+                        row.get("register_method") or "legacy_email_otp",
+                        row.get("phone"),
+                        row.get("user_number") or (10000 + idx),
+                        int(row.get("is_admin") or 0),
+                        row.get("status") or "active",
+                        row.get("created_at"),
+                        row.get("last_login"),
+                    ),
+                )
+            cursor.execute("DROP TABLE users")
+            cursor.execute("ALTER TABLE users_new RENAME TO users")
+        else:
+            def _ensure_column(column: str, col_def: str) -> None:
+                cursor.execute("PRAGMA table_info(users)")
+                cur_cols = [row[1] for row in cursor.fetchall()]
+                if column not in cur_cols:
+                    cursor.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
+
+            _ensure_column("password_hash", "password_hash TEXT")
+            _ensure_column(
+                "legacy_needs_password_setup",
+                "legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0",
+            )
+            _ensure_column("password_updated_at", "password_updated_at TIMESTAMP")
+            _ensure_column("nickname", "nickname TEXT")
+            _ensure_column("avatar", "avatar TEXT")
+            _ensure_column("register_method", "register_method TEXT")
+            _ensure_column("phone", "phone TEXT")
+            _ensure_column("user_number", "user_number INTEGER")
+            _ensure_column("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0")
+            _ensure_column("status", "status TEXT NOT NULL DEFAULT 'active'")
+            _ensure_column("created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            _ensure_column("last_login", "last_login TIMESTAMP")
+
+        cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
+        cursor.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
+        cursor.execute(
+            "UPDATE users SET legacy_needs_password_setup = 1 "
+            "WHERE COALESCE(password_hash, '') = ''"
+        )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username)"
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_user_number ON users(user_number)")
 
     def get_user_auth_info(self, user_id: str) -> Optional[Dict[str, Any]]:
         """获取用户的后台权限信息。"""
@@ -273,7 +434,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                SELECT id, email, is_admin, status
+                SELECT id, username, is_admin, status
                 FROM users
                 WHERE id = ?
                 LIMIT 1
@@ -283,94 +444,591 @@ class DatabaseManager:
                 return None
             return {
                 'id': row['id'],
-                'email': row['email'],
+                'username': row['username'],
                 'is_admin': bool(row['is_admin']),
                 'status': row['status'] or 'active',
             }
         finally:
             conn.close()
 
-    def upsert_email_verification_code(
-        self,
-        email: str,
-        code: str,
-        expires_at: datetime,
-        last_send_at: datetime,
-    ) -> bool:
-        """写入/更新邮箱验证码。"""
+    def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        if not user_id:
+            return None
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
                 '''
-                INSERT INTO email_verification_codes (email, code, expires_at, last_send_at, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(email) DO UPDATE SET
-                    code=excluded.code,
-                    expires_at=excluded.expires_at,
-                    last_send_at=excluded.last_send_at,
-                    updated_at=CURRENT_TIMESTAMP
+                SELECT id, username, nickname, avatar, register_method, phone,
+                       user_number, created_at, last_login, legacy_needs_password_setup
+                FROM users
+                WHERE id = ?
+                LIMIT 1
                 ''',
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        u = (username or "").strip().lower()
+        if not u:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                '''
+                SELECT id, username, password_hash, legacy_needs_password_setup,
+                       nickname, avatar, register_method, phone, user_number,
+                       is_admin, status, created_at, last_login
+                FROM users
+                WHERE username = ?
+                LIMIT 1
+                ''',
+                (u,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        if not user_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, username, password_hash, legacy_needs_password_setup,
+                       nickname, avatar, register_method, phone, user_number,
+                       is_admin, status, created_at, last_login
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def create_user(
+        self,
+        username: str,
+        password_hash: str,
+        register_method: str = "password_invite",
+        is_admin: bool = False,
+        user_id: str = "",
+    ) -> Dict[str, Any]:
+        u = (username or "").strip().lower()
+        user_id = user_id or uuid.uuid4().hex
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT MAX(user_number) AS max_num FROM users"
+            )
+            row = cursor.fetchone()
+            max_num = int(row["max_num"] or 10000) if row else 10000
+            user_number = max_num + 1
+            cursor.execute(
+                """
+                INSERT INTO users (
+                    id, username, password_hash, legacy_needs_password_setup,
+                    password_updated_at, register_method, user_number, is_admin
+                ) VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, ?, ?, ?)
+                """,
+                (user_id, u, password_hash, register_method, user_number, 1 if is_admin else 0),
+            )
+            conn.commit()
+            return {"id": user_id, "username": u, "user_number": user_number, "is_admin": bool(is_admin)}
+        except Exception as e:
+            logger.error("Failed to create user: %s", e)
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def update_last_login(self, user_id: str) -> None:
+        if not user_id:
+            return
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+                (user_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_user(self, user_id: str) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def update_user_profile(self, user_id: str, nickname: Any = None, avatar: Any = None) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        updates: List[str] = []
+        params: List[Any] = []
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(str(nickname).strip())
+        if avatar is not None:
+            updates.append("avatar = ?")
+            params.append(avatar)
+        if not updates:
+            return False
+        params.append(user_id)
+        try:
+            cursor.execute(
+                f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def set_user_password(self, user_id: str, password_hash: str) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE users
+                SET password_hash = ?, legacy_needs_password_setup = 0, password_updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (password_hash, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def bootstrap_credentials(self, user_id: str, username: str, password_hash: str) -> Tuple[bool, str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        u = (username or "").strip().lower()
+        try:
+            cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", (u, user_id))
+            if cursor.fetchone():
+                return False, "Username already exists"
+            cursor.execute(
+                """
+                UPDATE users
+                SET username = ?, password_hash = ?, legacy_needs_password_setup = 0, password_updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND (legacy_needs_password_setup = 1 OR COALESCE(password_hash, '') = '')
+                """,
+                (u, password_hash, user_id),
+            )
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                return False, "Bootstrap already completed"
+            conn.commit()
+            return True, ""
+        except Exception:
+            conn.rollback()
+            return False, "Bootstrap failed"
+        finally:
+            conn.close()
+
+    def create_refresh_token(
+        self,
+        user_id: str,
+        token_hash: str,
+        expires_at: datetime,
+        device_id: str = "",
+    ) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = datetime.utcnow().isoformat()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO auth_refresh_tokens (
+                    user_id, token_hash, device_id, issued_at, expires_at, revoked_at, last_used_at
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?)
+                """,
                 (
-                    (email or '').strip().lower(),
-                    code,
-                    expires_at.astimezone(dt.timezone.utc).isoformat(),
-                    last_send_at.astimezone(dt.timezone.utc).isoformat(),
+                    user_id,
+                    token_hash,
+                    (device_id or "").strip()[:128],
+                    now_iso,
+                    expires_at.isoformat(),
+                    now_iso,
                 ),
             )
             conn.commit()
             return True
-        except Exception as e:
-            logger.error(f"Failed to upsert email verification code: {e}")
+        except Exception:
             conn.rollback()
             return False
         finally:
             conn.close()
 
-    def get_email_verification_code(self, email: str) -> Optional[Dict[str, Any]]:
-        """读取邮箱验证码信息。"""
+    def get_refresh_token(self, token_hash: str) -> Optional[Dict[str, Any]]:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                '''
-                SELECT email, code, expires_at, last_send_at
-                FROM email_verification_codes
-                WHERE email = ?
+                """
+                SELECT id, user_id, token_hash, device_id, issued_at, expires_at, revoked_at, last_used_at
+                FROM auth_refresh_tokens
+                WHERE token_hash = ?
                 LIMIT 1
-                ''',
-                ((email or '').strip().lower(),),
+                """,
+                (token_hash,),
             )
             row = cursor.fetchone()
-            if not row:
-                return None
-            return {
-                'email': row['email'],
-                'code': row['code'],
-                'expires_at': datetime.fromisoformat(row['expires_at']),
-                'last_send_at': datetime.fromisoformat(row['last_send_at']),
-            }
-        except Exception as e:
-            logger.error(f"Failed to get email verification code: {e}")
-            return None
+            return dict(row) if row else None
         finally:
             conn.close()
 
-    def delete_email_verification_code(self, email: str) -> bool:
-        """删除邮箱验证码（消费后或过期后）。"""
+    def touch_refresh_token(self, token_hash: str) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                'DELETE FROM email_verification_codes WHERE email = ?',
-                ((email or '').strip().lower(),),
+                "UPDATE auth_refresh_tokens SET last_used_at = ? WHERE token_hash = ?",
+                (datetime.utcnow().isoformat(), token_hash),
             )
             conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete email verification code: {e}")
+            return cursor.rowcount > 0
+        except Exception:
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def revoke_refresh_token(self, token_hash: str) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE auth_refresh_tokens SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
+                (datetime.utcnow().isoformat(), token_hash),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def revoke_all_refresh_tokens(self, user_id: str) -> int:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE auth_refresh_tokens
+                SET revoked_at = ?
+                WHERE user_id = ? AND revoked_at IS NULL
+                """,
+                (datetime.utcnow().isoformat(), user_id),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+        except Exception:
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
+    def insert_invite_codes(
+        self,
+        codes: List[str],
+        batch_id: str,
+        created_by: str = "",
+        note: str = "",
+    ) -> int:
+        if not codes:
+            return 0
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        inserted = 0
+        try:
+            for code in codes:
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO invite_codes (code, batch_id, status, created_by, note)
+                        VALUES (?, ?, 'active', ?, ?)
+                        """,
+                        ((code or "").strip().upper(), batch_id, created_by, note),
+                    )
+                    inserted += 1
+                except sqlite3.IntegrityError:
+                    continue
+            conn.commit()
+            return inserted
+        except Exception:
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
+    def get_invite_code(self, code: str) -> Optional[Dict[str, Any]]:
+        c = (code or "").strip().upper()
+        if not c:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT code, batch_id, status, created_by, created_at, used_by_user_id, used_at, note
+                FROM invite_codes
+                WHERE code = ?
+                LIMIT 1
+                """,
+                (c,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def consume_invite_code(self, code: str, user_id: str) -> Tuple[bool, str]:
+        c = (code or "").strip().upper()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE invite_codes
+                SET status = 'used', used_by_user_id = ?, used_at = CURRENT_TIMESTAMP
+                WHERE code = ? AND status = 'active' AND used_by_user_id IS NULL
+                """,
+                (user_id, c),
+            )
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                return False, "Invite code invalid or already used"
+            conn.commit()
+            return True, ""
+        except Exception:
+            conn.rollback()
+            return False, "Invite code invalid or already used"
+        finally:
+            conn.close()
+
+    def revoke_invite_code(self, code: str) -> bool:
+        c = (code or "").strip().upper()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE invite_codes SET status = 'revoked' WHERE code = ? AND status = 'active'",
+                (c,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def list_invite_codes(
+        self,
+        status: str = "all",
+        batch_id: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        where: List[str] = []
+        params: List[Any] = []
+        if status and status != "all":
+            where.append("status = ?")
+            params.append(status)
+        if batch_id:
+            where.append("batch_id = ?")
+            params.append(batch_id)
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"SELECT COUNT(1) AS c FROM invite_codes {where_sql}",
+                tuple(params),
+            )
+            total = int(cursor.fetchone()["c"])
+            cursor.execute(
+                f"""
+                SELECT code, batch_id, status, created_by, created_at, used_by_user_id, used_at, note
+                FROM invite_codes
+                {where_sql}
+                ORDER BY created_at DESC, code ASC
+                LIMIT ? OFFSET ?
+                """,
+                tuple(params + [limit, offset]),
+            )
+            items = [dict(r) for r in cursor.fetchall()]
+            return {"items": items, "total": total, "limit": limit, "offset": offset}
+        finally:
+            conn.close()
+
+    def _table_rebind_count(self, cursor, table: str, target_user_id: str) -> int:
+        cursor.execute(
+            f"SELECT COUNT(1) AS c FROM {table} WHERE COALESCE(user_id, '') != ?",
+            (target_user_id,),
+        )
+        row = cursor.fetchone()
+        return int(row["c"] or 0)
+
+    def preview_rebind_to_user(self, target_user_id: str) -> Dict[str, Any]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        tables = [
+            "portfolio",
+            "transactions",
+            "cash_assets",
+            "other_assets",
+            "liabilities",
+            "daily_snapshots",
+        ]
+        try:
+            cursor.execute("SELECT id, username FROM users WHERE id = ? LIMIT 1", (target_user_id,))
+            user_row = cursor.fetchone()
+            if not user_row:
+                return {"error": "Target user not found"}
+            per_table = {
+                t: self._table_rebind_count(cursor, t, target_user_id)
+                for t in tables
+            }
+            source_distribution: Dict[str, Dict[str, int]] = {}
+            for t in tables:
+                cursor.execute(
+                    f"""
+                    SELECT COALESCE(NULLIF(TRIM(user_id), ''), '__local__') AS source_user_id, COUNT(1) AS c
+                    FROM {t}
+                    WHERE COALESCE(user_id, '') != ?
+                    GROUP BY COALESCE(NULLIF(TRIM(user_id), ''), '__local__')
+                    ORDER BY c DESC
+                    """,
+                    (target_user_id,),
+                )
+                source_distribution[t] = {
+                    row["source_user_id"]: int(row["c"] or 0)
+                    for row in cursor.fetchall()
+                }
+            return {
+                "target_user_id": target_user_id,
+                "target_username": user_row["username"],
+                "tables": per_table,
+                "sources": source_distribution,
+                "total": int(sum(per_table.values())),
+            }
+        finally:
+            conn.close()
+
+    def execute_rebind_to_user(self, target_user_id: str) -> Dict[str, Any]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        result = {
+            "target_user_id": target_user_id,
+            "tables": {},
+            "total": 0,
+        }
+        try:
+            cursor.execute("BEGIN")
+            cursor.execute("SELECT id FROM users WHERE id = ? LIMIT 1", (target_user_id,))
+            if not cursor.fetchone():
+                conn.rollback()
+                return {"error": "Target user not found"}
+
+            simple_tables = ["portfolio", "transactions", "cash_assets", "other_assets", "liabilities"]
+            for table in simple_tables:
+                cursor.execute(
+                    f"UPDATE {table} SET user_id = ? WHERE COALESCE(user_id, '') != ?",
+                    (target_user_id, target_user_id),
+                )
+                moved = int(cursor.rowcount or 0)
+                result["tables"][table] = moved
+                result["total"] += moved
+
+            cursor.execute(
+                """
+                SELECT date, total_asset, total_invest, total_cash, total_other,
+                       total_liability, total_pnl, day_pnl, updated_at
+                FROM daily_snapshots
+                WHERE COALESCE(user_id, '') != ?
+                ORDER BY COALESCE(updated_at, ''), id
+                """,
+                (target_user_id,),
+            )
+            rows = cursor.fetchall()
+            moved_snapshots = 0
+            for row in rows:
+                cursor.execute(
+                    """
+                    INSERT INTO daily_snapshots (
+                        date, total_asset, total_invest, total_cash, total_other,
+                        total_liability, total_pnl, day_pnl, user_id, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(date, user_id) DO UPDATE SET
+                        total_asset = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_asset ELSE daily_snapshots.total_asset END,
+                        total_invest = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_invest ELSE daily_snapshots.total_invest END,
+                        total_cash = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_cash ELSE daily_snapshots.total_cash END,
+                        total_other = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_other ELSE daily_snapshots.total_other END,
+                        total_liability = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_liability ELSE daily_snapshots.total_liability END,
+                        total_pnl = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.total_pnl ELSE daily_snapshots.total_pnl END,
+                        day_pnl = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.day_pnl ELSE daily_snapshots.day_pnl END,
+                        updated_at = CASE WHEN excluded.updated_at >= COALESCE(daily_snapshots.updated_at, '') THEN excluded.updated_at ELSE daily_snapshots.updated_at END
+                    """,
+                    (
+                        row["date"],
+                        row["total_asset"],
+                        row["total_invest"],
+                        row["total_cash"],
+                        row["total_other"],
+                        row["total_liability"],
+                        row["total_pnl"],
+                        row["day_pnl"],
+                        target_user_id,
+                        row["updated_at"],
+                    ),
+                )
+                moved_snapshots += 1
+            cursor.execute(
+                "DELETE FROM daily_snapshots WHERE COALESCE(user_id, '') != ?",
+                (target_user_id,),
+            )
+            result["tables"]["daily_snapshots"] = moved_snapshots
+            result["total"] += moved_snapshots
+
+            conn.commit()
+            return result
+        except Exception as e:
+            logger.error("Failed to execute user rebind: %s", e)
+            conn.rollback()
+            return {"error": "Failed to execute rebind"}
         finally:
             conn.close()
 

@@ -11,12 +11,15 @@ void main() {
 
     await appState.setLoggedIn(
       token: 't123',
-      email: 'u@example.com',
+      refreshToken: 'r123',
+      username: 'u_test',
       userId: 'uid-1',
     );
 
     final storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'auth_token');
+    final token = await storage.read(key: 'auth_access_token');
+    final refresh = await storage.read(key: 'auth_refresh_token');
     expect(token, 't123');
+    expect(refresh, 'r123');
   });
 }

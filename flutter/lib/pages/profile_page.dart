@@ -102,10 +102,76 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _changePassword(AppState appState) async {
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgElevated,
+        title: Text('修改密码', style: TextStyle(color: AppTheme.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: oldCtrl,
+              obscureText: true,
+              style: TextStyle(color: AppTheme.textPrimary),
+              decoration: const InputDecoration(labelText: '原密码'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: newCtrl,
+              obscureText: true,
+              style: TextStyle(color: AppTheme.textPrimary),
+              decoration: const InputDecoration(labelText: '新密码'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confirmCtrl,
+              obscureText: true,
+              style: TextStyle(color: AppTheme.textPrimary),
+              decoration: const InputDecoration(labelText: '确认新密码'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('提交', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (result != true) return;
+    final oldPassword = oldCtrl.text;
+    final newPassword = newCtrl.text;
+    final confirm = confirmCtrl.text;
+    if (newPassword != confirm) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('两次输入的新密码不一致')));
+      return;
+    }
+    final ok = await appState.changePassword(
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? '密码修改成功' : '密码修改失败，请检查原密码')),
+    );
+  }
+
   Widget _buildAvatar(AppState appState) {
     final fallback = (appState.nickname?.isNotEmpty == true
             ? appState.nickname!.substring(0, 1)
-            : (appState.email?.substring(0, 1).toUpperCase() ?? 'U'))
+            : (appState.username?.substring(0, 1).toUpperCase() ?? 'U'))
         .toUpperCase();
 
     Uint8List? avatarBytes;
@@ -118,6 +184,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final hasAvatar = avatarBytes != null;
+    final avatarImage = avatarBytes == null ? null : MemoryImage(avatarBytes);
     return GestureDetector(
       onTap: () => _pickAvatar(appState),
       onLongPress: () => _removeAvatar(appState),
@@ -126,7 +193,7 @@ class _ProfilePageState extends State<ProfilePage> {
           CircleAvatar(
             radius: 35,
             backgroundColor: AppTheme.accent,
-            backgroundImage: hasAvatar ? MemoryImage(avatarBytes!) : null,
+            backgroundImage: avatarImage,
             child: hasAvatar
                 ? null
                 : Text(
@@ -192,7 +259,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            appState.email ?? 'user@example.com',
+                            appState.username ?? 'user',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppTheme.textSecondary,
@@ -213,6 +280,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
               // 设置项
               _buildThemeToggle(appState),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(Icons.lock_reset, '修改密码', () {
+                _changePassword(appState);
+              }),
+              const SizedBox(height: Spacing.sm),
+              _buildBiometricToggle(appState),
               const SizedBox(height: Spacing.sm),
               _buildSettingItem(Icons.settings, '系统设置', () {}),
               const SizedBox(height: Spacing.sm),
@@ -315,7 +388,58 @@ class _ProfilePageState extends State<ProfilePage> {
           Switch(
             value: appState.isLightTheme,
             onChanged: (_) => appState.toggleTheme(),
-            activeColor: AppTheme.accent,
+            activeThumbColor: AppTheme.accent,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBiometricToggle(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(Spacing.lg),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.fingerprint, size: 20, color: AppTheme.accentLight),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '生物识别登录',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'iOS / Android 可用',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: appState.biometricEnabled,
+            onChanged: (v) async {
+              final ok = await appState.setBiometricEnabled(v);
+              if (!ok && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('当前设备不可用生物识别')),
+                );
+              }
+            },
+            activeThumbColor: AppTheme.accent,
           ),
         ],
       ),
