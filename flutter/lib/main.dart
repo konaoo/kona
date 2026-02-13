@@ -151,6 +151,10 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _currentIndex = 0;
   Timer? _priceTimer;
+  bool _fabVisible = true;
+  final GlobalKey<HomePageState> _homePageKey = GlobalKey<HomePageState>();
+  final GlobalKey<InvestPageState> _investPageKey =
+      GlobalKey<InvestPageState>();
 
   @override
   void initState() {
@@ -190,7 +194,17 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   }
 
   void _switchTab(int index) {
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      _fabVisible = true;
+    });
+    _homePageKey.currentState?.resetFabVisibilityController();
+    _investPageKey.currentState?.resetFabVisibilityController();
+  }
+
+  void _onPrimaryScrollVisibilityChanged(bool visible) {
+    if (_fabVisible == visible) return;
+    setState(() => _fabVisible = visible);
   }
 
   void _navigateTo(String pageName) {
@@ -249,8 +263,16 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         child: IndexedStack(
           index: _currentIndex,
           children: [
-            HomePage(onNavigate: _navigateTo, onSwitchTab: _switchTab),
-            const InvestPage(),
+            HomePage(
+              key: _homePageKey,
+              onNavigate: _navigateTo,
+              onSwitchTab: _switchTab,
+              onFabVisibilityChanged: _onPrimaryScrollVisibilityChanged,
+            ),
+            InvestPage(
+              key: _investPageKey,
+              onFabVisibilityChanged: _onPrimaryScrollVisibilityChanged,
+            ),
             const AnalysisPage(),
             const NewsPage(),
             ProfilePage(onLogout: widget.onLogout),
@@ -258,16 +280,32 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         ),
       ),
       floatingActionButton: _currentIndex == 0 || _currentIndex == 1
-          ? FloatingActionButton.small(
-              heroTag: _currentIndex == 0 ? 'add_asset_home' : 'add_investment',
-              onPressed: _currentIndex == 0
-                  ? _showQuickAdd
-                  : _showAddInvestment,
-              backgroundColor: AppTheme.accent,
-              child: Icon(
-                Icons.add,
-                size: 20,
-                color: AppTheme.isLight ? Colors.white : AppTheme.textPrimary,
+          ? AnimatedSlide(
+              offset: _fabVisible ? Offset.zero : const Offset(0, 2.2),
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child: AnimatedOpacity(
+                opacity: _fabVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 140),
+                child: IgnorePointer(
+                  ignoring: !_fabVisible,
+                  child: FloatingActionButton.small(
+                    heroTag: _currentIndex == 0
+                        ? 'add_asset_home'
+                        : 'add_investment',
+                    onPressed: _currentIndex == 0
+                        ? _showQuickAdd
+                        : _showAddInvestment,
+                    backgroundColor: AppTheme.accent,
+                    child: Icon(
+                      Icons.add,
+                      size: 20,
+                      color: AppTheme.isLight
+                          ? Colors.white
+                          : AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
               ),
             )
           : null,

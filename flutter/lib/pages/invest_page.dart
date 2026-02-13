@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../widgets/gradient_card.dart';
 import '../widgets/invest_trade_dialog.dart';
+import '../widgets/fab_scroll_visibility_controller.dart';
 
 /// 投资页面 - 持仓列表
 class InvestPage extends StatefulWidget {
-  const InvestPage({super.key});
+  final ValueChanged<bool>? onFabVisibilityChanged;
+
+  const InvestPage({super.key, this.onFabVisibilityChanged});
 
   @override
-  State<InvestPage> createState() => _InvestPageState();
+  State<InvestPage> createState() => InvestPageState();
 }
 
-class _InvestPageState extends State<InvestPage> {
+class InvestPageState extends State<InvestPage> {
+  final FabScrollVisibilityController _fabVisibilityController =
+      FabScrollVisibilityController();
+
   @override
   void initState() {
     super.initState();
@@ -21,6 +28,40 @@ class _InvestPageState extends State<InvestPage> {
 
   Future<void> _loadData() async {
     await context.read<AppState>().refreshHomeData();
+  }
+
+  void resetFabVisibilityController() {
+    _fabVisibilityController.resetVisible();
+    widget.onFabVisibilityChanged?.call(true);
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    final callback = widget.onFabVisibilityChanged;
+    if (callback == null) return false;
+
+    if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta;
+      if (delta != null) {
+        final next = _fabVisibilityController.onScrollUpdate(delta);
+        if (next != null) {
+          callback(next);
+        }
+      }
+      return false;
+    }
+
+    if (notification is UserScrollNotification &&
+        notification.direction == ScrollDirection.idle) {
+      _fabVisibilityController.onScrollIdle();
+    }
+    return false;
+  }
+
+  double _bottomContentPadding(BuildContext context) {
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    const navBarHeight = 60.0;
+    const fabRegion = 76.0;
+    return navBarHeight + safeBottom + fabRegion;
   }
 
   @override
@@ -31,230 +72,306 @@ class _InvestPageState extends State<InvestPage> {
         return RefreshIndicator(
           onRefresh: _loadData,
           color: AppTheme.accent,
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Spacing.xl,
-                    Spacing.xl,
-                    Spacing.xl,
-                    Spacing.xs,
-                  ),
-                  child: Column(
-                    children: [
-                      // 汇总卡片
-                      GradientCard(
-                        padding: Spacing.xl,
-                        child: Column(
-                          children: [
-                            // 总市值
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      Spacing.xl,
+                      Spacing.xl,
+                      Spacing.xl,
+                      Spacing.xs,
+                    ),
+                    child: Column(
+                      children: [
+                        // 汇总卡片
+                        GradientCard(
+                          padding: Spacing.xl,
+                          child: Column(
+                            children: [
+                              // 总市值
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              '总市值',
+                                              style: TextStyle(
+                                                fontSize: FontSize.base,
+                                                color: AppTheme.textTertiary,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: Icon(
+                                                appState.amountHidden
+                                                    ? Icons.visibility_off
+                                                    : Icons.visibility,
+                                                size: 16,
+                                                color: AppTheme.textSecondary,
+                                              ),
+                                              onPressed: () =>
+                                                  appState.toggleAmountHidden(),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          appState.formatAmount(
+                                            appState.investTotalMV,
+                                            prefix: '',
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: FontSize.hero,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.textPrimary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            '总市值',
-                                            style: TextStyle(
-                                              fontSize: FontSize.base,
-                                              color: AppTheme.textTertiary,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: Icon(
-                                              appState.amountHidden
-                                                  ? Icons.visibility_off
-                                                  : Icons.visibility,
-                                              size: 16,
-                                              color: AppTheme.textSecondary,
-                                            ),
-                                            onPressed: () => appState.toggleAmountHidden(),
-                                          ),
-                                        ],
+                                      Text(
+                                        '今日盈亏',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.textTertiary,
+                                        ),
                                       ),
                                       Text(
-                                        appState.formatAmount(appState.investTotalMV, prefix: ''),
+                                        appState.formatPnlInt(
+                                          appState.investDayPnl,
+                                        ),
                                         style: TextStyle(
-                                          fontSize: FontSize.hero,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textPrimary,
+                                          fontSize: FontSize.lg,
+                                          color: AppState.getPnlColor(
+                                            appState.investDayPnl,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        appState.formatPct(
+                                          appState.investDayPnlRate,
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: FontSize.sm,
+                                          color: AppState.getPnlColor(
+                                            appState.investDayPnl,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '今日盈亏',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppTheme.textTertiary,
-                                      ),
+                                ],
+                              ),
+                              const SizedBox(height: Spacing.md),
+                              Divider(color: AppTheme.border),
+                              const SizedBox(height: Spacing.md),
+                              // 持仓盈亏
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildStat(
+                                    '持仓盈亏',
+                                    appState.formatPnlInt(
+                                      appState.investHoldingPnl,
                                     ),
-                                    Text(
-                                      appState.formatPnlInt(appState.investDayPnl),
-                                      style: TextStyle(
-                                        fontSize: FontSize.lg,
-                                        color: AppState.getPnlColor(appState.investDayPnl),
-                                      ),
+                                    AppState.getPnlColor(
+                                      appState.investHoldingPnl,
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      appState.formatPct(appState.investDayPnlRate),
-                                      style: TextStyle(
-                                        fontSize: FontSize.sm,
-                                        color: AppState.getPnlColor(appState.investDayPnl),
-                                      ),
+                                  ),
+                                  _buildStat(
+                                    '持仓盈亏率',
+                                    appState.formatPct(
+                                      appState.investHoldingPnlRate,
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: Spacing.md),
-                            Divider(color: AppTheme.border),
-                            const SizedBox(height: Spacing.md),
-                            // 持仓盈亏
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _buildStat('持仓盈亏', appState.formatPnlInt(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
-                                _buildStat('持仓盈亏率', appState.formatPct(appState.investHoldingPnlRate), AppState.getPnlColor(appState.investHoldingPnlRate)),
-                                _buildStat('累计盈亏', appState.formatPnlInt(appState.investHoldingPnl), AppState.getPnlColor(appState.investHoldingPnl)),
-                                _buildStat('累计盈亏率', appState.formatPct(appState.investHoldingPnlRate), AppState.getPnlColor(appState.investHoldingPnlRate)),
-                              ],
-                            ),
-                          ],
+                                    AppState.getPnlColor(
+                                      appState.investHoldingPnlRate,
+                                    ),
+                                  ),
+                                  _buildStat(
+                                    '累计盈亏',
+                                    appState.formatPnlInt(
+                                      appState.investHoldingPnl,
+                                    ),
+                                    AppState.getPnlColor(
+                                      appState.investHoldingPnl,
+                                    ),
+                                  ),
+                                  _buildStat(
+                                    '累计盈亏率',
+                                    appState.formatPct(
+                                      appState.investHoldingPnlRate,
+                                    ),
+                                    AppState.getPnlColor(
+                                      appState.investHoldingPnlRate,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: Spacing.md),
-                      // 分类标签
-                      _buildCategoryTabs(appState),
-                    ],
-                  ),
-                ),
-              ),
-              if (appState.filteredPortfolio.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.business_center, size: 48, color: AppTheme.textTertiary),
                         const SizedBox(height: Spacing.md),
-                        Text('暂无持仓', style: TextStyle(color: AppTheme.textSecondary)),
+                        // 分类标签
+                        _buildCategoryTabs(appState),
                       ],
                     ),
                   ),
-                )
-              else
-                SliverToBoxAdapter(
-                  child: Column(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.xs, Spacing.xl, 2),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: Spacing.md,
-                          vertical: isCompact ? 4 : 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.isLight
-                              ? AppTheme.bgElevated
-                              : AppTheme.bgCard.withOpacity(0.45),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+                ),
+                if (appState.filteredPortfolio.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.business_center,
+                            size: 48,
+                            color: AppTheme.textTertiary,
+                          ),
+                          const SizedBox(height: Spacing.md),
+                          Text(
+                            '暂无持仓',
+                            style: TextStyle(color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(
+                            Spacing.xl,
+                            Spacing.xs,
+                            Spacing.xl,
+                            2,
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: Spacing.md,
+                            vertical: isCompact ? 4 : 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.isLight
+                                ? AppTheme.bgElevated
+                                : AppTheme.bgCard.withOpacity(0.45),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppTheme.border.withOpacity(
+                                AppTheme.isLight ? 0.7 : 0.4,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: isCompact ? 72 : 80,
+                                child: Text(
+                                  '资产名称',
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9 : FontSize.base,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  '市值/数量',
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9 : FontSize.base,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  '现价/成本',
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9 : FontSize.base,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  '累计盈亏',
+                                  textAlign: TextAlign.end,
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9 : FontSize.base,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  '当日盈亏',
+                                  textAlign: TextAlign.end,
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9 : FontSize.base,
+                                    color: AppTheme.textTertiary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: isCompact ? 72 : 80,
-                              child: Text(
-                                '资产名称',
-                                style: TextStyle(
-                                  fontSize: isCompact ? 9 : FontSize.base,
-                                  color: AppTheme.textTertiary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                '市值/数量',
-                                style: TextStyle(
-                                  fontSize: isCompact ? 9 : FontSize.base,
-                                  color: AppTheme.textTertiary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                '现价/成本',
-                                style: TextStyle(
-                                  fontSize: isCompact ? 9 : FontSize.base,
-                                  color: AppTheme.textTertiary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                '累计盈亏',
-                                textAlign: TextAlign.end,
-                                style: TextStyle(
-                                  fontSize: isCompact ? 9 : FontSize.base,
-                                  color: AppTheme.textTertiary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                '当日盈亏',
-                                textAlign: TextAlign.end,
-                                style: TextStyle(
-                                  fontSize: isCompact ? 9 : FontSize.base,
-                                  color: AppTheme.textTertiary,
-                                ),
-                              ),
-                            ),
-                          ],
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: appState.filteredPortfolio.length,
+                          itemBuilder: (context, index) {
+                            final item = appState.filteredPortfolio[index];
+                            final priceInfo = appState.prices[item.code];
+                            return _buildPortfolioCard(
+                              item,
+                              priceInfo,
+                              appState,
+                              isCompact,
+                            );
+                          },
                         ),
-                      ),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: appState.filteredPortfolio.length,
-                        itemBuilder: (context, index) {
-                          final item = appState.filteredPortfolio[index];
-                          final priceInfo = appState.prices[item.code];
-                          return _buildPortfolioCard(item, priceInfo, appState, isCompact);
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: _bottomContentPadding(context)),
                 ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-
   Widget _buildStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary)),
+        Text(
+          label,
+          style: TextStyle(fontSize: FontSize.xs, color: AppTheme.textTertiary),
+        ),
         const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontSize: FontSize.lg, color: color)),
+        Text(
+          value,
+          style: TextStyle(fontSize: FontSize.lg, color: color),
+        ),
       ],
     );
   }
@@ -280,7 +397,9 @@ class _InvestPageState extends State<InvestPage> {
         final isSelected = appState.currentCategory == cat.$1;
         final alignment = index == 0
             ? Alignment.centerLeft
-            : (index == categories.length - 1 ? Alignment.centerRight : Alignment.center);
+            : (index == categories.length - 1
+                  ? Alignment.centerRight
+                  : Alignment.center);
         return Expanded(
           child: Align(
             alignment: alignment,
@@ -291,13 +410,20 @@ class _InvestPageState extends State<InvestPage> {
                 onTap: () => appState.setCategory(cat.$1),
                 borderRadius: BorderRadius.circular(AppRadius.xxl),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.md,
+                    vertical: 6,
+                  ),
                   child: Text(
                     cat.$2,
                     style: TextStyle(
                       fontSize: FontSize.base,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                      color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: isSelected
+                          ? AppTheme.textPrimary
+                          : AppTheme.textTertiary,
                     ),
                   ),
                 ),
@@ -309,7 +435,12 @@ class _InvestPageState extends State<InvestPage> {
     );
   }
 
-  Widget _buildPortfolioCard(dynamic item, dynamic priceInfo, AppState appState, bool isCompact) {
+  Widget _buildPortfolioCard(
+    dynamic item,
+    dynamic priceInfo,
+    AppState appState,
+    bool isCompact,
+  ) {
     // 检查价格数据是否有效
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
     final currentPrice = hasValidPrice ? priceInfo.price : item.price;
@@ -348,7 +479,10 @@ class _InvestPageState extends State<InvestPage> {
         ),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 4),
+          margin: const EdgeInsets.symmetric(
+            horizontal: Spacing.xl,
+            vertical: 4,
+          ),
           padding: const EdgeInsets.all(Spacing.md),
           decoration: BoxDecoration(
             color: AppTheme.bgCard,
@@ -381,7 +515,10 @@ class _InvestPageState extends State<InvestPage> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         _formatDisplayCode(item.code),
-                        style: TextStyle(fontSize: codeSize, color: AppTheme.textTertiary),
+                        style: TextStyle(
+                          fontSize: codeSize,
+                          color: AppTheme.textTertiary,
+                        ),
                       ),
                     ),
                   ],
@@ -517,9 +654,7 @@ class _InvestPageState extends State<InvestPage> {
   }
 
   String _formatDisplayCode(String code) {
-    const customMap = {
-      'ft_LU1116320737': 'BLK',
-    };
+    const customMap = {'ft_LU1116320737': 'BLK'};
     if (customMap.containsKey(code)) {
       return customMap[code]!;
     }
@@ -540,5 +675,4 @@ class _InvestPageState extends State<InvestPage> {
     }
     return c;
   }
-
 }
