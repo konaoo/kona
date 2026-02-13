@@ -1,161 +1,112 @@
 {% extends "admin_base.html" %}
 {% set admin_page = 'apis' %}
 
-{% block title %}Admin 接口测试{% endblock %}
+{% block title %}接口与策略中心{% endblock %}
 
 {% block styles %}
 <style>
-    .api-wrap {
-        background: #16263b;
-        border: 1px solid #304760;
-        border-radius: 14px;
-        padding: 22px;
-        color: #e8eff9;
-        max-width: 1100px;
-    }
-
-    .api-wrap .title {
-        color: #f4f8ff;
-        font-size: 36px;
+    .channel-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
         margin-bottom: 12px;
     }
 
-    .api-desc {
-        margin: 0 0 20px 0;
-        color: #a7b8cf;
+    .channel-card {
+        border: 1px solid #cfdceb;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: var(--shadow);
+        padding: 14px;
+    }
+
+    .channel-name {
         font-size: 16px;
+        font-weight: 700;
+    }
+
+    .channel-meta {
+        margin-top: 6px;
+        color: #59738f;
+        font-size: 12px;
+    }
+
+    .channel-status {
+        margin-top: 10px;
+    }
+
+    .policy-note {
+        color: #35526f;
+        font-size: 12px;
         line-height: 1.5;
+        max-width: 340px;
     }
 
-    .api-item {
-        background: #2f435c;
-        border: 1px solid #45607f;
-        border-radius: 12px;
-        padding: 18px 20px;
-        margin-bottom: 14px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 16px;
-    }
-
-    .api-name {
-        font-size: 18px;
-        font-weight: 700;
-        color: #f5f9ff;
-    }
-
-    .api-domain {
-        margin-top: 6px;
-        font-size: 13px;
-        color: #9fb1c9;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .api-meta {
-        margin-top: 6px;
-        font-size: 12px;
-        color: #9fb1c9;
-    }
-
-    .api-status {
-        min-width: 128px;
-        border-radius: 8px;
-        padding: 8px 10px;
-        text-align: center;
-        font-size: 14px;
-        font-weight: 700;
-    }
-
-    .api-status.ok {
-        background: rgba(16, 185, 129, 0.18);
-        color: #2ed8a7;
-    }
-
-    .api-status.err {
-        background: rgba(220, 38, 38, 0.2);
-        color: #ff9b9b;
-    }
-
-    .api-status.pending {
-        background: rgba(148, 163, 184, 0.2);
-        color: #d6e1f2;
-    }
-
-    .api-actions {
-        margin-top: 4px;
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-
-    .api-actions button {
-        border-radius: 10px;
-        padding: 9px 14px;
-    }
-
-    .api-ops {
-        margin-top: 8px;
-        font-size: 12px;
-        color: #b2c2d7;
+    @media (max-width: 1120px) {
+        .channel-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="api-wrap">
-    <h1 class="title">🌐 API 接口检测</h1>
-    <p class="api-desc">检测当前数据源连通性，并统一管理接口开关与限流策略。</p>
-
-    <div class="api-item">
-        <div>
-            <div class="api-name">股价接口 (Sina/Tencent)</div>
-            <div class="api-domain">hq.sinajs.cn</div>
-            <div id="meta-price" class="api-meta">等待检测</div>
-        </div>
-        <div id="status-price" class="api-status pending">检测中...</div>
+<div class="toolbar">
+    <div>
+        <h1 class="title">接口与策略中心</h1>
+        <div class="hint">监控上游数据通道健康状态，统一管理接口开关与限流。</div>
     </div>
-
-    <div class="api-item">
-        <div>
-            <div class="api-name">汇率接口</div>
-            <div class="api-domain">hq.sinajs.cn (Forex)</div>
-            <div id="meta-rate" class="api-meta">等待检测</div>
-        </div>
-        <div id="status-rate" class="api-status pending">检测中...</div>
-    </div>
-
-    <div class="api-item">
-        <div>
-            <div class="api-name">快讯接口 (Sina)</div>
-            <div class="api-domain">zhibo.sina.com.cn</div>
-            <div id="meta-news" class="api-meta">等待检测</div>
-        </div>
-        <div id="status-news" class="api-status pending">检测中...</div>
-    </div>
-
-    <div class="api-actions">
-        <button id="btn-health" onclick="loadHealth(true)">🔄 重新检测</button>
-        <button id="btn-smoke" class="secondary" onclick="runSmokeTest()">执行冒烟测试</button>
-    </div>
-
-    <div id="opsHint" class="api-ops">自动检测：每 60 秒刷新一次</div>
 </div>
 
-<div class="card" style="margin-top:14px;">
+<div class="channel-grid">
+    <div class="channel-card">
+        <div class="channel-name">行情数据通道</div>
+        <div class="channel-meta">用于股票价格、资产估值刷新</div>
+        <div class="channel-status" id="status-price"><span class="status-pill status-warn">检测中</span></div>
+        <div class="channel-meta" id="meta-price">等待检测...</div>
+    </div>
+    <div class="channel-card">
+        <div class="channel-name">汇率数据通道</div>
+        <div class="channel-meta">用于外币资产折算与汇率展示</div>
+        <div class="channel-status" id="status-rate"><span class="status-pill status-warn">检测中</span></div>
+        <div class="channel-meta" id="meta-rate">等待检测...</div>
+    </div>
+    <div class="channel-card">
+        <div class="channel-name">快讯数据通道</div>
+        <div class="channel-meta">用于资讯列表与快讯推送</div>
+        <div class="channel-status" id="status-news"><span class="status-pill status-warn">检测中</span></div>
+        <div class="channel-meta" id="meta-news">等待检测...</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="controls" style="justify-content:space-between;">
+        <div class="controls" style="margin-bottom:0;">
+            <button id="btn-health" onclick="loadHealth(true)">重新检测</button>
+            <button id="btn-smoke" class="secondary" onclick="runSmokeTest()">执行健康巡检</button>
+        </div>
+        <div class="muted" id="opsHint">自动检测：每 60 秒</div>
+    </div>
+    <div id="smokeReport" class="card card-soft" style="display:none; margin-bottom:0;"></div>
+</div>
+
+<div class="card">
     <div class="toolbar" style="margin-bottom:8px;">
-        <h3 style="margin:0;">接口策略（开关/限流）</h3>
+        <h3 style="margin:0;">策略管理</h3>
         <button class="secondary" onclick="loadPolicies()">刷新策略</button>
     </div>
+    <div class="hint" style="margin-bottom:8px;">关闭策略会立即影响前台功能，请先确认影响范围。</div>
+
     <div style="overflow:auto;">
         <table>
             <thead>
                 <tr>
-                    <th>scope_key</th>
-                    <th>类型</th>
-                    <th>启用</th>
-                    <th>每分钟限流</th>
+                    <th>策略名称</th>
+                    <th>策略分类</th>
+                    <th>当前状态</th>
+                    <th>每分钟上限（次）</th>
                     <th>备注</th>
+                    <th>影响说明</th>
                     <th>更新时间</th>
                     <th>操作</th>
                 </tr>
@@ -171,8 +122,7 @@
     let healthTimer = null;
 
     function nowText() {
-        const d = new Date();
-        return d.toLocaleString('zh-CN', { hour12: false });
+        return new Date().toLocaleString('zh-CN', { hour12: false });
     }
 
     function setButtonLoading(btnId, loading, loadingText, normalText) {
@@ -182,40 +132,40 @@
         btn.innerText = loading ? loadingText : normalText;
     }
 
+    function statusBadge(ok, pending = false) {
+        if (pending) return '<span class="status-pill status-warn">检测中</span>';
+        return ok
+            ? '<span class="status-pill status-ok">正常</span>'
+            : '<span class="status-pill status-danger">异常</span>';
+    }
+
     function setItemStatus(key, info) {
         const statusEl = document.getElementById(`status-${key}`);
         const metaEl = document.getElementById(`meta-${key}`);
         if (!statusEl || !metaEl) return;
-
-        if (info && info.ok) {
+        const ok = !!(info && info.ok);
+        statusEl.innerHTML = statusBadge(ok, false);
+        if (ok) {
             const latency = typeof info.latency === 'number' ? `${info.latency}ms` : '-';
-            statusEl.className = 'api-status ok';
-            statusEl.innerText = `正常 (${latency})`;
-            metaEl.innerText = `最后检测：${nowText()}`;
-            return;
+            metaEl.innerText = `最后检测：${nowText()}（耗时 ${latency}）`;
+        } else {
+            const reason = info && info.error ? info.error : '未知原因';
+            metaEl.innerText = `最后检测：${nowText()}（原因：${reason}）`;
         }
-
-        const reason = info && info.error ? info.error : '请求失败';
-        statusEl.className = 'api-status err';
-        statusEl.innerText = '异常';
-        statusEl.title = reason;
-        metaEl.innerText = `最后检测：${nowText()} | 原因：${reason}`;
     }
 
     function setPending() {
-        ['price', 'rate', 'news'].forEach((key) => {
+        for (const key of ['price', 'rate', 'news']) {
             const statusEl = document.getElementById(`status-${key}`);
             const metaEl = document.getElementById(`meta-${key}`);
-            if (!statusEl || !metaEl) return;
-            statusEl.className = 'api-status pending';
-            statusEl.innerText = '检测中...';
-            statusEl.title = '';
+            if (!statusEl || !metaEl) continue;
+            statusEl.innerHTML = statusBadge(false, true);
             metaEl.innerText = '正在检测...';
-        });
+        }
     }
 
     async function loadHealth(manual = false) {
-        setButtonLoading('btn-health', true, '检测中...', '🔄 重新检测');
+        setButtonLoading('btn-health', true, '检测中...', '重新检测');
         setPending();
         try {
             const data = await adminFetch('/api/admin/apis/health');
@@ -224,81 +174,136 @@
             setItemStatus('rate', upstream.rate);
             setItemStatus('news', upstream.news);
             if (manual) {
-                showToast(`健康状态: ${data.status || 'unknown'}`);
+                showToast(data.status === 'ok' ? '接口健康状态正常' : '接口健康状态异常，请及时处理', data.status !== 'ok');
             }
         } catch (e) {
-            ['price', 'rate', 'news'].forEach((key) => {
+            showToast(`健康检测失败：${e.message}`, true);
+            for (const key of ['price', 'rate', 'news']) {
                 const statusEl = document.getElementById(`status-${key}`);
                 const metaEl = document.getElementById(`meta-${key}`);
-                if (!statusEl || !metaEl) return;
-                statusEl.className = 'api-status err';
-                statusEl.innerText = '异常';
-                statusEl.title = e.message;
-                metaEl.innerText = `最后检测：${nowText()} | 原因：${e.message}`;
-            });
-            showToast(`健康检测失败: ${e.message}`, true);
+                if (!statusEl || !metaEl) continue;
+                statusEl.innerHTML = '<span class="status-pill status-danger">异常</span>';
+                metaEl.innerText = `最后检测：${nowText()}（原因：${e.message}）`;
+            }
         } finally {
-            setButtonLoading('btn-health', false, '检测中...', '🔄 重新检测');
+            setButtonLoading('btn-health', false, '检测中...', '重新检测');
         }
     }
 
+    function smokeAdvice(item) {
+        if (item.ok) return '结果正常';
+        const name = String(item.name || '');
+        if (name === 'upstream') return '建议先检查上游通道与网络连接';
+        if (name === 'db') return '建议先检查数据库连接状态';
+        if (name === 'health') return '建议先检查服务进程与健康路由';
+        return '建议查看技术详情并排查日志';
+    }
+
     async function runSmokeTest() {
-        setButtonLoading('btn-smoke', true, '执行中...', '执行冒烟测试');
+        setButtonLoading('btn-smoke', true, '巡检中...', '执行健康巡检');
         try {
             const data = await adminFetch('/api/admin/apis/smoke_test', { method: 'POST', body: '{}' });
             const items = Array.isArray(data.items) ? data.items : [];
             const okCount = items.filter((x) => x && x.ok).length;
             const failCount = items.length - okCount;
-            showToast(`冒烟测试完成：通过 ${okCount}，失败 ${failCount}`);
+
+            const report = document.getElementById('smokeReport');
+            report.style.display = 'block';
+            report.innerHTML = `
+                <div class="toolbar" style="margin-bottom:8px;">
+                    <strong>巡检结果</strong>
+                    ${failCount === 0 ? '<span class="status-pill status-ok">通过</span>' : '<span class="status-pill status-danger">存在异常</span>'}
+                </div>
+                <div class="muted" style="margin-bottom:6px;">通过 ${okCount} 项，异常 ${failCount} 项</div>
+                <div style="overflow:auto;">
+                    <table>
+                        <thead><tr><th>检查项</th><th>结果</th><th>建议动作</th></tr></thead>
+                        <tbody>
+                            ${items.map((item) => `
+                                <tr>
+                                    <td>${escapeHtml(item.name || '-')}</td>
+                                    <td>${item.ok ? '<span class="status-pill status-ok">通过</span>' : '<span class="status-pill status-danger">异常</span>'}</td>
+                                    <td>${escapeHtml(smokeAdvice(item))}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            showToast(`巡检完成：通过 ${okCount} 项，异常 ${failCount} 项`, failCount > 0);
             await loadHealth(false);
         } catch (e) {
-            showToast(`冒烟测试失败: ${e.message}`, true);
+            showToast(`巡检失败：${e.message}`, true);
         } finally {
-            setButtonLoading('btn-smoke', false, '执行中...', '执行冒烟测试');
+            setButtonLoading('btn-smoke', false, '巡检中...', '执行健康巡检');
         }
+    }
+
+    function renderPolicyStatus(enabled) {
+        return enabled
+            ? '<span class="status-pill status-ok">启用</span>'
+            : '<span class="status-pill status-danger">停用</span>';
     }
 
     function policyEnabledSelect(policy) {
         return `
             <select id="policy_enabled_${policy.id}">
-                <option value="true" ${policy.enabled ? 'selected' : ''}>true</option>
-                <option value="false" ${!policy.enabled ? 'selected' : ''}>false</option>
+                <option value="true" ${policy.enabled ? 'selected' : ''}>启用</option>
+                <option value="false" ${!policy.enabled ? 'selected' : ''}>停用</option>
             </select>
         `;
     }
 
     function policyLimitInput(policy) {
         const value = policy.limit_per_min == null ? '' : policy.limit_per_min;
-        return `<input id="policy_limit_${policy.id}" type="number" min="1" max="6000" value="${value}" placeholder="空=不限流" style="width:120px;">`;
+        return `<input id="policy_limit_${policy.id}" type="number" min="1" max="6000" value="${value}" placeholder="留空为不限流" style="width:130px;">`;
     }
 
     function policyNoteInput(policy) {
-        const value = policy.note || '';
-        return `<input id="policy_note_${policy.id}" value="${value}" style="min-width:220px;">`;
+        return `<input id="policy_note_${policy.id}" value="${escapeHtml(policy.note || '')}" style="min-width:180px;">`;
     }
 
-    async function savePolicyById(id, scopeKey) {
+    async function savePolicyById(id, scopeKey, displayName) {
         const enabled = document.getElementById(`policy_enabled_${id}`).value === 'true';
         const limitRaw = document.getElementById(`policy_limit_${id}`).value.trim();
         const note = document.getElementById(`policy_note_${id}`).value.trim();
-        if (!confirm(`确认更新策略 ${scopeKey}？`)) return;
-        const payload = {
-            scope_key: scopeKey,
-            enabled,
-            note
-        };
+
+        const confirmed = await confirmAction({
+            title: '更新接口策略',
+            message: `策略：${displayName || scopeKey}\n状态：${enabled ? '启用' : '停用'}\n${limitRaw ? `每分钟上限：${limitRaw}` : '每分钟上限：不限'}\n\n确认保存吗？`,
+            confirmText: '确认保存',
+            danger: !enabled,
+        });
+        if (!confirmed) return;
+
+        const payload = { scope_key: scopeKey, enabled, note };
         payload.limit_per_min = limitRaw ? Number(limitRaw) : null;
         try {
             await adminFetch('/api/admin/apis/policies/update', {
                 method: 'POST',
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
-            showToast(`策略已更新: ${scopeKey}`);
+            showToast(`策略已保存：${displayName || scopeKey}`);
             await loadPolicies();
             await loadHealth(false);
         } catch (e) {
-            showToast(`策略更新失败: ${e.message}`, true);
+            showToast(`策略保存失败：${e.message}`, true);
         }
+    }
+
+    function showPolicyDetail(rawJson) {
+        const policy = JSON.parse(rawJson || '{}');
+        openDetailDrawer('策略详情', [
+            ['策略名称', policy.display_name || getPolicyLabel(policy.scope_key)],
+            ['策略分类', policy.scope_type_label || getPolicyTypeLabel(policy.scope_type)],
+            ['当前状态', policy.enabled ? '启用' : '停用'],
+            ['每分钟上限', policy.limit_per_min == null ? '不限流' : `${policy.limit_per_min} 次`],
+            ['备注', policy.note || '-'],
+            ['影响说明', policy.impact || '-'],
+            ['更新时间', fmtDateTime(policy.updated_at)],
+            ['更新人', policy.updated_by || '-'],
+            ['技术键', policy.scope_key || '-'],
+        ], policy);
     }
 
     async function loadPolicies() {
@@ -307,26 +312,35 @@
             const rows = data.items || [];
             const tbody = document.getElementById('policyRows');
             tbody.innerHTML = '';
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无策略</td></tr>';
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="muted">暂无策略数据</td></tr>';
                 return;
             }
+
             for (const p of rows) {
                 const tr = document.createElement('tr');
-                const safeScope = String(p.scope_key || '').replace(/'/g, "\\'");
+                const displayName = p.display_name || getPolicyLabel(p.scope_key);
+                const scopeTypeLabel = p.scope_type_label || getPolicyTypeLabel(p.scope_type);
+                const impact = p.impact || '-';
+                const scopeKeyLiteral = JSON.stringify(String(p.scope_key || ''));
+                const displayNameLiteral = JSON.stringify(String(displayName || ''));
                 tr.innerHTML = `
-                    <td><code>${p.scope_key}</code></td>
-                    <td>${p.scope_type || ''}</td>
-                    <td>${policyEnabledSelect(p)}</td>
+                    <td>${escapeHtml(displayName)}</td>
+                    <td>${escapeHtml(scopeTypeLabel)}</td>
+                    <td>${renderPolicyStatus(!!p.enabled)}<div style="margin-top:6px;">${policyEnabledSelect(p)}</div></td>
                     <td>${policyLimitInput(p)}</td>
                     <td>${policyNoteInput(p)}</td>
-                    <td>${p.updated_at || ''}</td>
-                    <td><button onclick="savePolicyById(${p.id}, '${safeScope}')">保存</button></td>
+                    <td><div class="policy-note">${escapeHtml(impact)}</div></td>
+                    <td>${fmtDateTime(p.updated_at)}</td>
+                    <td>
+                        <button onclick='savePolicyById(${p.id}, ${scopeKeyLiteral}, ${displayNameLiteral})'>保存</button>
+                        <button class="secondary" onclick='showPolicyDetail(${JSON.stringify(JSON.stringify(p))})'>详情</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             }
         } catch (e) {
-            showToast(`策略加载失败: ${e.message}`, true);
+            showToast(`策略加载失败：${e.message}`, true);
         }
     }
 

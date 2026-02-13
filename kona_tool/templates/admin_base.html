@@ -3,105 +3,184 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Admin Console{% endblock %}</title>
+    <title>{% block title %}运营后台{% endblock %}</title>
     <style>
         :root {
-            --bg: #f4f7fb;
+            --bg: #f3f6fb;
             --panel: #ffffff;
-            --text: #0f172a;
-            --sub: #475569;
-            --line: #dbe3ee;
-            --primary: #005f73;
-            --primary-2: #0a9396;
+            --panel-soft: #f8fbff;
+            --text: #10243e;
+            --sub: #55708f;
+            --line: #d7e1ee;
+            --brand: #0f5f73;
+            --brand-2: #0a8f98;
             --danger: #b42318;
-            --ok: #027a48;
+            --danger-soft: #fee4e2;
             --warn: #b54708;
+            --warn-soft: #ffead5;
+            --ok: #067647;
+            --ok-soft: #d1fadf;
+            --shadow: 0 12px 36px rgba(16, 36, 62, 0.08);
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: linear-gradient(160deg, #eef4fb 0%, #f8fbff 45%, #fefcf8 100%);
             color: var(--text);
+            font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+            background:
+                radial-gradient(920px 420px at 8% 6%, rgba(10, 143, 152, 0.08), transparent 64%),
+                radial-gradient(880px 380px at 95% 94%, rgba(245, 158, 11, 0.08), transparent 62%),
+                linear-gradient(160deg, #f2f6fb 0%, #f7fafd 48%, #fcfdff 100%);
         }
 
         .layout {
             display: grid;
-            grid-template-columns: 240px 1fr;
+            grid-template-columns: 256px 1fr;
             min-height: 100vh;
         }
 
         .sidebar {
-            background: #0b2f3a;
-            color: #e8f6f9;
-            padding: 20px 14px;
             position: sticky;
             top: 0;
             height: 100vh;
+            background: linear-gradient(180deg, #0a2c42 0%, #0a2439 100%);
+            color: #d9ebff;
+            border-right: 1px solid #1d3d56;
+            padding: 20px 14px;
+            overflow-y: auto;
         }
 
-        .logo {
-            font-weight: 800;
+        .brand {
+            margin: 2px 10px 16px;
+        }
+
+        .brand-title {
             font-size: 20px;
-            margin: 6px 10px 20px;
-            letter-spacing: 0.2px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-sub {
+            margin-top: 4px;
+            color: #97b8d6;
+            font-size: 12px;
+        }
+
+        .nav-group {
+            margin-bottom: 14px;
+        }
+
+        .nav-group-title {
+            margin: 0 10px 6px;
+            color: #7ba2c5;
+            font-size: 11px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
         }
 
         .nav a {
             display: block;
-            color: #d4eef5;
-            text-decoration: none;
-            padding: 10px 12px;
-            border-radius: 10px;
             margin-bottom: 6px;
+            padding: 10px 12px;
+            color: #d6e9ff;
+            text-decoration: none;
+            border-radius: 10px;
             font-size: 14px;
-        }
-
-        .nav a.active {
-            background: #104c5e;
-            font-weight: 700;
+            transition: background .2s ease;
         }
 
         .nav a:hover {
-            background: #155c70;
+            background: rgba(130, 187, 228, 0.16);
         }
 
-        .content {
-            padding: 22px;
+        .nav a.active {
+            background: linear-gradient(120deg, rgba(10, 143, 152, 0.36), rgba(18, 95, 118, 0.48));
+            border: 1px solid rgba(132, 215, 223, 0.34);
+            font-weight: 700;
         }
 
-        .content-top {
+        .main {
+            min-width: 0;
+            padding: 18px 20px 22px;
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            margin-bottom: 14px;
+            padding: 10px 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.84);
+            backdrop-filter: blur(8px);
             display: flex;
-            justify-content: flex-end;
-            margin-bottom: 12px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 8px 22px rgba(16, 36, 62, 0.04);
+        }
+
+        .topbar-title {
+            font-size: 14px;
+            color: var(--sub);
+        }
+
+        .topbar-user {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .user-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #cfd8e6;
+            border-radius: 999px;
+            background: #f7fbff;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: #425e79;
         }
 
         .toolbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
             gap: 10px;
             flex-wrap: wrap;
+            margin-bottom: 14px;
         }
 
         .title {
             margin: 0;
-            font-size: 22px;
+            font-size: 24px;
+            letter-spacing: 0.2px;
         }
 
         .hint {
             color: var(--sub);
             font-size: 13px;
+            line-height: 1.5;
         }
 
         .card {
-            background: var(--panel);
             border: 1px solid var(--line);
             border-radius: 14px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
             padding: 14px;
             margin-bottom: 12px;
+        }
+
+        .card-soft {
+            background: var(--panel-soft);
         }
 
         .grid-2 {
@@ -116,45 +195,126 @@
             gap: 12px;
         }
 
-        .kpi {
-            font-size: 24px;
-            font-weight: 800;
-            margin-top: 6px;
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
         }
 
-        .muted { color: var(--sub); font-size: 13px; }
+        .kpi {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 6px;
+            line-height: 1.1;
+        }
+
+        .muted {
+            color: var(--sub);
+            font-size: 13px;
+        }
 
         .controls {
             display: flex;
+            align-items: center;
             gap: 8px;
             flex-wrap: wrap;
             margin-bottom: 10px;
         }
 
-        input, select, textarea {
-            border: 1px solid var(--line);
+        .chips {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            border: 1px solid #c8d6e7;
+            background: #f7fbff;
+            color: #37536f;
+            border-radius: 999px;
+            font-size: 12px;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .chip.active {
+            border-color: #78a6ce;
+            background: #e8f2fd;
+            font-weight: 700;
+        }
+
+        input,
+        select,
+        textarea {
+            border: 1px solid #cfd9e7;
             border-radius: 10px;
-            padding: 8px 10px;
+            padding: 9px 11px;
             font-size: 14px;
+            color: var(--text);
             background: #fff;
         }
 
-        textarea { min-height: 88px; width: 100%; }
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #6ea5d4;
+            box-shadow: 0 0 0 3px rgba(69, 141, 198, 0.16);
+        }
 
-        button {
+        textarea {
+            min-height: 88px;
+            width: 100%;
+        }
+
+        button,
+        .btn {
             border: 0;
             border-radius: 10px;
-            padding: 8px 12px;
+            padding: 9px 13px;
             font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
-            background: var(--primary);
+            color: #fff;
+            background: linear-gradient(120deg, var(--brand), var(--brand-2));
+        }
+
+        button:hover,
+        .btn:hover {
+            filter: brightness(1.04);
+        }
+
+        button:disabled,
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(0.2);
+        }
+
+        button.secondary,
+        .btn-secondary {
+            background: #e8eff7;
+            color: #1f3f58;
+            border: 1px solid #c8d6e7;
+        }
+
+        button.warn,
+        .btn-warn {
+            background: linear-gradient(120deg, #c9680b, #b84a0f);
             color: #fff;
         }
 
-        button.secondary { background: #dbe7ef; color: #12313d; }
-        button.warn { background: var(--warn); }
-        button.danger { background: var(--danger); }
-        button.ok { background: var(--ok); }
+        button.danger,
+        .btn-danger {
+            background: linear-gradient(120deg, #c1362e, #a6251e);
+            color: #fff;
+        }
+
+        button.ok,
+        .btn-ok {
+            background: linear-gradient(120deg, #0d9960, #067647);
+            color: #fff;
+        }
 
         table {
             width: 100%;
@@ -162,46 +322,227 @@
             font-size: 13px;
         }
 
-        th, td {
+        th,
+        td {
+            border-bottom: 1px solid #e2eaf3;
             text-align: left;
-            border-bottom: 1px solid var(--line);
-            padding: 8px 6px;
             vertical-align: top;
+            padding: 9px 8px;
+        }
+
+        th {
+            color: #3f5973;
+            font-weight: 700;
+            white-space: nowrap;
         }
 
         .status-pill {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             border-radius: 999px;
-            padding: 2px 8px;
+            padding: 3px 9px;
             font-size: 12px;
+            font-weight: 700;
         }
 
-        .status-active { background: #d1fadf; color: #05603a; }
-        .status-disabled { background: #fee4e2; color: #912018; }
+        .status-active,
+        .status-ok,
+        .status-normal {
+            background: var(--ok-soft);
+            color: var(--ok);
+        }
+
+        .status-disabled,
+        .status-danger {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .status-warn {
+            background: var(--warn-soft);
+            color: var(--warn);
+        }
 
         #toast {
             position: fixed;
-            right: 16px;
-            bottom: 16px;
-            background: #123;
-            color: #fff;
-            padding: 10px 14px;
-            border-radius: 10px;
-            display: none;
+            right: 18px;
+            bottom: 18px;
             z-index: 9999;
             max-width: 420px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            color: #fff;
+            background: #173a5c;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            display: none;
+            box-shadow: 0 12px 30px rgba(10, 23, 39, 0.3);
+            white-space: pre-wrap;
         }
 
-        #toast.error { background: #7a271a; }
+        #toast.error {
+            background: #7f2a22;
+        }
 
-        @media (max-width: 960px) {
-            .layout { grid-template-columns: 1fr; }
-            .sidebar {
-                height: auto;
-                position: static;
-                border-bottom: 1px solid #21586a;
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(12, 24, 40, 0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: 16px;
+        }
+
+        .modal-backdrop.show {
+            display: flex;
+        }
+
+        .modal-card {
+            width: min(520px, 100%);
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid #d5e1ee;
+            box-shadow: 0 20px 48px rgba(14, 30, 49, 0.24);
+            padding: 16px;
+        }
+
+        .modal-title {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .modal-msg {
+            margin-top: 8px;
+            color: #405973;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .modal-extra {
+            margin-top: 10px;
+        }
+
+        .modal-require {
+            margin-top: 10px;
+            display: none;
+        }
+
+        .modal-actions {
+            margin-top: 14px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .drawer-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(13, 29, 47, 0.38);
+            display: none;
+            z-index: 10020;
+        }
+
+        .drawer-mask.show {
+            display: block;
+        }
+
+        .drawer {
+            position: fixed;
+            right: -560px;
+            top: 0;
+            width: min(560px, 100%);
+            height: 100vh;
+            background: #fff;
+            z-index: 10030;
+            border-left: 1px solid #d2deeb;
+            box-shadow: -14px 0 36px rgba(16, 36, 62, 0.15);
+            transition: right .2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.show {
+            right: 0;
+        }
+
+        .drawer-head {
+            padding: 12px 14px;
+            border-bottom: 1px solid #e0e8f2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .drawer-title {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .drawer-body {
+            padding: 12px 14px 18px;
+            overflow: auto;
+            flex: 1;
+        }
+
+        .drawer-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .drawer-detail-table td {
+            border-bottom: 1px solid #edf2f7;
+            padding: 8px 6px;
+            vertical-align: top;
+            word-break: break-word;
+        }
+
+        .drawer-detail-table td:first-child {
+            width: 132px;
+            color: #59738f;
+            white-space: nowrap;
+        }
+
+        details summary {
+            cursor: pointer;
+            color: #35526f;
+            font-size: 13px;
+        }
+
+        details pre {
+            margin: 8px 0 0;
+            background: #f6f9fe;
+            border: 1px solid #dbe7f4;
+            border-radius: 10px;
+            padding: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 12px;
+        }
+
+        @media (max-width: 1040px) {
+            .layout {
+                grid-template-columns: 1fr;
             }
-            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+            .sidebar {
+                position: static;
+                height: auto;
+                border-right: 0;
+                border-bottom: 1px solid #2a4864;
+            }
+
+            .main {
+                padding: 12px;
+            }
+
+            .grid-2,
+            .grid-3,
+            .grid-4 {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
     {% block styles %}{% endblock %}
@@ -209,31 +550,157 @@
 <body>
 <div class="layout">
     <aside class="sidebar">
-        <div class="logo">Admin Console</div>
-        <nav class="nav">
-            <a href="/admin" class="{% if admin_page == 'overview' %}active{% endif %}">总览</a>
-            <a href="/admin/users" class="{% if admin_page == 'users' %}active{% endif %}">用户管理</a>
-            <a href="/admin/invites" class="{% if admin_page == 'invites' %}active{% endif %}">邀请码</a>
-            <a href="/admin/config" class="{% if admin_page == 'config' %}active{% endif %}">配置管理</a>
-            <a href="/admin/data" class="{% if admin_page == 'data' %}active{% endif %}">数据管理</a>
-            <a href="/admin/apis" class="{% if admin_page == 'apis' %}active{% endif %}">接口测试</a>
-            <a href="/admin/audit" class="{% if admin_page == 'audit' %}active{% endif %}">审计日志</a>
-        </nav>
+        <div class="brand">
+            <div class="brand-title">运营后台</div>
+            <div class="brand-sub">账号、邀请码、接口、数据一体化运营台</div>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">运营工作台</div>
+            <nav class="nav">
+                <a href="/admin" class="{% if admin_page == 'overview' %}active{% endif %}">运营总览</a>
+                <a href="/admin/users" class="{% if admin_page == 'users' %}active{% endif %}">用户中心</a>
+                <a href="/admin/invites" class="{% if admin_page == 'invites' %}active{% endif %}">邀请码中心</a>
+                <a href="/admin/apis" class="{% if admin_page == 'apis' %}active{% endif %}">接口与策略</a>
+            </nav>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-title">系统与安全</div>
+            <nav class="nav">
+                <a href="/admin/data" class="{% if admin_page == 'data' %}active{% endif %}">数据运维</a>
+                <a href="/admin/config" class="{% if admin_page == 'config' %}active{% endif %}">系统配置</a>
+                <a href="/admin/audit" class="{% if admin_page == 'audit' %}active{% endif %}">操作审计</a>
+            </nav>
+        </div>
     </aside>
-    <main class="content">
-        <div class="content-top">
-            <button class="secondary" onclick="adminLogout()">退出登录</button>
+
+    <main class="main">
+        <div class="topbar">
+            <div class="topbar-title">你正在使用运营后台管理系统</div>
+            <div class="topbar-user">
+                <span class="user-chip">当前管理员：<strong id="currentAdminName">加载中</strong></span>
+                <button class="secondary" onclick="adminLogout()">退出登录</button>
+            </div>
         </div>
         {% block content %}{% endblock %}
     </main>
 </div>
+
 <div id="toast"></div>
+
+<div id="confirmModal" class="modal-backdrop">
+    <div class="modal-card">
+        <h3 class="modal-title" id="confirmTitle">请确认操作</h3>
+        <div class="modal-msg" id="confirmMessage"></div>
+        <div class="modal-extra" id="confirmExtra"></div>
+        <div class="modal-require" id="confirmRequireWrap">
+            <div class="muted" id="confirmRequireHint" style="margin-bottom:6px;"></div>
+            <input id="confirmRequireInput" placeholder="请输入确认词" style="width:100%;">
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" id="confirmCancelBtn" type="button">取消</button>
+            <button id="confirmOkBtn" type="button">确认</button>
+        </div>
+    </div>
+</div>
+
+<div id="drawerMask" class="drawer-mask" onclick="closeDetailDrawer()"></div>
+<aside id="detailDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+        <h3 id="drawerTitle" class="drawer-title">详情</h3>
+        <button class="secondary" onclick="closeDetailDrawer()">关闭</button>
+    </div>
+    <div class="drawer-body">
+        <table class="drawer-detail-table" id="drawerRows"></table>
+        <details id="drawerTechBlock" style="display:none;">
+            <summary>查看技术详情</summary>
+            <pre id="drawerTech"></pre>
+        </details>
+    </div>
+</aside>
+
 <script>
     const ADMIN_ACCESS_KEY = 'admin_access_token';
     const ADMIN_REFRESH_KEY = 'admin_refresh_token';
     const LEGACY_ADMIN_TOKEN_KEYS = ['admin_token', 'token', 'kona_token', 'auth_token', 'jwt_token'];
     const ADMIN_LOGIN_PATH = '/admin/login';
+    const ADMIN_FLASH_ERROR_KEY = 'admin_flash_error';
     let _adminRefreshPromise = null;
+    let _confirmResolver = null;
+
+    const DEFAULT_DICTIONARIES = {
+        status_labels: {
+            active: '正常',
+            disabled: '已停用',
+            used: '已使用',
+            revoked: '已作废',
+        },
+        action_labels: {
+            'admin.users.status': '修改用户状态',
+            'admin.users.update': '更新用户信息',
+            'admin.users.disable': '停用用户',
+            'admin.users.enable': '启用用户',
+            'admin.users.password.reset': '重置用户密码',
+            'admin.users.sessions.revoke': '强制用户下线',
+            'admin.config.update': '更新系统配置',
+            'admin.config.reset': '恢复系统配置默认值',
+            'admin.data.snapshot.trigger': '手动触发快照',
+            'admin.data.snapshot.cleanup_weekend': '清理周末日收益',
+            'admin.data.backup': '创建数据库备份',
+            'admin.data.restore': '恢复数据库备份',
+            'admin.data.rebind.execute': '执行历史数据归属迁移',
+            'admin.apis.smoke_test': '执行接口冒烟测试',
+            'admin.apis.policies.update': '更新接口策略',
+            'admin.apis.policies.batch_update': '批量更新接口策略',
+            'admin.invites.generate': '生成邀请码',
+            'admin.invites.revoke': '作废邀请码',
+        },
+        policy_labels: {
+            'upstream.price': '行情数据通道',
+            'upstream.rate': '汇率数据通道',
+            'upstream.news': '快讯数据通道',
+            'api.auth': '账号认证接口',
+            'api.portfolio': '资产与持仓接口',
+            'api.news': '资讯接口',
+        },
+        policy_type_labels: {
+            upstream: '上游通道',
+            api_group: '业务接口组',
+        },
+        register_method_labels: {
+            password_invite: '账号密码 + 邀请码',
+            email: '邮箱验证码（历史）',
+            local_anonymous: '本机未登录用户',
+        },
+        error_labels: {
+            'Admin privileges required': '当前账号没有后台权限',
+            'Invalid or expired token': '登录状态已过期，请重新登录',
+            'Missing Authorization header': '登录状态已过期，请重新登录',
+            'User not found': '用户不存在',
+            'User is disabled': '账号已停用，请联系管理员',
+            'Missing user_id': '缺少用户标识',
+            'Invalid status': '状态值不合法',
+            'Cannot disable current admin user': '不能停用当前登录管理员',
+            'Cannot remove current admin role': '不能取消当前登录管理员权限',
+            'No updatable fields': '没有可更新的字段',
+            'No update payload': '缺少更新内容',
+            'Local anonymous user is read-only': '本机匿名用户是只读用户，无法操作',
+            'Missing scope_key': '缺少策略标识',
+            'Missing target_user_id': '缺少目标用户标识',
+            'Invite code not active or not found': '邀请码不存在或不可作废',
+        },
+    };
+
+    const ADMIN_DICTIONARIES = JSON.parse(JSON.stringify(DEFAULT_DICTIONARIES));
+
+    function mergeDictionarySection(section, payload) {
+        if (!payload || typeof payload !== 'object') return;
+        if (!ADMIN_DICTIONARIES[section] || typeof ADMIN_DICTIONARIES[section] !== 'object') {
+            ADMIN_DICTIONARIES[section] = {};
+        }
+        Object.assign(ADMIN_DICTIONARIES[section], payload);
+    }
 
     function _readStorage(key) {
         return localStorage.getItem(key) || sessionStorage.getItem(key) || '';
@@ -274,9 +741,10 @@
         }
     }
 
-    function toAdminLogin() {
+    function toAdminLogin(reason = '') {
         const next = encodeURIComponent(`${window.location.pathname}${window.location.search}${window.location.hash}`);
-        window.location.href = `${ADMIN_LOGIN_PATH}?next=${next}`;
+        const reasonPart = reason ? `&reason=${encodeURIComponent(reason)}` : '';
+        window.location.href = `${ADMIN_LOGIN_PATH}?next=${next}${reasonPart}`;
     }
 
     async function refreshAdminAccessToken() {
@@ -292,10 +760,7 @@
                 const resp = await fetch('/api/auth/refresh', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        refresh_token: refreshToken,
-                        device_id: 'admin_web',
-                    }),
+                    body: JSON.stringify({ refresh_token: refreshToken, device_id: 'admin_web' }),
                 });
                 const payload = await resp.json().catch(() => ({}));
                 if (!resp.ok) {
@@ -306,7 +771,7 @@
                 if (!nextAccess) {
                     return '';
                 }
-                setAdminTokens(nextAccess, nextRefresh);
+                setAdminTokens(nextAccess, nextRefresh || refreshToken);
                 return nextAccess;
             } catch (_) {
                 return '';
@@ -320,7 +785,7 @@
     function _isAuthFailure(status, payload) {
         if (status === 401) return true;
         if (status !== 403) return false;
-        const msg = (payload && payload.error) ? String(payload.error) : '';
+        const msg = payload && payload.error ? String(payload.error) : '';
         return [
             'Admin privileges required',
             'Invalid or expired token',
@@ -328,6 +793,61 @@
             'User not found',
             'User is disabled',
         ].includes(msg);
+    }
+
+    function getErrorLabel(message) {
+        if (!message) return '操作失败，请稍后再试';
+        const dict = ADMIN_DICTIONARIES.error_labels || {};
+        if (dict[message]) return dict[message];
+        const lower = String(message).toLowerCase();
+        if (lower.includes('invalid username or password') || lower.includes('bad_password')) {
+            return '账号或密码错误，请重新输入';
+        }
+        if (lower.includes('network') || lower.includes('failed to fetch')) {
+            return '网络连接异常，请检查网络后重试';
+        }
+        return message;
+    }
+
+    function getStatusLabel(status) {
+        const key = String(status || '').toLowerCase();
+        return (ADMIN_DICTIONARIES.status_labels || {})[key] || key || '-';
+    }
+
+    function getActionLabel(action) {
+        const key = String(action || '');
+        return (ADMIN_DICTIONARIES.action_labels || {})[key] || key || '-';
+    }
+
+    function getPolicyLabel(scopeKey) {
+        const key = String(scopeKey || '');
+        return (ADMIN_DICTIONARIES.policy_labels || {})[key] || key || '-';
+    }
+
+    function getPolicyTypeLabel(scopeType) {
+        const key = String(scopeType || '');
+        return (ADMIN_DICTIONARIES.policy_type_labels || {})[key] || key || '-';
+    }
+
+    function getRegisterMethodLabel(method) {
+        const key = String(method || '');
+        return (ADMIN_DICTIONARIES.register_method_labels || {})[key] || key || '-';
+    }
+
+    function fmtDateTime(value) {
+        if (!value) return '-';
+        const dt = new Date(value.replace(' ', 'T'));
+        if (Number.isNaN(dt.getTime())) return value;
+        return dt.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     async function adminLogout() {
@@ -349,12 +869,14 @@
 
     function showToast(message, isError = false) {
         const t = document.getElementById('toast');
+        if (!t) return;
         t.innerText = message;
         t.className = isError ? 'error' : '';
         t.style.display = 'block';
-        setTimeout(() => {
+        window.clearTimeout(t.__timer);
+        t.__timer = window.setTimeout(() => {
             t.style.display = 'none';
-        }, 3200);
+        }, 3600);
     }
 
     async function adminFetch(url, options = {}, retryOnAuth = true) {
@@ -367,8 +889,8 @@
         if (!token) {
             token = await refreshAdminAccessToken();
             if (!token) {
-                toAdminLogin();
-                throw new Error('请先登录后台');
+                toAdminLogin('expired');
+                throw new Error('登录状态已过期，请重新登录');
             }
         }
         headers.set('Authorization', `Bearer ${token}`);
@@ -379,7 +901,7 @@
         });
 
         const ctype = resp.headers.get('Content-Type') || '';
-        const payload = ctype.includes('application/json') ? await resp.json() : await resp.text();
+        const payload = ctype.includes('application/json') ? await resp.json().catch(() => ({})) : await resp.text();
 
         if (!resp.ok) {
             if (retryOnAuth && resp.status === 401) {
@@ -390,13 +912,170 @@
             }
             if (_isAuthFailure(resp.status, payload)) {
                 clearAdminTokens();
-                toAdminLogin();
+                toAdminLogin('expired');
             }
-            const msg = (payload && payload.error) ? payload.error : `HTTP ${resp.status}`;
-            throw new Error(msg);
+            const rawMessage = payload && payload.error ? payload.error : `HTTP ${resp.status}`;
+            throw new Error(getErrorLabel(rawMessage));
         }
         return payload;
     }
+
+    function _setConfirmDanger(isDanger) {
+        const okBtn = document.getElementById('confirmOkBtn');
+        if (!okBtn) return;
+        okBtn.className = isDanger ? 'danger' : '';
+    }
+
+    function closeConfirmModal(result = false) {
+        const modal = document.getElementById('confirmModal');
+        if (!modal) return;
+        modal.classList.remove('show');
+        const extra = document.getElementById('confirmExtra');
+        const input = document.getElementById('confirmRequireInput');
+        const wrap = document.getElementById('confirmRequireWrap');
+        if (extra) extra.innerHTML = '';
+        if (input) input.value = '';
+        if (wrap) wrap.style.display = 'none';
+        if (_confirmResolver) {
+            _confirmResolver(result);
+            _confirmResolver = null;
+        }
+    }
+
+    function confirmAction(options = {}) {
+        const {
+            title = '请确认操作',
+            message = '',
+            confirmText = '确认',
+            cancelText = '取消',
+            danger = false,
+            requireText = '',
+            extraHtml = '',
+        } = options;
+
+        const modal = document.getElementById('confirmModal');
+        const titleEl = document.getElementById('confirmTitle');
+        const msgEl = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOkBtn');
+        const cancelBtn = document.getElementById('confirmCancelBtn');
+        const extraEl = document.getElementById('confirmExtra');
+        const requireWrap = document.getElementById('confirmRequireWrap');
+        const requireHint = document.getElementById('confirmRequireHint');
+        const requireInput = document.getElementById('confirmRequireInput');
+
+        if (!modal || !titleEl || !msgEl || !okBtn || !cancelBtn || !extraEl || !requireWrap || !requireHint || !requireInput) {
+            return Promise.resolve(window.confirm(message || title));
+        }
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        okBtn.textContent = confirmText;
+        cancelBtn.textContent = cancelText;
+        extraEl.innerHTML = extraHtml || '';
+        _setConfirmDanger(!!danger);
+
+        if (requireText) {
+            requireWrap.style.display = 'block';
+            requireHint.textContent = `请输入“${requireText}”后再确认`; 
+            requireInput.value = '';
+        } else {
+            requireWrap.style.display = 'none';
+            requireInput.value = '';
+        }
+
+        modal.classList.add('show');
+
+        return new Promise((resolve) => {
+            _confirmResolver = resolve;
+            const onCancel = () => {
+                okBtn.removeEventListener('click', onOk);
+                cancelBtn.removeEventListener('click', onCancel);
+                closeConfirmModal(false);
+            };
+            const onOk = () => {
+                if (requireText && requireInput.value.trim() !== requireText) {
+                    showToast(`请输入正确确认词：${requireText}`, true);
+                    return;
+                }
+                okBtn.removeEventListener('click', onOk);
+                cancelBtn.removeEventListener('click', onCancel);
+                closeConfirmModal(true);
+            };
+            cancelBtn.addEventListener('click', onCancel);
+            okBtn.addEventListener('click', onOk);
+        });
+    }
+
+    function openDetailDrawer(title, rows = [], rawData = null) {
+        const drawer = document.getElementById('detailDrawer');
+        const mask = document.getElementById('drawerMask');
+        const titleEl = document.getElementById('drawerTitle');
+        const rowsEl = document.getElementById('drawerRows');
+        const techBlock = document.getElementById('drawerTechBlock');
+        const tech = document.getElementById('drawerTech');
+        if (!drawer || !mask || !titleEl || !rowsEl || !techBlock || !tech) {
+            return;
+        }
+        titleEl.textContent = title || '详情';
+        rowsEl.innerHTML = (rows || []).map((row) => `
+            <tr>
+                <td>${escapeHtml(row[0])}</td>
+                <td>${escapeHtml(row[1])}</td>
+            </tr>
+        `).join('');
+
+        if (rawData) {
+            techBlock.style.display = 'block';
+            tech.textContent = typeof rawData === 'string' ? rawData : JSON.stringify(rawData, null, 2);
+        } else {
+            techBlock.style.display = 'none';
+            tech.textContent = '';
+        }
+
+        mask.classList.add('show');
+        drawer.classList.add('show');
+        drawer.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDetailDrawer() {
+        const drawer = document.getElementById('detailDrawer');
+        const mask = document.getElementById('drawerMask');
+        if (!drawer || !mask) return;
+        drawer.classList.remove('show');
+        drawer.setAttribute('aria-hidden', 'true');
+        mask.classList.remove('show');
+    }
+
+    async function loadAdminDictionaries() {
+        try {
+            const data = await adminFetch('/api/admin/meta/dictionaries');
+            mergeDictionarySection('status_labels', data.status_labels);
+            mergeDictionarySection('action_labels', data.action_labels);
+            mergeDictionarySection('policy_labels', data.policy_labels);
+            mergeDictionarySection('policy_type_labels', data.policy_type_labels);
+            mergeDictionarySection('register_method_labels', data.register_method_labels);
+            mergeDictionarySection('error_labels', data.error_labels);
+            mergeDictionarySection('config_labels', data.config_labels);
+            mergeDictionarySection('policy_impacts', data.policy_impacts);
+        } catch (_) {
+            // 字典加载失败不影响主流程，保留默认映射
+        }
+    }
+
+    async function loadCurrentAdminName() {
+        try {
+            const me = await adminFetch('/api/auth/me');
+            const username = me && me.username ? me.username : '';
+            document.getElementById('currentAdminName').textContent = username || '未知账号';
+        } catch (_) {
+            document.getElementById('currentAdminName').textContent = '未登录';
+        }
+    }
+
+    (async function bootstrapAdminBase() {
+        await loadAdminDictionaries();
+        await loadCurrentAdminName();
+    })();
 </script>
 {% block scripts %}{% endblock %}
 </body>

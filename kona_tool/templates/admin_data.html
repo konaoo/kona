@@ -1,23 +1,28 @@
 {% extends "admin_base.html" %}
 {% set admin_page = 'data' %}
 
-{% block title %}Admin 数据管理{% endblock %}
+{% block title %}数据运维{% endblock %}
 
 {% block content %}
 <div class="toolbar">
-    <h1 class="title">数据管理</h1>
-    <div class="hint">快照列表、手动快照、周末快照清理、备份恢复入口</div>
+    <div>
+        <h1 class="title">数据运维</h1>
+        <div class="hint">管理快照、备份恢复、历史数据归属迁移等高风险运维操作。</div>
+    </div>
 </div>
 
 <div class="card">
-    <h3 style="margin-top:0;">快照列表</h3>
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">资产快照查询</h3>
+        <button class="secondary" onclick="loadSnapshots()">刷新</button>
+    </div>
     <div class="controls">
-        <input id="snap_user_id" placeholder="user_id（可选）">
-        <input id="snap_start" placeholder="start_date: YYYY-MM-DD">
-        <input id="snap_end" placeholder="end_date: YYYY-MM-DD">
+        <input id="snap_user_id" placeholder="用户内部编号（可选）" style="min-width:220px;">
+        <input id="snap_start" placeholder="开始日期（YYYY-MM-DD）">
+        <input id="snap_end" placeholder="结束日期（YYYY-MM-DD）">
         <button onclick="loadSnapshots()">查询</button>
     </div>
-    <div style="overflow:auto; max-height: 360px;">
+    <div style="overflow:auto; max-height: 340px;">
         <table>
             <thead>
                 <tr>
@@ -25,7 +30,7 @@
                     <th>用户</th>
                     <th>总资产</th>
                     <th>累计盈亏</th>
-                    <th>日盈亏</th>
+                    <th>当日盈亏</th>
                     <th>更新时间</th>
                 </tr>
             </thead>
@@ -36,30 +41,60 @@
 
 <div class="grid-2">
     <div class="card">
-        <h3 style="margin-top:0;">手动快照与周末清理</h3>
-        <div class="controls">
-            <button onclick="triggerSnapshot()">手动触发快照</button>
+        <div class="toolbar" style="margin-bottom:8px;">
+            <h3 style="margin:0;">快照任务</h3>
+            <span class="status-pill status-warn">中风险</span>
         </div>
         <div class="controls">
-            <input id="cleanup_user_id" placeholder="user_id（可选）">
-            <input id="cleanup_start" placeholder="start_date（可选）">
-            <input id="cleanup_end" placeholder="end_date（可选）">
-            <button class="warn" onclick="cleanupWeekend()">清理周末 day_pnl</button>
+            <button onclick="triggerSnapshot()">手动执行快照</button>
         </div>
+        <div class="controls">
+            <input id="cleanup_user_id" placeholder="用户内部编号（可选）" style="min-width:220px;">
+            <input id="cleanup_start" placeholder="开始日期（可选）">
+            <input id="cleanup_end" placeholder="结束日期（可选）">
+            <button class="secondary" onclick="previewCleanupWeekend()">预览影响条数</button>
+            <button class="warn" onclick="cleanupWeekend()">执行周末收益清理</button>
+        </div>
+        <div class="muted" id="cleanupPreviewText">尚未预览影响范围</div>
     </div>
 
     <div class="card">
-        <h3 style="margin-top:0;">备份与恢复</h3>
-        <div class="controls">
-            <input id="backup_retention" type="number" value="14" placeholder="retention_days">
-            <button onclick="runBackup()">创建备份</button>
+        <div class="toolbar" style="margin-bottom:8px;">
+            <h3 style="margin:0;">历史数据归属迁移</h3>
+            <span class="status-pill status-danger">高风险</span>
         </div>
+        <div class="hint" style="margin-bottom:8px;">将历史业务数据统一归属到目标用户，只建议执行一次。</div>
         <div class="controls">
-            <input id="restore_file" placeholder="backup_file（可选，空=最新）" style="min-width:360px;">
-            <button class="danger" onclick="runRestore()">执行恢复</button>
+            <input id="targetUserId" placeholder="目标用户内部编号" style="min-width:240px;">
+            <button class="secondary" onclick="previewRebind()">预览迁移</button>
+            <button class="danger" onclick="executeRebind()">执行迁移</button>
         </div>
-        <pre id="backupResult" class="muted" style="white-space:pre-wrap;"></pre>
+        <pre id="rebindOutput" class="muted" style="white-space:pre-wrap; background:#f8fbff; border:1px solid #d9e6f3; border-radius:10px; padding:10px; margin:0;">尚未执行预览</pre>
     </div>
+</div>
+
+<div class="card">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">备份与恢复</h3>
+        <span class="status-pill status-danger">高风险</span>
+    </div>
+    <div class="hint" style="margin-bottom:8px;">恢复操作会覆盖当前数据库，请务必先确认备份文件与影响范围。</div>
+
+    <div class="card card-soft" style="margin-bottom:10px;">
+        <strong>最近备份信息</strong>
+        <div class="muted" id="latestBackupInfo" style="margin-top:6px;">正在加载...</div>
+    </div>
+
+    <div class="controls">
+        <input id="backup_retention" type="number" value="14" min="1" max="365" style="width:140px;">
+        <button onclick="runBackup()">创建新备份</button>
+    </div>
+
+    <div class="controls">
+        <input id="restore_file" placeholder="备份文件路径（留空使用最新备份）" style="min-width:420px;">
+        <button class="danger" onclick="runRestore()">执行恢复</button>
+    </div>
+    <pre id="backupResult" class="muted" style="white-space:pre-wrap; background:#f8fbff; border:1px solid #d9e6f3; border-radius:10px; padding:10px; margin:0;">尚未执行操作</pre>
 </div>
 {% endblock %}
 
@@ -69,18 +104,19 @@
         const tbody = document.getElementById('snapshotRows');
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无快照</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无快照数据</td></tr>';
             return;
         }
-        for (const s of items) {
+        for (const item of items) {
+            const displayUser = item.user_number ? `${item.username || '-'}（编号 ${item.user_number}）` : (item.username || item.user_id || '-');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${s.date || ''}</td>
-                <td>${s.user_id || ''}</td>
-                <td>${s.total_asset ?? ''}</td>
-                <td>${s.total_pnl ?? ''}</td>
-                <td>${s.day_pnl ?? ''}</td>
-                <td>${s.updated_at || ''}</td>
+                <td>${escapeHtml(item.date || '-')}</td>
+                <td>${escapeHtml(displayUser)}</td>
+                <td>${escapeHtml(item.total_asset ?? '-')}</td>
+                <td>${escapeHtml(item.total_pnl ?? '-')}</td>
+                <td>${escapeHtml(item.day_pnl ?? '-')}</td>
+                <td>${fmtDateTime(item.updated_at)}</td>
             `;
             tbody.appendChild(tr);
         }
@@ -95,68 +131,180 @@
             const data = await adminFetch(url);
             renderSnapshots(data.items || []);
         } catch (e) {
-            showToast(`加载失败: ${e.message}`, true);
+            showToast(`快照加载失败：${e.message}`, true);
         }
     }
 
     async function triggerSnapshot() {
+        const confirmed = await confirmAction({
+            title: '手动执行快照',
+            message: '将立即执行一次全量快照任务，确认继续吗？',
+            confirmText: '确认执行',
+        });
+        if (!confirmed) return;
+
         try {
             const data = await adminFetch('/api/admin/data/snapshot/trigger', { method: 'POST', body: '{}' });
-            showToast(data.message || '触发完成');
+            showToast(data.message || '快照执行完成');
             loadSnapshots();
         } catch (e) {
-            showToast(`触发失败: ${e.message}`, true);
+            showToast(`快照执行失败：${e.message}`, true);
         }
     }
 
-    async function cleanupWeekend() {
-        const payload = {
+    function cleanupPayload() {
+        return {
             user_id: document.getElementById('cleanup_user_id').value.trim(),
             start_date: document.getElementById('cleanup_start').value.trim(),
             end_date: document.getElementById('cleanup_end').value.trim(),
         };
+    }
+
+    async function previewCleanupWeekend() {
+        try {
+            const data = await adminFetch('/api/admin/data/snapshot/cleanup_weekend/preview', {
+                method: 'POST',
+                body: JSON.stringify(cleanupPayload()),
+            });
+            document.getElementById('cleanupPreviewText').innerText = `预计影响 ${data.affected || 0} 条周末快照记录。`;
+            showToast(`预览完成：${data.affected || 0} 条`);
+        } catch (e) {
+            showToast(`预览失败：${e.message}`, true);
+        }
+    }
+
+    async function cleanupWeekend() {
+        const payload = cleanupPayload();
+        const preview = await adminFetch('/api/admin/data/snapshot/cleanup_weekend/preview', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        }).catch(() => ({ affected: null }));
+        const affectedText = preview.affected == null ? '未知' : `${preview.affected} 条`;
+
+        const confirmed = await confirmAction({
+            title: '执行周末收益清理',
+            message: `预计影响：${affectedText}\n将把周末快照的“当日盈亏”重置为 0。\n确认继续吗？`,
+            confirmText: '确认清理',
+            danger: true,
+        });
+        if (!confirmed) return;
+
         try {
             const data = await adminFetch('/api/admin/data/snapshot/cleanup_weekend', {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
-            showToast(`已清理 ${data.cleaned} 条周末快照`);
+            showToast(`清理完成：${data.cleaned || 0} 条`);
             loadSnapshots();
         } catch (e) {
-            showToast(`清理失败: ${e.message}`, true);
+            showToast(`清理失败：${e.message}`, true);
+        }
+    }
+
+    async function previewRebind() {
+        const target = document.getElementById('targetUserId').value.trim();
+        if (!target) {
+            showToast('请输入目标用户内部编号', true);
+            return;
+        }
+        try {
+            const data = await adminFetch(`/api/admin/data/rebind/preview?target_user_id=${encodeURIComponent(target)}`);
+            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
+            showToast('迁移预览完成');
+        } catch (e) {
+            showToast(`迁移预览失败：${e.message}`, true);
+        }
+    }
+
+    async function executeRebind() {
+        const target = document.getElementById('targetUserId').value.trim();
+        if (!target) {
+            showToast('请输入目标用户内部编号', true);
+            return;
+        }
+        const confirmed = await confirmAction({
+            title: '执行历史数据归属迁移',
+            message: `目标用户内部编号：${target}\n该操作会写入数据库且通常只执行一次。\n确认继续吗？`,
+            confirmText: '确认迁移',
+            danger: true,
+            requireText: '确认迁移',
+        });
+        if (!confirmed) return;
+
+        try {
+            const data = await adminFetch('/api/admin/data/rebind/execute', {
+                method: 'POST',
+                body: JSON.stringify({ target_user_id: target }),
+            });
+            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
+            showToast('数据归属迁移已执行');
+        } catch (e) {
+            showToast(`迁移执行失败：${e.message}`, true);
+        }
+    }
+
+    async function loadLatestBackup() {
+        try {
+            const data = await adminFetch('/api/admin/data/backup/latest');
+            const el = document.getElementById('latestBackupInfo');
+            if (!data.backup_file) {
+                el.innerText = '当前没有可用备份文件。';
+                return;
+            }
+            el.innerText = `文件：${data.backup_file}\n时间：${fmtDateTime(data.modified_at)}\n大小：${data.size_bytes || 0} 字节`;
+            if (!document.getElementById('restore_file').value.trim()) {
+                document.getElementById('restore_file').value = data.backup_file;
+            }
+        } catch (e) {
+            document.getElementById('latestBackupInfo').innerText = `加载失败：${e.message}`;
         }
     }
 
     async function runBackup() {
         const retention = Number(document.getElementById('backup_retention').value || '14');
+        if (!retention || retention < 1 || retention > 365) {
+            showToast('备份保留天数需在 1-365 之间', true);
+            return;
+        }
         try {
             const data = await adminFetch('/api/admin/data/backup', {
                 method: 'POST',
                 body: JSON.stringify({ retention_days: retention }),
             });
             document.getElementById('backupResult').innerText = JSON.stringify(data, null, 2);
-            showToast('备份完成');
+            showToast('备份创建成功');
+            loadLatestBackup();
         } catch (e) {
-            showToast(`备份失败: ${e.message}`, true);
+            showToast(`备份失败：${e.message}`, true);
         }
     }
 
     async function runRestore() {
-        if (!confirm('恢复会覆盖当前数据库，确认继续？')) return;
         const backupFile = document.getElementById('restore_file').value.trim();
+        const confirmed = await confirmAction({
+            title: '执行数据库恢复',
+            message: `备份文件：${backupFile || '最新备份'}\n恢复会覆盖当前数据库，请谨慎操作。`,
+            confirmText: '确认恢复',
+            danger: true,
+            requireText: '立即恢复',
+        });
+        if (!confirmed) return;
+
         try {
             const data = await adminFetch('/api/admin/data/restore', {
                 method: 'POST',
                 body: JSON.stringify({ backup_file: backupFile }),
             });
             document.getElementById('backupResult').innerText = JSON.stringify(data, null, 2);
-            showToast('恢复完成，建议刷新页面');
+            showToast('数据库恢复完成，请刷新页面确认数据');
             loadSnapshots();
+            loadLatestBackup();
         } catch (e) {
-            showToast(`恢复失败: ${e.message}`, true);
+            showToast(`恢复失败：${e.message}`, true);
         }
     }
 
     loadSnapshots();
+    loadLatestBackup();
 </script>
 {% endblock %}

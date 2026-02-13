@@ -24,19 +24,161 @@ from core.policy_runtime import invalidate_policy_cache
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
-    "API_TIMEOUT": {"type": "int", "min": 1, "max": 30, "description": "上游接口超时（秒）"},
-    "RETRY_TIMES": {"type": "int", "min": 0, "max": 10, "description": "请求重试次数"},
-    "RETRY_DELAY": {"type": "int", "min": 0, "max": 10, "description": "重试间隔（秒）"},
-    "CACHE_TTL": {"type": "int", "min": 0, "max": 3600, "description": "价格缓存 TTL（秒）"},
-    "CACHE_STALE_TTL": {"type": "int", "min": 0, "max": 86400, "description": "过期缓存兜底 TTL（秒）"},
-    "SOURCE_FAIL_THRESHOLD": {"type": "int", "min": 1, "max": 20, "description": "数据源熔断失败阈值"},
-    "SOURCE_COOLDOWN_SECONDS": {"type": "int", "min": 1, "max": 600, "description": "数据源熔断冷却秒数"},
-    "ENABLE_BACKGROUND_SNAPSHOT": {"type": "bool", "description": "是否启用后台定时快照"},
-    "ENABLE_STARTUP_SNAPSHOT": {"type": "bool", "description": "是否启用启动快照"},
-    "LOG_LEVEL": {"type": "str", "choices": ["DEBUG", "INFO", "WARNING", "ERROR"], "description": "日志级别"},
+    "API_TIMEOUT": {
+        "display_name": "接口超时秒数",
+        "type": "int",
+        "min": 1,
+        "max": 30,
+        "description": "上游接口超时（秒）",
+    },
+    "RETRY_TIMES": {
+        "display_name": "失败重试次数",
+        "type": "int",
+        "min": 0,
+        "max": 10,
+        "description": "请求重试次数",
+    },
+    "RETRY_DELAY": {
+        "display_name": "重试间隔秒数",
+        "type": "int",
+        "min": 0,
+        "max": 10,
+        "description": "每次重试等待秒数",
+    },
+    "CACHE_TTL": {
+        "display_name": "缓存有效期",
+        "type": "int",
+        "min": 0,
+        "max": 3600,
+        "description": "价格缓存有效时长（秒）",
+    },
+    "CACHE_STALE_TTL": {
+        "display_name": "兜底缓存有效期",
+        "type": "int",
+        "min": 0,
+        "max": 86400,
+        "description": "主缓存过期后可用的兜底缓存时长（秒）",
+    },
+    "SOURCE_FAIL_THRESHOLD": {
+        "display_name": "熔断失败阈值",
+        "type": "int",
+        "min": 1,
+        "max": 20,
+        "description": "连续失败达到该次数后触发熔断",
+    },
+    "SOURCE_COOLDOWN_SECONDS": {
+        "display_name": "熔断冷却时间",
+        "type": "int",
+        "min": 1,
+        "max": 600,
+        "description": "熔断后等待该秒数再尝试恢复",
+    },
+    "ENABLE_BACKGROUND_SNAPSHOT": {
+        "display_name": "启用后台定时快照",
+        "type": "bool",
+        "description": "是否开启后台定时生成资产快照",
+    },
+    "ENABLE_STARTUP_SNAPSHOT": {
+        "display_name": "启动时自动快照",
+        "type": "bool",
+        "description": "服务启动后是否立即补一次快照",
+    },
+    "LOG_LEVEL": {
+        "display_name": "日志级别",
+        "type": "str",
+        "choices": ["DEBUG", "INFO", "WARNING", "ERROR"],
+        "description": "系统日志输出级别",
+    },
+}
+
+POLICY_LABELS: Dict[str, Dict[str, str]] = {
+    "upstream.price": {
+        "name": "行情数据通道",
+        "impact": "关闭后，资产页中的股票价格将依赖缓存或显示异常。",
+    },
+    "upstream.rate": {
+        "name": "汇率数据通道",
+        "impact": "关闭后，跨币种资产折算可能使用默认汇率。",
+    },
+    "upstream.news": {
+        "name": "快讯数据通道",
+        "impact": "关闭后，资讯页将无法拉取最新快讯。",
+    },
+    "api.auth": {
+        "name": "账号认证接口",
+        "impact": "关闭后，登录、刷新会话、退出登录将不可用。",
+    },
+    "api.portfolio": {
+        "name": "资产与持仓接口",
+        "impact": "关闭后，资产列表、交易记录、统计接口将不可用。",
+    },
+    "api.news": {
+        "name": "资讯接口",
+        "impact": "关闭后，资讯相关查询与刷新不可用。",
+    },
+}
+
+ACTION_LABELS: Dict[str, str] = {
+    "admin.users.status": "修改用户状态",
+    "admin.users.update": "更新用户信息",
+    "admin.users.disable": "停用用户",
+    "admin.users.enable": "启用用户",
+    "admin.users.password.reset": "重置用户密码",
+    "admin.users.sessions.revoke": "强制用户下线",
+    "admin.config.update": "更新系统配置",
+    "admin.config.reset": "恢复系统配置默认值",
+    "admin.data.snapshot.trigger": "手动触发快照",
+    "admin.data.snapshot.cleanup_weekend": "清理周末日收益",
+    "admin.data.backup": "创建数据库备份",
+    "admin.data.restore": "恢复数据库备份",
+    "admin.data.rebind.execute": "执行历史数据归属迁移",
+    "admin.apis.smoke_test": "执行接口冒烟测试",
+    "admin.apis.policies.update": "更新接口策略",
+    "admin.apis.policies.batch_update": "批量更新接口策略",
+    "admin.invites.generate": "生成邀请码",
+    "admin.invites.revoke": "作废邀请码",
+}
+
+ERROR_LABELS: Dict[str, str] = {
+    "Admin privileges required": "当前账号没有后台权限",
+    "Invalid or expired token": "登录状态已过期，请重新登录",
+    "Missing Authorization header": "登录状态已过期，请重新登录",
+    "User not found": "用户不存在",
+    "User is disabled": "账号已停用，请联系管理员",
+    "Missing user_id": "缺少用户标识",
+    "Invalid status": "状态值不合法",
+    "Cannot disable current admin user": "不能停用当前登录管理员",
+    "Cannot remove current admin role": "不能取消当前登录管理员权限",
+    "No updatable fields": "没有可更新的字段",
+    "No update payload": "缺少更新内容",
+    "Local anonymous user is read-only": "本机匿名用户是只读用户，无法操作",
+    "Missing scope_key": "缺少策略标识",
+    "Missing target_user_id": "缺少目标用户标识",
+    "Invite code not active or not found": "邀请码不存在或不可作废",
+}
+
+REGISTER_METHOD_LABELS: Dict[str, str] = {
+    "password_invite": "账号密码 + 邀请码",
+    "email": "邮箱验证码（历史）",
+    "local_anonymous": "本机未登录用户",
+}
+
+STATUS_LABELS: Dict[str, str] = {
+    "active": "正常",
+    "disabled": "已停用",
+    "used": "已使用",
+    "revoked": "已作废",
+}
+
+POLICY_TYPE_LABELS: Dict[str, str] = {
+    "upstream": "上游通道",
+    "api_group": "业务接口组",
 }
 
 _RUNTIME_CONFIG_OVERRIDES: Dict[str, Any] = {}
+_DEFAULT_CONFIG_VALUES: Dict[str, Any] = {
+    key: getattr(config, key, None) for key in CONFIG_WHITELIST
+}
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -92,11 +234,26 @@ def _get_whitelist_configs() -> List[Dict[str, Any]]:
     items = []
     for key, rule in CONFIG_WHITELIST.items():
         value = _RUNTIME_CONFIG_OVERRIDES.get(key, getattr(config, key, None))
+        default_value = _DEFAULT_CONFIG_VALUES.get(key)
+        if "choices" in rule:
+            recommended = " / ".join(str(v) for v in rule["choices"])
+        elif "min" in rule and "max" in rule:
+            recommended = f"{rule['min']} - {rule['max']}"
+        elif "min" in rule:
+            recommended = f">= {rule['min']}"
+        else:
+            recommended = "-"
         items.append({
             "key": key,
+            "display_name": rule.get("display_name", key),
             "value": value,
+            "default_value": default_value,
             "type": rule["type"],
             "description": rule["description"],
+            "min": rule.get("min"),
+            "max": rule.get("max"),
+            "choices": rule.get("choices", []),
+            "recommended": recommended,
         })
     return items
 
@@ -176,6 +333,47 @@ def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
     return metrics
 
 
+def _recent_admin_audits(cursor, limit: int = 20) -> List[Dict[str, Any]]:
+    cursor.execute(
+        """
+        SELECT
+            a.id,
+            a.admin_user_id,
+            COALESCE(u.username, '') AS admin_username,
+            a.action,
+            a.target_type,
+            a.target_id,
+            a.method,
+            a.path,
+            a.status_code,
+            a.result,
+            a.error,
+            a.created_at
+        FROM admin_audit_logs a
+        LEFT JOIN users u ON u.id = a.admin_user_id
+        ORDER BY a.id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def _get_active_session_count(cursor, user_id: str) -> int:
+    cursor.execute(
+        """
+        SELECT COUNT(1) AS c
+        FROM auth_refresh_tokens
+        WHERE user_id = ?
+          AND revoked_at IS NULL
+          AND DATETIME(expires_at) > DATETIME('now')
+        """,
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    return int((row["c"] if row else 0) or 0)
+
+
 def create_admin_blueprint(db, admin_write_audit):
     bp = Blueprint("admin_routes", __name__, url_prefix="/api/admin")
 
@@ -193,16 +391,7 @@ def create_admin_blueprint(db, admin_write_audit):
             latest_row = cursor.fetchone()
             latest_snapshot_date = latest_row["latest_date"] if latest_row else None
 
-            cursor.execute(
-                """
-                SELECT id, admin_user_id, action, target_type, target_id,
-                       method, path, status_code, result, created_at
-                FROM admin_audit_logs
-                ORDER BY id DESC
-                LIMIT 20
-                """
-            )
-            recent_audits = [dict(row) for row in cursor.fetchall()]
+            recent_audits = _recent_admin_audits(cursor, limit=20)
 
             return jsonify({
                 "users": {
@@ -217,6 +406,157 @@ def create_admin_blueprint(db, admin_write_audit):
             })
         finally:
             conn.close()
+
+    @bp.route("/meta/dictionaries", methods=["GET"])
+    @admin_required
+    def admin_meta_dictionaries():
+        policy_labels = {
+            key: value["name"] for key, value in POLICY_LABELS.items()
+        }
+        policy_impacts = {
+            key: value["impact"] for key, value in POLICY_LABELS.items()
+        }
+        config_labels = {
+            key: rule.get("display_name", key)
+            for key, rule in CONFIG_WHITELIST.items()
+        }
+        return jsonify(
+            {
+                "status_labels": STATUS_LABELS,
+                "action_labels": ACTION_LABELS,
+                "policy_labels": policy_labels,
+                "policy_impacts": policy_impacts,
+                "policy_type_labels": POLICY_TYPE_LABELS,
+                "register_method_labels": REGISTER_METHOD_LABELS,
+                "error_labels": ERROR_LABELS,
+                "config_labels": config_labels,
+            }
+        )
+
+    @bp.route("/summary/todo", methods=["GET"])
+    @admin_required
+    def admin_summary_todo():
+        try:
+            invite_threshold = int(request.args.get("invite_threshold", 200))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid invite_threshold"}), 400
+        invite_threshold = max(1, min(invite_threshold, 100000))
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(1) AS c FROM invite_codes WHERE status = 'active'")
+            active_invites = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+
+            cursor.execute(
+                """
+                SELECT COUNT(1) AS c
+                FROM admin_audit_logs
+                WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
+                  AND LOWER(COALESCE(result, '')) = 'failed'
+                """
+            )
+            failed_audits_today = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(1) AS c
+                FROM users u
+                WHERE LOWER(COALESCE(NULLIF(u.status, ''), 'active')) = 'disabled'
+                  AND {_real_user_where('u')}
+                """
+            )
+            disabled_users = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+        finally:
+            conn.close()
+
+        policies = db.list_admin_api_policies(scope_type="all")
+        disabled_policies = [
+            p for p in policies if not bool(p.get("enabled"))
+        ]
+        upstream = system_manager.check_api_status()
+        degraded_upstream = [
+            key for key, item in (upstream or {}).items()
+            if not bool((item or {}).get("ok"))
+        ]
+
+        todos: List[Dict[str, Any]] = []
+        if active_invites < invite_threshold:
+            todos.append(
+                {
+                    "code": "invite_low",
+                    "level": "high",
+                    "title": "待发放邀请码不足",
+                    "description": f"当前可用邀请码 {active_invites} 个，低于阈值 {invite_threshold} 个。",
+                    "suggestion": "请尽快补充生成邀请码并安排发放。",
+                }
+            )
+        if disabled_policies:
+            names = [POLICY_LABELS.get(p["scope_key"], {}).get("name", p["scope_key"]) for p in disabled_policies]
+            todos.append(
+                {
+                    "code": "policy_disabled",
+                    "level": "medium",
+                    "title": "存在已停用策略",
+                    "description": f"当前有 {len(disabled_policies)} 条策略为停用状态。",
+                    "suggestion": f"请确认是否符合预期：{', '.join(names[:3])}{' 等' if len(names) > 3 else ''}",
+                }
+            )
+        if degraded_upstream:
+            names = [POLICY_LABELS.get(f"upstream.{k}", {}).get("name", k) for k in degraded_upstream]
+            todos.append(
+                {
+                    "code": "upstream_degraded",
+                    "level": "high",
+                    "title": "上游数据通道异常",
+                    "description": f"检测到 {len(degraded_upstream)} 个通道异常。",
+                    "suggestion": f"建议优先排查：{', '.join(names)}",
+                }
+            )
+        if failed_audits_today > 0:
+            todos.append(
+                {
+                    "code": "audit_failed",
+                    "level": "medium",
+                    "title": "今日存在失败操作",
+                    "description": f"今日后台失败写操作 {failed_audits_today} 次。",
+                    "suggestion": "请进入“操作审计”查看失败原因并处理。",
+                }
+            )
+        if disabled_users > 0:
+            todos.append(
+                {
+                    "code": "users_disabled",
+                    "level": "low",
+                    "title": "当前有停用用户",
+                    "description": f"当前停用用户 {disabled_users} 人。",
+                    "suggestion": "请定期核查停用状态是否仍符合运营策略。",
+                }
+            )
+        if not todos:
+            todos.append(
+                {
+                    "code": "all_clear",
+                    "level": "ok",
+                    "title": "当前无待处理异常",
+                    "description": "邀请码充足、策略正常、无失败写操作。",
+                    "suggestion": "可继续日常巡检。",
+                }
+            )
+
+        return jsonify(
+            {
+                "items": todos,
+                "snapshot": {
+                    "active_invites": active_invites,
+                    "invite_threshold": invite_threshold,
+                    "disabled_policies": len(disabled_policies),
+                    "degraded_upstream": len(degraded_upstream),
+                    "failed_audits_today": failed_audits_today,
+                    "disabled_users": disabled_users,
+                },
+            }
+        )
 
     @bp.route("/users", methods=["GET"])
     @admin_required
@@ -257,6 +597,13 @@ def create_admin_blueprint(db, admin_write_audit):
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
+                        (
+                            SELECT COUNT(1)
+                            FROM auth_refresh_tokens rt
+                            WHERE rt.user_id = u.id
+                              AND rt.revoked_at IS NULL
+                              AND DATETIME(rt.expires_at) > DATETIME('now')
+                        ) AS active_sessions,
                         1 AS can_manage
                     FROM users u
                     WHERE {_real_user_where("u")}
@@ -273,6 +620,7 @@ def create_admin_blueprint(db, admin_write_audit):
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
+                        0 AS active_sessions,
                         0 AS can_manage
                     WHERE EXISTS (
                         SELECT 1 FROM portfolio WHERE user_id IS NULL OR TRIM(user_id) = ''
@@ -306,6 +654,13 @@ def create_admin_blueprint(db, admin_write_audit):
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
+                        (
+                            SELECT COUNT(1)
+                            FROM auth_refresh_tokens rt
+                            WHERE rt.user_id = u.id
+                              AND rt.revoked_at IS NULL
+                              AND DATETIME(rt.expires_at) > DATETIME('now')
+                        ) AS active_sessions,
                         1 AS can_manage
                     FROM users u
                     WHERE {_real_user_where("u")}
@@ -322,6 +677,7 @@ def create_admin_blueprint(db, admin_write_audit):
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
+                        0 AS active_sessions,
                         0 AS can_manage
                     WHERE EXISTS (
                         SELECT 1 FROM portfolio WHERE user_id IS NULL OR TRIM(user_id) = ''
@@ -344,6 +700,7 @@ def create_admin_blueprint(db, admin_write_audit):
                     bu.status,
                     bu.created_at,
                     bu.last_login,
+                    bu.active_sessions,
                     bu.can_manage
                 FROM base_users bu
                 {where_sql}
@@ -392,6 +749,7 @@ def create_admin_blueprint(db, admin_write_audit):
                         "status": "active",
                         "created_at": None,
                         "last_login": None,
+                        "active_sessions": 0,
                         "can_manage": 0,
                     })
                 return jsonify({"error": "User not found"}), 404
@@ -409,6 +767,13 @@ def create_admin_blueprint(db, admin_write_audit):
                     LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                     u.created_at,
                     u.last_login,
+                    (
+                        SELECT COUNT(1)
+                        FROM auth_refresh_tokens rt
+                        WHERE rt.user_id = u.id
+                          AND rt.revoked_at IS NULL
+                          AND DATETIME(rt.expires_at) > DATETIME('now')
+                    ) AS active_sessions,
                     1 AS can_manage
                 FROM users u
                 WHERE u.id = ? AND {_real_user_where("u")}
@@ -621,6 +986,22 @@ def create_admin_blueprint(db, admin_write_audit):
         payload, code = revoke_user_sessions(db=db, user_id=user_id)
         return jsonify(payload), code
 
+    @bp.route("/users/sessions/count", methods=["GET"])
+    @admin_required
+    def admin_users_sessions_count():
+        user_id = request.args.get("user_id", "").strip()
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
+        if user_id == "__local__":
+            return jsonify({"user_id": user_id, "active_sessions": 0})
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            active_sessions = _get_active_session_count(cursor, user_id)
+            return jsonify({"user_id": user_id, "active_sessions": active_sessions})
+        finally:
+            conn.close()
+
     @bp.route("/config", methods=["GET"])
     @admin_required
     def admin_config():
@@ -657,6 +1038,23 @@ def create_admin_blueprint(db, admin_write_audit):
 
         return jsonify({"status": "ok", "updated": updated_items})
 
+    @bp.route("/config/reset", methods=["POST"])
+    @admin_write_audit(action="admin.config.reset", target_type="config")
+    @admin_required
+    def admin_config_reset():
+        data = _json_body()
+        key = str(data.get("key", "")).strip()
+        if key and key not in CONFIG_WHITELIST:
+            return jsonify({"error": f"Key not allowed: {key}"}), 400
+        keys = [key] if key else list(CONFIG_WHITELIST.keys())
+        updated_items = []
+        for cfg_key in keys:
+            default_value = _DEFAULT_CONFIG_VALUES.get(cfg_key)
+            setattr(config, cfg_key, default_value)
+            _RUNTIME_CONFIG_OVERRIDES.pop(cfg_key, None)
+            updated_items.append({"key": cfg_key, "value": default_value})
+        return jsonify({"status": "ok", "updated": updated_items})
+
     @bp.route("/data/snapshots", methods=["GET"])
     @admin_required
     def admin_data_snapshots():
@@ -669,13 +1067,13 @@ def create_admin_blueprint(db, admin_write_audit):
         where = []
         params: List[Any] = []
         if user_id:
-            where.append("user_id = ?")
+            where.append("ds.user_id = ?")
             params.append(user_id)
         if start_date:
-            where.append("date >= ?")
+            where.append("ds.date >= ?")
             params.append(start_date)
         if end_date:
-            where.append("date <= ?")
+            where.append("ds.date <= ?")
             params.append(end_date)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
@@ -684,11 +1082,24 @@ def create_admin_blueprint(db, admin_write_audit):
         try:
             cursor.execute(
                 f"""
-                SELECT id, date, user_id, total_asset, total_invest, total_cash,
-                       total_other, total_liability, total_pnl, day_pnl, updated_at
-                FROM daily_snapshots
+                SELECT
+                    ds.id,
+                    ds.date,
+                    ds.user_id,
+                    COALESCE(u.username, '') AS username,
+                    u.user_number AS user_number,
+                    ds.total_asset,
+                    ds.total_invest,
+                    ds.total_cash,
+                    ds.total_other,
+                    ds.total_liability,
+                    ds.total_pnl,
+                    ds.day_pnl,
+                    ds.updated_at
+                FROM daily_snapshots ds
+                LEFT JOIN users u ON u.id = ds.user_id
                 {where_sql}
-                ORDER BY date DESC, user_id ASC
+                ORDER BY ds.date DESC, ds.user_id ASC
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params + [limit, offset]),
@@ -745,6 +1156,37 @@ def create_admin_blueprint(db, admin_write_audit):
         finally:
             conn.close()
 
+    @bp.route("/data/snapshot/cleanup_weekend/preview", methods=["POST"])
+    @admin_required
+    def admin_data_snapshot_cleanup_weekend_preview():
+        data = _json_body()
+        user_id = str(data.get("user_id", "")).strip()
+        start_date = str(data.get("start_date", "")).strip()
+        end_date = str(data.get("end_date", "")).strip()
+        sql = """
+            SELECT COUNT(1) AS c
+            FROM daily_snapshots
+            WHERE CAST(strftime('%w', date) AS INTEGER) IN (0, 6)
+        """
+        params: List[Any] = []
+        if user_id:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        if start_date:
+            sql += " AND date >= ?"
+            params.append(start_date)
+        if end_date:
+            sql += " AND date <= ?"
+            params.append(end_date)
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql, tuple(params))
+            row = cursor.fetchone()
+            return jsonify({"status": "ok", "affected": int((row["c"] if row else 0) or 0)})
+        finally:
+            conn.close()
+
     @bp.route("/data/backup", methods=["POST"])
     @admin_write_audit(action="admin.data.backup", target_type="backup")
     @admin_required
@@ -770,6 +1212,28 @@ def create_admin_blueprint(db, admin_write_audit):
             "deleted_count": len(deleted),
             "deleted": deleted,
         })
+
+    @bp.route("/data/backup/latest", methods=["GET"])
+    @admin_required
+    def admin_data_backup_latest():
+        backup_dir = request.args.get("backup_dir", "").strip() or str(config.BASE_DIR / "archive" / "backups")
+        script = _load_script_module(config.BASE_DIR / "scripts" / "restore_portfolio_db.py", "restore_portfolio_db")
+        try:
+            latest = script.find_latest_backup(backup_dir)
+            latest_path = Path(latest)
+            return jsonify(
+                {
+                    "status": "ok",
+                    "backup_file": latest,
+                    "backup_dir": backup_dir,
+                    "modified_at": datetime.fromtimestamp(
+                        latest_path.stat().st_mtime, timezone.utc
+                    ).isoformat(),
+                    "size_bytes": latest_path.stat().st_size,
+                }
+            )
+        except FileNotFoundError:
+            return jsonify({"status": "ok", "backup_file": "", "backup_dir": backup_dir})
 
     @bp.route("/data/restore", methods=["POST"])
     @admin_write_audit(action="admin.data.restore", target_type="backup")
@@ -809,6 +1273,12 @@ def create_admin_blueprint(db, admin_write_audit):
         policies = db.list_admin_api_policies(scope_type="all")
         for policy in policies:
             policy["enabled"] = bool(policy.get("enabled"))
+            scope_key = str(policy.get("scope_key", ""))
+            policy["display_name"] = POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
+            policy["impact"] = POLICY_LABELS.get(scope_key, {}).get("impact", "")
+            policy["scope_type_label"] = POLICY_TYPE_LABELS.get(
+                str(policy.get("scope_type", "")), str(policy.get("scope_type", ""))
+            )
 
         payload = {
             "status": "ok" if (db_ok and upstream_ok) else "degraded",
@@ -826,7 +1296,15 @@ def create_admin_blueprint(db, admin_write_audit):
     @admin_required
     def admin_apis_policies():
         scope_type = request.args.get("scope_type", "all").strip().lower()
-        return jsonify(list_policies(db, scope_type=scope_type))
+        payload = list_policies(db, scope_type=scope_type)
+        for item in payload.get("items", []):
+            scope_key = str(item.get("scope_key", ""))
+            item["display_name"] = POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
+            item["impact"] = POLICY_LABELS.get(scope_key, {}).get("impact", "")
+            item["scope_type_label"] = POLICY_TYPE_LABELS.get(
+                str(item.get("scope_type", "")), str(item.get("scope_type", ""))
+            )
+        return jsonify(payload)
 
     @bp.route("/apis/policies/update", methods=["POST"])
     @admin_write_audit(action="admin.apis.policies.update", target_type="policy")
@@ -1021,14 +1499,29 @@ def create_admin_blueprint(db, admin_write_audit):
         payload = db.list_invite_codes(status=status, batch_id=batch_id, limit=50000, offset=0)
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["code", "batch_id", "status", "created_by", "created_at", "used_by_user_id", "used_at", "note"])
+        writer.writerow(
+            [
+                "邀请码",
+                "批次标识",
+                "状态",
+                "创建人",
+                "创建时间",
+                "使用用户名",
+                "使用用户编号",
+                "使用用户内部ID",
+                "使用时间",
+                "备注",
+            ]
+        )
         for item in payload.get("items", []):
             writer.writerow([
                 item.get("code", ""),
                 item.get("batch_id", ""),
-                item.get("status", ""),
+                STATUS_LABELS.get(str(item.get("status", "")).lower(), item.get("status", "")),
                 item.get("created_by", ""),
                 item.get("created_at", ""),
+                item.get("used_by_username", ""),
+                item.get("used_by_user_number", ""),
                 item.get("used_by_user_id", ""),
                 item.get("used_at", ""),
                 item.get("note", ""),
@@ -1069,17 +1562,29 @@ def create_admin_blueprint(db, admin_write_audit):
     def admin_audit_logs():
         action = request.args.get("action", "").strip()
         admin_user_id = request.args.get("admin_user_id", "").strip()
+        result_filter = request.args.get("result", "").strip().lower()
+        start_time = request.args.get("start_time", "").strip()
+        end_time = request.args.get("end_time", "").strip()
         limit = max(1, min(request.args.get("limit", 100, type=int), 500))
         offset = max(0, request.args.get("offset", 0, type=int))
 
         where = []
         params: List[Any] = []
         if action:
-            where.append("action = ?")
+            where.append("a.action = ?")
             params.append(action)
         if admin_user_id:
-            where.append("admin_user_id = ?")
+            where.append("a.admin_user_id = ?")
             params.append(admin_user_id)
+        if result_filter in {"success", "failed"}:
+            where.append("LOWER(COALESCE(a.result, '')) = ?")
+            params.append(result_filter)
+        if start_time:
+            where.append("DATETIME(a.created_at) >= DATETIME(?)")
+            params.append(start_time)
+        if end_time:
+            where.append("DATETIME(a.created_at) <= DATETIME(?)")
+            params.append(end_time)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
         conn = db.get_connection()
@@ -1087,18 +1592,141 @@ def create_admin_blueprint(db, admin_write_audit):
         try:
             cursor.execute(
                 f"""
-                SELECT id, admin_user_id, action, target_type, target_id,
-                       method, path, status_code, result, error, created_at
-                FROM admin_audit_logs
+                SELECT COUNT(1) AS c
+                FROM admin_audit_logs a
                 {where_sql}
-                ORDER BY id DESC
+                """,
+                tuple(params),
+            )
+            total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+            cursor.execute(
+                f"""
+                SELECT
+                    a.id,
+                    a.admin_user_id,
+                    COALESCE(u.username, '') AS admin_username,
+                    a.action,
+                    a.target_type,
+                    a.target_id,
+                    a.method,
+                    a.path,
+                    a.status_code,
+                    a.result,
+                    a.error,
+                    a.request_body,
+                    a.created_at
+                FROM admin_audit_logs a
+                LEFT JOIN users u ON u.id = a.admin_user_id
+                {where_sql}
+                ORDER BY a.id DESC
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params + [limit, offset]),
             )
             items = [dict(row) for row in cursor.fetchall()]
-            return jsonify({"items": items, "limit": limit, "offset": offset})
+            return jsonify({"items": items, "limit": limit, "offset": offset, "total": total})
         finally:
             conn.close()
+
+    @bp.route("/audit/export", methods=["GET"])
+    @admin_required
+    def admin_audit_export():
+        action = request.args.get("action", "").strip()
+        admin_user_id = request.args.get("admin_user_id", "").strip()
+        result_filter = request.args.get("result", "").strip().lower()
+        start_time = request.args.get("start_time", "").strip()
+        end_time = request.args.get("end_time", "").strip()
+
+        where = []
+        params: List[Any] = []
+        if action:
+            where.append("a.action = ?")
+            params.append(action)
+        if admin_user_id:
+            where.append("a.admin_user_id = ?")
+            params.append(admin_user_id)
+        if result_filter in {"success", "failed"}:
+            where.append("LOWER(COALESCE(a.result, '')) = ?")
+            params.append(result_filter)
+        if start_time:
+            where.append("DATETIME(a.created_at) >= DATETIME(?)")
+            params.append(start_time)
+        if end_time:
+            where.append("DATETIME(a.created_at) <= DATETIME(?)")
+            params.append(end_time)
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"""
+                SELECT
+                    a.id,
+                    a.created_at,
+                    a.admin_user_id,
+                    COALESCE(u.username, '') AS admin_username,
+                    a.action,
+                    a.target_type,
+                    a.target_id,
+                    a.method,
+                    a.path,
+                    a.status_code,
+                    a.result,
+                    a.error,
+                    a.request_body
+                FROM admin_audit_logs a
+                LEFT JOIN users u ON u.id = a.admin_user_id
+                {where_sql}
+                ORDER BY a.id DESC
+                LIMIT 10000
+                """,
+                tuple(params),
+            )
+            rows = [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [
+                "时间",
+                "操作人",
+                "操作人内部ID",
+                "操作内容",
+                "对象类型",
+                "对象标识",
+                "结果",
+                "失败原因",
+                "请求方法",
+                "请求路径",
+                "状态码",
+                "请求体",
+            ]
+        )
+        for row in rows:
+            writer.writerow(
+                [
+                    row.get("created_at", ""),
+                    row.get("admin_username", ""),
+                    row.get("admin_user_id", ""),
+                    ACTION_LABELS.get(row.get("action", ""), row.get("action", "")),
+                    row.get("target_type", ""),
+                    row.get("target_id", ""),
+                    "成功" if str(row.get("result", "")).lower() == "success" else "失败",
+                    row.get("error", ""),
+                    row.get("method", ""),
+                    row.get("path", ""),
+                    row.get("status_code", ""),
+                    row.get("request_body", ""),
+                ]
+            )
+        resp = make_response(output.getvalue())
+        resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+        resp.headers["Content-Disposition"] = (
+            f"attachment; filename=audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
+        )
+        return resp
 
     return bp

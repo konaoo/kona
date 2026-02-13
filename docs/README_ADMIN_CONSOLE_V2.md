@@ -166,3 +166,25 @@ cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
 - 注册方式：`用户名 + 密码 + 邀请码`
 - 邀请码为一次性，可作废，可批次管理
 - 管理员可直接重置用户临时密码并触发强制改密
+
+---
+
+## 11. 运营后台体验重构（全中文运营版）
+
+本次新增的运营向改造点：
+
+- 后台页面文案统一为中文业务语义，技术字段仅在“查看技术详情”中展示
+- 菜单重构为：运营总览 / 用户中心 / 邀请码中心 / 接口与策略 / 数据运维 / 系统配置 / 操作审计
+- 全局统一确认弹窗（普通确认、风险确认、确认词确认）
+- 全局统一详情抽屉（替代 alert/prompt）
+- 全局统一错误文案映射（后端英文错误自动转中文运营文案）
+
+新增接口（保持兼容，不破坏旧接口）：
+
+- `GET /api/admin/meta/dictionaries`：下发状态/动作/策略中文词典
+- `GET /api/admin/summary/todo`：运营待办事项（邀请码、通道、失败操作等）
+- `GET /api/admin/users/sessions/count?user_id=...`：预估在线会话数
+- `POST /api/admin/data/snapshot/cleanup_weekend/preview`：周末收益清理预览
+- `GET /api/admin/data/backup/latest`：最近备份信息
+- `POST /api/admin/config/reset`：配置恢复默认值（单项/全部）
+- `GET /api/admin/audit/export`：按筛选条件导出审计 CSV

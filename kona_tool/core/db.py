@@ -247,6 +247,18 @@ class DatabaseManager:
             )
         ''')
 
+        # 分析基线表（用于重置月/年收益起点，不影响历史快照）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS analysis_baselines (
+                user_id TEXT PRIMARY KEY,
+                baseline_date TEXT NOT NULL,
+                baseline_total_pnl REAL NOT NULL,
+                baseline_total_invest REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # Ensure user_id columns exist for older DBs
         def _ensure_column(table: str, column: str, col_def: str) -> None:
             cursor.execute(f'PRAGMA table_info({table})')
@@ -285,6 +297,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
         cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_analysis_baselines_user_id ON analysis_baselines(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
@@ -1158,7 +1171,8 @@ class DatabaseManager:
                     ic.used_by_user_id,
                     ic.used_at,
                     ic.note,
-                    COALESCE(u.username, '') AS used_by_username
+                    COALESCE(u.username, '') AS used_by_username,
+                    u.user_number AS used_by_user_number
                 FROM invite_codes ic
                 LEFT JOIN users u ON u.id = ic.used_by_user_id
                 {where_sql}
@@ -3020,7 +3034,114 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
-    
+
+    def get_analysis_baseline(self, user_id: str = None) -> Optional[Dict[str, Any]]:
+        """获取分析初始化基线。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            user_key = (user_id or '').strip()
+            cursor.execute(
+                '''
+                SELECT user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
+                FROM analysis_baselines
+                WHERE user_id = ?
+                LIMIT 1
+                ''',
+                (user_key,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'user_id': row['user_id'],
+                'baseline_date': row['baseline_date'],
+                'baseline_total_pnl': float(row['baseline_total_pnl'] or 0),
+                'baseline_total_invest': float(row['baseline_total_invest'] or 0),
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+            }
+        finally:
+            conn.close()
+
+    def upsert_analysis_baseline(
+        self,
+        user_id: str = None,
+        baseline_date: str = '',
+        baseline_total_pnl: float = 0.0,
+        baseline_total_invest: float = 0.0,
+    ) -> Optional[Dict[str, Any]]:
+        """新增或更新分析初始化基线。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            user_key = (user_id or '').strip()
+            cursor.execute(
+                '''
+                INSERT INTO analysis_baselines (
+                    user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    baseline_date = excluded.baseline_date,
+                    baseline_total_pnl = excluded.baseline_total_pnl,
+                    baseline_total_invest = excluded.baseline_total_invest,
+                    updated_at = CURRENT_TIMESTAMP
+                ''',
+                (
+                    user_key,
+                    baseline_date,
+                    float(baseline_total_pnl or 0),
+                    float(baseline_total_invest or 0),
+                ),
+            )
+            conn.commit()
+            cursor.execute(
+                '''
+                SELECT user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
+                FROM analysis_baselines
+                WHERE user_id = ?
+                LIMIT 1
+                ''',
+                (user_key,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'user_id': row['user_id'],
+                'baseline_date': row['baseline_date'],
+                'baseline_total_pnl': float(row['baseline_total_pnl'] or 0),
+                'baseline_total_invest': float(row['baseline_total_invest'] or 0),
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+            }
+        except Exception as e:
+            logger.error(f"Failed to upsert analysis baseline: {e}")
+            conn.rollback()
+            return None
+        finally:
+            conn.close()
+
+    def clear_analysis_baseline(self, user_id: str = None) -> bool:
+        """清除分析初始化基线。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            user_key = (user_id or '').strip()
+            cursor.execute(
+                'DELETE FROM analysis_baselines WHERE user_id = ?',
+                (user_key,),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear analysis baseline: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
     # ============================================================
     # 分析数据查询
     # ============================================================

@@ -1,79 +1,179 @@
 {% extends "admin_base.html" %}
 {% set admin_page = 'audit' %}
 
-{% block title %}Admin 审计日志{% endblock %}
+{% block title %}操作审计{% endblock %}
 
 {% block content %}
 <div class="toolbar">
-    <h1 class="title">审计日志</h1>
-    <div class="hint">所有后台写操作应在此可追踪</div>
+    <div>
+        <h1 class="title">操作审计</h1>
+        <div class="hint">记录后台所有写操作，便于追踪操作人、结果与失败原因。</div>
+    </div>
 </div>
 
 <div class="card">
     <div class="controls">
-        <input id="audit_action" placeholder="action（可选）">
-        <input id="audit_admin" placeholder="admin_user_id（可选）">
-        <input id="audit_limit" type="number" value="200" min="1" max="500" style="width:120px;">
-        <button onclick="loadAudit()">查询</button>
+        <input id="audit_action" placeholder="操作类型（可选）" style="min-width:220px;">
+        <input id="audit_admin" placeholder="操作人内部编号（可选）" style="min-width:220px;">
+        <select id="audit_result">
+            <option value="all">全部结果</option>
+            <option value="success">仅成功</option>
+            <option value="failed">仅失败</option>
+        </select>
+        <input id="audit_start" type="datetime-local" title="开始时间">
+        <input id="audit_end" type="datetime-local" title="结束时间">
+        <button onclick="applyAuditFilters()">查询</button>
+        <button class="secondary" onclick="resetAuditFilters()">重置</button>
+        <button class="secondary" onclick="exportAudit()">导出当前筛选（表格文件）</button>
     </div>
+
+    <div class="controls" style="justify-content:flex-end; margin-top:0;">
+        <span class="muted" id="auditMeta">共 0 条</span>
+    </div>
+
     <div style="overflow:auto; max-height: 560px;">
         <table>
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>管理员</th>
-                    <th>动作</th>
-                    <th>目标</th>
-                    <th>请求</th>
-                    <th>结果</th>
-                    <th>错误</th>
                     <th>时间</th>
+                    <th>操作人</th>
+                    <th>操作对象</th>
+                    <th>操作内容</th>
+                    <th>结果</th>
+                    <th>失败原因</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody id="auditRows"></tbody>
         </table>
+    </div>
+
+    <div class="controls" style="justify-content:flex-end; margin-top:10px; margin-bottom:0;">
+        <button class="secondary" id="prevPageBtn" onclick="goPrevPage()">上一页</button>
+        <span class="muted" id="pageMeta">第 1 / 1 页</span>
+        <button class="secondary" id="nextPageBtn" onclick="goNextPage()">下一页</button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const auditState = {
+        page: 1,
+        pageSize: 100,
+        total: 0,
+        totalPages: 1,
+    };
+
+    function resultPill(result) {
+        return String(result || '').toLowerCase() === 'success'
+            ? '<span class="status-pill status-ok">成功</span>'
+            : '<span class="status-pill status-danger">失败</span>';
+    }
+
+    function auditQuery(page = auditState.page) {
+        auditState.page = Math.max(1, Number(page || 1));
+        const action = encodeURIComponent(document.getElementById('audit_action').value.trim());
+        const admin = encodeURIComponent(document.getElementById('audit_admin').value.trim());
+        const result = encodeURIComponent(document.getElementById('audit_result').value.trim());
+        const start = encodeURIComponent(document.getElementById('audit_start').value.trim());
+        const end = encodeURIComponent(document.getElementById('audit_end').value.trim());
+        const offset = (auditState.page - 1) * auditState.pageSize;
+        return `/api/admin/audit/logs?action=${action}&admin_user_id=${admin}&result=${result}&start_time=${start}&end_time=${end}&limit=${auditState.pageSize}&offset=${offset}`;
+    }
+
+    function updatePager(total) {
+        auditState.total = Number(total || 0);
+        auditState.totalPages = Math.max(1, Math.ceil(auditState.total / auditState.pageSize));
+        if (auditState.page > auditState.totalPages) auditState.page = auditState.totalPages;
+        document.getElementById('auditMeta').innerText = `共 ${auditState.total} 条`;
+        document.getElementById('pageMeta').innerText = `第 ${auditState.page} / ${auditState.totalPages} 页`;
+        document.getElementById('prevPageBtn').disabled = auditState.page <= 1;
+        document.getElementById('nextPageBtn').disabled = auditState.page >= auditState.totalPages;
+    }
+
+    function showAuditDetail(rawJson) {
+        const row = JSON.parse(rawJson || '{}');
+        openDetailDrawer('审计详情', [
+            ['时间', fmtDateTime(row.created_at)],
+            ['操作人', row.admin_username || row.admin_user_id || '-'],
+            ['操作内容', getActionLabel(row.action)],
+            ['操作对象', `${row.target_type || '-'} / ${row.target_id || '-'}`],
+            ['执行结果', String(row.result || '').toLowerCase() === 'success' ? '成功' : '失败'],
+            ['失败原因', row.error || '-'],
+        ], {
+            ...row,
+            技术动作码: row.action,
+            请求路径: row.path,
+            请求方法: row.method,
+        });
+    }
+
     function renderAudit(items) {
         const tbody = document.getElementById('auditRows');
         tbody.innerHTML = '';
         if (!items || items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="muted">暂无日志</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无日志数据</td></tr>';
             return;
         }
         for (const row of items) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${row.id || ''}</td>
-                <td>${row.admin_user_id || ''}</td>
-                <td>${row.action || ''}</td>
-                <td>${row.target_type || ''}:${row.target_id || ''}</td>
-                <td>${row.method || ''} ${row.path || ''}<br><span class="muted">${row.status_code || ''}</span></td>
-                <td>${row.result || ''}</td>
-                <td>${row.error || ''}</td>
-                <td>${row.created_at || ''}</td>
+                <td>${fmtDateTime(row.created_at)}</td>
+                <td>${escapeHtml(row.admin_username || row.admin_user_id || '-')}</td>
+                <td>${escapeHtml(`${row.target_type || '-'} / ${row.target_id || '-'}`)}</td>
+                <td>${escapeHtml(getActionLabel(row.action))}</td>
+                <td>${resultPill(row.result)}</td>
+                <td>${escapeHtml(row.error || '-')}</td>
+                <td><button class="secondary" onclick='showAuditDetail(${JSON.stringify(JSON.stringify(row))})'>详情</button></td>
             `;
             tbody.appendChild(tr);
         }
     }
 
-    async function loadAudit() {
-        const action = encodeURIComponent(document.getElementById('audit_action').value.trim());
-        const admin = encodeURIComponent(document.getElementById('audit_admin').value.trim());
-        const limit = Number(document.getElementById('audit_limit').value || '200');
-        const url = `/api/admin/audit/logs?action=${action}&admin_user_id=${admin}&limit=${limit}`;
+    async function loadAudit(page = auditState.page) {
         try {
-            const data = await adminFetch(url);
+            const data = await adminFetch(auditQuery(page));
             renderAudit(data.items || []);
+            updatePager(data.total || 0);
         } catch (e) {
-            showToast(`加载失败: ${e.message}`, true);
+            showToast(`审计日志加载失败：${e.message}`, true);
         }
     }
 
-    loadAudit();
+    function applyAuditFilters() {
+        loadAudit(1);
+    }
+
+    function resetAuditFilters() {
+        document.getElementById('audit_action').value = '';
+        document.getElementById('audit_admin').value = '';
+        document.getElementById('audit_result').value = 'all';
+        document.getElementById('audit_start').value = '';
+        document.getElementById('audit_end').value = '';
+        loadAudit(1);
+    }
+
+    function exportAudit() {
+        const action = encodeURIComponent(document.getElementById('audit_action').value.trim());
+        const admin = encodeURIComponent(document.getElementById('audit_admin').value.trim());
+        const result = encodeURIComponent(document.getElementById('audit_result').value.trim());
+        const start = encodeURIComponent(document.getElementById('audit_start').value.trim());
+        const end = encodeURIComponent(document.getElementById('audit_end').value.trim());
+        const url = `/api/admin/audit/export?action=${action}&admin_user_id=${admin}&result=${result}&start_time=${start}&end_time=${end}`;
+        window.open(url, '_blank');
+    }
+
+    function goPrevPage() {
+        if (auditState.page <= 1) return;
+        loadAudit(auditState.page - 1);
+    }
+
+    function goNextPage() {
+        if (auditState.page >= auditState.totalPages) return;
+        loadAudit(auditState.page + 1);
+    }
+
+    loadAudit(1);
 </script>
 {% endblock %}

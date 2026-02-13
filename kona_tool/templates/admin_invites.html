@@ -1,37 +1,49 @@
 {% extends "admin_base.html" %}
 {% set admin_page = 'invites' %}
 
-{% block title %}Admin 邀请码{% endblock %}
+{% block title %}邀请码中心{% endblock %}
 
 {% block content %}
 <div class="toolbar">
-    <h1 class="title">邀请码管理</h1>
-    <div class="hint">生成、导出、作废邀请码；并支持历史数据归属迁移</div>
-</div>
-
-<div class="grid-3">
-    <div class="card"><div class="muted">总数</div><div class="kpi" id="mTotal">-</div></div>
-    <div class="card"><div class="muted">可用</div><div class="kpi" id="mActive">-</div></div>
-    <div class="card"><div class="muted">已使用/作废</div><div class="kpi" id="mUsedRevoked">-</div></div>
-</div>
-
-<div class="card">
-    <div class="controls">
-        <input id="batchId" placeholder="batch_id（可空自动生成）" style="min-width:240px;" />
-        <input id="inviteCount" type="number" value="1000" min="1" max="10000" style="width:120px;" />
-        <button onclick="generateInvites()">生成邀请码</button>
-        <button class="secondary" onclick="exportInvites()">导出CSV</button>
+    <div>
+        <h1 class="title">邀请码中心</h1>
+        <div class="hint">集中管理邀请码生成、发放追踪、作废与导出。</div>
     </div>
 </div>
 
+<div class="grid-3">
+    <div class="card"><div class="muted">邀请码总量</div><div class="kpi" id="mTotal">-</div></div>
+    <div class="card"><div class="muted">待发放（未使用）</div><div class="kpi" id="mActive">-</div></div>
+    <div class="card"><div class="muted">已使用 / 已作废</div><div class="kpi" id="mUsedRevoked">-</div></div>
+</div>
+
 <div class="card">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">生成邀请码</h3>
+        <div class="hint">支持按批次生成，便于按渠道发放和追踪。</div>
+    </div>
     <div class="controls">
-        <select id="statusFilter">
-            <option value="active">未使用</option>
-            <option value="used">已使用</option>
-            <option value="all">全部</option>
-        </select>
-        <button onclick="applyFilters()">查询</button>
+        <input id="batchId" placeholder="批次名称（留空自动生成）" style="min-width:240px;">
+        <input id="inviteCount" type="number" value="1000" min="1" max="10000" style="width:130px;">
+        <input id="inviteNote" placeholder="用途备注（可选）" style="min-width:240px;">
+        <button onclick="generateInvites()">立即生成</button>
+        <button class="secondary" onclick="exportInvites()">导出当前筛选</button>
+    </div>
+    <div id="generateResult" class="card card-soft" style="display:none; margin-top:8px; margin-bottom:0;"></div>
+</div>
+
+<div class="card">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <div class="chips" id="statusTabs">
+            <button class="chip active" onclick="setStatusFilter('active', this)">未使用</button>
+            <button class="chip" onclick="setStatusFilter('used', this)">已使用</button>
+            <button class="chip" onclick="setStatusFilter('revoked', this)">已作废</button>
+            <button class="chip" onclick="setStatusFilter('all', this)">全部</button>
+        </div>
+        <div class="controls" style="margin-bottom:0;">
+            <input id="batchFilter" placeholder="按批次筛选（可选）" style="min-width:220px;">
+            <button class="secondary" onclick="applyFilters()">查询</button>
+        </div>
     </div>
 
     <div style="overflow:auto;">
@@ -41,197 +53,218 @@
                     <th>邀请码</th>
                     <th>可用性</th>
                     <th>使用用户名</th>
-                    <th>使用用户ID</th>
+                    <th>使用用户编号</th>
                     <th>使用时间</th>
-                    <th>操作（作废）</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody id="inviteRows"></tbody>
         </table>
     </div>
-    <div class="controls" style="justify-content:flex-end; margin-top:10px;">
+
+    <div class="controls" style="justify-content:flex-end; margin-top:10px; margin-bottom:0;">
         <button class="secondary" id="prevPageBtn" onclick="goPrevPage()">上一页</button>
         <span class="muted" id="pageMeta">第 1 / 1 页</span>
         <button class="secondary" id="nextPageBtn" onclick="goNextPage()">下一页</button>
     </div>
-</div>
-
-<div class="card">
-    <div class="toolbar" style="margin-bottom:8px;">
-        <h3 style="margin:0;">历史数据归属迁移</h3>
-        <div class="hint">将现有业务数据统一归属到目标 user_id（一次性操作）</div>
-    </div>
-    <div class="controls">
-        <input id="targetUserId" placeholder="目标 user_id" style="min-width:220px;" />
-        <button class="secondary" onclick="previewRebind()">预览迁移</button>
-        <button class="warn" onclick="executeRebind()">执行迁移</button>
-    </div>
-    <pre id="rebindOutput" class="muted" style="white-space:pre-wrap; background:#f8fafc; border:1px solid #dbe3ee; border-radius:10px; padding:10px;">尚未执行预览</pre>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     const PAGE_SIZE = 20;
-    let currentPage = 1;
-    let totalPages = 1;
+    const invitesState = {
+        status: 'active',
+        page: 1,
+        totalPages: 1,
+        total: 0,
+        lastBatchId: '',
+    };
 
     function statusPill(status) {
-        const normalized = (status || '').toLowerCase();
-        if (normalized === 'active') {
-            return '<span class="status-pill status-active">未使用</span>';
-        }
-        if (normalized === 'used') {
-            return '<span class="status-pill status-disabled">已使用</span>';
-        }
-        return '<span class="status-pill status-disabled">已作废</span>';
+        const key = String(status || '').toLowerCase();
+        const label = getStatusLabel(key);
+        if (key === 'active') return `<span class="status-pill status-ok">${label}</span>`;
+        if (key === 'used') return `<span class="status-pill status-warn">${label}</span>`;
+        return `<span class="status-pill status-danger">${label}</span>`;
     }
 
     function updatePager(total) {
-        totalPages = Math.max(1, Math.ceil((Number(total || 0)) / PAGE_SIZE));
-        if (currentPage > totalPages) currentPage = totalPages;
-        document.getElementById('pageMeta').innerText = `第 ${currentPage} / ${totalPages} 页`;
-        document.getElementById('prevPageBtn').disabled = currentPage <= 1;
-        document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+        invitesState.total = Number(total || 0);
+        invitesState.totalPages = Math.max(1, Math.ceil(invitesState.total / PAGE_SIZE));
+        if (invitesState.page > invitesState.totalPages) invitesState.page = invitesState.totalPages;
+        document.getElementById('pageMeta').innerText = `第 ${invitesState.page} / ${invitesState.totalPages} 页（共 ${invitesState.total} 条）`;
+        document.getElementById('prevPageBtn').disabled = invitesState.page <= 1;
+        document.getElementById('nextPageBtn').disabled = invitesState.page >= invitesState.totalPages;
+    }
+
+    function setStatusFilter(status, el) {
+        invitesState.status = status;
+        invitesState.page = 1;
+        const tabs = document.querySelectorAll('#statusTabs .chip');
+        tabs.forEach((node) => node.classList.remove('active'));
+        el.classList.add('active');
+        loadInvites();
     }
 
     async function generateInvites() {
         const batchId = document.getElementById('batchId').value.trim();
-        const count = parseInt(document.getElementById('inviteCount').value || '1000', 10);
-        if (!confirm(`确认生成 ${count} 个邀请码？`)) return;
+        const note = document.getElementById('inviteNote').value.trim();
+        const count = Number(document.getElementById('inviteCount').value || '1000');
+        if (!count || count < 1 || count > 10000) {
+            showToast('生成数量应在 1-10000 之间', true);
+            return;
+        }
+
+        const confirmed = await confirmAction({
+            title: '生成邀请码',
+            message: `本次将生成 ${count} 个邀请码。\n${batchId ? `批次：${batchId}` : '批次：自动生成'}\n确认继续吗？`,
+            confirmText: '确认生成',
+        });
+        if (!confirmed) return;
+
         try {
             const data = await adminFetch('/api/admin/invites/generate', {
                 method: 'POST',
-                body: JSON.stringify({ batch_id: batchId, count })
+                body: JSON.stringify({ batch_id: batchId, count, note }),
             });
-            showToast(`生成完成: ${data.inserted}/${data.requested}`);
-            if (!batchId && data.batch_id) {
-                document.getElementById('batchId').value = data.batch_id;
-            }
-            applyFilters();
-            loadInviteStats();
+            invitesState.lastBatchId = data.batch_id || '';
+            document.getElementById('batchId').value = data.batch_id || batchId;
+            const safeBatch = String(data.batch_id || '').replace(/'/g, "\\\\'");
+            document.getElementById('generateResult').style.display = 'block';
+            document.getElementById('generateResult').innerHTML = `
+                <div class=\"toolbar\" style=\"margin-bottom:6px;\">
+                    <strong>生成完成</strong>
+                    <span class=\"status-pill status-ok\">成功</span>
+                </div>
+                <div class=\"muted\">批次：${escapeHtml(data.batch_id || '-')}，已生成：${data.inserted || 0} 个。</div>
+                <div class=\"controls\" style=\"margin-top:10px; margin-bottom:0;\">
+                    <button class=\"secondary\" onclick=\"exportBatch('${safeBatch}')\">导出本批次</button>
+                    <button onclick=\"continueGenerate()\">继续生成</button>
+                </div>
+            `;
+            showToast(`邀请码生成完成：${data.inserted || 0} 个`);
+            await loadInviteStats();
+            await applyFilters();
         } catch (e) {
-            showToast(`生成失败: ${e.message}`, true);
+            showToast(`生成失败：${e.message}`, true);
         }
     }
 
-    async function loadInvites(page = 1) {
-        currentPage = Math.max(1, Number(page || 1));
-        const status = encodeURIComponent(document.getElementById('statusFilter').value);
-        const offset = (currentPage - 1) * PAGE_SIZE;
-        const url = `/api/admin/invites?status=${status}&limit=${PAGE_SIZE}&offset=${offset}`;
+    function continueGenerate() {
+        document.getElementById('inviteCount').focus();
+    }
+
+    function exportBatch(batchId) {
+        if (!batchId) {
+            showToast('批次为空，无法导出', true);
+            return;
+        }
+        const safeBatch = encodeURIComponent(batchId);
+        window.open(`/api/admin/invites/export?batch_id=${safeBatch}&status=all`, '_blank');
+    }
+
+    async function revokeInvite(code) {
+        const confirmed = await confirmAction({
+            title: '作废邀请码',
+            message: `邀请码：${code}\n作废后不能恢复，确认继续吗？`,
+            confirmText: '确认作废',
+            danger: true,
+        });
+        if (!confirmed) return;
+
+        try {
+            await adminFetch('/api/admin/invites/revoke', {
+                method: 'POST',
+                body: JSON.stringify({ code }),
+            });
+            showToast(`已作废邀请码：${code}`);
+            await loadInvites(invitesState.page);
+            await loadInviteStats();
+        } catch (e) {
+            showToast(`作废失败：${e.message}`, true);
+        }
+    }
+
+    async function loadInvites(page = invitesState.page) {
+        invitesState.page = Math.max(1, Number(page || 1));
+        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
+        const status = encodeURIComponent(invitesState.status);
+        const offset = (invitesState.page - 1) * PAGE_SIZE;
+        const url = `/api/admin/invites?status=${status}&batch_id=${batch}&limit=${PAGE_SIZE}&offset=${offset}`;
+
         try {
             const data = await adminFetch(url);
             const rows = data.items || [];
             const tbody = document.getElementById('inviteRows');
             tbody.innerHTML = '';
-            if (rows.length === 0) {
+            if (!rows.length) {
                 tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无数据</td></tr>';
                 updatePager(data.total || 0);
                 return;
             }
-            for (const r of rows) {
+
+            for (const item of rows) {
+                const status = String(item.status || '').toLowerCase();
+                let actionHtml = '<span class="muted">-</span>';
+                if (status === 'active') {
+                    actionHtml = `<button class="warn" onclick="revokeInvite('${item.code}')">作废</button>`;
+                } else if (status === 'used') {
+                    actionHtml = '<span class="muted">不可作废（已使用）</span>';
+                } else {
+                    actionHtml = '<span class="muted">不可作废（已作废）</span>';
+                }
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${r.code || ''}</td>
-                    <td>${statusPill(r.status || '')}</td>
-                    <td>${r.used_by_username || ''}</td>
-                    <td>${r.used_by_user_id || ''}</td>
-                    <td>${r.used_at || ''}</td>
-                    <td>${
-                        r.status === 'active'
-                            ? `<button class="warn" onclick="revokeInvite('${r.code}')">作废</button>`
-                            : `<span class="muted">${r.status === 'used' ? '已使用' : '已作废'}</span>`
-                    }</td>
+                    <td>${escapeHtml(item.code || '-')}</td>
+                    <td>${statusPill(item.status)}</td>
+                    <td>${escapeHtml(item.used_by_username || '-')}</td>
+                    <td>${escapeHtml(item.used_by_user_number || '-')}</td>
+                    <td>${fmtDateTime(item.used_at)}</td>
+                    <td>${actionHtml}</td>
                 `;
                 tbody.appendChild(tr);
             }
             updatePager(data.total || 0);
-            loadInviteStats();
         } catch (e) {
-            showToast(`加载失败: ${e.message}`, true);
+            showToast(`加载失败：${e.message}`, true);
         }
     }
 
     async function loadInviteStats() {
+        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
         try {
-            const data = await adminFetch('/api/admin/invites/stats');
+            const data = await adminFetch(`/api/admin/invites/stats?batch_id=${batch}`);
             document.getElementById('mTotal').innerText = data.total ?? 0;
             document.getElementById('mActive').innerText = data.active ?? 0;
             const used = Number(data.used || 0);
             const revoked = Number(data.revoked || 0);
-            document.getElementById('mUsedRevoked').innerText = `${used}/${revoked}`;
+            document.getElementById('mUsedRevoked').innerText = `${used} / ${revoked}`;
         } catch (e) {
-            showToast(`统计加载失败: ${e.message}`, true);
-        }
-    }
-
-    async function revokeInvite(code) {
-        if (!confirm(`确认作废邀请码 ${code}？`)) return;
-        try {
-            await adminFetch('/api/admin/invites/revoke', {
-                method: 'POST',
-                body: JSON.stringify({ code })
-            });
-            showToast('已作废');
-            await loadInvites(currentPage);
-            loadInviteStats();
-        } catch (e) {
-            showToast(`作废失败: ${e.message}`, true);
+            showToast(`统计加载失败：${e.message}`, true);
         }
     }
 
     function exportInvites() {
-        const status = encodeURIComponent(document.getElementById('statusFilter').value);
-        window.open(`/api/admin/invites/export?status=${status}`, '_blank');
+        const status = encodeURIComponent(invitesState.status);
+        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
+        window.open(`/api/admin/invites/export?status=${status}&batch_id=${batch}`, '_blank');
     }
 
-    function applyFilters() {
-        loadInvites(1);
+    async function applyFilters() {
+        invitesState.page = 1;
+        await loadInvites(1);
+        await loadInviteStats();
     }
 
     function goPrevPage() {
-        if (currentPage <= 1) return;
-        loadInvites(currentPage - 1);
+        if (invitesState.page <= 1) return;
+        loadInvites(invitesState.page - 1);
     }
 
     function goNextPage() {
-        if (currentPage >= totalPages) return;
-        loadInvites(currentPage + 1);
-    }
-
-    async function previewRebind() {
-        const target = document.getElementById('targetUserId').value.trim();
-        if (!target) {
-            showToast('请输入目标 user_id', true);
-            return;
-        }
-        try {
-            const data = await adminFetch(`/api/admin/data/rebind/preview?target_user_id=${encodeURIComponent(target)}`);
-            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
-            showToast('预览完成');
-        } catch (e) {
-            showToast(`预览失败: ${e.message}`, true);
-        }
-    }
-
-    async function executeRebind() {
-        const target = document.getElementById('targetUserId').value.trim();
-        if (!target) {
-            showToast('请输入目标 user_id', true);
-            return;
-        }
-        if (!confirm('确认执行数据归属迁移？此操作会写入数据库。')) return;
-        try {
-            const data = await adminFetch('/api/admin/data/rebind/execute', {
-                method: 'POST',
-                body: JSON.stringify({ target_user_id: target })
-            });
-            document.getElementById('rebindOutput').textContent = JSON.stringify(data, null, 2);
-            showToast('迁移执行完成');
-        } catch (e) {
-            showToast(`迁移失败: ${e.message}`, true);
-        }
+        if (invitesState.page >= invitesState.totalPages) return;
+        loadInvites(invitesState.page + 1);
     }
 
     loadInvites(1);
