@@ -242,6 +242,97 @@ class ApiBaselineTests(unittest.TestCase):
         conn.close()
         self.assertEqual(remaining, 0)
 
+    def test_buy_with_cash_and_undo_restores_cash_and_portfolio(self):
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '银行卡',
+            'amount': 20000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        self.assertTrue(len(cash_assets) > 0)
+        cash_id = cash_assets[-1]['id']
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': 'sh600000',
+            'name': '浦发银行',
+            'price': 10.0,
+            'qty': 100.0,
+            'cash_asset_id': cash_id,
+            'request_id': 'req-buy-with-cash-1',
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+        buy_payload = buy_resp.get_json()
+        self.assertEqual(buy_payload.get('status'), 'ok')
+        undo_token = buy_payload.get('undo_token')
+        self.assertTrue(isinstance(undo_token, str) and len(undo_token) > 0)
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        target = next((item for item in portfolio_items if item.get('code') == 'sh600000'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('qty', 0)), 100.0)
+
+        cash_list_resp_after_buy = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp_after_buy.status_code, 200)
+        cash_after_buy = cash_list_resp_after_buy.get_json() or []
+        buy_cash_item = next((item for item in cash_after_buy if item.get('id') == cash_id), None)
+        self.assertIsNotNone(buy_cash_item)
+        self.assertAlmostEqual(float(buy_cash_item.get('amount', 0)), 19000.0)
+
+        undo_resp = self.client.post('/api/portfolio/undo', json={
+            'undo_token': undo_token,
+        })
+        self.assertEqual(undo_resp.status_code, 200)
+        undo_payload = undo_resp.get_json()
+        self.assertEqual(undo_payload.get('status'), 'ok')
+        self.assertEqual(undo_payload.get('code'), 'UNDO_DONE')
+
+        portfolio_resp_after_undo = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp_after_undo.status_code, 200)
+        portfolio_after_undo = portfolio_resp_after_undo.get_json() or []
+        self.assertFalse(any(item.get('code') == 'sh600000' for item in portfolio_after_undo))
+
+        cash_list_resp_after_undo = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp_after_undo.status_code, 200)
+        cash_after_undo = cash_list_resp_after_undo.get_json() or []
+        undo_cash_item = next((item for item in cash_after_undo if item.get('id') == cash_id), None)
+        self.assertIsNotNone(undo_cash_item)
+        self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 20000.0)
+
+    def test_buy_with_cash_insufficient_balance_returns_400(self):
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '微信',
+            'amount': 100.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': 'sh600000',
+            'name': '浦发银行',
+            'price': 20.0,
+            'qty': 10.0,
+            'cash_asset_id': cash_id,
+        })
+        self.assertEqual(buy_resp.status_code, 400)
+        payload = buy_resp.get_json()
+        self.assertEqual(payload.get('code'), 'INSUFFICIENT_CASH')
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        self.assertFalse(any(item.get('code') == 'sh600000' for item in portfolio_items))
+
 
 if __name__ == '__main__':
     unittest.main()

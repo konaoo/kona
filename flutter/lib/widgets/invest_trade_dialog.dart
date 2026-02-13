@@ -37,6 +37,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
   String _tradeMode = 'buy';
+  int? _selectedCashAssetId;
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
@@ -47,6 +48,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   @override
   void initState() {
     super.initState();
+    _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
       if (_isTrade) {
@@ -54,6 +56,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         _adjustController.clear();
       }
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncDefaultCashAsset();
   }
 
   @override
@@ -165,6 +173,33 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return text.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
+  void _syncDefaultCashAsset() {
+    final appState = context.read<AppState>();
+    final cashOptions = appState.cashAssets
+        .where((asset) => (asset.id ?? 0) > 0)
+        .toList();
+    if (cashOptions.isEmpty) {
+      _selectedCashAssetId = null;
+      return;
+    }
+    final selected = _selectedCashAssetId;
+    final exists = selected != null && cashOptions.any((asset) => asset.id == selected);
+    if (!exists) {
+      _selectedCashAssetId = cashOptions.first.id;
+    }
+  }
+
+  String _currentActionMode() {
+    if (_isTrade) return _tradeMode;
+    if (_isBuy) return 'buy';
+    if (_isSell) return 'sell';
+    return 'buy';
+  }
+
+  bool _requiresCashSource(String mode) {
+    return _isAdd || mode == 'buy';
+  }
+
   void _prefillPriceFromCurrent() {
     final item = widget.item;
     if (item == null) return;
@@ -193,6 +228,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_saving) return;
     final appState = context.read<AppState>();
     final toastContext = widget.hostContext ?? context;
+    final mode = _currentActionMode();
 
     double? price;
     double? qty;
@@ -203,6 +239,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
 
     late final Future<AssetActionResult> actionFuture;
+    final needsCashSource = _requiresCashSource(mode);
+    if (needsCashSource && (_selectedCashAssetId == null || _selectedCashAssetId! <= 0)) {
+      setState(() {
+        _saving = false;
+        _errorText = '请选择资金来源账户';
+      });
+      return;
+    }
     if (_isAdd) {
       final priceStr = _priceController.text.trim();
       final qtyStr = _qtyController.text.trim();
@@ -226,11 +270,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       final name = _selected?['name'] ?? '';
       final curr = _selected?['currency'];
       final assetType = _selected?['asset_type'];
-      actionFuture = appState.addInvestment(
+      actionFuture = appState.buyInvestmentWithCash(
         code: code,
         name: name,
         price: price,
         qty: qty,
+        cashAssetId: _selectedCashAssetId!,
         curr: curr,
         assetType: assetType,
         awaitRefresh: false,
@@ -244,7 +289,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         });
         return;
       }
-      final mode = _isTrade ? _tradeMode : (_isBuy ? 'buy' : 'sell');
       if (mode == 'adjust') {
         final adjustStr = _adjustController.text.trim();
         final adjustVal = double.tryParse(adjustStr);
@@ -276,10 +320,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
-        actionFuture = appState.buyInvestment(
+        actionFuture = appState.buyInvestmentWithCash(
           code: code,
+          name: widget.item?.name ?? code,
           price: price,
           qty: qty,
+          cashAssetId: _selectedCashAssetId!,
+          curr: widget.item?.curr,
+          assetType: widget.item?.assetType,
           awaitRefresh: false,
         );
       } else {
@@ -312,6 +360,27 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (!toastContext.mounted) return;
       if (!result.ok) {
         TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
+        return;
+      }
+      final undoToken = result.data?['undo_token']?.toString();
+      if (undoToken != null && undoToken.isNotEmpty) {
+        TopToast.showAction(
+          toastContext,
+          message: '已保存',
+          actionLabel: '撤销',
+          onAction: () {
+            unawaited(() async {
+              final undoResult = await appState.undoInvestmentOperation(undoToken);
+              if (!toastContext.mounted) return;
+              if (undoResult.ok) {
+                TopToast.showInfo(toastContext, '已撤销');
+              } else {
+                TopToast.showError(toastContext, undoResult.message ?? '撤销失败');
+              }
+            }());
+          },
+          duration: const Duration(seconds: 15),
+        );
       }
     }());
   }
@@ -535,6 +604,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final cashOptions = appState.cashAssets
+        .where((asset) => (asset.id ?? 0) > 0)
+        .toList();
+    final actionMode = _currentActionMode();
+    if (_selectedCashAssetId != null &&
+        cashOptions.every((asset) => asset.id != _selectedCashAssetId)) {
+      _selectedCashAssetId = null;
+    }
+    if (_selectedCashAssetId == null && cashOptions.isNotEmpty) {
+      _selectedCashAssetId = cashOptions.first.id;
+    }
+    final needsCashSource = _requiresCashSource(actionMode);
+
     final title = _isAdd
         ? '添加投资资产'
         : _isTrade
@@ -547,7 +630,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         : (_isTrade && _tradeMode == 'adjust'
               ? AppTheme.accent
               : AppTheme.danger);
-    final canSave = !_saving && (!_isAdd || _selected != null);
+    final canSave =
+        !_saving &&
+        (!_isAdd || _selected != null) &&
+        (!needsCashSource || _selectedCashAssetId != null);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -687,6 +773,36 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 ],
                 _buildTradeToggle(),
                 if (_isTrade) const SizedBox(height: Spacing.lg),
+                if (needsCashSource) ...[
+                  DropdownButtonFormField<int>(
+                    value: _selectedCashAssetId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: '资金来源账户'),
+                    items: cashOptions.map((asset) {
+                      return DropdownMenuItem<int>(
+                        value: asset.id,
+                        child: Text(
+                          '${asset.name} · ${asset.curr} ${_formatInputNumber(asset.amount)}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: _saving || cashOptions.isEmpty
+                        ? null
+                        : (value) => setState(() => _selectedCashAssetId = value),
+                  ),
+                  if (cashOptions.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '请先添加现金资产账户',
+                      style: TextStyle(
+                        color: AppTheme.danger,
+                        fontSize: FontSize.sm,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: Spacing.lg),
+                ],
                 if (_isTrade && _isAdjust) ...[
                   TextField(
                     controller: _adjustController,

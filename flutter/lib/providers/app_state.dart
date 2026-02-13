@@ -1345,6 +1345,58 @@ class AppState extends ChangeNotifier {
     return _portfolio.length != before;
   }
 
+  bool _optimisticAdjustCashAssetAmount({
+    required int cashAssetId,
+    required double deltaAmount,
+  }) {
+    bool updated = false;
+    _cashAssets = _cashAssets.map((asset) {
+      if (asset.id != cashAssetId) return asset;
+      final nextAmount = asset.amount + deltaAmount;
+      if (nextAmount < -1e-6) {
+        return asset;
+      }
+      updated = true;
+      return Asset(
+        id: asset.id,
+        name: asset.name,
+        amount: nextAmount < 0 ? 0 : nextAmount,
+        curr: asset.curr,
+      );
+    }).toList();
+    return updated;
+  }
+
+  double _convertAmountByCurrency({
+    required double amount,
+    required String fromCurr,
+    required String toCurr,
+  }) {
+    final fromRate = _rateForCurrency(fromCurr);
+    final toRate = _rateForCurrency(toCurr);
+    if (toRate <= 0) return amount * fromRate;
+    return amount * fromRate / toRate;
+  }
+
+  AssetActionResult _extractUndoInfo(AssetActionResult result) {
+    if (!result.ok) return result;
+    final data = result.data;
+    if (data == null) return result;
+    final token = data['undo_token']?.toString();
+    final expire = data['undo_expire_at']?.toString();
+    if (token == null || token.isEmpty || expire == null || expire.isEmpty) {
+      return result;
+    }
+    return AssetActionResult(
+      ok: true,
+      data: {
+        ...data,
+        'undo_token': token,
+        'undo_expire_at': expire,
+      },
+    );
+  }
+
   /// 搜索股票/基金
   Future<List<dynamic>> searchStocks(String query) async {
     return await _api.searchStocks(query);
@@ -1390,7 +1442,98 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(refreshHomeData());
     }
-    return const AssetActionResult.success();
+    return result;
+  }
+
+  /// 从指定现金账户买入（同一事务扣现金 + 加仓）
+  Future<AssetActionResult> buyInvestmentWithCash({
+    required String code,
+    required String name,
+    required double price,
+    required double qty,
+    required int cashAssetId,
+    String? curr,
+    String? assetType,
+    bool awaitRefresh = true,
+  }) async {
+    if (price <= 0 || qty <= 0) {
+      return const AssetActionResult.failure('请输入有效价格和数量');
+    }
+    if (cashAssetId <= 0) {
+      return const AssetActionResult.failure('请选择资金来源账户');
+    }
+
+    final cashIndex = _cashAssets.indexWhere((asset) => asset.id == cashAssetId);
+    if (cashIndex < 0) {
+      return const AssetActionResult.failure('未找到资金来源账户');
+    }
+    final cashAsset = _cashAssets[cashIndex];
+    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
+    final investAmount = price * qty;
+    final cashDeductAmount = _convertAmountByCurrency(
+      amount: investAmount,
+      fromCurr: normalizedCurr,
+      toCurr: cashAsset.curr,
+    );
+    if (cashDeductAmount <= 0) {
+      return const AssetActionResult.failure('扣款金额计算失败');
+    }
+    if (cashAsset.amount + 1e-6 < cashDeductAmount) {
+      return AssetActionResult.failure(
+        '账户余额不足：${cashAsset.name}',
+        data: {
+          'available': cashAsset.amount,
+          'required': cashDeductAmount,
+          'cash_curr': cashAsset.curr,
+        },
+      );
+    }
+
+    final assetSnapshot = _captureAssetSnapshot();
+    final portfolioSnapshot = _capturePortfolioSnapshot();
+    final hadHolding = _portfolioIndexByCode(code) >= 0;
+    final portfolioChanged = hadHolding
+        ? _optimisticBuyInvestment(code: code, price: price, qty: qty)
+        : _optimisticAddInvestment(
+            code: code,
+            name: name,
+            price: price,
+            qty: qty,
+            curr: normalizedCurr,
+            assetType: assetType,
+          );
+    final cashChanged = _optimisticAdjustCashAssetAmount(
+      cashAssetId: cashAssetId,
+      deltaAmount: -cashDeductAmount,
+    );
+    if (!portfolioChanged || !cashChanged) {
+      _restoreAssetSnapshot(assetSnapshot);
+      _restorePortfolioSnapshot(portfolioSnapshot);
+      return const AssetActionResult.failure('买入失败，请稍后重试');
+    }
+    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _recalculatePortfolioTotals();
+
+    final result = await _api.buyPortfolioAssetWithCash(
+      code,
+      name,
+      price,
+      qty,
+      cashAssetId: cashAssetId,
+      curr: normalizedCurr,
+      assetType: assetType,
+    );
+    if (!result.ok) {
+      _restoreAssetSnapshot(assetSnapshot);
+      _restorePortfolioSnapshot(portfolioSnapshot);
+      return result;
+    }
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
+    return _extractUndoInfo(result);
   }
 
   /// 买入（加仓）
@@ -1422,7 +1565,7 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(refreshHomeData());
     }
-    return const AssetActionResult.success();
+    return _extractUndoInfo(result);
   }
 
   /// 卖出（减仓）
@@ -1456,7 +1599,7 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(refreshHomeData());
     }
-    return const AssetActionResult.success();
+    return _extractUndoInfo(result);
   }
 
   /// 手动调整（数量/成本/调整）
@@ -1495,7 +1638,20 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(refreshHomeData());
     }
-    return const AssetActionResult.success();
+    return _extractUndoInfo(result);
+  }
+
+  /// 撤销投资写操作（买入/卖出/调整）
+  Future<AssetActionResult> undoInvestmentOperation(String undoToken) async {
+    if (undoToken.trim().isEmpty) {
+      return const AssetActionResult.failure('撤销凭证无效');
+    }
+    final result = await _api.undoPortfolioOperation(undoToken.trim());
+    if (!result.ok) {
+      return result;
+    }
+    unawaited(refreshHomeData());
+    return result;
   }
 
   /// 删除投资资产

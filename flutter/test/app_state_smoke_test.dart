@@ -45,6 +45,16 @@ void main() {
         awaitRefresh: false,
       );
       expect(deleteResult.ok, isFalse);
+
+      final buyWithCashResult = await state.buyInvestmentWithCash(
+        code: 'sh600000',
+        name: '浦发银行',
+        price: 10,
+        qty: 1,
+        cashAssetId: 1,
+        awaitRefresh: false,
+      );
+      expect(buyWithCashResult.ok, isFalse);
     },
   );
 

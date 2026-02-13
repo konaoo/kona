@@ -71,6 +71,9 @@ _SNAPSHOT_MIN_INTERVAL_SECONDS = 3.0
 _idempotency_lock = threading.Lock()
 _idempotency_records = {}
 _IDEMPOTENCY_WINDOW_SECONDS = 20.0
+_undo_lock = threading.Lock()
+_undo_records = {}
+_UNDO_WINDOW_SECONDS = 15.0
 
 
 def _client_ip() -> str:
@@ -127,6 +130,87 @@ def _idempotency_finish(action: str, user_id: str, request_id: str, status_code:
 def _idempotent_response(action: str, user_id: str, request_id: str, payload: dict, status_code: int = 200):
     _idempotency_finish(action, user_id, request_id, status_code, payload)
     return jsonify(payload), status_code
+
+
+def _undo_key(user_id: str, token: str):
+    return (user_id or '', token)
+
+
+def _cleanup_undo_records_locked(now_ts: float):
+    expired = [k for k, v in _undo_records.items() if v.get('expires_at', 0) < now_ts]
+    for k in expired:
+        _undo_records.pop(k, None)
+
+
+def _create_undo_record(user_id: str, operation: dict):
+    token = secrets.token_urlsafe(18)
+    expires_at_ts = time.time() + _UNDO_WINDOW_SECONDS
+    key = _undo_key(user_id, token)
+    with _undo_lock:
+        _cleanup_undo_records_locked(time.time())
+        _undo_records[key] = {
+            'operation': operation,
+            'expires_at': expires_at_ts,
+            'used': False,
+        }
+    expires_at_iso = datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).isoformat()
+    return token, expires_at_iso
+
+
+def _claim_undo_record(user_id: str, token: str):
+    token = (token or '').strip()
+    if not token:
+        return None, ('UNDO_TOKEN_REQUIRED', 'Missing undo token', 400)
+    now = time.time()
+    key = _undo_key(user_id, token)
+    with _undo_lock:
+        _cleanup_undo_records_locked(now)
+        record = _undo_records.get(key)
+        if not record:
+            return None, ('UNDO_TOKEN_EXPIRED', 'Undo token is invalid or expired', 400)
+        if record.get('used'):
+            return None, ('UNDO_ALREADY_USED', 'Undo token already used', 409)
+        record['used'] = True
+        return record.get('operation'), None
+
+
+def _release_undo_claim(user_id: str, token: str):
+    key = _undo_key(user_id, token)
+    with _undo_lock:
+        record = _undo_records.get(key)
+        if record:
+            record['used'] = False
+
+
+def _decorate_with_undo(payload: dict, user_id: str, operation: dict):
+    undo_token, undo_expire_at = _create_undo_record(user_id, operation)
+    result = dict(payload)
+    result['undo_token'] = undo_token
+    result['undo_expire_at'] = undo_expire_at
+    return result
+
+
+def _to_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _rate_to_cny(curr: str, rates: dict) -> float:
+    c = (curr or 'CNY').upper()
+    if c == 'CNY':
+        return 1.0
+    raw = rates.get(c) if isinstance(rates, dict) else None
+    rate = _to_float(raw, 0.0)
+    return rate if rate > 0 else 1.0
+
+
+def _convert_amount(amount: float, from_curr: str, to_curr: str, rates: dict) -> float:
+    from_rate = _rate_to_cny(from_curr, rates)
+    to_rate = _rate_to_cny(to_curr, rates)
+    cny_amount = amount * from_rate
+    return cny_amount / to_rate if to_rate > 0 else cny_amount
 
 
 def _username_limit_key() -> str:
@@ -688,20 +772,35 @@ def modify_asset():
         qty = float(data['qty'])
         price = float(data['price'])
         adjustment = float(data['adjustment'])
-        
-        success = db.modify_asset(data['code'], qty, price, adjustment, user_id)
-        
-        if success:
+        detail = db.modify_asset(
+            data['code'],
+            qty,
+            price,
+            adjustment,
+            user_id,
+            return_detail=True,
+        )
+        if detail and detail.get('ok'):
+            operation = {
+                'op_type': 'modify',
+                'code': data['code'],
+                'before_asset': detail.get('before_asset'),
+                'tx_id': None,
+            }
+            payload = _decorate_with_undo({"status": "ok"}, user_id, operation)
             _save_snapshot_for_user_async(user_id)
-            return _idempotent_response('portfolio_modify', user_id, request_id, {"status": "ok"})
-        else:
-            return _idempotent_response(
-                'portfolio_modify',
-                user_id,
-                request_id,
-                {"error": "Asset not found", "code": "ASSET_NOT_FOUND"},
-                404,
-            )
+            return _idempotent_response('portfolio_modify', user_id, request_id, payload)
+
+        error_code = (detail or {}).get('code', 'ASSET_NOT_FOUND')
+        error_message = (detail or {}).get('error', 'Asset not found')
+        status_code = 404 if error_code == 'ASSET_NOT_FOUND' else 500
+        return _idempotent_response(
+            'portfolio_modify',
+            user_id,
+            request_id,
+            {"error": error_message, "code": error_code},
+            status_code,
+        )
     except ValueError:
         return _idempotent_response(
             'portfolio_modify',
@@ -851,19 +950,29 @@ def buy_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
-        success = db.buy_asset(data['code'], price, qty, user_id)
-        
-        if success:
+        detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True)
+
+        if detail and detail.get('ok'):
+            operation = {
+                'op_type': 'buy',
+                'code': data['code'],
+                'before_asset': detail.get('before_asset'),
+                'tx_id': detail.get('tx_id'),
+            }
+            payload = _decorate_with_undo({"status": "ok"}, user_id, operation)
             _save_snapshot_for_user_async(user_id)
-            return _idempotent_response('portfolio_buy', user_id, request_id, {"status": "ok"})
-        else:
-            return _idempotent_response(
-                'portfolio_buy',
-                user_id,
-                request_id,
-                {"error": "Failed to buy asset", "code": "ASSET_BUY_FAILED"},
-                500,
-            )
+            return _idempotent_response('portfolio_buy', user_id, request_id, payload)
+
+        error_code = (detail or {}).get('code', 'ASSET_BUY_FAILED')
+        error_message = (detail or {}).get('error', 'Failed to buy asset')
+        status_code = 404 if error_code == 'ASSET_NOT_FOUND' else 500
+        return _idempotent_response(
+            'portfolio_buy',
+            user_id,
+            request_id,
+            {"error": error_message, "code": error_code},
+            status_code,
+        )
     except ValueError:
         return _idempotent_response(
             'portfolio_buy',
@@ -872,6 +981,135 @@ def buy_asset():
             {"error": "Invalid value", "code": "INVALID_VALUE"},
             400,
         )
+
+
+@app.route('/api/portfolio/buy_with_cash', methods=['POST'])
+@optional_auth
+def buy_asset_with_cash():
+    """从指定现金账户买入（同一事务扣现金+加持仓）"""
+    data = request.json
+    user_id = g.user_id
+    request_id = str((data or {}).get('request_id', '')).strip()
+
+    required = ('code', 'price', 'qty', 'cash_asset_id')
+    if not data or any(field not in data for field in required):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    dedup_hit, dedup_payload, dedup_status = _idempotency_begin('portfolio_buy_with_cash', user_id, request_id)
+    if dedup_hit:
+        return jsonify(dedup_payload), dedup_status
+
+    try:
+        price = float(data['price'])
+        qty = float(data['qty'])
+        cash_asset_id = int(data['cash_asset_id'])
+    except (TypeError, ValueError):
+        return _idempotent_response(
+            'portfolio_buy_with_cash',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
+
+    if price <= 0 or qty <= 0:
+        return _idempotent_response(
+            'portfolio_buy_with_cash',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
+
+    parsed = parse_code(data['code'], data.get('curr', ''))
+    code = parsed['code']
+    curr = parsed['curr']
+    name = data.get('name', code)
+    provided_type = str(data.get('asset_type', '') or '').strip()
+    inferred_type = infer_asset_type(code, name)
+    asset_type = inferred_type if (provided_type == 'us' and inferred_type == 'fund') else (provided_type or inferred_type)
+
+    cash_asset = db.get_cash_asset_by_id(cash_asset_id, user_id)
+    if not cash_asset:
+        return _idempotent_response(
+            'portfolio_buy_with_cash',
+            user_id,
+            request_id,
+            {"error": "Cash account not found", "code": "CASH_ASSET_NOT_FOUND"},
+            404,
+        )
+
+    invest_amount = price * qty
+    cash_curr = cash_asset.get('curr', 'CNY')
+    if str(curr).upper() == str(cash_curr).upper():
+        cash_deduct_amount = invest_amount
+    else:
+        rates = get_forex_rates()
+        cash_deduct_amount = _convert_amount(invest_amount, curr, cash_curr, rates)
+    if cash_deduct_amount <= 0:
+        return _idempotent_response(
+            'portfolio_buy_with_cash',
+            user_id,
+            request_id,
+            {"error": "Invalid cash deduction amount", "code": "INVALID_CASH_AMOUNT"},
+            400,
+        )
+
+    detail = db.buy_asset_with_cash(
+        code=code,
+        name=name,
+        price=price,
+        qty=qty,
+        curr=curr,
+        asset_type=asset_type,
+        cash_asset_id=cash_asset_id,
+        cash_deduct_amount=cash_deduct_amount,
+        user_id=user_id,
+    )
+    if detail and detail.get('ok'):
+        operation = {
+            'op_type': 'buy_with_cash',
+            'code': code,
+            'before_asset': detail.get('before_asset'),
+            'tx_id': detail.get('tx_id'),
+            'cash_asset_id': detail.get('cash_asset_id'),
+            'cash_before_amount': detail.get('cash_before_amount'),
+        }
+        payload = _decorate_with_undo(
+            {
+                "status": "ok",
+                "cash_deducted": detail.get('cash_deduct_amount'),
+                "cash_curr": detail.get('cash_curr'),
+            },
+            user_id,
+            operation,
+        )
+        _save_snapshot_for_user_async(user_id)
+        return _idempotent_response('portfolio_buy_with_cash', user_id, request_id, payload)
+
+    error_code = (detail or {}).get('code', 'ASSET_BUY_WITH_CASH_FAILED')
+    error_message = (detail or {}).get('error', 'Failed to buy asset with cash')
+    status_code = 500
+    if error_code in ('INVALID_VALUE', 'INVALID_CASH_AMOUNT'):
+        status_code = 400
+    elif error_code == 'INSUFFICIENT_CASH':
+        status_code = 400
+    elif error_code == 'CASH_ASSET_NOT_FOUND':
+        status_code = 404
+    payload = {"error": error_message, "code": error_code}
+    if detail and 'available' in detail:
+        payload['available'] = detail.get('available')
+    if detail and 'required' in detail:
+        payload['required'] = detail.get('required')
+    if detail and 'cash_curr' in detail:
+        payload['cash_curr'] = detail.get('cash_curr')
+    return _idempotent_response(
+        'portfolio_buy_with_cash',
+        user_id,
+        request_id,
+        payload,
+        status_code,
+    )
 
 
 @app.route('/api/portfolio/sell', methods=['POST'])
@@ -892,19 +1130,34 @@ def sell_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
-        success = db.sell_asset(data['code'], price, qty, user_id)
-        
-        if success:
+        detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True)
+
+        if detail and detail.get('ok'):
+            operation = {
+                'op_type': 'sell',
+                'code': data['code'],
+                'before_asset': detail.get('before_asset'),
+                'tx_id': detail.get('tx_id'),
+            }
+            payload = _decorate_with_undo({"status": "ok"}, user_id, operation)
             _save_snapshot_for_user_async(user_id)
-            return _idempotent_response('portfolio_sell', user_id, request_id, {"status": "ok"})
+            return _idempotent_response('portfolio_sell', user_id, request_id, payload)
+
+        error_code = (detail or {}).get('code', 'ASSET_SELL_FAILED')
+        error_message = (detail or {}).get('error', 'Failed to sell asset')
+        if error_code in ('OVERSELL', 'INVALID_VALUE'):
+            status_code = 400
+        elif error_code == 'ASSET_NOT_FOUND':
+            status_code = 404
         else:
-            return _idempotent_response(
-                'portfolio_sell',
-                user_id,
-                request_id,
-                {"error": "Failed to sell asset", "code": "ASSET_SELL_FAILED"},
-                500,
-            )
+            status_code = 500
+        return _idempotent_response(
+            'portfolio_sell',
+            user_id,
+            request_id,
+            {"error": error_message, "code": error_code},
+            status_code,
+        )
     except ValueError:
         return _idempotent_response(
             'portfolio_sell',
@@ -913,6 +1166,30 @@ def sell_asset():
             {"error": "Invalid value", "code": "INVALID_VALUE"},
             400,
         )
+
+
+@app.route('/api/portfolio/undo', methods=['POST'])
+@optional_auth
+def undo_portfolio_operation():
+    """撤销最近投资操作（限时）"""
+    data = request.json
+    user_id = g.user_id
+    undo_token = str((data or {}).get('undo_token', '')).strip()
+    operation, error_info = _claim_undo_record(user_id, undo_token)
+    if error_info:
+        code, message, status_code = error_info
+        return jsonify({"error": message, "code": code}), status_code
+
+    result = db.undo_invest_operation(operation, user_id)
+    if result and result.get('ok'):
+        _save_snapshot_for_user_async(user_id)
+        return jsonify({"status": "ok", "code": "UNDO_DONE"})
+
+    _release_undo_claim(user_id, undo_token)
+    return jsonify({
+        "error": (result or {}).get('error', 'Failed to undo operation'),
+        "code": (result or {}).get('code', 'UNDO_FAILED'),
+    }), 500
 
 
 @app.route('/api/transactions', methods=['GET'])

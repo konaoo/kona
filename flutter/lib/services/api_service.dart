@@ -166,10 +166,10 @@ class ApiService {
     final data = _toMap(response);
     if (data.isEmpty) return const AssetActionResult.success();
     final status = data['status']?.toString().trim();
-    if (status == 'ok') return const AssetActionResult.success();
+    if (status == 'ok') return AssetActionResult(ok: true, data: data);
     final error = data['error']?.toString().trim();
     final message = (error != null && error.isNotEmpty) ? error : '操作失败，请稍后重试';
-    return AssetActionResult.failure(message);
+    return AssetActionResult.failure(message, data: data);
   }
 
   // ============================================================
@@ -336,6 +336,34 @@ class ApiService {
     }
   }
 
+  /// 指定现金账户买入（扣现金 + 加仓）
+  Future<AssetActionResult> buyPortfolioAssetWithCash(
+    String code,
+    String name,
+    double price,
+    double qty, {
+    required int cashAssetId,
+    String? curr,
+    String? assetType,
+    String? requestId,
+  }) async {
+    try {
+      final response = await _post(ApiConfig.portfolioBuyWithCash, {
+        'code': code,
+        'name': name,
+        'price': price,
+        'qty': qty,
+        'cash_asset_id': cashAssetId,
+        if (curr != null && curr.isNotEmpty) 'curr': curr,
+        if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
+        'request_id': requestId ?? _newRequestId(),
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
   /// 卖出（减仓）
   Future<AssetActionResult> sellPortfolioAsset(
     String code,
@@ -403,6 +431,20 @@ class ApiService {
       final response = await _post(ApiConfig.portfolioDeleteCorrective, {
         'code': code,
         'request_id': requestId ?? _newRequestId(),
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 撤销投资写操作
+  Future<AssetActionResult> undoPortfolioOperation(
+    String undoToken,
+  ) async {
+    try {
+      final response = await _post(ApiConfig.portfolioUndo, {
+        'undo_token': undoToken,
       });
       return _okResultOrFailure(response);
     } catch (e) {

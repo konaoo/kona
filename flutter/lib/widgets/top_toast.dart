@@ -35,11 +35,34 @@ class TopToast {
     );
   }
 
+  static void showAction(
+    BuildContext context, {
+    required String message,
+    required String actionLabel,
+    required VoidCallback onAction,
+    TopToastType type = TopToastType.info,
+    Duration duration = const Duration(seconds: 15),
+  }) {
+    _show(
+      context,
+      message: message,
+      type: type,
+      duration: duration,
+      actionLabel: actionLabel,
+      onAction: () {
+        _removeCurrent();
+        onAction();
+      },
+    );
+  }
+
   static void _show(
     BuildContext context, {
     required String message,
     required TopToastType type,
     required Duration duration,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     _timer?.cancel();
     _removeCurrent();
@@ -72,7 +95,13 @@ class TopToast {
           right: 16,
           child: Material(
             color: Colors.transparent,
-            child: _ToastCard(message: message, icon: icon, bgColor: bgColor),
+            child: _ToastCard(
+              message: message,
+              icon: icon,
+              bgColor: bgColor,
+              actionLabel: actionLabel,
+              onAction: onAction,
+            ),
           ),
         );
       },
@@ -94,11 +123,15 @@ class _ToastCard extends StatelessWidget {
   final String message;
   final IconData icon;
   final Color bgColor;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   const _ToastCard({
     required this.message,
     required this.icon,
     required this.bgColor,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
@@ -132,6 +165,24 @@ class _ToastCard extends StatelessWidget {
               ),
             ),
           ),
+          if (actionLabel != null && actionLabel!.isNotEmpty && onAction != null)
+            TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                actionLabel!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
         ],
       ),
     );

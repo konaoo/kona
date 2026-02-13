@@ -1390,33 +1390,100 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def modify_asset(self, code: str, qty: float, price: float, adjustment: float, user_id: str = None) -> bool:
+    def modify_asset(
+        self,
+        code: str,
+        qty: float,
+        price: float,
+        adjustment: float,
+        user_id: str = None,
+        return_detail: bool = False,
+    ):
         """修正资产数据（数量、成本、调整值）"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         try:
             if user_id:
-                cursor.execute('''
-                    UPDATE portfolio 
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    ''',
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (code,),
+                )
+            old_row = cursor.fetchone()
+            if not old_row:
+                if return_detail:
+                    return {'ok': False, 'code': 'ASSET_NOT_FOUND', 'error': 'Asset not found'}
+                return False
+
+            before_asset = {
+                'code': code,
+                'name': old_row['name'],
+                'qty': float(old_row['qty']),
+                'price': float(old_row['price']),
+                'curr': old_row['curr'],
+                'adjustment': float(old_row['adjustment']),
+                'asset_type': old_row['asset_type'] if 'asset_type' in old_row.keys() else 'a',
+            }
+
+            if user_id:
+                cursor.execute(
+                    '''
+                    UPDATE portfolio
                     SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE code = ? AND user_id = ?
-                ''', (qty, price, adjustment, code, user_id))
+                    ''',
+                    (qty, price, adjustment, code, user_id),
+                )
             else:
-                cursor.execute('''
-                    UPDATE portfolio 
+                cursor.execute(
+                    '''
+                    UPDATE portfolio
                     SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE code = ? AND (user_id IS NULL OR user_id = '')
-                ''', (qty, price, adjustment, code))
-            
-            if cursor.rowcount > 0:
-                conn.commit()
-                logger.info(f"Asset modified: {code}, qty={qty}, price={price}, adj={adjustment}")
-                return True
-            return False
+                    ''',
+                    (qty, price, adjustment, code),
+                )
+
+            if cursor.rowcount <= 0:
+                if return_detail:
+                    return {'ok': False, 'code': 'ASSET_NOT_FOUND', 'error': 'Asset not found'}
+                return False
+
+            conn.commit()
+            logger.info(f"Asset modified: {code}, qty={qty}, price={price}, adj={adjustment}")
+            if return_detail:
+                return {
+                    'ok': True,
+                    'before_asset': before_asset,
+                    'after_asset': {
+                        'code': code,
+                        'name': before_asset['name'],
+                        'qty': float(qty),
+                        'price': float(price),
+                        'curr': before_asset['curr'],
+                        'adjustment': float(adjustment),
+                        'asset_type': before_asset['asset_type'],
+                    },
+                }
+            return True
         except Exception as e:
             logger.error(f"Failed to modify asset: {e}")
             conn.rollback()
+            if return_detail:
+                return {'ok': False, 'code': 'ASSET_MODIFY_FAILED', 'error': 'Failed to modify asset'}
             return False
         finally:
             conn.close()
@@ -1562,133 +1629,605 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def buy_asset(self, code: str, price: float, qty: float, user_id: str = None) -> bool:
+    def buy_asset(
+        self,
+        code: str,
+        price: float,
+        qty: float,
+        user_id: str = None,
+        return_detail: bool = False,
+    ):
         """加仓"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         try:
-            # 获取当前持仓
             if user_id:
-                cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    ''',
+                    (code, user_id),
+                )
             else:
-                cursor.execute('SELECT name, qty, price, curr FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (code,),
+                )
             row = cursor.fetchone()
-            
+
             if not row:
-                conn.close()
+                if return_detail:
+                    return {'ok': False, 'code': 'ASSET_NOT_FOUND', 'error': 'Asset not found'}
                 return False
-            
-            name, old_qty, old_price, curr = row
-            
-            # 计算加权平均成本
+
+            name = row['name']
+            old_qty = float(row['qty'])
+            old_price = float(row['price'])
+            old_adjustment = float(row['adjustment'])
+            curr = row['curr']
+            asset_type = row['asset_type'] if 'asset_type' in row.keys() else 'a'
+
+            before_asset = {
+                'code': code,
+                'name': name,
+                'qty': old_qty,
+                'price': old_price,
+                'curr': curr,
+                'adjustment': old_adjustment,
+                'asset_type': asset_type,
+            }
+
             new_qty = old_qty + qty
             new_price = (old_qty * old_price + qty * price) / new_qty if new_qty > 0 else 0
-            
-            # 更新持仓
+
             if user_id:
-                cursor.execute('''
+                cursor.execute(
+                    '''
                     UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE code = ? AND user_id = ?
-                ''', (new_qty, new_price, code, user_id))
+                    ''',
+                    (new_qty, new_price, code, user_id),
+                )
             else:
-                cursor.execute('''
+                cursor.execute(
+                    '''
                     UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE code = ? AND (user_id IS NULL OR user_id = '')
-                ''', (new_qty, new_price, code))
-            
-            # 记录交易
-            cursor.execute('''
+                    ''',
+                    (new_qty, new_price, code),
+                )
+
+            cursor.execute(
+                '''
                 INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
                 VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?)
-            ''', (
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                code,
-                name,
-                price,
-                qty,
-                price * qty,
-                user_id
-            ))
-            
+                ''',
+                (
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    code,
+                    name,
+                    price,
+                    qty,
+                    price * qty,
+                    user_id,
+                ),
+            )
+            tx_id = int(cursor.lastrowid or 0)
+
             conn.commit()
             logger.info(f"Buy: {code}, qty={qty}, price={price}")
+            if return_detail:
+                return {
+                    'ok': True,
+                    'tx_id': tx_id,
+                    'before_asset': before_asset,
+                    'after_asset': {
+                        'code': code,
+                        'name': name,
+                        'qty': float(new_qty),
+                        'price': float(new_price),
+                        'curr': curr,
+                        'adjustment': old_adjustment,
+                        'asset_type': asset_type,
+                    },
+                }
             return True
         except Exception as e:
             logger.error(f"Failed to buy asset: {e}")
             conn.rollback()
+            if return_detail:
+                return {'ok': False, 'code': 'ASSET_BUY_FAILED', 'error': 'Failed to buy asset'}
             return False
         finally:
             conn.close()
     
-    def sell_asset(self, code: str, price: float, qty: float, user_id: str = None) -> bool:
+    def sell_asset(
+        self,
+        code: str,
+        price: float,
+        qty: float,
+        user_id: str = None,
+        return_detail: bool = False,
+    ):
         """减仓"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         try:
-            # 获取当前持仓
             if user_id:
-                cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    ''',
+                    (code, user_id),
+                )
             else:
-                cursor.execute('SELECT name, qty, price, curr, adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (code,),
+                )
             row = cursor.fetchone()
-            
+
             if not row:
-                conn.close()
+                if return_detail:
+                    return {'ok': False, 'code': 'ASSET_NOT_FOUND', 'error': 'Asset not found'}
                 return False
-            
-            name, old_qty, old_price, curr, old_adj = row
-            
-            if qty > old_qty:
-                conn.close()
+
+            name = row['name']
+            old_qty = float(row['qty'])
+            old_price = float(row['price'])
+            curr = row['curr']
+            old_adj = float(row['adjustment'])
+            asset_type = row['asset_type'] if 'asset_type' in row.keys() else 'a'
+
+            if qty > old_qty + 1e-6:
                 logger.warning(f"Oversell: {code}")
+                if return_detail:
+                    return {'ok': False, 'code': 'OVERSELL', 'error': 'Sell quantity exceeds holding'}
                 return False
-            
-            # 计算实现盈亏
+
+            before_asset = {
+                'code': code,
+                'name': name,
+                'qty': old_qty,
+                'price': old_price,
+                'curr': curr,
+                'adjustment': old_adj,
+                'asset_type': asset_type,
+            }
+
             pnl = (price - old_price) * qty
-            
-            # 更新持仓或删除
             new_qty = old_qty - qty
             if new_qty < 0.001:
                 if user_id:
                     cursor.execute('DELETE FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
                 else:
-                    cursor.execute('DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = "")', (code,))
+                    cursor.execute(
+                        "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                        (code,),
+                    )
+                after_asset = None
             else:
                 if user_id:
-                    cursor.execute('''
+                    cursor.execute(
+                        '''
                         UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
                         WHERE code = ? AND user_id = ?
-                    ''', (new_qty, pnl, code, user_id))
+                        ''',
+                        (new_qty, pnl, code, user_id),
+                    )
                 else:
-                    cursor.execute('''
+                    cursor.execute(
+                        '''
                         UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
-                    ''', (new_qty, pnl, code))
-            
-            # 记录交易
-            cursor.execute('''
+                        ''',
+                        (new_qty, pnl, code),
+                    )
+                after_asset = {
+                    'code': code,
+                    'name': name,
+                    'qty': float(new_qty),
+                    'price': old_price,
+                    'curr': curr,
+                    'adjustment': old_adj + pnl,
+                    'asset_type': asset_type,
+                }
+
+            cursor.execute(
+                '''
                 INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
                 VALUES (?, ?, ?, '减仓', ?, ?, ?, ?, ?)
-            ''', (
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                code,
-                name,
-                price,
-                qty,
-                price * qty,
-                pnl,
-                user_id
-            ))
-            
+                ''',
+                (
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    code,
+                    name,
+                    price,
+                    qty,
+                    price * qty,
+                    pnl,
+                    user_id,
+                ),
+            )
+            tx_id = int(cursor.lastrowid or 0)
+
             conn.commit()
             logger.info(f"Sell: {code}, qty={qty}, price={price}, pnl={pnl}")
+            if return_detail:
+                return {
+                    'ok': True,
+                    'tx_id': tx_id,
+                    'before_asset': before_asset,
+                    'after_asset': after_asset,
+                }
             return True
         except Exception as e:
             logger.error(f"Failed to sell asset: {e}")
             conn.rollback()
+            if return_detail:
+                return {'ok': False, 'code': 'ASSET_SELL_FAILED', 'error': 'Failed to sell asset'}
             return False
+        finally:
+            conn.close()
+
+    def buy_asset_with_cash(
+        self,
+        code: str,
+        name: str,
+        price: float,
+        qty: float,
+        curr: str,
+        asset_type: str,
+        cash_asset_id: int,
+        cash_deduct_amount: float,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
+        """使用现金账户买入（扣现金 + 增持仓，同一事务）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            if qty <= 0 or price <= 0:
+                return {'ok': False, 'code': 'INVALID_VALUE', 'error': 'Invalid value'}
+            if cash_deduct_amount <= 0:
+                return {'ok': False, 'code': 'INVALID_CASH_AMOUNT', 'error': 'Invalid cash deduction amount'}
+
+            if user_id:
+                cursor.execute(
+                    '''
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND user_id = ?
+                    ''',
+                    (cash_asset_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (cash_asset_id,),
+                )
+            cash_row = cursor.fetchone()
+            if not cash_row:
+                return {'ok': False, 'code': 'CASH_ASSET_NOT_FOUND', 'error': 'Cash account not found'}
+
+            cash_before = float(cash_row['amount'])
+            if cash_before + 1e-9 < cash_deduct_amount:
+                return {
+                    'ok': False,
+                    'code': 'INSUFFICIENT_CASH',
+                    'error': 'Insufficient cash balance',
+                    'available': cash_before,
+                    'required': float(cash_deduct_amount),
+                    'cash_curr': cash_row['curr'],
+                }
+            cash_after = cash_before - cash_deduct_amount
+
+            if user_id:
+                cursor.execute(
+                    '''
+                    UPDATE cash_assets
+                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                    ''',
+                    (cash_after, cash_asset_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    UPDATE cash_assets
+                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (cash_after, cash_asset_id),
+                )
+            if cursor.rowcount <= 0:
+                return {'ok': False, 'code': 'CASH_ASSET_UPDATE_FAILED', 'error': 'Failed to update cash asset'}
+
+            if user_id:
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    ''',
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (code,),
+                )
+            row = cursor.fetchone()
+
+            before_asset = None
+            if row:
+                old_name = row['name']
+                old_qty = float(row['qty'])
+                old_price = float(row['price'])
+                old_adjustment = float(row['adjustment'])
+                old_curr = row['curr']
+                old_asset_type = row['asset_type'] if 'asset_type' in row.keys() else 'a'
+                before_asset = {
+                    'code': code,
+                    'name': old_name,
+                    'qty': old_qty,
+                    'price': old_price,
+                    'curr': old_curr,
+                    'adjustment': old_adjustment,
+                    'asset_type': old_asset_type,
+                }
+
+                new_qty = old_qty + qty
+                new_price = (old_qty * old_price + qty * price) / new_qty if new_qty > 0 else 0
+                if user_id:
+                    cursor.execute(
+                        '''
+                        UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND user_id = ?
+                        ''',
+                        (new_qty, new_price, code, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        '''
+                        UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        ''',
+                        (new_qty, new_price, code),
+                    )
+                after_asset = {
+                    'code': code,
+                    'name': old_name,
+                    'qty': float(new_qty),
+                    'price': float(new_price),
+                    'curr': old_curr,
+                    'adjustment': old_adjustment,
+                    'asset_type': old_asset_type,
+                }
+                tx_name = old_name
+            else:
+                tx_name = (name or code).strip() or code
+                next_asset_type = (asset_type or 'a').strip() or 'a'
+                next_curr = (curr or 'CNY').strip() or 'CNY'
+                if user_id:
+                    cursor.execute(
+                        '''
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
+                        ''',
+                        (code, tx_name, qty, price, next_curr, next_asset_type, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        '''
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
+                        ''',
+                        (code, tx_name, qty, price, next_curr, next_asset_type),
+                    )
+                after_asset = {
+                    'code': code,
+                    'name': tx_name,
+                    'qty': float(qty),
+                    'price': float(price),
+                    'curr': next_curr,
+                    'adjustment': 0.0,
+                    'asset_type': next_asset_type,
+                }
+
+            cursor.execute(
+                '''
+                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
+                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?)
+                ''',
+                (
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    code,
+                    tx_name,
+                    price,
+                    qty,
+                    price * qty,
+                    user_id,
+                ),
+            )
+            tx_id = int(cursor.lastrowid or 0)
+
+            conn.commit()
+            return {
+                'ok': True,
+                'tx_id': tx_id,
+                'before_asset': before_asset,
+                'after_asset': after_asset,
+                'cash_asset_id': int(cash_asset_id),
+                'cash_curr': cash_row['curr'],
+                'cash_before_amount': cash_before,
+                'cash_after_amount': cash_after,
+                'cash_deduct_amount': float(cash_deduct_amount),
+            }
+        except Exception as e:
+            logger.error(f"Failed to buy asset with cash: {e}")
+            conn.rollback()
+            return {'ok': False, 'code': 'ASSET_BUY_WITH_CASH_FAILED', 'error': 'Failed to buy asset with cash'}
+        finally:
+            conn.close()
+
+    def undo_invest_operation(self, operation: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
+        """撤销投资写操作（买入/卖出/调整）"""
+        if not isinstance(operation, dict):
+            return {'ok': False, 'code': 'INVALID_OPERATION', 'error': 'Invalid undo operation'}
+
+        code = str(operation.get('code') or '').strip()
+        if not code:
+            return {'ok': False, 'code': 'INVALID_OPERATION', 'error': 'Missing code in undo operation'}
+
+        before_asset = operation.get('before_asset')
+        tx_id = operation.get('tx_id')
+        cash_asset_id = operation.get('cash_asset_id')
+        cash_before_amount = operation.get('cash_before_amount')
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if before_asset is None:
+                if user_id:
+                    cursor.execute('DELETE FROM portfolio WHERE code = ? AND user_id = ?', (code, user_id))
+                else:
+                    cursor.execute(
+                        "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                        (code,),
+                    )
+            else:
+                name = str(before_asset.get('name') or code)
+                qty = float(before_asset.get('qty') or 0.0)
+                price = float(before_asset.get('price') or 0.0)
+                curr = str(before_asset.get('curr') or 'CNY')
+                adjustment = float(before_asset.get('adjustment') or 0.0)
+                asset_type = str(before_asset.get('asset_type') or 'a')
+
+                if user_id:
+                    cursor.execute(
+                        '''
+                        SELECT id FROM portfolio WHERE code = ? AND user_id = ?
+                        ''',
+                        (code, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        '''
+                        SELECT id FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        ''',
+                        (code,),
+                    )
+                existing = cursor.fetchone()
+                if existing:
+                    if user_id:
+                        cursor.execute(
+                            '''
+                            UPDATE portfolio
+                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE code = ? AND user_id = ?
+                            ''',
+                            (name, qty, price, curr, adjustment, asset_type, code, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            '''
+                            UPDATE portfolio
+                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                            ''',
+                            (name, qty, price, curr, adjustment, asset_type, code),
+                        )
+                else:
+                    if user_id:
+                        cursor.execute(
+                            '''
+                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            ''',
+                            (code, name, qty, price, curr, adjustment, asset_type, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            '''
+                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            ''',
+                            (code, name, qty, price, curr, adjustment, asset_type),
+                        )
+
+            if tx_id is not None:
+                try:
+                    tx_id_int = int(tx_id)
+                except (TypeError, ValueError):
+                    tx_id_int = 0
+                if tx_id_int > 0:
+                    if user_id:
+                        cursor.execute(
+                            'DELETE FROM transactions WHERE id = ? AND user_id = ?',
+                            (tx_id_int, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            "DELETE FROM transactions WHERE id = ? AND (user_id IS NULL OR user_id = '')",
+                            (tx_id_int,),
+                        )
+
+            if cash_asset_id is not None and cash_before_amount is not None:
+                try:
+                    cash_asset_id_int = int(cash_asset_id)
+                    cash_before = float(cash_before_amount)
+                except (TypeError, ValueError):
+                    return {'ok': False, 'code': 'INVALID_CASH_RESTORE', 'error': 'Invalid cash restore payload'}
+                if user_id:
+                    cursor.execute(
+                        '''
+                        UPDATE cash_assets
+                        SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                        ''',
+                        (cash_before, cash_asset_id_int, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        '''
+                        UPDATE cash_assets
+                        SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                        ''',
+                        (cash_before, cash_asset_id_int),
+                    )
+                if cursor.rowcount <= 0:
+                    return {'ok': False, 'code': 'CASH_ASSET_NOT_FOUND', 'error': 'Cash account not found'}
+
+            conn.commit()
+            return {'ok': True}
+        except Exception as e:
+            logger.error(f"Failed to undo invest operation: {e}")
+            conn.rollback()
+            return {'ok': False, 'code': 'UNDO_FAILED', 'error': 'Failed to undo operation'}
         finally:
             conn.close()
     
@@ -1791,6 +2330,43 @@ class DatabaseManager:
         
         conn.close()
         return data
+
+    def get_cash_asset_by_id(self, asset_id: int, user_id: str = None) -> Optional[Dict[str, Any]]:
+        """按 ID 获取现金资产"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if user_id:
+                cursor.execute(
+                    '''
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND user_id = ?
+                    LIMIT 1
+                    ''',
+                    (asset_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    LIMIT 1
+                    ''',
+                    (asset_id,),
+                )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'id': int(row['id']),
+                'name': row['name'],
+                'amount': float(row['amount']),
+                'curr': row['curr'],
+            }
+        finally:
+            conn.close()
     
     def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
         """添加现金资产"""

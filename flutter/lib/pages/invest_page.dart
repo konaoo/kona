@@ -475,7 +475,8 @@ class InvestPageState extends State<InvestPage> {
           context: context,
           barrierDismissible: false,
           barrierColor: Colors.black.withOpacity(0.5),
-          builder: (_) => InvestTradeDialog(mode: 'trade', item: item),
+          builder: (_) =>
+              InvestTradeDialog(mode: 'trade', item: item, hostContext: context),
         ),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
