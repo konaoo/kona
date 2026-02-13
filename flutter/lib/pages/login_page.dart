@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -176,333 +178,413 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _errorMessage = '无法打开邀请码获取链接');
   }
 
+  SystemUiOverlayStyle _overlayStyle(bool isDark) {
+    if (isDark) {
+      return const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Colors.transparent,
+      );
+    }
+    return const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    );
+  }
+
+  Widget _buildLogoHeader(bool isDark) {
+    final mark = SvgPicture.asset(
+      'assets/images/login_logo_mark.svg',
+      key: const Key('login_logo_mark'),
+      width: 70,
+      height: 70,
+    );
+
+    if (isDark) {
+      return Container(
+        key: const Key('login_logo_shell'),
+        width: 108,
+        height: 108,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.16)),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0x220B2452), Color(0x1108162F)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.accent.withValues(alpha: 0.18),
+              blurRadius: 26,
+              spreadRadius: -6,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: mark,
+      );
+    }
+
+    return Container(
+      key: const Key('login_logo_shell'),
+      width: 104,
+      height: 104,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.85)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accent.withValues(alpha: 0.12),
+            blurRadius: 18,
+            spreadRadius: -3,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: mark,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final showBiometric = !_isRegister && appState.biometricEnabled;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
-    return Scaffold(
-      backgroundColor: AppTheme.bgPrimary,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? const [
-                    Color(0xFF0A0E1A),
-                    Color(0xFF131B2D),
-                    Color(0xFF1B2740),
-                  ]
-                : [AppTheme.bgPrimary, AppTheme.bgElevated, AppTheme.bgPrimary],
-          ),
-        ),
-        child: SafeArea(
-          minimum: const EdgeInsets.only(top: 8),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
-            child: Column(
-              children: [
-                const SizedBox(height: 72),
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgCard.withValues(
-                      alpha: isDark ? 0.95 : 0.98,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppTheme.border.withValues(
-                        alpha: isDark ? 0.7 : 1,
-                      ),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isDark
-                            ? Colors.black.withValues(alpha: 0.25)
-                            : AppTheme.accent.withValues(alpha: 0.12),
-                        blurRadius: isDark ? 20 : 14,
-                        spreadRadius: -2,
-                        offset: const Offset(0, 8),
-                      ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _overlayStyle(isDark),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBody: true,
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.34, 0.76, 1.0],
+              colors: isDark
+                  ? const [
+                      Color(0xFF08122D),
+                      Color(0xFF0C1D45),
+                      Color(0xFF102650),
+                      Color(0xFF0A1635),
+                    ]
+                  : [
+                      AppTheme.bgPrimary,
+                      AppTheme.bgElevated.withValues(alpha: 0.92),
+                      AppTheme.bgPrimary,
+                      AppTheme.bgPrimary,
                     ],
+            ),
+          ),
+          child: SafeArea(
+            top: true,
+            bottom: false,
+            minimum: const EdgeInsets.only(top: 8),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    Spacing.xl,
+                    0,
+                    Spacing.xl,
+                    24 + bottomInset,
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      isDark
-                          ? 'assets/images/login_logo_dark.png'
-                          : 'assets/images/login_logo_light.png',
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      errorBuilder: (_, _, _) => Icon(
-                        Icons.lock_person,
-                        size: 50,
-                        color: AppTheme.accent,
-                      ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
-                  ),
-                ),
-                const SizedBox(height: Spacing.lg),
-                Text(
-                  '咔咔记账',
-                  style: TextStyle(
-                    fontSize: FontSize.title,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: Spacing.sm),
-                Text(
-                  _isRegister ? '创建账号' : '账号密码登录',
-                  style: TextStyle(
-                    fontSize: FontSize.lg,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: Spacing.xl),
-
-                TextField(
-                  controller: _usernameController,
-                  keyboardType: TextInputType.text,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(labelText: '用户名'),
-                  onChanged: (_) => _handleFieldChanged(),
-                ),
-
-                const SizedBox(height: Spacing.md),
-
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(labelText: '密码'),
-                  onChanged: (_) => _handleFieldChanged(),
-                ),
-
-                if (_isRegister) ...[
-                  const SizedBox(height: Spacing.md),
-                  TextField(
-                    controller: _confirmController,
-                    obscureText: true,
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(labelText: '确认密码'),
-                    onChanged: (_) => _handleFieldChanged(),
-                  ),
-                  const SizedBox(height: Spacing.md),
-                  TextField(
-                    controller: _inviteController,
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: InputDecoration(
-                      labelText: '邀请码',
-                      hintText: '请输入邀请码',
-                      suffixIcon: IconButton(
-                        onPressed: _submitting ? null : _checkInviteCode,
-                        icon: Icon(
-                          _inviteValid == null
-                              ? Icons.help_outline
-                              : (_inviteValid!
-                                    ? Icons.check_circle
-                                    : Icons.error),
-                          color: _inviteValid == null
-                              ? AppTheme.textSecondary
-                              : (_inviteValid!
-                                    ? AppTheme.success
-                                    : AppTheme.danger),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 72),
+                        _buildLogoHeader(isDark),
+                        const SizedBox(height: Spacing.lg),
+                        Text(
+                          '咔咔记账',
+                          style: TextStyle(
+                            fontSize: FontSize.title,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
+                          ),
                         ),
-                      ),
-                    ),
-                    onChanged: (_) {
-                      _handleFieldChanged();
-                      _checkInviteCode();
-                    },
-                  ),
-                  const SizedBox(height: Spacing.sm),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: _submitting ? null : _openInviteAcquireLink,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: EdgeInsets.zero,
-                        foregroundColor: AppTheme.accentLight,
-                      ),
-                      child: Text(
-                        '没有邀请码，点我获取',
-                        style: TextStyle(
-                          fontSize: FontSize.base,
-                          color: AppTheme.accentLight,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppTheme.accentLight,
-                          fontWeight: FontWeight.w600,
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          _isRegister ? '创建账号' : '账号密码登录',
+                          style: TextStyle(
+                            fontSize: FontSize.lg,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ],
+                        const SizedBox(height: Spacing.xl),
 
-                if (_errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Spacing.sm),
-                    child: Text(
-                      _errorMessage!,
-                      style: TextStyle(color: AppTheme.danger),
-                    ),
-                  ),
+                        TextField(
+                          controller: _usernameController,
+                          keyboardType: TextInputType.text,
+                          style: TextStyle(color: AppTheme.textPrimary),
+                          decoration: const InputDecoration(labelText: '用户名'),
+                          onChanged: (_) => _handleFieldChanged(),
+                        ),
 
-                const SizedBox(height: Spacing.xl),
+                        const SizedBox(height: Spacing.md),
 
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _submit,
-                    child: _submitting
-                        ? SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.textPrimary,
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          style: TextStyle(color: AppTheme.textPrimary),
+                          decoration: const InputDecoration(labelText: '密码'),
+                          onChanged: (_) => _handleFieldChanged(),
+                        ),
+
+                        if (_isRegister) ...[
+                          const SizedBox(height: Spacing.md),
+                          TextField(
+                            controller: _confirmController,
+                            obscureText: true,
+                            style: TextStyle(color: AppTheme.textPrimary),
+                            decoration: const InputDecoration(
+                              labelText: '确认密码',
                             ),
-                          )
-                        : Text(
-                            _isRegister ? '注册并登录' : '登录',
-                            style: TextStyle(fontSize: FontSize.lg),
+                            onChanged: (_) => _handleFieldChanged(),
                           ),
-                  ),
-                ),
-
-                if (showBiometric) ...[
-                  const SizedBox(height: Spacing.md),
-                  Center(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: _submitting ? null : _tryBiometricLogin,
-                        child: Ink(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: Spacing.xl,
-                            vertical: Spacing.md,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: AppTheme.accent.withValues(alpha: 0.45),
-                            ),
-                            gradient: LinearGradient(
-                              colors: [
-                                AppTheme.bgCard.withValues(
-                                  alpha: isDark ? 0.95 : 0.98,
+                          const SizedBox(height: Spacing.md),
+                          TextField(
+                            controller: _inviteController,
+                            style: TextStyle(color: AppTheme.textPrimary),
+                            decoration: InputDecoration(
+                              labelText: '邀请码',
+                              hintText: '请输入邀请码',
+                              suffixIcon: IconButton(
+                                onPressed: _submitting
+                                    ? null
+                                    : _checkInviteCode,
+                                icon: Icon(
+                                  _inviteValid == null
+                                      ? Icons.help_outline
+                                      : (_inviteValid!
+                                            ? Icons.check_circle
+                                            : Icons.error),
+                                  color: _inviteValid == null
+                                      ? AppTheme.textSecondary
+                                      : (_inviteValid!
+                                            ? AppTheme.success
+                                            : AppTheme.danger),
                                 ),
-                                AppTheme.bgElevated.withValues(
-                                  alpha: isDark ? 0.88 : 0.94,
-                                ),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.accent.withValues(
-                                  alpha: isDark ? 0.12 : 0.2,
-                                ),
-                                blurRadius: 16,
-                                spreadRadius: -2,
-                                offset: const Offset(0, 6),
                               ),
-                            ],
+                            ),
+                            onChanged: (_) {
+                              _handleFieldChanged();
+                              _checkInviteCode();
+                            },
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.fingerprint_rounded,
-                                size: 24,
-                                color: AppTheme.accentLight,
+                          const SizedBox(height: Spacing.sm),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: _submitting
+                                  ? null
+                                  : _openInviteAcquireLink,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 0),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: EdgeInsets.zero,
+                                foregroundColor: AppTheme.accentLight,
                               ),
-                              const SizedBox(height: Spacing.xs),
-                              Text(
-                                '生物识别登录',
+                              child: Text(
+                                '没有邀请码，点我获取',
                                 style: TextStyle(
                                   fontSize: FontSize.base,
-                                  color: AppTheme.textSecondary,
+                                  color: AppTheme.accentLight,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppTheme.accentLight,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ],
+                            ),
+                          ),
+                        ],
+
+                        if (_errorMessage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: Spacing.sm),
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(color: AppTheme.danger),
+                            ),
+                          ),
+
+                        const SizedBox(height: Spacing.xl),
+
+                        SizedBox(
+                          key: const Key('login_primary_action'),
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _submitting ? null : _submit,
+                            child: _submitting
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  )
+                                : Text(
+                                    _isRegister ? '注册并登录' : '登录',
+                                    style: TextStyle(fontSize: FontSize.lg),
+                                  ),
                           ),
                         ),
-                      ),
+
+                        if (showBiometric) ...[
+                          const SizedBox(height: Spacing.md),
+                          Center(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(18),
+                                onTap: _submitting ? null : _tryBiometricLogin,
+                                child: Ink(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: Spacing.xl,
+                                    vertical: Spacing.md,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: AppTheme.accent.withValues(
+                                        alpha: 0.45,
+                                      ),
+                                    ),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        AppTheme.bgCard.withValues(
+                                          alpha: isDark ? 0.95 : 0.98,
+                                        ),
+                                        AppTheme.bgElevated.withValues(
+                                          alpha: isDark ? 0.88 : 0.94,
+                                        ),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.accent.withValues(
+                                          alpha: isDark ? 0.12 : 0.2,
+                                        ),
+                                        blurRadius: 16,
+                                        spreadRadius: -2,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.fingerprint_rounded,
+                                        size: 24,
+                                        color: AppTheme.accentLight,
+                                      ),
+                                      const SizedBox(height: Spacing.xs),
+                                      Text(
+                                        '生物识别登录',
+                                        style: TextStyle(
+                                          fontSize: FontSize.base,
+                                          color: AppTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 48),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Divider(color: AppTheme.border, height: 1),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Spacing.sm,
+                              ),
+                              child: Icon(
+                                Icons.diamond_outlined,
+                                size: 14,
+                                color: AppTheme.textTertiary,
+                              ),
+                            ),
+                            Expanded(
+                              child: Divider(color: AppTheme.border, height: 1),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: Spacing.sm),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _isRegister ? '已有账号？' : '还没有账号？',
+                              style: TextStyle(
+                                fontSize: FontSize.base,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                            TextButton(
+                              key: const Key('register_switch_action'),
+                              onPressed: _submitting
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _isRegister = !_isRegister;
+                                        _errorMessage = null;
+                                        _inviteValid = null;
+                                      });
+                                      context.read<AppState>().clearAuthError();
+                                    },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: Spacing.sm,
+                                ),
+                                minimumSize: const Size(0, 0),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                _isRegister ? '返回登录' : '立即注册',
+                                style: TextStyle(
+                                  fontSize: FontSize.base,
+                                  color: AppTheme.accentLight,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppTheme.accentLight,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: Spacing.lg),
+                      ],
                     ),
                   ),
-                ],
-
-                const SizedBox(height: 48),
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: AppTheme.border, height: 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: Spacing.sm,
-                      ),
-                      child: Icon(
-                        Icons.diamond_outlined,
-                        size: 14,
-                        color: AppTheme.textTertiary,
-                      ),
-                    ),
-                    Expanded(child: Divider(color: AppTheme.border, height: 1)),
-                  ],
-                ),
-                const SizedBox(height: Spacing.sm),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _isRegister ? '已有账号？' : '还没有账号？',
-                      style: TextStyle(
-                        fontSize: FontSize.base,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _submitting
-                          ? null
-                          : () {
-                              setState(() {
-                                _isRegister = !_isRegister;
-                                _errorMessage = null;
-                                _inviteValid = null;
-                              });
-                              context.read<AppState>().clearAuthError();
-                            },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: Spacing.sm,
-                        ),
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        _isRegister ? '返回登录' : '立即注册',
-                        style: TextStyle(
-                          fontSize: FontSize.base,
-                          color: AppTheme.accentLight,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppTheme.accentLight,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: Spacing.lg),
-              ],
+                );
+              },
             ),
           ),
         ),

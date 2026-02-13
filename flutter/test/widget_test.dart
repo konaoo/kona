@@ -18,11 +18,7 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
-        child: MaterialApp(
-          home: LoginPage(
-            onLoginSuccess: () {},
-          ),
-        ),
+        child: MaterialApp(home: LoginPage(onLoginSuccess: () {})),
       ),
     );
 
@@ -32,9 +28,14 @@ void main() {
     expect(find.text('咔咔记账'), findsOneWidget);
     expect(find.text('用户名'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
+    expect(find.byKey(const Key('login_logo_shell')), findsOneWidget);
+    expect(find.byKey(const Key('login_primary_action')), findsOneWidget);
+    expect(find.byKey(const Key('register_switch_action')), findsOneWidget);
   });
 
-  testWidgets('Add asset dialog is not dismissible by tapping barrier', (WidgetTester tester) async {
+  testWidgets('Add asset dialog is not dismissible by tapping barrier', (
+    WidgetTester tester,
+  ) async {
     final appState = AppState(tokenLoader: () async => null);
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
