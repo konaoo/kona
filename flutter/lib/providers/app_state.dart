@@ -135,6 +135,28 @@ class AppState extends ChangeNotifier {
     return amount * _rateForCurrency(curr);
   }
 
+  /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。
+  String normalizeInvestmentCurrency({required String code, String? curr}) {
+    final raw = code.trim();
+    final lower = raw.toLowerCase();
+    if (raw.isEmpty) {
+      final fallback = curr?.trim().toUpperCase();
+      return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
+    }
+    if (lower.startsWith('gb_') || lower.startsWith('ft_')) return 'USD';
+    if (lower.endsWith('.hk') || lower.startsWith('hk')) return 'HKD';
+    if (lower.startsWith('sh') ||
+        lower.startsWith('sz') ||
+        lower.startsWith('bj') ||
+        lower.startsWith('f_')) {
+      return 'CNY';
+    }
+    if (RegExp(r'^[a-z]+(\.[a-z]+)?$').hasMatch(lower)) return 'USD';
+    if (RegExp(r'^\d+$').hasMatch(raw)) return 'CNY';
+    final fallback = curr?.trim().toUpperCase();
+    return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
+  }
+
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
     if (_currentCategory == 'all') return _portfolio;
@@ -929,13 +951,14 @@ class AppState extends ChangeNotifier {
     String? curr,
     String? assetType,
   }) {
+    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
     final next = PortfolioItem(
       code: code,
       name: name,
       qty: qty,
       price: price,
       adjustment: 0,
-      curr: (curr == null || curr.isEmpty) ? 'CNY' : curr,
+      curr: normalizedCurr,
       assetType: (assetType == null || assetType.isEmpty) ? '' : assetType,
     );
     final index = _portfolioIndexByCode(code);
@@ -1050,13 +1073,14 @@ class AppState extends ChangeNotifier {
     String? assetType,
     bool awaitRefresh = true,
   }) async {
+    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
     final snapshot = _capturePortfolioSnapshot();
     final changed = _optimisticAddInvestment(
       code: code,
       name: name,
       price: price,
       qty: qty,
-      curr: curr,
+      curr: normalizedCurr,
       assetType: assetType,
     );
     if (!changed) return const AssetActionResult.failure('添加失败，请稍后重试');
@@ -1067,7 +1091,7 @@ class AppState extends ChangeNotifier {
       name,
       price,
       qty,
-      curr: curr,
+      curr: normalizedCurr,
       assetType: assetType,
     );
     if (!result.ok) {
@@ -1093,7 +1117,11 @@ class AppState extends ChangeNotifier {
       return const AssetActionResult.failure('未找到该持仓');
     }
     final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticBuyInvestment(code: code, price: price, qty: qty);
+    final changed = _optimisticBuyInvestment(
+      code: code,
+      price: price,
+      qty: qty,
+    );
     if (!changed) return const AssetActionResult.failure('买入失败，请稍后重试');
     _recalculatePortfolioTotals();
 
@@ -1123,7 +1151,11 @@ class AppState extends ChangeNotifier {
       return const AssetActionResult.failure('卖出数量超过持仓数量');
     }
     final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticSellInvestment(code: code, price: price, qty: qty);
+    final changed = _optimisticSellInvestment(
+      code: code,
+      price: price,
+      qty: qty,
+    );
     if (!changed) return const AssetActionResult.failure('卖出失败，请稍后重试');
     _recalculatePortfolioTotals();
 
@@ -1161,7 +1193,12 @@ class AppState extends ChangeNotifier {
     if (!changed) return const AssetActionResult.failure('调整失败，请稍后重试');
     _recalculatePortfolioTotals();
 
-    final result = await _api.modifyPortfolioAsset(code, qty, price, adjustment);
+    final result = await _api.modifyPortfolioAsset(
+      code,
+      qty,
+      price,
+      adjustment,
+    );
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot);
       return result;

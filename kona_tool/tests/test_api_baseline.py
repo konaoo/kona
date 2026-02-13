@@ -155,6 +155,24 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target['qty']), 15.0)
 
+    def test_portfolio_add_us_code_forces_usd_currency(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'goog',
+            'name': 'Google',
+            'price': 100.0,
+            'qty': 1.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        self.assertEqual(add_resp.get_json().get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'gb_goog'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('curr'), 'USD')
+
     def test_delete_corrective_removes_transactions_and_future_snapshots(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600001',

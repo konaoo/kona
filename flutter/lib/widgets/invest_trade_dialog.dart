@@ -325,9 +325,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('删除并清理历史'),
-          content: Text(
-            '将删除「${item.name}」持仓、相关交易记录，并清理受影响快照区间。此操作不可撤销，是否继续？',
-          ),
+          content: Text('将删除「${item.name}」持仓、相关交易记录，并清理受影响快照区间。此操作不可撤销，是否继续？'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -363,6 +361,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         TopToast.showError(toastContext, result.message ?? '删除失败，请稍后重试');
       }
     }());
+  }
+
+  void _onMoreMenuSelect(String value) {
+    if (value == 'corrective_delete') {
+      _confirmCorrectiveDelete();
+    }
   }
 
   Widget _buildSearchResults() {
@@ -576,13 +580,49 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: FontSize.xxl,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: FontSize.xxl,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (_isTrade)
+                      PopupMenuButton<String>(
+                        enabled: !_saving,
+                        onSelected: _onMoreMenuSelect,
+                        icon: Icon(
+                          Icons.more_horiz,
+                          color: AppTheme.textSecondary,
+                        ),
+                        itemBuilder: (menuContext) {
+                          return [
+                            PopupMenuItem<String>(
+                              value: 'corrective_delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                    color: AppTheme.danger,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '删除并清理历史',
+                                    style: TextStyle(color: AppTheme.danger),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ];
+                        },
+                      ),
+                  ],
                 ),
                 const SizedBox(height: Spacing.lg),
                 if (_isAdd) ...[
@@ -674,24 +714,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: const InputDecoration(labelText: '数量'),
-                  ),
-                ],
-                if (_isTrade) ...[
-                  const SizedBox(height: Spacing.md),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _saving ? null : _confirmCorrectiveDelete,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.danger,
-                        side: BorderSide(
-                          color: AppTheme.danger.withOpacity(0.7),
-                          width: 1,
-                        ),
-                      ),
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('删除并清理历史'),
-                    ),
                   ),
                 ],
                 if (_errorText != null) ...[

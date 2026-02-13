@@ -9,6 +9,20 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 
+def _forced_currency_by_code(code: str) -> Optional[str]:
+    """按规范化代码强制币种（市场规则优先）。"""
+    if not code:
+        return None
+    lower = code.lower()
+    if lower.startswith(('gb_', 'ft_')):
+        return 'USD'
+    if lower.endswith('.hk') or lower.startswith('hk'):
+        return 'HKD'
+    if lower.startswith(('sh', 'sz', 'bj', 'f_')):
+        return 'CNY'
+    return None
+
+
 def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     """
     解析证券代码，添加适当的前缀并确定货币
@@ -62,14 +76,12 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
         if not curr:
             curr = 'USD'
     
-    # 默认货币推断
-    if not curr:
-        if '.HK' in code.upper() or 'hk' in code.lower():
-            curr = 'HKD'
-        elif 'gb_' in code or 'ft_' in code:
-            curr = 'USD'
-        else:
-            curr = 'CNY'
+    forced_curr = _forced_currency_by_code(code)
+    if forced_curr:
+        curr = forced_curr
+    elif not curr:
+        # 仅在无法识别市场时才回退到入参/默认值
+        curr = 'CNY'
     
     logger.debug(f"Parsed code: {raw_code} -> {code}, currency: {curr}")
     

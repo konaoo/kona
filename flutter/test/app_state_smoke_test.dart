@@ -19,29 +19,49 @@ void main() {
     expect(hidden, '****');
   });
 
-  test('AppState investment actions return failure when holding missing', () async {
+  test(
+    'AppState investment actions return failure when holding missing',
+    () async {
+      final state = AppState();
+
+      final buyResult = await state.buyInvestment(
+        code: 'sh600000',
+        price: 10,
+        qty: 1,
+        awaitRefresh: false,
+      );
+      expect(buyResult.ok, isFalse);
+
+      final sellResult = await state.sellInvestment(
+        code: 'sh600000',
+        price: 10,
+        qty: 1,
+        awaitRefresh: false,
+      );
+      expect(sellResult.ok, isFalse);
+
+      final deleteResult = await state.deleteInvestment(
+        code: 'sh600000',
+        awaitRefresh: false,
+      );
+      expect(deleteResult.ok, isFalse);
+    },
+  );
+
+  test('AppState normalizeInvestmentCurrency infers market currency first', () {
     final state = AppState();
-
-    final buyResult = await state.buyInvestment(
-      code: 'sh600000',
-      price: 10,
-      qty: 1,
-      awaitRefresh: false,
+    expect(state.normalizeInvestmentCurrency(code: 'goog', curr: 'CNY'), 'USD');
+    expect(
+      state.normalizeInvestmentCurrency(code: 'gb_goog', curr: 'CNY'),
+      'USD',
     );
-    expect(buyResult.ok, isFalse);
-
-    final sellResult = await state.sellInvestment(
-      code: 'sh600000',
-      price: 10,
-      qty: 1,
-      awaitRefresh: false,
+    expect(
+      state.normalizeInvestmentCurrency(code: '00700.HK', curr: 'CNY'),
+      'HKD',
     );
-    expect(sellResult.ok, isFalse);
-
-    final deleteResult = await state.deleteInvestment(
-      code: 'sh600000',
-      awaitRefresh: false,
+    expect(
+      state.normalizeInvestmentCurrency(code: 'sh600000', curr: 'USD'),
+      'CNY',
     );
-    expect(deleteResult.ok, isFalse);
   });
 }
