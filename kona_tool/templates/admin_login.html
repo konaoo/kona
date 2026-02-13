@@ -137,18 +137,39 @@
     </div>
 
     <script>
-        const ADMIN_TOKEN_KEYS = ['token', 'kona_token', 'auth_token', 'jwt_token', 'admin_token'];
+        const ADMIN_ACCESS_KEY = 'admin_access_token';
+        const ADMIN_REFRESH_KEY = 'admin_refresh_token';
+        const LEGACY_ADMIN_TOKEN_KEYS = ['admin_token', 'token', 'kona_token', 'auth_token', 'jwt_token'];
 
-        function clearTokens() {
-            for (const key of ADMIN_TOKEN_KEYS) {
+        function clearAdminTokens() {
+            for (const key of [ADMIN_ACCESS_KEY, ADMIN_REFRESH_KEY, 'admin_token']) {
                 localStorage.removeItem(key);
                 sessionStorage.removeItem(key);
             }
         }
 
-        function setTokens(token) {
-            localStorage.setItem('token', token);
-            localStorage.setItem('admin_token', token);
+        function setAdminTokens(accessToken, refreshToken) {
+            if (accessToken) {
+                localStorage.setItem(ADMIN_ACCESS_KEY, accessToken);
+                localStorage.setItem('admin_token', accessToken);
+            }
+            if (refreshToken) {
+                localStorage.setItem(ADMIN_REFRESH_KEY, refreshToken);
+            }
+        }
+
+        function getStoredAdminAccessToken() {
+            const direct = localStorage.getItem(ADMIN_ACCESS_KEY) || sessionStorage.getItem(ADMIN_ACCESS_KEY);
+            if (direct) return direct;
+            for (const key of LEGACY_ADMIN_TOKEN_KEYS) {
+                const legacy = localStorage.getItem(key) || sessionStorage.getItem(key);
+                if (legacy) return legacy;
+            }
+            return '';
+        }
+
+        function getStoredAdminRefreshToken() {
+            return localStorage.getItem(ADMIN_REFRESH_KEY) || sessionStorage.getItem(ADMIN_REFRESH_KEY) || '';
         }
 
         function getNextPath() {
@@ -186,27 +207,31 @@
 
             submitBtn.disabled = true;
             submitBtn.innerText = '登录中...';
-            clearTokens();
+            clearAdminTokens();
             try {
                 const loginResp = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, device_id: 'admin_web' })
                 });
                 const loginPayload = await loginResp.json().catch(() => ({}));
                 if (!loginResp.ok) {
                     throw new Error(loginPayload.error || '登录失败');
                 }
-                const token = loginPayload.access_token || '';
-                if (!token) {
+                const accessToken = loginPayload.access_token || '';
+                const refreshToken = loginPayload.refresh_token || '';
+                if (!accessToken) {
                     throw new Error('登录响应缺少 access_token');
                 }
+                if (!refreshToken) {
+                    throw new Error('登录响应缺少 refresh_token');
+                }
 
-                await verifyAdmin(token);
-                setTokens(token);
+                await verifyAdmin(accessToken);
+                setAdminTokens(accessToken, refreshToken);
                 window.location.href = getNextPath();
             } catch (e) {
-                clearTokens();
+                clearAdminTokens();
                 setError(e.message || '登录失败');
             } finally {
                 submitBtn.disabled = false;
@@ -214,7 +239,48 @@
             }
         }
 
+        async function tryAutoEnter() {
+            const accessToken = getStoredAdminAccessToken();
+            if (accessToken) {
+                try {
+                    await verifyAdmin(accessToken);
+                    window.location.href = getNextPath();
+                    return;
+                } catch (_) {
+                    // continue with refresh fallback
+                }
+            }
+            const refreshToken = getStoredAdminRefreshToken();
+            if (!refreshToken) {
+                return;
+            }
+            try {
+                const refreshResp = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken, device_id: 'admin_web' }),
+                });
+                const refreshPayload = await refreshResp.json().catch(() => ({}));
+                if (!refreshResp.ok) {
+                    clearAdminTokens();
+                    return;
+                }
+                const nextAccess = refreshPayload.access_token || '';
+                const nextRefresh = refreshPayload.refresh_token || '';
+                if (!nextAccess) {
+                    clearAdminTokens();
+                    return;
+                }
+                await verifyAdmin(nextAccess);
+                setAdminTokens(nextAccess, nextRefresh || refreshToken);
+                window.location.href = getNextPath();
+            } catch (_) {
+                clearAdminTokens();
+            }
+        }
+
         document.getElementById('loginForm').addEventListener('submit', handleSubmit);
+        tryAutoEnter();
     </script>
 </body>
 </html>

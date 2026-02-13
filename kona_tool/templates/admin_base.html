@@ -222,21 +222,48 @@
 </div>
 <div id="toast"></div>
 <script>
-    const ADMIN_TOKEN_KEYS = ['admin_token', 'token', 'kona_token', 'auth_token', 'jwt_token'];
+    const ADMIN_ACCESS_KEY = 'admin_access_token';
+    const ADMIN_REFRESH_KEY = 'admin_refresh_token';
+    const LEGACY_ADMIN_TOKEN_KEYS = ['admin_token', 'token', 'kona_token', 'auth_token', 'jwt_token'];
     const ADMIN_LOGIN_PATH = '/admin/login';
+    let _adminRefreshPromise = null;
 
-    function getAdminToken() {
-        for (const k of ADMIN_TOKEN_KEYS) {
-            const v = localStorage.getItem(k) || sessionStorage.getItem(k);
-            if (v) return v;
+    function _readStorage(key) {
+        return localStorage.getItem(key) || sessionStorage.getItem(key) || '';
+    }
+
+    function getAdminAccessToken() {
+        const direct = _readStorage(ADMIN_ACCESS_KEY);
+        if (direct) return direct;
+        for (const key of LEGACY_ADMIN_TOKEN_KEYS) {
+            const value = _readStorage(key);
+            if (value) return value;
         }
         return '';
     }
 
-    function clearAdminToken() {
-        for (const k of ADMIN_TOKEN_KEYS) {
-            localStorage.removeItem(k);
-            sessionStorage.removeItem(k);
+    function getAdminRefreshToken() {
+        return _readStorage(ADMIN_REFRESH_KEY);
+    }
+
+    function setAdminTokens(accessToken, refreshToken) {
+        if (accessToken) {
+            localStorage.setItem(ADMIN_ACCESS_KEY, accessToken);
+            localStorage.setItem('admin_token', accessToken);
+        }
+        if (refreshToken) {
+            localStorage.setItem(ADMIN_REFRESH_KEY, refreshToken);
+        }
+    }
+
+    function clearAdminTokens({ clearLegacy = false } = {}) {
+        const keys = [ADMIN_ACCESS_KEY, ADMIN_REFRESH_KEY, 'admin_token'];
+        if (clearLegacy) {
+            keys.push(...LEGACY_ADMIN_TOKEN_KEYS);
+        }
+        for (const key of keys) {
+            localStorage.removeItem(key);
+            sessionStorage.removeItem(key);
         }
     }
 
@@ -245,8 +272,71 @@
         window.location.href = `${ADMIN_LOGIN_PATH}?next=${next}`;
     }
 
-    function adminLogout() {
-        clearAdminToken();
+    async function refreshAdminAccessToken() {
+        const refreshToken = getAdminRefreshToken();
+        if (!refreshToken) {
+            return '';
+        }
+        if (_adminRefreshPromise) {
+            return _adminRefreshPromise;
+        }
+        _adminRefreshPromise = (async () => {
+            try {
+                const resp = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        refresh_token: refreshToken,
+                        device_id: 'admin_web',
+                    }),
+                });
+                const payload = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    return '';
+                }
+                const nextAccess = (payload && payload.access_token) || '';
+                const nextRefresh = (payload && payload.refresh_token) || '';
+                if (!nextAccess) {
+                    return '';
+                }
+                setAdminTokens(nextAccess, nextRefresh);
+                return nextAccess;
+            } catch (_) {
+                return '';
+            } finally {
+                _adminRefreshPromise = null;
+            }
+        })();
+        return _adminRefreshPromise;
+    }
+
+    function _isAuthFailure(status, payload) {
+        if (status === 401) return true;
+        if (status !== 403) return false;
+        const msg = (payload && payload.error) ? String(payload.error) : '';
+        return [
+            'Admin privileges required',
+            'Invalid or expired token',
+            'Missing Authorization header',
+            'User not found',
+            'User is disabled',
+        ].includes(msg);
+    }
+
+    async function adminLogout() {
+        const refreshToken = getAdminRefreshToken();
+        clearAdminTokens();
+        if (refreshToken) {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken }),
+                });
+            } catch (_) {
+                // ignore
+            }
+        }
         toAdminLogin();
     }
 
@@ -260,16 +350,19 @@
         }, 3200);
     }
 
-    async function adminFetch(url, options = {}) {
+    async function adminFetch(url, options = {}, retryOnAuth = true) {
         const headers = new Headers(options.headers || {});
         const body = options.body;
         if (body && !(body instanceof FormData) && !headers.has('Content-Type')) {
             headers.set('Content-Type', 'application/json');
         }
-        const token = getAdminToken();
+        let token = getAdminAccessToken();
         if (!token) {
-            toAdminLogin();
-            throw new Error('请先登录后台');
+            token = await refreshAdminAccessToken();
+            if (!token) {
+                toAdminLogin();
+                throw new Error('请先登录后台');
+            }
         }
         headers.set('Authorization', `Bearer ${token}`);
 
@@ -282,8 +375,14 @@
         const payload = ctype.includes('application/json') ? await resp.json() : await resp.text();
 
         if (!resp.ok) {
-            if (resp.status === 401 || resp.status === 403) {
-                clearAdminToken();
+            if (retryOnAuth && resp.status === 401) {
+                const nextToken = await refreshAdminAccessToken();
+                if (nextToken) {
+                    return adminFetch(url, options, false);
+                }
+            }
+            if (_isAuthFailure(resp.status, payload)) {
+                clearAdminTokens();
                 toAdminLogin();
             }
             const msg = (payload && payload.error) ? payload.error : `HTTP ${resp.status}`;
