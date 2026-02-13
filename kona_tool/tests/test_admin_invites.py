@@ -86,7 +86,8 @@ class AdminInviteTests(unittest.TestCase):
         export_resp = self.client.get("/api/admin/invites/export?batch_id=batch_test", headers=headers)
         self.assertEqual(export_resp.status_code, 200)
         text = export_resp.data.decode("utf-8")
-        self.assertIn("code,batch_id,status", text)
+        self.assertIn("邀请码,批次标识,状态", text)
+        self.assertIn("使用用户名,使用用户编号,使用用户内部ID", text)
 
 
 if __name__ == "__main__":
