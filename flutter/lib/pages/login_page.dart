@@ -171,10 +171,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => _errorMessage = '邀请码获取链接配置无效');
       return;
     }
-    final launched = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!mounted || launched) return;
     setState(() => _errorMessage = '无法打开邀请码获取链接');
   }
@@ -193,7 +190,11 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? const [Color(0xFF0A0E1A), Color(0xFF131B2D), Color(0xFF1B2740)]
+                ? const [
+                    Color(0xFF0A0E1A),
+                    Color(0xFF131B2D),
+                    Color(0xFF1B2740),
+                  ]
                 : [AppTheme.bgPrimary, AppTheme.bgElevated, AppTheme.bgPrimary],
           ),
         ),
@@ -208,10 +209,14 @@ class _LoginPageState extends State<LoginPage> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: AppTheme.bgCard.withValues(alpha: isDark ? 0.95 : 0.98),
+                    color: AppTheme.bgCard.withValues(
+                      alpha: isDark ? 0.95 : 0.98,
+                    ),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: AppTheme.border.withValues(alpha: isDark ? 0.7 : 1),
+                      color: AppTheme.border.withValues(
+                        alpha: isDark ? 0.7 : 1,
+                      ),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -224,10 +229,21 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-                  child: Icon(
-                    Icons.lock_person,
-                    size: 50,
-                    color: AppTheme.accent,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      isDark
+                          ? 'assets/images/login_logo_dark.png'
+                          : 'assets/images/login_logo_light.png',
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.lock_person,
+                        size: 50,
+                        color: AppTheme.accent,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: Spacing.lg),
@@ -253,9 +269,7 @@ class _LoginPageState extends State<LoginPage> {
                   controller: _usernameController,
                   keyboardType: TextInputType.text,
                   style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: '用户名',
-                  ),
+                  decoration: const InputDecoration(labelText: '用户名'),
                   onChanged: (_) => _handleFieldChanged(),
                 ),
 
@@ -265,9 +279,7 @@ class _LoginPageState extends State<LoginPage> {
                   controller: _passwordController,
                   obscureText: true,
                   style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: '密码',
-                  ),
+                  decoration: const InputDecoration(labelText: '密码'),
                   onChanged: (_) => _handleFieldChanged(),
                 ),
 
@@ -277,9 +289,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _confirmController,
                     obscureText: true,
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: '确认密码',
-                    ),
+                    decoration: const InputDecoration(labelText: '确认密码'),
                     onChanged: (_) => _handleFieldChanged(),
                   ),
                   const SizedBox(height: Spacing.md),
@@ -294,10 +304,14 @@ class _LoginPageState extends State<LoginPage> {
                         icon: Icon(
                           _inviteValid == null
                               ? Icons.help_outline
-                              : (_inviteValid! ? Icons.check_circle : Icons.error),
+                              : (_inviteValid!
+                                    ? Icons.check_circle
+                                    : Icons.error),
                           color: _inviteValid == null
                               ? AppTheme.textSecondary
-                              : (_inviteValid! ? AppTheme.success : AppTheme.danger),
+                              : (_inviteValid!
+                                    ? AppTheme.success
+                                    : AppTheme.danger),
                         ),
                       ),
                     ),
@@ -356,7 +370,10 @@ class _LoginPageState extends State<LoginPage> {
                               color: AppTheme.textPrimary,
                             ),
                           )
-                        : Text(_isRegister ? '注册并登录' : '登录', style: TextStyle(fontSize: FontSize.lg)),
+                        : Text(
+                            _isRegister ? '注册并登录' : '登录',
+                            style: TextStyle(fontSize: FontSize.lg),
+                          ),
                   ),
                 ),
 
@@ -375,18 +392,26 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+                            border: Border.all(
+                              color: AppTheme.accent.withValues(alpha: 0.45),
+                            ),
                             gradient: LinearGradient(
                               colors: [
-                                AppTheme.bgCard.withValues(alpha: isDark ? 0.95 : 0.98),
-                                AppTheme.bgElevated.withValues(alpha: isDark ? 0.88 : 0.94),
+                                AppTheme.bgCard.withValues(
+                                  alpha: isDark ? 0.95 : 0.98,
+                                ),
+                                AppTheme.bgElevated.withValues(
+                                  alpha: isDark ? 0.88 : 0.94,
+                                ),
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.accent.withValues(alpha: isDark ? 0.12 : 0.2),
+                                color: AppTheme.accent.withValues(
+                                  alpha: isDark ? 0.12 : 0.2,
+                                ),
                                 blurRadius: 16,
                                 spreadRadius: -2,
                                 offset: const Offset(0, 6),
@@ -422,7 +447,9 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     Expanded(child: Divider(color: AppTheme.border, height: 1)),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Spacing.sm,
+                      ),
                       child: Icon(
                         Icons.diamond_outlined,
                         size: 14,
@@ -455,7 +482,9 @@ class _LoginPageState extends State<LoginPage> {
                               context.read<AppState>().clearAuthError();
                             },
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Spacing.sm,
+                        ),
                         minimumSize: const Size(0, 0),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
