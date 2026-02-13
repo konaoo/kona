@@ -240,6 +240,38 @@ class ApiBaselineTests(unittest.TestCase):
         calendar_total = float(calendar_payload.get('total_pnl', 0))
         self.assertAlmostEqual(calendar_total, year_pnl)
 
+    def test_analysis_overview_year_matches_calendar_when_no_prev_year_snapshot(self):
+        today = datetime.now().date()
+        month_start = today.replace(day=1)
+        first_in_period = month_start + timedelta(days=2)
+        if first_in_period > today:
+            first_in_period = today
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 21361.58, 0, '')
+            """,
+            (first_in_period.strftime('%Y-%m-%d'),),
+        )
+        conn.commit()
+        conn.close()
+
+        overview_resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(overview_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        year_pnl = float((overview.get('year') or {}).get('pnl', 0))
+
+        calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
+        self.assertEqual(calendar_resp.status_code, 200)
+        calendar_payload = calendar_resp.get_json() or {}
+        calendar_total = float(calendar_payload.get('total_pnl', 0))
+
+        self.assertAlmostEqual(year_pnl, calendar_total)
+
     def test_analysis_baseline_route_removed_returns_404(self):
         resp = self.client.get('/api/analysis/baseline')
         self.assertEqual(resp.status_code, 404)

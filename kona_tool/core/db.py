@@ -3123,13 +3123,20 @@ class DatabaseManager:
                 prev = _fetch_prev_snapshot(month_start)
                 if business_rows:
                     last = business_rows[-1]
-                    base_row = prev or business_rows[0]
+                    if prev:
+                        base_total = float(prev['total_pnl'] or 0)
+                        base_invest = float(prev['total_invest'] or 0)
+                    else:
+                        # 与日历月视图保持一致：无期初快照时按 0 基线累计
+                        base_total = 0.0
+                        base_invest = float(business_rows[0]['total_invest'] or 0)
                 else:
                     last = prev
-                    base_row = prev
-                if last and base_row:
-                    pnl = float(last['total_pnl'] or 0) - float(base_row['total_pnl'] or 0)
-                    base = float(base_row['total_invest'] or 0) or float(last['total_invest'] or 0) or 1
+                    base_total = float(prev['total_pnl'] or 0) if prev else 0.0
+                    base_invest = float(prev['total_invest'] or 0) if prev else 0.0
+                if last:
+                    pnl = float(last['total_pnl'] or 0) - base_total
+                    base = base_invest or float(last['total_invest'] or 0) or 1
                     return {
                         'pnl': pnl,
                         'pnl_rate': round(pnl / base * 100, 2) if base else 0,
@@ -3154,13 +3161,20 @@ class DatabaseManager:
                 prev = _fetch_prev_snapshot(year_start)
                 if business_rows:
                     last = business_rows[-1]
-                    base_row = prev or business_rows[0]
+                    if prev:
+                        base_total = float(prev['total_pnl'] or 0)
+                        base_invest = float(prev['total_invest'] or 0)
+                    else:
+                        # 与日历年视图保持一致：无期初快照时按 0 基线累计
+                        base_total = 0.0
+                        base_invest = float(business_rows[0]['total_invest'] or 0)
                 else:
                     last = prev
-                    base_row = prev
-                if last and base_row:
-                    pnl = float(last['total_pnl'] or 0) - float(base_row['total_pnl'] or 0)
-                    base = float(base_row['total_invest'] or 0) or float(last['total_invest'] or 0) or 1
+                    base_total = float(prev['total_pnl'] or 0) if prev else 0.0
+                    base_invest = float(prev['total_invest'] or 0) if prev else 0.0
+                if last:
+                    pnl = float(last['total_pnl'] or 0) - base_total
+                    base = base_invest or float(last['total_invest'] or 0) or 1
                     return {
                         'pnl': pnl,
                         'pnl_rate': round(pnl / base * 100, 2) if base else 0,
