@@ -36,7 +36,6 @@
                     <th>用户名</th>
                     <th>昵称</th>
                     <th>手机号</th>
-                    <th>编号</th>
                     <th>注册方式</th>
                     <th>管理员</th>
                     <th>需改密</th>
@@ -154,11 +153,11 @@
         try {
             const data = await adminFetch(`/api/admin/users/${encodeURIComponent(userId)}`);
             const rows = [
-                ['用户ID', data.id || ''],
+                ['用户ID', data.user_number ?? ''],
+                ['内部ID', data.id || ''],
                 ['用户名', data.username || ''],
                 ['昵称', data.nickname || ''],
                 ['手机号', data.phone || ''],
-                ['用户编号', data.user_number ?? ''],
                 ['注册方式', data.register_method || ''],
                 ['管理员', data.is_admin ? '是' : '否'],
                 ['需改密', data.must_change_password ? '是' : '否'],
@@ -180,7 +179,7 @@
         const tbody = document.getElementById('userRows');
         tbody.innerHTML = '';
         if (items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" class="muted">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" class="muted">暂无数据</td></tr>';
             document.getElementById('listMeta').innerText = '共 0 条';
             return;
         }
@@ -189,11 +188,10 @@
             const toStatus = u.status === 'active' ? 'disabled' : 'active';
             const canManage = !!u.can_manage;
             tr.innerHTML = `
-                <td>${u.id || ''}</td>
+                <td>${u.user_number ?? ''}</td>
                 <td>${u.username || ''}</td>
                 <td>${u.nickname || ''}</td>
                 <td>${u.phone || ''}</td>
-                <td>${u.user_number ?? ''}</td>
                 <td>${u.register_method || ''}</td>
                 <td>${u.is_admin ? '是' : '否'}</td>
                 <td>${u.must_change_password ? '<span class="status-pill status-disabled">是</span>' : '<span class="status-pill status-active">否</span>'}</td>
