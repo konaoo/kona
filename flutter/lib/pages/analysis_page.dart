@@ -300,6 +300,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   void _changePeriod(String period) {
     setState(() => _currentPeriod = period);
+    if (period != 'day') {
+      _loadData(force: true);
+    }
   }
 
   @override

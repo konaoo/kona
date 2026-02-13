@@ -75,6 +75,175 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertIn('sh600000', data)
             self.assertEqual(data['sh600000']['price'], 10)
 
+    def test_analysis_calendar_supports_year_month_query(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-03', 1, 1000, 1, 0, 0, 100, 10, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-04', 1, 1000, 1, 0, 0, 120, 20, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/analysis/calendar?type=day&year=2026&month=2')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('title'), '2026年2月累计')
+        self.assertEqual(payload.get('period', {}).get('year'), 2026)
+        self.assertEqual(payload.get('period', {}).get('month'), 2)
+        self.assertIn('selectable', payload)
+
+    def test_analysis_calendar_month_supports_year_query(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2024-12-31', 1, 1000, 1, 0, 0, 100, 0, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2025-01-15', 1, 1000, 1, 0, 0, 130, 0, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/analysis/calendar?type=month&year=2025')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('period', {}).get('year'), 2025)
+        self.assertEqual(payload.get('title'), '2025年累计')
+
+    def test_analysis_calendar_invalid_month_returns_400(self):
+        resp = self.client.get('/api/analysis/calendar?type=day&year=2026&month=13')
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('code'), 'INVALID_CALENDAR_PERIOD')
+
+    def test_analysis_overview_month_year_all_calculation(self):
+        today = datetime.now().date()
+        today_str = today.strftime('%Y-%m-%d')
+        month_start = today.replace(day=1)
+        year_start = datetime(today.year, 1, 1).date()
+        prev_month = month_start - timedelta(days=1)
+        prev_year = year_start - timedelta(days=1)
+
+        prev_month_pnl = 120.0
+        prev_year_pnl = 90.0
+        if prev_month == prev_year:
+            prev_year_pnl = prev_month_pnl
+
+        today_pnl = 260.0
+        today_invest = 1200.0
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, ?, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'), prev_year_pnl),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, ?, 0, '')
+            """,
+            (prev_month.strftime('%Y-%m-%d'), prev_month_pnl),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, ?, 1, 0, 0, ?, 0, '')
+            """,
+            (today_str, today_invest, today_pnl),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        month_expected = today_pnl - prev_month_pnl
+        year_expected = today_pnl - prev_year_pnl
+        first_pnl = prev_year_pnl if prev_year < prev_month else prev_month_pnl
+        all_expected = today_pnl - first_pnl
+        self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl', 0)), month_expected)
+        self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl', 0)), year_expected)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl', 0)), all_expected)
+
+    def test_analysis_overview_year_matches_calendar_month_total_with_future_row(self):
+        today = datetime.now().date()
+        future_same_month = today + timedelta(days=1)
+        if future_same_month.month != today.month or future_same_month.year != today.year:
+            self.skipTest("month boundary; no safe future date in current month")
+
+        prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 0, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 21000, 0, '')
+            """,
+            (today.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, -745, 0, '')
+            """,
+            (future_same_month.strftime('%Y-%m-%d'),),
+        )
+        conn.commit()
+        conn.close()
+
+        overview_resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(overview_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        year_pnl = float((overview.get('year') or {}).get('pnl', 0))
+        self.assertAlmostEqual(year_pnl, 21000.0)
+
+        calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
+        self.assertEqual(calendar_resp.status_code, 200)
+        calendar_payload = calendar_resp.get_json() or {}
+        calendar_total = float(calendar_payload.get('total_pnl', 0))
+        self.assertAlmostEqual(calendar_total, year_pnl)
+
+    def test_analysis_baseline_route_removed_returns_404(self):
+        resp = self.client.get('/api/analysis/baseline')
+        self.assertEqual(resp.status_code, 404)
+
     def test_cash_asset_add_update_delete(self):
         add_resp = self.client.post('/api/cash_assets/add', json={
             'name': '测试现金',

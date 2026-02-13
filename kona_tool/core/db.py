@@ -247,18 +247,6 @@ class DatabaseManager:
             )
         ''')
 
-        # 分析基线表（用于重置月/年收益起点，不影响历史快照）
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS analysis_baselines (
-                user_id TEXT PRIMARY KEY,
-                baseline_date TEXT NOT NULL,
-                baseline_total_pnl REAL NOT NULL,
-                baseline_total_invest REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
         # Ensure user_id columns exist for older DBs
         def _ensure_column(table: str, column: str, col_def: str) -> None:
             cursor.execute(f'PRAGMA table_info({table})')
@@ -297,7 +285,6 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
         cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_analysis_baselines_user_id ON analysis_baselines(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
@@ -3035,113 +3022,6 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def get_analysis_baseline(self, user_id: str = None) -> Optional[Dict[str, Any]]:
-        """获取分析初始化基线。"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            user_key = (user_id or '').strip()
-            cursor.execute(
-                '''
-                SELECT user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
-                FROM analysis_baselines
-                WHERE user_id = ?
-                LIMIT 1
-                ''',
-                (user_key,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return {
-                'user_id': row['user_id'],
-                'baseline_date': row['baseline_date'],
-                'baseline_total_pnl': float(row['baseline_total_pnl'] or 0),
-                'baseline_total_invest': float(row['baseline_total_invest'] or 0),
-                'created_at': row['created_at'],
-                'updated_at': row['updated_at'],
-            }
-        finally:
-            conn.close()
-
-    def upsert_analysis_baseline(
-        self,
-        user_id: str = None,
-        baseline_date: str = '',
-        baseline_total_pnl: float = 0.0,
-        baseline_total_invest: float = 0.0,
-    ) -> Optional[Dict[str, Any]]:
-        """新增或更新分析初始化基线。"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            user_key = (user_id or '').strip()
-            cursor.execute(
-                '''
-                INSERT INTO analysis_baselines (
-                    user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    baseline_date = excluded.baseline_date,
-                    baseline_total_pnl = excluded.baseline_total_pnl,
-                    baseline_total_invest = excluded.baseline_total_invest,
-                    updated_at = CURRENT_TIMESTAMP
-                ''',
-                (
-                    user_key,
-                    baseline_date,
-                    float(baseline_total_pnl or 0),
-                    float(baseline_total_invest or 0),
-                ),
-            )
-            conn.commit()
-            cursor.execute(
-                '''
-                SELECT user_id, baseline_date, baseline_total_pnl, baseline_total_invest, created_at, updated_at
-                FROM analysis_baselines
-                WHERE user_id = ?
-                LIMIT 1
-                ''',
-                (user_key,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return {
-                'user_id': row['user_id'],
-                'baseline_date': row['baseline_date'],
-                'baseline_total_pnl': float(row['baseline_total_pnl'] or 0),
-                'baseline_total_invest': float(row['baseline_total_invest'] or 0),
-                'created_at': row['created_at'],
-                'updated_at': row['updated_at'],
-            }
-        except Exception as e:
-            logger.error(f"Failed to upsert analysis baseline: {e}")
-            conn.rollback()
-            return None
-        finally:
-            conn.close()
-
-    def clear_analysis_baseline(self, user_id: str = None) -> bool:
-        """清除分析初始化基线。"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        try:
-            user_key = (user_id or '').strip()
-            cursor.execute(
-                'DELETE FROM analysis_baselines WHERE user_id = ?',
-                (user_key,),
-            )
-            conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to clear analysis baseline: {e}")
-            conn.rollback()
-            return False
-        finally:
-            conn.close()
-
     # ============================================================
     # 分析数据查询
     # ============================================================
@@ -3149,123 +3029,167 @@ class DatabaseManager:
     def get_pnl_overview(self, period: str = 'day', user_id: str = None) -> Dict[str, Any]:
         """
         获取盈亏概览数据
-        
+
         Args:
             period: day|month|year|all
             user_id: 用户ID
-            
+
         Returns:
             {pnl: float, pnl_rate: float, base_value: float}
         """
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         # 构建 user_id 条件
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
-        
+
         try:
             today = datetime.now()
+            today_str = today.strftime('%Y-%m-%d')
 
             def _fetch_prev_snapshot(date_str: str):
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date < ? AND {user_condition}
                     ORDER BY date DESC
                     LIMIT 1
-                ''', (date_str,) + user_param)
+                    ''',
+                    (date_str,) + user_param,
+                )
                 return cursor.fetchone()
 
             def _fetch_last_snapshot(date_str: str):
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date <= ? AND {user_condition}
                     ORDER BY date DESC
                     LIMIT 1
-                ''', (date_str,) + user_param)
+                    ''',
+                    (date_str,) + user_param,
+                )
                 return cursor.fetchone()
-            
+
             if period == 'day':
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date = ? AND {user_condition}
                     LIMIT 1
-                ''', (today.strftime('%Y-%m-%d'),) + user_param)
+                    ''',
+                    (today_str,) + user_param,
+                )
                 row = cursor.fetchone()
                 if row:
                     today_total = float(row['total_pnl']) if row['total_pnl'] else 0
                     base = float(row['total_invest']) if row['total_invest'] else 1
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f'''
                         SELECT total_pnl FROM daily_snapshots
                         WHERE date < ? AND {user_condition}
                         ORDER BY date DESC
                         LIMIT 1
-                    ''', (today.strftime('%Y-%m-%d'),) + user_param)
+                        ''',
+                        (today_str,) + user_param,
+                    )
                     prev = cursor.fetchone()
                     if not prev:
                         return {'pnl': 0, 'pnl_rate': 0, 'base_value': base}
                     prev_total = float(prev['total_pnl']) if prev['total_pnl'] else 0
                     pnl = today_total - prev_total
-                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                    return {
+                        'pnl': pnl,
+                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'base_value': base,
+                    }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
-            
+
             elif period == 'month':
                 month_start = today.strftime('%Y-%m-01')
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
-                ''', (month_start, today.strftime('%Y-%m-%d')) + user_param)
+                    ''',
+                    (month_start, today_str) + user_param,
+                )
                 rows = cursor.fetchall()
+                business_rows = [
+                    row for row in rows if not _is_weekend_date(str(row['date']))
+                ]
                 prev = _fetch_prev_snapshot(month_start)
-                if rows:
-                    last = rows[-1]
-                    base_row = prev or rows[0]
+                if business_rows:
+                    last = business_rows[-1]
+                    base_row = prev or business_rows[0]
                 else:
-                    last = _fetch_last_snapshot(today.strftime('%Y-%m-%d'))
-                    base_row = prev or last
+                    last = prev
+                    base_row = prev
                 if last and base_row:
                     pnl = float(last['total_pnl'] or 0) - float(base_row['total_pnl'] or 0)
                     base = float(base_row['total_invest'] or 0) or float(last['total_invest'] or 0) or 1
-                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                    return {
+                        'pnl': pnl,
+                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'base_value': base,
+                    }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
-            
+
             elif period == 'year':
                 year_start = today.strftime('%Y-01-01')
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
-                ''', (year_start, today.strftime('%Y-%m-%d')) + user_param)
+                    ''',
+                    (year_start, today_str) + user_param,
+                )
                 rows = cursor.fetchall()
+                business_rows = [
+                    row for row in rows if not _is_weekend_date(str(row['date']))
+                ]
                 prev = _fetch_prev_snapshot(year_start)
-                if rows:
-                    last = rows[-1]
-                    base_row = prev or rows[0]
+                if business_rows:
+                    last = business_rows[-1]
+                    base_row = prev or business_rows[0]
                 else:
-                    last = _fetch_last_snapshot(today.strftime('%Y-%m-%d'))
-                    base_row = prev or last
+                    last = prev
+                    base_row = prev
                 if last and base_row:
                     pnl = float(last['total_pnl'] or 0) - float(base_row['total_pnl'] or 0)
                     base = float(base_row['total_invest'] or 0) or float(last['total_invest'] or 0) or 1
-                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                    return {
+                        'pnl': pnl,
+                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'base_value': base,
+                    }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
-            
+
             else:  # all
-                cursor.execute(f'''
+                cursor.execute(
+                    f'''
                     SELECT date, total_pnl, total_invest FROM daily_snapshots
                     WHERE {user_condition}
                     ORDER BY date ASC
-                ''', user_param)
+                    ''',
+                    user_param,
+                )
                 rows = cursor.fetchall()
                 if rows:
                     first = rows[0]
                     last = rows[-1]
                     pnl = float(last['total_pnl']) - float(first['total_pnl'])
                     base = float(first['total_invest']) if first['total_invest'] else 1
-                    return {'pnl': pnl, 'pnl_rate': round(pnl / base * 100, 2) if base else 0, 'base_value': base}
+                    return {
+                        'pnl': pnl,
+                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'base_value': base,
+                    }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
-        
+
         except Exception as e:
             logger.error(f"Failed to get pnl overview: {e}")
             return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
@@ -3306,6 +3230,7 @@ class DatabaseManager:
 
         try:
             now = datetime.now()
+            today_str = now.strftime('%Y-%m-%d')
             items = []
             total_pnl = 0.0
 
@@ -3404,6 +3329,8 @@ class DatabaseManager:
                 else:
                     next_month = dt.datetime(target_year, target_month + 1, 1)
                 month_end = (next_month - timedelta(days=1)).strftime('%Y-%m-%d')
+                if target_year == now.year and target_month == now.month:
+                    month_end = min(month_end, today_str)
 
                 cursor.execute(
                     f'''
@@ -3463,7 +3390,7 @@ class DatabaseManager:
                     }
 
                 year_start = f'{target_year:04d}-01-01'
-                year_end = f'{target_year:04d}-12-31'
+                year_end = today_str if target_year == now.year else f'{target_year:04d}-12-31'
                 cursor.execute(
                     f'''
                     SELECT date, total_pnl
@@ -3512,10 +3439,10 @@ class DatabaseManager:
                     f'''
                     SELECT date, total_pnl
                     FROM daily_snapshots
-                    WHERE {user_condition}
+                    WHERE date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
-                    user_param,
+                    (today_str,) + user_param,
                 )
 
                 rows = cursor.fetchall()
