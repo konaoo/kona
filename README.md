@@ -541,7 +541,17 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
    - 成功后异步重建当日快照
 8. 纠错删除做了幂等/兜底：即使记录已不存在也按成功路径处理；前端在纠错删除失败时自动回退普通删除，避免“提示成功但列表回弹”。
 
-## 17. 结论
+## 17. 今日改动（2026-02-13）
+
+1. 投资页滚动性能优化（已上线）：
+   - 持仓列表由 `CustomScrollView + ListView(shrinkWrap)` 改为 `SliverList`，减少滚动过程中的布局抖动与卡顿。
+   - FAB 显隐监听增加最外层滚动过滤（`notification.depth == 0`），降低无效滚动通知造成的频繁回调。
+2. 快照定时机制已核验（AWS）：
+   - `kona-snapshot.timer` 每天 `23:00 UTC` 触发（等价北京时间次日 `07:00`）。
+   - `kona-snapshot-verify.timer` 每天 `23:05 UTC` 触发（等价北京时间次日 `07:05`）。
+   - 最近多日 `kona-snapshot.service` 均正常执行完成（`Finished`）。
+
+## 18. 结论
 
 当前项目已经具备：
 
