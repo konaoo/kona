@@ -105,7 +105,7 @@
 {% block content %}
 <div class="api-wrap">
     <h1 class="title">🌐 API 接口检测</h1>
-    <p class="api-desc">检测当前使用的数据源连通性。如果行情或快讯无法加载，请在此检查接口状态。</p>
+    <p class="api-desc">检测当前数据源连通性，并统一管理接口开关与限流策略。</p>
 
     <div class="api-item">
         <div>
@@ -140,6 +140,29 @@
     </div>
 
     <div id="opsHint" class="api-ops">自动检测：每 60 秒刷新一次</div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+    <div class="toolbar" style="margin-bottom:8px;">
+        <h3 style="margin:0;">接口策略（开关/限流）</h3>
+        <button class="secondary" onclick="loadPolicies()">刷新策略</button>
+    </div>
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>scope_key</th>
+                    <th>类型</th>
+                    <th>启用</th>
+                    <th>每分钟限流</th>
+                    <th>备注</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="policyRows"></tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}
 
@@ -235,7 +258,80 @@
         }
     }
 
+    function policyEnabledSelect(policy) {
+        return `
+            <select id="policy_enabled_${policy.id}">
+                <option value="true" ${policy.enabled ? 'selected' : ''}>true</option>
+                <option value="false" ${!policy.enabled ? 'selected' : ''}>false</option>
+            </select>
+        `;
+    }
+
+    function policyLimitInput(policy) {
+        const value = policy.limit_per_min == null ? '' : policy.limit_per_min;
+        return `<input id="policy_limit_${policy.id}" type="number" min="1" max="6000" value="${value}" placeholder="空=不限流" style="width:120px;">`;
+    }
+
+    function policyNoteInput(policy) {
+        const value = policy.note || '';
+        return `<input id="policy_note_${policy.id}" value="${value}" style="min-width:220px;">`;
+    }
+
+    async function savePolicyById(id, scopeKey) {
+        const enabled = document.getElementById(`policy_enabled_${id}`).value === 'true';
+        const limitRaw = document.getElementById(`policy_limit_${id}`).value.trim();
+        const note = document.getElementById(`policy_note_${id}`).value.trim();
+        if (!confirm(`确认更新策略 ${scopeKey}？`)) return;
+        const payload = {
+            scope_key: scopeKey,
+            enabled,
+            note
+        };
+        payload.limit_per_min = limitRaw ? Number(limitRaw) : null;
+        try {
+            await adminFetch('/api/admin/apis/policies/update', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            showToast(`策略已更新: ${scopeKey}`);
+            await loadPolicies();
+            await loadHealth(false);
+        } catch (e) {
+            showToast(`策略更新失败: ${e.message}`, true);
+        }
+    }
+
+    async function loadPolicies() {
+        try {
+            const data = await adminFetch('/api/admin/apis/policies');
+            const rows = data.items || [];
+            const tbody = document.getElementById('policyRows');
+            tbody.innerHTML = '';
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无策略</td></tr>';
+                return;
+            }
+            for (const p of rows) {
+                const tr = document.createElement('tr');
+                const safeScope = String(p.scope_key || '').replace(/'/g, "\\'");
+                tr.innerHTML = `
+                    <td><code>${p.scope_key}</code></td>
+                    <td>${p.scope_type || ''}</td>
+                    <td>${policyEnabledSelect(p)}</td>
+                    <td>${policyLimitInput(p)}</td>
+                    <td>${policyNoteInput(p)}</td>
+                    <td>${p.updated_at || ''}</td>
+                    <td><button onclick="savePolicyById(${p.id}, '${safeScope}')">保存</button></td>
+                `;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            showToast(`策略加载失败: ${e.message}`, true);
+        }
+    }
+
     loadHealth(false);
+    loadPolicies();
     healthTimer = setInterval(() => loadHealth(false), 60000);
 </script>
 {% endblock %}

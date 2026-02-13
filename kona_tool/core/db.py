@@ -149,7 +149,10 @@ class DatabaseManager:
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT,
                 legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
                 password_updated_at TIMESTAMP,
+                password_reset_at TIMESTAMP,
+                password_reset_by TEXT,
                 nickname TEXT,
                 avatar TEXT,
                 register_method TEXT,
@@ -208,6 +211,22 @@ class DatabaseManager:
                 last_used_at TIMESTAMP
             )
         ''')
+
+        # 接口策略表（后台动态开关/限流）
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_api_policies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope_key TEXT UNIQUE NOT NULL,
+                scope_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                limit_per_min INTEGER,
+                note TEXT,
+                updated_by TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
 
         
         # 创建每日快照表
@@ -273,10 +292,12 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_batch_id ON invite_codes(batch_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at ON auth_refresh_tokens(expires_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_api_policies_scope_type ON admin_api_policies(scope_type)')
         cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
+        self._ensure_admin_api_policies_defaults(cursor)
 
         conn.commit()
         conn.close()
@@ -311,12 +332,11 @@ class DatabaseManager:
         if not cols:
             return
 
-        expected_cols = {
+        rebuild_required_cols = {
             "id",
             "username",
             "password_hash",
             "legacy_needs_password_setup",
-            "password_updated_at",
             "nickname",
             "avatar",
             "register_method",
@@ -327,7 +347,7 @@ class DatabaseManager:
             "created_at",
             "last_login",
         }
-        needs_rebuild = ("email" in cols) or any(c not in cols for c in expected_cols)
+        needs_rebuild = ("email" in cols) or any(c not in cols for c in rebuild_required_cols)
         if needs_rebuild:
             cursor.execute("SELECT * FROM users")
             rows = [dict(r) for r in cursor.fetchall()]
@@ -339,7 +359,10 @@ class DatabaseManager:
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT,
                     legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0,
+                    must_change_password INTEGER NOT NULL DEFAULT 0,
                     password_updated_at TIMESTAMP,
+                    password_reset_at TIMESTAMP,
+                    password_reset_by TEXT,
                     nickname TEXT,
                     avatar TEXT,
                     register_method TEXT,
@@ -366,16 +389,20 @@ class DatabaseManager:
                     """
                     INSERT INTO users_new (
                         id, username, password_hash, legacy_needs_password_setup,
-                        password_updated_at, nickname, avatar, register_method, phone,
+                        must_change_password, password_updated_at, password_reset_at, password_reset_by,
+                        nickname, avatar, register_method, phone,
                         user_number, is_admin, status, created_at, last_login
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
                         username,
                         password_hash,
                         legacy_flag,
+                        int(row.get("must_change_password") or 0),
                         row.get("password_updated_at"),
+                        row.get("password_reset_at"),
+                        row.get("password_reset_by"),
                         row.get("nickname"),
                         row.get("avatar"),
                         row.get("register_method") or "legacy_email_otp",
@@ -401,7 +428,13 @@ class DatabaseManager:
                 "legacy_needs_password_setup",
                 "legacy_needs_password_setup INTEGER NOT NULL DEFAULT 0",
             )
+            _ensure_column(
+                "must_change_password",
+                "must_change_password INTEGER NOT NULL DEFAULT 0",
+            )
             _ensure_column("password_updated_at", "password_updated_at TIMESTAMP")
+            _ensure_column("password_reset_at", "password_reset_at TIMESTAMP")
+            _ensure_column("password_reset_by", "password_reset_by TEXT")
             _ensure_column("nickname", "nickname TEXT")
             _ensure_column("avatar", "avatar TEXT")
             _ensure_column("register_method", "register_method TEXT")
@@ -414,6 +447,7 @@ class DatabaseManager:
 
         cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
         cursor.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
+        cursor.execute("UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL")
         cursor.execute(
             "UPDATE users SET legacy_needs_password_setup = 1 "
             "WHERE COALESCE(password_hash, '') = ''"
@@ -426,6 +460,28 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_user_number ON users(user_number)")
 
+    def _ensure_admin_api_policies_defaults(self, cursor) -> None:
+        defaults = [
+            ("upstream.price", "upstream", 1, None, "Price upstream switch"),
+            ("upstream.rate", "upstream", 1, None, "Rate upstream switch"),
+            ("upstream.news", "upstream", 1, None, "News upstream switch"),
+            ("api.auth", "api_group", 1, 120, "Auth API group policy"),
+            ("api.portfolio", "api_group", 1, 240, "Portfolio API group policy"),
+            ("api.news", "api_group", 1, 120, "News API group policy"),
+        ]
+        for scope_key, scope_type, enabled, limit_per_min, note in defaults:
+            cursor.execute(
+                """
+                INSERT INTO admin_api_policies
+                (scope_key, scope_type, enabled, limit_per_min, note, updated_by)
+                VALUES (?, ?, ?, ?, ?, 'system_init')
+                ON CONFLICT(scope_key) DO UPDATE SET
+                    scope_type = excluded.scope_type,
+                    note = COALESCE(admin_api_policies.note, excluded.note)
+                """,
+                (scope_key, scope_type, enabled, limit_per_min, note),
+            )
+
     def get_user_auth_info(self, user_id: str) -> Optional[Dict[str, Any]]:
         """获取用户的后台权限信息。"""
         if not user_id:
@@ -434,7 +490,7 @@ class DatabaseManager:
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                SELECT id, username, is_admin, status
+                SELECT id, username, is_admin, status, must_change_password
                 FROM users
                 WHERE id = ?
                 LIMIT 1
@@ -447,6 +503,7 @@ class DatabaseManager:
                 'username': row['username'],
                 'is_admin': bool(row['is_admin']),
                 'status': row['status'] or 'active',
+                'must_change_password': bool(row['must_change_password']),
             }
         finally:
             conn.close()
@@ -460,7 +517,8 @@ class DatabaseManager:
             cursor.execute(
                 '''
                 SELECT id, username, nickname, avatar, register_method, phone,
-                       user_number, created_at, last_login, legacy_needs_password_setup
+                       user_number, created_at, last_login, legacy_needs_password_setup,
+                       must_change_password
                 FROM users
                 WHERE id = ?
                 LIMIT 1
@@ -482,6 +540,7 @@ class DatabaseManager:
             cursor.execute(
                 '''
                 SELECT id, username, password_hash, legacy_needs_password_setup,
+                       must_change_password, password_reset_at, password_reset_by,
                        nickname, avatar, register_method, phone, user_number,
                        is_admin, status, created_at, last_login
                 FROM users
@@ -504,6 +563,7 @@ class DatabaseManager:
             cursor.execute(
                 """
                 SELECT id, username, password_hash, legacy_needs_password_setup,
+                       must_change_password, password_reset_at, password_reset_by,
                        nickname, avatar, register_method, phone, user_number,
                        is_admin, status, created_at, last_login
                 FROM users
@@ -615,10 +675,90 @@ class DatabaseManager:
             cursor.execute(
                 """
                 UPDATE users
-                SET password_hash = ?, legacy_needs_password_setup = 0, password_updated_at = CURRENT_TIMESTAMP
+                SET password_hash = ?,
+                    legacy_needs_password_setup = 0,
+                    must_change_password = 0,
+                    password_reset_at = NULL,
+                    password_reset_by = NULL,
+                    password_updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
                 (password_hash, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def set_user_must_change_password(
+        self,
+        user_id: str,
+        must_change_password: bool,
+        reset_by: str = "",
+    ) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if must_change_password:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET must_change_password = 1,
+                        password_reset_at = CURRENT_TIMESTAMP,
+                        password_reset_by = ?
+                    WHERE id = ?
+                    """,
+                    (reset_by, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET must_change_password = 0,
+                        password_reset_at = NULL,
+                        password_reset_by = NULL
+                    WHERE id = ?
+                    """,
+                    (user_id,),
+                )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def admin_reset_user_password(
+        self,
+        user_id: str,
+        password_hash: str,
+        admin_user_id: str,
+        force_change: bool = True,
+    ) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE users
+                SET password_hash = ?,
+                    legacy_needs_password_setup = 0,
+                    must_change_password = ?,
+                    password_reset_at = CURRENT_TIMESTAMP,
+                    password_reset_by = ?,
+                    password_updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    password_hash,
+                    1 if force_change else 0,
+                    admin_user_id,
+                    user_id,
+                ),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -782,6 +922,109 @@ class DatabaseManager:
         except Exception:
             conn.rollback()
             return 0
+        finally:
+            conn.close()
+
+    def get_admin_api_policy(self, scope_key: str) -> Optional[Dict[str, Any]]:
+        key = str(scope_key or "").strip()
+        if not key:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, scope_key, scope_type, enabled, limit_per_min, note, updated_by, updated_at
+                FROM admin_api_policies
+                WHERE scope_key = ?
+                LIMIT 1
+                """,
+                (key,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def list_admin_api_policies(self, scope_type: str = "all") -> List[Dict[str, Any]]:
+        where = ""
+        params: List[Any] = []
+        st = str(scope_type or "").strip().lower()
+        if st and st != "all":
+            where = "WHERE scope_type = ?"
+            params.append(st)
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"""
+                SELECT id, scope_key, scope_type, enabled, limit_per_min, note, updated_by, updated_at
+                FROM admin_api_policies
+                {where}
+                ORDER BY scope_type ASC, scope_key ASC
+                """,
+                tuple(params),
+            )
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_admin_api_policy(
+        self,
+        scope_key: str,
+        enabled: Optional[bool] = None,
+        limit_per_min: Optional[int] = None,
+        note: Optional[str] = None,
+        updated_by: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        key = str(scope_key or "").strip()
+        if not key:
+            return None
+        updates: List[str] = []
+        params: List[Any] = []
+        if enabled is not None:
+            updates.append("enabled = ?")
+            params.append(1 if bool(enabled) else 0)
+        if limit_per_min is not None:
+            updates.append("limit_per_min = ?")
+            params.append(int(limit_per_min))
+        if note is not None:
+            updates.append("note = ?")
+            params.append(str(note)[:500])
+        updates.append("updated_by = ?")
+        params.append(str(updated_by or "")[:64])
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(key)
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"""
+                UPDATE admin_api_policies
+                SET {', '.join(updates)}
+                WHERE scope_key = ?
+                """,
+                tuple(params),
+            )
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                return None
+            conn.commit()
+            cursor.execute(
+                """
+                SELECT id, scope_key, scope_type, enabled, limit_per_min, note, updated_by, updated_at
+                FROM admin_api_policies
+                WHERE scope_key = ?
+                LIMIT 1
+                """,
+                (key,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception:
+            conn.rollback()
+            return None
         finally:
             conn.close()
 
@@ -2898,142 +3141,330 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_calendar_data(self, time_type: str = 'day', user_id: str = None) -> Dict[str, Any]:
+    def get_calendar_data(
+        self,
+        time_type: str = 'day',
+        user_id: str = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         获取收益日历数据
-        
+
         Args:
             time_type: day|month|year
             user_id: 用户ID
-            
+            year: 可选年份（day/month 视图使用）
+            month: 可选月份（day 视图使用）
+
         Returns:
-            {items: [{label, pnl}], total_pnl, total_rate, title}
+            {
+                items: [{label, pnl}],
+                total_pnl: float,
+                total_rate: float,
+                title: str,
+                period: {time_type, year?, month?},
+                selectable: {day: {years, months_by_year}, month: {years}}
+            }
         """
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        # 构建 user_id 条件
+
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
-        
+
         try:
-            today = datetime.now()
+            now = datetime.now()
             items = []
-            total_pnl = 0
-            
+            total_pnl = 0.0
+
+            cursor.execute(
+                f'''
+                SELECT date
+                FROM daily_snapshots
+                WHERE {user_condition}
+                ORDER BY date ASC
+                ''',
+                user_param,
+            )
+            all_dates = [str(row['date']) for row in cursor.fetchall() if row['date']]
+            months_by_year: Dict[int, set[int]] = {}
+            for date_str in all_dates:
+                parts = date_str.split('-')
+                if len(parts) != 3:
+                    continue
+                y = int(parts[0])
+                m = int(parts[1])
+                months_by_year.setdefault(y, set()).add(m)
+
+            selectable_years = sorted(months_by_year.keys())
+            selectable_months_by_year = {
+                str(y): sorted(list(months_by_year[y]))
+                for y in selectable_years
+            }
+            selectable = {
+                'day': {
+                    'years': selectable_years,
+                    'months_by_year': selectable_months_by_year,
+                },
+                'month': {
+                    'years': selectable_years,
+                },
+            }
+
+            latest_year = selectable_years[-1] if selectable_years else None
+            latest_month = (
+                max(months_by_year[latest_year])
+                if latest_year is not None and months_by_year.get(latest_year)
+                else None
+            )
+
+            period: Dict[str, Any] = {'time_type': time_type}
+
             if time_type == 'day':
-                month_start = today.strftime('%Y-%m-01')
-                cursor.execute(f'''
-                    SELECT date, day_pnl, total_pnl FROM daily_snapshots 
+                if not selectable_years:
+                    period.update({'year': now.year, 'month': now.month})
+                    return {
+                        'items': [],
+                        'total_pnl': 0.0,
+                        'total_rate': 0.0,
+                        'title': f'{now.year}年{now.month}月累计',
+                        'period': period,
+                        'selectable': selectable,
+                    }
+
+                target_year = year
+                target_month = month
+                if target_year is None and target_month is None:
+                    if now.year in months_by_year and now.month in months_by_year[now.year]:
+                        target_year = now.year
+                        target_month = now.month
+                    else:
+                        target_year = latest_year
+                        target_month = latest_month
+                else:
+                    if target_year is None:
+                        target_year = now.year
+                    if target_month is None:
+                        target_month = now.month
+
+                assert target_year is not None
+                assert target_month is not None
+                period.update({'year': int(target_year), 'month': int(target_month)})
+
+                if (
+                    target_year not in months_by_year
+                    or target_month not in months_by_year[target_year]
+                ):
+                    return {
+                        'error': 'Selected period has no snapshot data',
+                        'code': 'INVALID_CALENDAR_PERIOD',
+                        'items': [],
+                        'total_pnl': 0.0,
+                        'total_rate': 0.0,
+                        'title': f'{target_year}年{target_month}月累计',
+                        'period': period,
+                        'selectable': selectable,
+                    }
+
+                month_start = f'{target_year:04d}-{target_month:02d}-01'
+                if target_month == 12:
+                    next_month = datetime(target_year + 1, 1, 1)
+                else:
+                    next_month = datetime(target_year, target_month + 1, 1)
+                month_end = (next_month - timedelta(days=1)).strftime('%Y-%m-%d')
+
+                cursor.execute(
+                    f'''
+                    SELECT date, day_pnl, total_pnl
+                    FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
-                ''', (month_start, today.strftime('%Y-%m-%d')) + user_param)
-                
+                    ''',
+                    (month_start, month_end) + user_param,
+                )
                 prev_total = None
                 for row in cursor.fetchall():
                     date_str = row['date']
-                    day = int(date_str.split('-')[2])
+                    day = int(str(date_str).split('-')[2])
                     is_weekend = _is_weekend_date(date_str)
-                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0
+                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
                     if is_weekend:
-                        pnl = 0
+                        pnl = 0.0
                     elif (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
                         pnl = float(row['total_pnl']) - prev_total
                     if not is_weekend and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl
-                
-                title = f"{today.month}月累计"
-            
+
+                title = f'{target_year}年{target_month}月累计'
+
             elif time_type == 'month':
-                year_start = today.strftime('%Y-01-01')
-                cursor.execute(f'''
-                    SELECT date, total_pnl FROM daily_snapshots
+                if not selectable_years:
+                    period.update({'year': now.year})
+                    return {
+                        'items': [],
+                        'total_pnl': 0.0,
+                        'total_rate': 0.0,
+                        'title': f'{now.year}年累计',
+                        'period': period,
+                        'selectable': selectable,
+                    }
+
+                target_year = year
+                if target_year is None:
+                    target_year = now.year if now.year in months_by_year else latest_year
+
+                assert target_year is not None
+                period.update({'year': int(target_year)})
+
+                if target_year not in months_by_year:
+                    return {
+                        'error': 'Selected period has no snapshot data',
+                        'code': 'INVALID_CALENDAR_PERIOD',
+                        'items': [],
+                        'total_pnl': 0.0,
+                        'total_rate': 0.0,
+                        'title': f'{target_year}年累计',
+                        'period': period,
+                        'selectable': selectable,
+                    }
+
+                year_start = f'{target_year:04d}-01-01'
+                year_end = f'{target_year:04d}-12-31'
+                cursor.execute(
+                    f'''
+                    SELECT date, total_pnl
+                    FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
-                ''', (year_start, today.strftime('%Y-%m-%d')) + user_param)
+                    ''',
+                    (year_start, year_end) + user_param,
+                )
 
-                month_last = {}
+                month_last: Dict[int, float] = {}
                 for row in cursor.fetchall():
-                    date = row['date']
-                    if _is_weekend_date(date):
+                    date_str = row['date']
+                    if _is_weekend_date(date_str):
                         continue
-                    m = int(date.split('-')[1])
+                    m = int(str(date_str).split('-')[1])
                     tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
                     month_last[m] = tp
 
-                cursor.execute(f'''
-                    SELECT total_pnl FROM daily_snapshots
+                cursor.execute(
+                    f'''
+                    SELECT total_pnl
+                    FROM daily_snapshots
                     WHERE date < ? AND {user_condition}
                     ORDER BY date DESC
                     LIMIT 1
-                ''', (year_start,) + user_param)
+                    ''',
+                    (year_start,) + user_param,
+                )
                 base_row = cursor.fetchone()
                 prev_total = float(base_row['total_pnl']) if base_row and base_row['total_pnl'] is not None else 0.0
+                month_limit = now.month if target_year == now.year else 12
 
-                for m in range(1, today.month + 1):
+                for m in range(1, month_limit + 1):
                     current_total = month_last.get(m, prev_total)
                     pnl = current_total - prev_total
-                    items.append({'label': f"{m}月", 'pnl': pnl})
+                    items.append({'label': f'{m}月', 'pnl': pnl})
                     total_pnl += pnl
                     prev_total = current_total
 
-                title = f"{today.year}年累计"
-            
+                title = f'{target_year}年累计'
+
             elif time_type == 'year':
-                cursor.execute(f'''
-                    SELECT date, total_pnl FROM daily_snapshots
+                period = {'time_type': 'year'}
+                cursor.execute(
+                    f'''
+                    SELECT date, total_pnl
+                    FROM daily_snapshots
                     WHERE {user_condition}
                     ORDER BY date ASC
-                ''', user_param)
+                    ''',
+                    user_param,
+                )
 
                 rows = cursor.fetchall()
                 if rows:
-                    year_last = {}
+                    year_last: Dict[int, float] = {}
                     for row in rows:
-                        date = row['date']
-                        if _is_weekend_date(date):
+                        date_str = row['date']
+                        if _is_weekend_date(date_str):
                             continue
-                        y = int(date.split('-')[0])
+                        y = int(str(date_str).split('-')[0])
                         tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
                         year_last[y] = tp
-                    start_year = int(rows[0]['date'].split('-')[0])
-                    base_date = f"{start_year}-01-01"
-                    cursor.execute(f'''
-                        SELECT total_pnl FROM daily_snapshots
+
+                    start_year = int(str(rows[0]['date']).split('-')[0])
+                    base_date = f'{start_year}-01-01'
+                    cursor.execute(
+                        f'''
+                        SELECT total_pnl
+                        FROM daily_snapshots
                         WHERE date < ? AND {user_condition}
                         ORDER BY date DESC
                         LIMIT 1
-                    ''', (base_date,) + user_param)
+                        ''',
+                        (base_date,) + user_param,
+                    )
                     base_row = cursor.fetchone()
                     prev_total = float(base_row['total_pnl']) if base_row and base_row['total_pnl'] is not None else 0.0
-                    for y in range(start_year, today.year + 1):
+                    for y in range(start_year, now.year + 1):
                         current_total = year_last.get(y, prev_total)
                         pnl = current_total - prev_total
                         items.append({'label': str(y), 'pnl': pnl})
                         total_pnl += pnl
                         prev_total = current_total
 
-                title = "总累计"
-            
-            cursor.execute(f'''
-                SELECT total_invest FROM daily_snapshots WHERE {user_condition} ORDER BY date ASC LIMIT 1
-            ''', user_param)
+                title = '总累计'
+            else:
+                return {
+                    'error': 'Invalid time type',
+                    'code': 'INVALID_CALENDAR_PERIOD',
+                    'items': [],
+                    'total_pnl': 0.0,
+                    'total_rate': 0.0,
+                    'title': '',
+                    'period': period,
+                    'selectable': selectable,
+                }
+
+            cursor.execute(
+                f'''
+                SELECT total_invest
+                FROM daily_snapshots
+                WHERE {user_condition}
+                ORDER BY date ASC
+                LIMIT 1
+                ''',
+                user_param,
+            )
             row = cursor.fetchone()
-            base = float(row['total_invest']) if row and row['total_invest'] else 1
-            total_rate = round(total_pnl / base * 100, 2) if base else 0
-            
+            base = float(row['total_invest']) if row and row['total_invest'] else 0.0
+            total_rate = round(total_pnl / base * 100, 2) if base else 0.0
+
             return {
                 'items': items,
                 'total_pnl': total_pnl,
                 'total_rate': total_rate,
-                'title': title
+                'title': title,
+                'period': period,
+                'selectable': selectable,
             }
-        
+
         except Exception as e:
             logger.error(f"Failed to get calendar data: {e}")
-            return {'items': [], 'total_pnl': 0, 'total_rate': 0, 'title': ''}
+            return {
+                'items': [],
+                'total_pnl': 0.0,
+                'total_rate': 0.0,
+                'title': '',
+                'period': {'time_type': time_type},
+                'selectable': {'day': {'years': [], 'months_by_year': {}}, 'month': {'years': []}},
+            }
         finally:
             conn.close()
     

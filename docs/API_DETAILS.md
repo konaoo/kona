@@ -243,3 +243,77 @@ This is a best-effort extraction; verify against code for edge cases.
 - Deprecated, always returns `410`
 
 ---
+## `/api/admin/users/password/reset`
+
+**Methods**: POST
+
+**Request Body**
+- required: `user_id`
+- optional: `temp_password`, `force_change`
+
+**Response**
+- `status`, `user_id`, `must_change_password`, `revoked_refresh_tokens`
+- 如果未传 `temp_password`，会返回一次性 `temp_password`
+
+---
+
+## `/api/admin/users/sessions/revoke`
+
+**Methods**: POST
+
+**Request Body**
+- required: `user_id`
+
+**Response**
+- `status`, `user_id`, `revoked_refresh_tokens`
+
+---
+
+## `/api/admin/apis/policies`
+
+**Methods**: GET
+
+**Query Params**
+- optional: `scope_type` (`all`/`upstream`/`api_group`)
+
+**Response**
+- `items[]`: `scope_key`, `scope_type`, `enabled`, `limit_per_min`, `note`, `updated_by`, `updated_at`
+
+---
+
+## `/api/admin/apis/policies/update`
+
+**Methods**: POST
+
+**Request Body**
+- required: `scope_key`
+- optional: `enabled`, `limit_per_min`, `note`
+
+**Response**
+- `status`, `policy`
+
+---
+
+## `/api/admin/apis/policies/batch_update`
+
+**Methods**: POST
+
+**Request Body**
+- required: `items[]`
+
+**Response**
+- `status`, `updated_count`, `items[]`
+
+---
+
+## `/api/admin/invites/stats`
+
+**Methods**: GET
+
+**Query Params**
+- optional: `batch_id`
+
+**Response**
+- `total`, `active`, `used`, `revoked`, `batch_id`
+
+---

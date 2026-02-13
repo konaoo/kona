@@ -9,6 +9,7 @@ import time
 import secrets
 import json
 from functools import wraps
+from collections import defaultdict
 from flask import Flask, render_template, jsonify, request, make_response, send_file, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -34,10 +35,15 @@ from core.asset_type import infer_asset_type
 from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed, is_weekend
 from core.news import news_fetcher
 from core.system import system_manager
+from core.policy_runtime import (
+    is_policy_enabled,
+    get_policy_limit_per_min,
+)
 from core.auth import (
     login_required,
     optional_auth,
     generate_token,
+    verify_token,
     get_user_profile,
     normalize_username,
     is_valid_username,
@@ -74,6 +80,13 @@ _IDEMPOTENCY_WINDOW_SECONDS = 20.0
 _undo_lock = threading.Lock()
 _undo_records = {}
 _UNDO_WINDOW_SECONDS = 15.0
+_policy_rate_lock = threading.Lock()
+_policy_rate_counters = defaultdict(int)
+_PASSWORD_CHANGE_ALLOWED_PATHS = {
+    "/api/auth/password/change",
+    "/api/auth/logout",
+    "/api/auth/me",
+}
 
 
 def _client_ip() -> str:
@@ -257,6 +270,99 @@ def _auth_audit(event: str, outcome: str, username: str = '', reason: str = '', 
         logger.warning(msg)
     else:
         logger.info(msg)
+
+
+def _resolve_api_policy_scope(path: str) -> str:
+    p = (path or "").strip()
+    if p.startswith("/api/auth/"):
+        return "api.auth"
+    if p.startswith("/api/news"):
+        return "api.news"
+    if p.startswith(
+        (
+            "/api/portfolio",
+            "/api/cash_assets",
+            "/api/other_assets",
+            "/api/liabilities",
+            "/api/transactions",
+            "/api/history",
+            "/api/analysis",
+            "/api/snapshot",
+        )
+    ):
+        return "api.portfolio"
+    return ""
+
+
+def _apply_policy_rate_limit(scope_key: str, limit_per_min: int) -> bool:
+    if limit_per_min <= 0:
+        return True
+    now_minute = int(time.time() // 60)
+    key = (scope_key, _client_ip(), now_minute)
+    with _policy_rate_lock:
+        stale_keys = [k for k in _policy_rate_counters.keys() if k[2] < now_minute - 1]
+        for stale_key in stale_keys:
+            _policy_rate_counters.pop(stale_key, None)
+        _policy_rate_counters[key] += 1
+        return _policy_rate_counters[key] <= limit_per_min
+
+
+@app.before_request
+def _enforce_api_group_policy():
+    path = request.path or ""
+    if not path.startswith("/api/"):
+        return None
+    if path.startswith("/api/admin/"):
+        return None
+
+    scope_key = _resolve_api_policy_scope(path)
+    if not scope_key:
+        return None
+
+    auth_header = request.headers.get("Authorization", "")
+    parts = auth_header.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        valid, payload = verify_token(parts[1])
+        if valid and payload and payload.get("user_id"):
+            user = db.get_user_by_id(payload.get("user_id"))
+            if user and str(user.get("status") or "active").lower() != "active":
+                return jsonify({"error": "User is disabled"}), 403
+            if user and bool(user.get("must_change_password")) and path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+                return (
+                    jsonify(
+                        {
+                            "error": "Password change required",
+                            "code": "PASSWORD_CHANGE_REQUIRED",
+                        }
+                    ),
+                    403,
+                )
+
+    if not is_policy_enabled(scope_key, default=True):
+        return (
+            jsonify(
+                {
+                    "error": "Service temporarily disabled",
+                    "code": "API_SCOPE_DISABLED",
+                    "scope_key": scope_key,
+                }
+            ),
+            503,
+        )
+
+    limit_per_min = get_policy_limit_per_min(scope_key)
+    if limit_per_min and not _apply_policy_rate_limit(scope_key, limit_per_min):
+        return (
+            jsonify(
+                {
+                    "error": "Rate limit exceeded",
+                    "code": "API_SCOPE_RATE_LIMITED",
+                    "scope_key": scope_key,
+                }
+            ),
+            429,
+        )
+    return None
 
 
 def _refresh_token_expiry_days() -> int:
@@ -1868,8 +1974,37 @@ def analysis_calendar():
         {items: [{label, pnl}], total_pnl, total_rate, title}
     """
     time_type = request.args.get('type', 'day')
+    if time_type not in ('day', 'month', 'year'):
+        return jsonify({"error": "Invalid calendar type", "code": "INVALID_CALENDAR_PERIOD"}), 400
+
+    def _parse_positive_int_arg(name):
+        raw = request.args.get(name)
+        if raw is None:
+            return None
+        raw = str(raw).strip()
+        if not raw:
+            return None
+        try:
+            val = int(raw)
+        except ValueError:
+            raise ValueError(name)
+        if val <= 0:
+            raise ValueError(name)
+        return val
+
+    try:
+        year = _parse_positive_int_arg('year')
+        month = _parse_positive_int_arg('month')
+    except ValueError:
+        return jsonify({"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}), 400
+
+    if month is not None and not 1 <= month <= 12:
+        return jsonify({"error": "Invalid month", "code": "INVALID_CALENDAR_PERIOD"}), 400
+
     user_id = g.user_id
-    result = db.get_calendar_data(time_type, user_id)
+    result = db.get_calendar_data(time_type, user_id, year=year, month=month)
+    if result.get('code') == 'INVALID_CALENDAR_PERIOD':
+        return jsonify(result), 400
     return jsonify(result)
 
 

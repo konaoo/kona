@@ -52,6 +52,7 @@ class AuthV2Tests(unittest.TestCase):
         reg_body = reg.get_json()
         self.assertIsInstance(reg_body.get("access_token"), str)
         self.assertIsInstance(reg_body.get("refresh_token"), str)
+        self.assertFalse(bool((reg_body.get("user") or {}).get("must_change_password")))
         refresh_expires_at = datetime.fromisoformat(reg_body.get("refresh_expires_at"))
         self.assertGreater(refresh_expires_at, datetime.utcnow() + timedelta(days=300))
 

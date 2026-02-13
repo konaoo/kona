@@ -9,6 +9,12 @@
     <div class="hint">生成、导出、作废邀请码；并支持历史数据归属迁移</div>
 </div>
 
+<div class="grid-3">
+    <div class="card"><div class="muted">总数</div><div class="kpi" id="mTotal">-</div></div>
+    <div class="card"><div class="muted">可用</div><div class="kpi" id="mActive">-</div></div>
+    <div class="card"><div class="muted">已使用/作废</div><div class="kpi" id="mUsedRevoked">-</div></div>
+</div>
+
 <div class="card">
     <div class="controls">
         <input id="batchId" placeholder="batch_id（可空自动生成）" style="min-width:240px;" />
@@ -72,6 +78,7 @@
     async function generateInvites() {
         const batchId = document.getElementById('batchId').value.trim();
         const count = parseInt(document.getElementById('inviteCount').value || '1000', 10);
+        if (!confirm(`确认生成 ${count} 个邀请码？`)) return;
         try {
             const data = await adminFetch('/api/admin/invites/generate', {
                 method: 'POST',
@@ -83,6 +90,7 @@
                 document.getElementById('batchFilter').value = data.batch_id;
             }
             loadInvites();
+            loadInviteStats();
         } catch (e) {
             showToast(`生成失败: ${e.message}`, true);
         }
@@ -114,12 +122,28 @@
                 `;
                 tbody.appendChild(tr);
             }
+            loadInviteStats();
         } catch (e) {
             showToast(`加载失败: ${e.message}`, true);
         }
     }
 
+    async function loadInviteStats() {
+        try {
+            const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
+            const data = await adminFetch(`/api/admin/invites/stats?batch_id=${batch}`);
+            document.getElementById('mTotal').innerText = data.total ?? 0;
+            document.getElementById('mActive').innerText = data.active ?? 0;
+            const used = Number(data.used || 0);
+            const revoked = Number(data.revoked || 0);
+            document.getElementById('mUsedRevoked').innerText = `${used}/${revoked}`;
+        } catch (e) {
+            showToast(`统计加载失败: ${e.message}`, true);
+        }
+    }
+
     async function revokeInvite(code) {
+        if (!confirm(`确认作废邀请码 ${code}？`)) return;
         try {
             await adminFetch('/api/admin/invites/revoke', {
                 method: 'POST',
@@ -127,6 +151,7 @@
             });
             showToast('已作废');
             loadInvites();
+            loadInviteStats();
         } catch (e) {
             showToast(`作废失败: ${e.message}`, true);
         }
@@ -173,5 +198,6 @@
     }
 
     loadInvites();
+    loadInviteStats();
 </script>
 {% endblock %}

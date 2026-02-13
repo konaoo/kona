@@ -18,6 +18,9 @@ from core.auth import admin_required
 from core.price import get_price_runtime_metrics, get_price_source_health
 from core.snapshot import take_snapshot
 from core.system import system_manager
+from core.admin.user_admin import reset_user_password, revoke_user_sessions
+from core.admin.policies import list_policies, update_policy, batch_update_policies
+from core.policy_runtime import invalidate_policy_cache
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
@@ -249,6 +252,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         u.phone,
                         u.user_number,
                         COALESCE(u.register_method, '') AS register_method,
+                        COALESCE(u.is_admin, 0) AS is_admin,
+                        COALESCE(u.must_change_password, 0) AS must_change_password,
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
@@ -263,6 +268,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         '' AS phone,
                         NULL AS user_number,
                         'local_anonymous' AS register_method,
+                        0 AS is_admin,
+                        0 AS must_change_password,
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
@@ -294,6 +301,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         u.phone,
                         u.user_number,
                         COALESCE(u.register_method, '') AS register_method,
+                        COALESCE(u.is_admin, 0) AS is_admin,
+                        COALESCE(u.must_change_password, 0) AS must_change_password,
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
@@ -308,6 +317,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         '' AS phone,
                         NULL AS user_number,
                         'local_anonymous' AS register_method,
+                        0 AS is_admin,
+                        0 AS must_change_password,
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
@@ -328,6 +339,8 @@ def create_admin_blueprint(db, admin_write_audit):
                     bu.phone,
                     bu.user_number,
                     bu.register_method,
+                    bu.is_admin,
+                    bu.must_change_password,
                     bu.status,
                     bu.created_at,
                     bu.last_login,
@@ -374,6 +387,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         "phone": "",
                         "user_number": None,
                         "register_method": "local_anonymous",
+                        "is_admin": 0,
+                        "must_change_password": 0,
                         "status": "active",
                         "created_at": None,
                         "last_login": None,
@@ -389,6 +404,8 @@ def create_admin_blueprint(db, admin_write_audit):
                     COALESCE(u.phone, '') AS phone,
                     u.user_number,
                     COALESCE(u.register_method, '') AS register_method,
+                    COALESCE(u.is_admin, 0) AS is_admin,
+                    COALESCE(u.must_change_password, 0) AS must_change_password,
                     LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                     u.created_at,
                     u.last_login,
@@ -419,6 +436,8 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify({"error": "Local anonymous user is read-only"}), 400
         if status not in {"active", "disabled"}:
             return jsonify({"error": "Invalid status"}), 400
+        if status == "disabled" and user_id == g.user_id:
+            return jsonify({"error": "Cannot disable current admin user"}), 400
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -459,6 +478,8 @@ def create_admin_blueprint(db, admin_write_audit):
                 is_admin_value = 1 if _coerce_bool(data.get("is_admin")) else 0
             except ValueError:
                 return jsonify({"error": "Invalid is_admin"}), 400
+            if user_id == g.user_id and is_admin_value == 0:
+                return jsonify({"error": "Cannot remove current admin role"}), 400
             updates.append("is_admin = ?")
             params.append(is_admin_value)
 
@@ -488,7 +509,7 @@ def create_admin_blueprint(db, admin_write_audit):
             conn.commit()
             cursor.execute(
                 f"""
-                SELECT id, username, nickname, phone, user_number, is_admin, status, created_at, last_login
+                SELECT id, username, nickname, phone, user_number, is_admin, must_change_password, status, created_at, last_login
                 FROM users
                 WHERE id = ? AND {_real_user_where()}
                 LIMIT 1
@@ -499,6 +520,7 @@ def create_admin_blueprint(db, admin_write_audit):
             payload = dict(row) if row else {}
             if payload:
                 payload["is_admin"] = bool(payload["is_admin"])
+                payload["must_change_password"] = bool(payload.get("must_change_password"))
             return jsonify({"status": "ok", "user": payload})
         except Exception:
             conn.rollback()
@@ -559,6 +581,45 @@ def create_admin_blueprint(db, admin_write_audit):
             raise
         finally:
             conn.close()
+
+    @bp.route("/users/password/reset", methods=["POST"])
+    @admin_write_audit(action="admin.users.password.reset", target_type="user")
+    @admin_required
+    def admin_users_password_reset():
+        data = _json_body()
+        user_id = str(data.get("user_id", "")).strip()
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
+        if user_id == "__local__":
+            return jsonify({"error": "Local anonymous user is read-only"}), 400
+        force_change = True
+        if "force_change" in data:
+            try:
+                force_change = _coerce_bool(data.get("force_change"))
+            except ValueError:
+                return jsonify({"error": "Invalid force_change"}), 400
+        temp_password = str(data.get("temp_password", "")).strip() or None
+        payload, code = reset_user_password(
+            db=db,
+            user_id=user_id,
+            admin_user_id=getattr(g, "user_id", "") or "",
+            temp_password=temp_password,
+            force_change=force_change,
+        )
+        return jsonify(payload), code
+
+    @bp.route("/users/sessions/revoke", methods=["POST"])
+    @admin_write_audit(action="admin.users.sessions.revoke", target_type="user")
+    @admin_required
+    def admin_users_sessions_revoke():
+        data = _json_body()
+        user_id = str(data.get("user_id", "")).strip()
+        if not user_id:
+            return jsonify({"error": "Missing user_id"}), 400
+        if user_id == "__local__":
+            return jsonify({"error": "Local anonymous user is read-only"}), 400
+        payload, code = revoke_user_sessions(db=db, user_id=user_id)
+        return jsonify(payload), code
 
     @bp.route("/config", methods=["GET"])
     @admin_required
@@ -745,17 +806,60 @@ def create_admin_blueprint(db, admin_write_audit):
 
         upstream = system_manager.check_api_status()
         upstream_ok = all(item.get("ok") for item in upstream.values()) if upstream else True
+        policies = db.list_admin_api_policies(scope_type="all")
+        for policy in policies:
+            policy["enabled"] = bool(policy.get("enabled"))
 
         payload = {
             "status": "ok" if (db_ok and upstream_ok) else "degraded",
             "server_time_utc": datetime.now(timezone.utc).isoformat(),
             "db": {"ok": db_ok, "error": db_error},
             "upstream": upstream,
+            "policies": policies,
             "runtime": get_price_runtime_metrics(),
             "sources": get_price_source_health(),
             "version_info": system_manager.get_version_info(),
         }
         return jsonify(payload)
+
+    @bp.route("/apis/policies", methods=["GET"])
+    @admin_required
+    def admin_apis_policies():
+        scope_type = request.args.get("scope_type", "all").strip().lower()
+        return jsonify(list_policies(db, scope_type=scope_type))
+
+    @bp.route("/apis/policies/update", methods=["POST"])
+    @admin_write_audit(action="admin.apis.policies.update", target_type="policy")
+    @admin_required
+    def admin_apis_policies_update():
+        data = _json_body()
+        scope_key = str(data.get("scope_key", "")).strip()
+        if not scope_key:
+            return jsonify({"error": "Missing scope_key"}), 400
+        payload, code = update_policy(
+            db=db,
+            scope_key=scope_key,
+            payload=data,
+            updated_by=getattr(g, "user_id", "") or "",
+        )
+        if code == 200:
+            invalidate_policy_cache(scope_key)
+        return jsonify(payload), code
+
+    @bp.route("/apis/policies/batch_update", methods=["POST"])
+    @admin_write_audit(action="admin.apis.policies.batch_update", target_type="policy")
+    @admin_required
+    def admin_apis_policies_batch_update():
+        data = _json_body()
+        items = data.get("items")
+        payload, code = batch_update_policies(
+            db=db,
+            items=items if isinstance(items, list) else [],
+            updated_by=getattr(g, "user_id", "") or "",
+        )
+        if code == 200:
+            invalidate_policy_cache()
+        return jsonify(payload), code
 
     @bp.route("/apis/smoke_test", methods=["POST"])
     @admin_write_audit(action="admin.apis.smoke_test", target_type="system")
@@ -859,6 +963,43 @@ def create_admin_blueprint(db, admin_write_audit):
         offset = max(0, request.args.get("offset", 0, type=int))
         payload = db.list_invite_codes(status=status, batch_id=batch_id, limit=limit, offset=offset)
         return jsonify(payload)
+
+    @bp.route("/invites/stats", methods=["GET"])
+    @admin_required
+    def admin_invites_stats():
+        batch_id = request.args.get("batch_id", "").strip()
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            params: List[Any] = []
+            where = ""
+            if batch_id:
+                where = "WHERE batch_id = ?"
+                params.append(batch_id)
+            cursor.execute(
+                f"""
+                SELECT
+                    COUNT(1) AS total,
+                    SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+                    SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) AS used,
+                    SUM(CASE WHEN status = 'revoked' THEN 1 ELSE 0 END) AS revoked
+                FROM invite_codes
+                {where}
+                """,
+                tuple(params),
+            )
+            row = cursor.fetchone() or {}
+            return jsonify(
+                {
+                    "total": int(row["total"] or 0),
+                    "active": int(row["active"] or 0),
+                    "used": int(row["used"] or 0),
+                    "revoked": int(row["revoked"] or 0),
+                    "batch_id": batch_id,
+                }
+            )
+        finally:
+            conn.close()
 
     @bp.route("/invites/revoke", methods=["POST"])
     @admin_write_audit(action="admin.invites.revoke", target_type="invite")

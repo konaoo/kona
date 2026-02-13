@@ -7,6 +7,7 @@ import time
 import logging
 from datetime import datetime
 from typing import List, Dict
+from .policy_runtime import is_policy_enabled
 
 # 配置
 JIN10_API_URL = "https://flash-api.jin10.com/get_flash_list"
@@ -46,6 +47,9 @@ class NewsFetcher:
 
     def fetch_latest(self, page: int = 1, page_size: int = 30) -> List[Dict]:
         """抓取最新快讯 (新浪源)"""
+        if not is_policy_enabled("upstream.news", default=True):
+            logger.warning("News upstream disabled by admin policy")
+            return []
         logger.info("Fetching news from Sina...")
         try:
             params = {

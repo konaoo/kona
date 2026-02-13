@@ -16,6 +16,7 @@ from .fund import get_fund_price
 from .source_health import source_health
 from .utils import monitored_http_get
 from .utils import safe_float
+from .policy_runtime import is_policy_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +137,15 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
     
     # 根据代码类型选择获取方式
     price_data = None
-    
+
     # 场外基金
+    if not is_policy_enabled("upstream.price", default=True):
+        logger.warning("Price upstream disabled by admin policy")
+        if stale_fallback:
+            _mark_metric("stale_hits")
+            return stale_fallback
+        return (0.0, 0.0, 0.0, 0.0)
+
     _mark_metric("network_fetch")
 
     if code.startswith('f_'):
@@ -215,6 +223,10 @@ def get_forex_rates() -> Dict[str, float]:
         汇率字典 {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0}
     """
     rates = config.DEFAULT_FOREX_RATES.copy()
+
+    if not is_policy_enabled("upstream.rate", default=True):
+        logger.warning("Rate upstream disabled by admin policy")
+        return rates
     
     try:
         url = config.API_ENDPOINTS["sina_forex"]

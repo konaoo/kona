@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import config
+from .policy_runtime import is_policy_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +42,27 @@ class SystemManager:
     def check_api_status(self) -> Dict[str, Any]:
         """检测核心API连通性"""
         results = {}
-        
+
         targets = {
             "price": "http://hq.sinajs.cn/list=sh000001", # 新浪A股
             "rate": "http://hq.sinajs.cn/list=hf_USDCNY", # 汇率
             "news": "https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152" # 新浪快讯
         }
-        
+        scope_map = {
+            "price": "upstream.price",
+            "rate": "upstream.rate",
+            "news": "upstream.news",
+        }
+
         for name, url in targets.items():
+            scope_key = scope_map.get(name, "")
+            if scope_key and not is_policy_enabled(scope_key, default=True):
+                results[name] = {
+                    "ok": False,
+                    "disabled": True,
+                    "error": "disabled_by_policy",
+                }
+                continue
             start = time.time()
             try:
                 # 简单的连通性测试，超时设短一点

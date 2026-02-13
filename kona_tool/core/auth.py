@@ -53,6 +53,11 @@ _SCRYPT_N = 16384
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_LEN = 64
+_PASSWORD_CHANGE_ALLOWED_PATHS = {
+    "/api/auth/password/change",
+    "/api/auth/logout",
+    "/api/auth/me",
+}
 
 
 def normalize_username(username: str) -> str:
@@ -162,8 +167,32 @@ def login_required(f):
         valid, payload = verify_token(token)
         if not valid or not payload:
             return jsonify({"error": "Invalid or expired token"}), 401
-        g.user_id = payload.get("user_id")
-        g.username = payload.get("username")
+        user_id = payload.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Invalid token payload"}), 401
+        from core.db import db as global_db
+
+        user = global_db.get_user_by_id(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        if str(user.get("status") or "active").lower() != "active":
+            return jsonify({"error": "User is disabled"}), 403
+
+        must_change = bool(user.get("must_change_password"))
+        if must_change and request.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+            return (
+                jsonify(
+                    {
+                        "error": "Password change required",
+                        "code": "PASSWORD_CHANGE_REQUIRED",
+                    }
+                ),
+                403,
+            )
+
+        g.user_id = user.get("id")
+        g.username = user.get("username") or payload.get("username")
+        g.must_change_password = must_change
         return f(*args, **kwargs)
 
     return decorated
@@ -178,8 +207,14 @@ def optional_auth(f):
         if token:
             valid, payload = verify_token(token)
             if valid and payload:
-                g.user_id = payload.get("user_id")
-                g.username = payload.get("username")
+                user_id = payload.get("user_id")
+                if user_id:
+                    from core.db import db as global_db
+
+                    user = global_db.get_user_by_id(user_id)
+                    if user and str(user.get("status") or "active").lower() == "active":
+                        g.user_id = user.get("id")
+                        g.username = user.get("username")
         return f(*args, **kwargs)
 
     return decorated
@@ -237,4 +272,7 @@ def admin_required(f):
 
 
 def get_user_profile(db, user_id: str) -> Optional[dict]:
-    return db.get_user_profile(user_id)
+    profile = db.get_user_profile(user_id)
+    if profile:
+        profile["must_change_password"] = bool(profile.get("must_change_password"))
+    return profile

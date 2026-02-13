@@ -64,6 +64,12 @@ class AdminInviteTests(unittest.TestCase):
         items = listed.get_json().get("items", [])
         self.assertEqual(len(items), 5)
 
+        stats = self.client.get("/api/admin/invites/stats?batch_id=batch_test", headers=headers)
+        self.assertEqual(stats.status_code, 200)
+        stats_body = stats.get_json()
+        self.assertEqual(stats_body.get("total"), 5)
+        self.assertEqual(stats_body.get("active"), 5)
+
         code = items[0]["code"]
         rev = self.client.post(
             "/api/admin/invites/revoke",
@@ -71,6 +77,11 @@ class AdminInviteTests(unittest.TestCase):
             json={"code": code},
         )
         self.assertEqual(rev.status_code, 200)
+
+        stats2 = self.client.get("/api/admin/invites/stats?batch_id=batch_test", headers=headers)
+        self.assertEqual(stats2.status_code, 200)
+        stats2_body = stats2.get_json()
+        self.assertEqual(stats2_body.get("revoked"), 1)
 
         export_resp = self.client.get("/api/admin/invites/export?batch_id=batch_test", headers=headers)
         self.assertEqual(export_resp.status_code, 200)

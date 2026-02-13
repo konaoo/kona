@@ -468,6 +468,7 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 ## 11. 文档索引（全部在 docs）
 
 - Auth 持久化专题（必读）：`/Users/kona/Desktop/kaka/kona_repo/docs/README_AUTH_PERSISTENCE_BIOMETRIC.md`
+- 后台重构专题（邀请码/用户/接口策略）：`/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
 - 结构说明：`/Users/kona/Desktop/kaka/kona_repo/docs/STRUCTURE.md`
 - 运行手册：`/Users/kona/Desktop/kaka/kona_repo/docs/RUNBOOK.md`
 - 部署说明：`/Users/kona/Desktop/kaka/kona_repo/docs/DEPLOYMENT.md`
@@ -563,7 +564,30 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
    - `kona-snapshot-verify.timer` 每天 `23:05 UTC` 触发（等价北京时间次日 `07:05`）。
    - 最近多日 `kona-snapshot.service` 均正常执行完成（`Finished`）。
 
-## 18. 结论
+## 18. 今日改动（2026-02-13，后台重构）
+
+1. 管理后台能力重构（保留模板方案，不新建 SPA）：
+   - 邀请码管理增强：`/api/admin/invites/stats`，页面新增批次/状态统计卡与过滤联动。
+   - APP 用户管理增强：管理员角色切换、重置临时密码、强制改密、强制下线。
+   - 接口管理增强：新增策略中心（开关/限流/备注），支持运行时即时生效。
+2. 新增强制改密硬约束：
+   - `users.must_change_password=1` 时，仅允许访问 `/api/auth/password/change`、`/api/auth/logout`、`/api/auth/me`。
+   - 其他业务接口返回 `403 + PASSWORD_CHANGE_REQUIRED`。
+3. 新增数据库迁移：
+   - `migrations/009_add_user_force_password_change.py`
+   - `migrations/010_add_admin_api_policies.py`
+4. 新增后台服务层与运行时策略读取：
+   - `core/admin/user_admin.py`
+   - `core/admin/policies.py`
+   - `core/policy_runtime.py`
+5. 新增/更新测试：
+   - `test_admin_users_password_reset.py`
+   - `test_auth_force_password_change.py`
+   - `test_admin_api_policies.py`
+   - 以及 `test_admin_api_foundation.py`、`test_admin_invites.py`、`test_auth_rate_limit.py`。
+6. 详细交接文档：`/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
+
+## 19. 结论
 
 当前项目已经具备：
 

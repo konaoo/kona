@@ -6,7 +6,7 @@
 {% block content %}
 <div class="toolbar">
     <h1 class="title">用户管理（运营视角）</h1>
-    <div class="hint">真实注册用户列表、详情、启用/禁用</div>
+    <div class="hint">真实注册用户列表、状态/角色管理、重置密码、强制下线</div>
 </div>
 
 <div class="grid-3">
@@ -38,6 +38,8 @@
                     <th>手机号</th>
                     <th>编号</th>
                     <th>注册方式</th>
+                    <th>管理员</th>
+                    <th>需改密</th>
                     <th>注册时间</th>
                     <th>最近登录</th>
                     <th>状态</th>
@@ -84,6 +86,8 @@
     }
 
     async function setStatus(userId, status) {
+        const action = status === 'active' ? '启用' : '禁用';
+        if (!confirm(`确认${action}该用户？`)) return;
         try {
             await adminFetch('/api/admin/users/status', {
                 method: 'POST',
@@ -93,6 +97,56 @@
             await loadUsers();
         } catch (e) {
             showToast(`状态更新失败: ${e.message}`, true);
+        }
+    }
+
+    async function toggleAdmin(userId, makeAdmin) {
+        const action = makeAdmin ? '设为管理员' : '取消管理员';
+        if (!confirm(`确认${action}？`)) return;
+        try {
+            await adminFetch('/api/admin/users/update', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId, is_admin: !!makeAdmin })
+            });
+            showToast(makeAdmin ? '已设为管理员' : '已取消管理员');
+            await loadUsers();
+        } catch (e) {
+            showToast(`角色更新失败: ${e.message}`, true);
+        }
+    }
+
+    async function resetPassword(userId) {
+        const val = prompt('输入临时密码（留空自动生成）', '');
+        if (val === null) return;
+        const payload = { user_id: userId, force_change: true };
+        if ((val || '').trim()) payload.temp_password = (val || '').trim();
+        try {
+            const data = await adminFetch('/api/admin/users/password/reset', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            let msg = `密码已重置，已撤销 ${data.revoked_refresh_tokens || 0} 个会话`;
+            if (data.temp_password) {
+                msg += `；临时密码：${data.temp_password}`;
+                alert(`临时密码（仅显示一次）：${data.temp_password}`);
+            }
+            showToast(msg);
+            await loadUsers();
+        } catch (e) {
+            showToast(`重置密码失败: ${e.message}`, true);
+        }
+    }
+
+    async function revokeSessions(userId) {
+        if (!confirm('确认撤销该用户所有登录会话？')) return;
+        try {
+            const data = await adminFetch('/api/admin/users/sessions/revoke', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId })
+            });
+            showToast(`已撤销 ${data.revoked_refresh_tokens || 0} 个会话`);
+        } catch (e) {
+            showToast(`强制下线失败: ${e.message}`, true);
         }
     }
 
@@ -106,6 +160,8 @@
                 ['手机号', data.phone || ''],
                 ['用户编号', data.user_number ?? ''],
                 ['注册方式', data.register_method || ''],
+                ['管理员', data.is_admin ? '是' : '否'],
+                ['需改密', data.must_change_password ? '是' : '否'],
                 ['状态', data.status || ''],
                 ['注册时间', data.created_at || ''],
                 ['最近登录', data.last_login || ''],
@@ -124,7 +180,7 @@
         const tbody = document.getElementById('userRows');
         tbody.innerHTML = '';
         if (items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" class="muted">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" class="muted">暂无数据</td></tr>';
             document.getElementById('listMeta').innerText = '共 0 条';
             return;
         }
@@ -139,13 +195,20 @@
                 <td>${u.phone || ''}</td>
                 <td>${u.user_number ?? ''}</td>
                 <td>${u.register_method || ''}</td>
+                <td>${u.is_admin ? '是' : '否'}</td>
+                <td>${u.must_change_password ? '<span class="status-pill status-disabled">是</span>' : '<span class="status-pill status-active">否</span>'}</td>
                 <td>${u.created_at || ''}</td>
                 <td>${u.last_login || ''}</td>
                 <td>${statusPill(u.status || 'active')}</td>
                 <td>
                     <button class="secondary" onclick="showDetail('${u.id}')">详情</button>
                     ${canManage
-                        ? `<button class="${u.status === 'active' ? 'warn' : 'ok'}" onclick="setStatus('${u.id}', '${toStatus}')">${u.status === 'active' ? '禁用' : '启用'}</button>`
+                        ? `
+                            <button class="${u.status === 'active' ? 'warn' : 'ok'}" onclick="setStatus('${u.id}', '${toStatus}')">${u.status === 'active' ? '禁用' : '启用'}</button>
+                            <button class="secondary" onclick="toggleAdmin('${u.id}', ${u.is_admin ? 'false' : 'true'})">${u.is_admin ? '取消管理员' : '设为管理员'}</button>
+                            <button onclick="resetPassword('${u.id}')">重置密码</button>
+                            <button class="warn" onclick="revokeSessions('${u.id}')">强制下线</button>
+                          `
                         : `<span class="muted">只读</span>`}
                 </td>
             `;

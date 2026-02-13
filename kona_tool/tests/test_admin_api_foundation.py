@@ -213,6 +213,22 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(row["action"], "admin.apis.smoke_test")
         self.assertEqual(row["status_code"], 200)
 
+    def test_admin_policy_update_writes_audit(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/policies/update",
+            json={"scope_key": "api.news", "enabled": False, "note": "test"},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body.get("status"), "ok")
+        self.assertEqual(body.get("policy", {}).get("scope_key"), "api.news")
+
+        row = self._latest_audit()
+        self.assertEqual(row["action"], "admin.apis.policies.update")
+        self.assertEqual(row["status_code"], 200)
+
 
 if __name__ == "__main__":
     unittest.main()
