@@ -12,6 +12,9 @@ void main() {
   });
 
   test('AppState persists token to secure storage', () async {
+    FlutterSecureStorage.setMockInitialValues({
+      'auth_logout_mode': 'biometric_ready',
+    });
     final appState = AppState();
 
     await appState.setLoggedIn(
@@ -24,8 +27,10 @@ void main() {
     final storage = FlutterSecureStorage();
     final token = await storage.read(key: 'auth_access_token');
     final refresh = await storage.read(key: 'auth_refresh_token');
+    final logoutMode = await storage.read(key: 'auth_logout_mode');
     expect(token, 't123');
     expect(refresh, 'r123');
+    expect(logoutMode, isNull);
   });
 
   test('Logout keeps refresh token when biometric is enabled', () async {
@@ -47,6 +52,7 @@ void main() {
     expect(await storage.read(key: 'auth_access_token'), isNull);
     expect(await storage.read(key: 'auth_refresh_token'), 'r_keep');
     expect(await storage.read(key: 'auth_biometric_enabled'), '1');
+    expect(await storage.read(key: 'auth_logout_mode'), 'biometric_ready');
   });
 
   test('Logout clears refresh token when biometric is disabled', () async {
@@ -67,5 +73,6 @@ void main() {
     final storage = FlutterSecureStorage();
     expect(await storage.read(key: 'auth_access_token'), isNull);
     expect(await storage.read(key: 'auth_refresh_token'), isNull);
+    expect(await storage.read(key: 'auth_logout_mode'), 'normal');
   });
 }

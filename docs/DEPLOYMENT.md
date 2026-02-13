@@ -258,3 +258,43 @@ curl -s http://127.0.0.1:5003/health
 Notes:
 - restore script creates a safety copy: `portfolio.db.pre_restore_<UTC timestamp>`
 - restore source defaults to latest `portfolio_*.db.gz` in `KONA_BACKUP_DIR`
+
+---
+
+## Refresh Token Cleanup (Auth)
+
+Goal:
+- keep `auth_refresh_tokens` table compact
+- retain expired token records for security troubleshooting (default 90 days)
+
+Script:
+```
+kona_tool/scripts/cleanup_refresh_tokens.py
+```
+
+### 1) Configure retention env
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+grep '^AUTH_REFRESH_TOKEN_RETENTION_DAYS=' .env || echo 'AUTH_REFRESH_TOKEN_RETENTION_DAYS=90' >> .env
+```
+
+### 2) Manual cleanup
+
+```bash
+cd /home/ec2-user/portfolio/kona_tool
+python3 scripts/cleanup_refresh_tokens.py
+```
+
+### 3) Daily schedule (cron example)
+
+```bash
+crontab -l > /tmp/kona.cron 2>/dev/null || true
+grep -q "cleanup_refresh_tokens.py" /tmp/kona.cron || \
+  echo "35 23 * * * cd /home/ec2-user/portfolio/kona_tool && /usr/bin/python3 scripts/cleanup_refresh_tokens.py >> /home/ec2-user/portfolio/kona_tool/archive/logs/refresh_cleanup.log 2>&1" >> /tmp/kona.cron
+crontab /tmp/kona.cron
+rm -f /tmp/kona.cron
+```
+
+Schedule:
+- daily at `23:35 UTC` (`07:35 Beijing`)

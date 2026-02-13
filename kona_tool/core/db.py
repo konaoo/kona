@@ -7,7 +7,7 @@ import logging
 import uuid
 import re
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import datetime as dt
 from pathlib import Path
 import config  # 添加导入
@@ -750,6 +750,32 @@ class DatabaseManager:
                 WHERE user_id = ? AND revoked_at IS NULL
                 """,
                 (datetime.utcnow().isoformat(), user_id),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+        except Exception:
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
+    def cleanup_expired_refresh_tokens(
+        self,
+        retention_days: int = 90,
+        now: Optional[datetime] = None,
+    ) -> int:
+        keep_days = max(0, int(retention_days))
+        now_utc = now or datetime.utcnow()
+        cutoff = (now_utc - timedelta(days=keep_days)).isoformat()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                DELETE FROM auth_refresh_tokens
+                WHERE expires_at < ?
+                """,
+                (cutoff,),
             )
             conn.commit()
             return int(cursor.rowcount or 0)

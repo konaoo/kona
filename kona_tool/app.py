@@ -176,7 +176,7 @@ def _auth_audit(event: str, outcome: str, username: str = '', reason: str = '', 
 
 
 def _refresh_token_expiry_days() -> int:
-    return int(getattr(config, "AUTH_REFRESH_TOKEN_DAYS", 30))
+    return int(getattr(config, "AUTH_REFRESH_TOKEN_DAYS", 365))
 
 
 def _is_refresh_token_valid(token_row: dict) -> bool:

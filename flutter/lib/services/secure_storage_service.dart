@@ -5,6 +5,7 @@ class SecureStorageService {
   static const _refreshTokenKey = 'auth_refresh_token';
   static const _usernameKey = 'auth_username';
   static const _biometricEnabledKey = 'auth_biometric_enabled';
+  static const _logoutModeKey = 'auth_logout_mode';
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   Future<void> setToken(String token) async {
@@ -56,11 +57,19 @@ class SecureStorageService {
     await _storage.delete(key: _biometricEnabledKey);
   }
 
+  Future<void> setLogoutMode(String mode) async {
+    await _storage.write(key: _logoutModeKey, value: mode);
+  }
+
+  Future<String?> getLogoutMode() async {
+    return _storage.read(key: _logoutModeKey);
+  }
+
+  Future<void> clearLogoutMode() async {
+    await _storage.delete(key: _logoutModeKey);
+  }
+
   Future<void> clearAllAuth() async {
-    await Future.wait([
-      clearToken(),
-      clearRefreshToken(),
-      clearUsername(),
-    ]);
+    await Future.wait([clearToken(), clearRefreshToken(), clearUsername()]);
   }
 }

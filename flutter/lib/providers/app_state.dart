@@ -12,6 +12,8 @@ import '../models/asset_action_result.dart';
 
 enum SessionBootState { initializing, authenticated, unauthenticated }
 
+enum AuthLogoutMode { normal, biometricReady }
+
 /// 应用状态管理
 class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
@@ -20,12 +22,16 @@ class AppState extends ChangeNotifier {
   final BiometricService _biometric = BiometricService();
   final Future<String?> Function()? _tokenLoaderOverride;
   final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
+  final Future<Map<String, dynamic>?> Function(String refreshToken)?
+  _refreshSessionOverride;
 
   AppState({
     Future<String?> Function()? tokenLoader,
     Future<Map<String, dynamic>?> Function()? profileLoader,
+    Future<Map<String, dynamic>?> Function(String refreshToken)? refreshLoader,
   }) : _tokenLoaderOverride = tokenLoader,
-       _profileLoaderOverride = profileLoader {
+       _profileLoaderOverride = profileLoader,
+       _refreshSessionOverride = refreshLoader {
     _loadTheme();
     _restoreSession();
   }
@@ -43,6 +49,7 @@ class AppState extends ChangeNotifier {
   String? _avatar;
   bool _biometricEnabled = false;
   String? _authErrorMessage;
+  AuthLogoutMode _logoutMode = AuthLogoutMode.normal;
 
   // 资产数据
   double _totalAsset = 0;
@@ -97,6 +104,7 @@ class AppState extends ChangeNotifier {
   String? get avatar => _avatar;
   bool get biometricEnabled => _biometricEnabled;
   String? get authErrorMessage => _authErrorMessage;
+  AuthLogoutMode get logoutMode => _logoutMode;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -393,12 +401,14 @@ class AppState extends ChangeNotifier {
     _avatar = user['avatar']?.toString();
     _api.setToken(accessToken);
     _sessionBootState = SessionBootState.authenticated;
+    _logoutMode = AuthLogoutMode.normal;
 
     await _secureStorage.setToken(accessToken);
     await _secureStorage.setRefreshToken(refreshToken);
     if (_username != null && _username!.isNotEmpty) {
       await _secureStorage.setUsername(_username!);
     }
+    await _secureStorage.clearLogoutMode();
     notifyListeners();
   }
 
@@ -417,15 +427,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  String _mapAuthErrorMessage(
-    Object error, {
-    required bool isRegister,
-  }) {
+  String _mapAuthErrorMessage(Object error, {required bool isRegister}) {
     if (error is ApiException) {
       final raw = error.message.trim();
       final lower = raw.toLowerCase();
       if (isRegister) {
-        if (error.statusCode == 409 || lower.contains('username already exists')) {
+        if (error.statusCode == 409 ||
+            lower.contains('username already exists')) {
           return '注册失败，用户名重复';
         }
         if (lower.contains('invite code')) {
@@ -437,9 +445,7 @@ class AppState extends ChangeNotifier {
           return '用户名/密码错误，请重新再试';
         }
       }
-      return raw.isNotEmpty
-          ? raw
-          : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
+      return raw.isNotEmpty ? raw : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
     }
     return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
   }
@@ -506,7 +512,10 @@ class AppState extends ChangeNotifier {
     required String newPassword,
   }) async {
     try {
-      await _api.changePassword(oldPassword: oldPassword, newPassword: newPassword);
+      await _api.changePassword(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      );
       await _secureStorage.clearBiometricEnabled();
       _biometricEnabled = false;
       notifyListeners();
@@ -562,7 +571,9 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
-      final result = await _api.refreshSession(refreshToken: refreshToken);
+      final result = _refreshSessionOverride != null
+          ? await _refreshSessionOverride(refreshToken)
+          : await _api.refreshSession(refreshToken: refreshToken);
       if (result == null) return false;
       await _applyAuthResult(result);
       debugPrint('Biometric login success');
@@ -618,9 +629,11 @@ class AppState extends ChangeNotifier {
     _avatar = avatar;
     _api.setToken(token);
     _sessionBootState = SessionBootState.authenticated;
+    _logoutMode = AuthLogoutMode.normal;
     await _secureStorage.setToken(token);
     await _secureStorage.setRefreshToken(refreshToken);
     await _secureStorage.setUsername(username);
+    await _secureStorage.clearLogoutMode();
     notifyListeners();
   }
 
@@ -640,9 +653,14 @@ class AppState extends ChangeNotifier {
         }
       }());
     }
-    debugPrint('Logout called. preserveBiometricSession=$preserveBiometricSession');
+    debugPrint(
+      'Logout called. preserveBiometricSession=$preserveBiometricSession',
+    );
     _isLoggedIn = false;
     _sessionBootState = SessionBootState.unauthenticated;
+    _logoutMode = preserveBiometricSession
+        ? AuthLogoutMode.biometricReady
+        : AuthLogoutMode.normal;
     _token = null;
     if (!preserveBiometricSession) {
       _refreshToken = null;
@@ -660,9 +678,15 @@ class AppState extends ChangeNotifier {
     _liabilities = [];
     _portfolioLoaded = false;
     if (preserveBiometricSession) {
-      unawaited(_secureStorage.clearToken());
+      unawaited(() async {
+        await _secureStorage.clearToken();
+        await _secureStorage.setLogoutMode('biometric_ready');
+      }());
     } else {
-      unawaited(_secureStorage.clearAllAuth());
+      unawaited(() async {
+        await _secureStorage.clearAllAuth();
+        await _secureStorage.setLogoutMode('normal');
+      }());
     }
     notifyListeners();
   }
@@ -674,6 +698,7 @@ class AppState extends ChangeNotifier {
     String? token;
     String? refreshToken;
     String? username;
+    String? logoutModeRaw;
     try {
       token = _tokenLoaderOverride != null
           ? await _tokenLoaderOverride()
@@ -681,6 +706,7 @@ class AppState extends ChangeNotifier {
       refreshToken = await _secureStorage.getRefreshToken();
       username = await _secureStorage.getUsername();
       _biometricEnabled = await _secureStorage.isBiometricEnabled();
+      logoutModeRaw = await _secureStorage.getLogoutMode();
     } catch (e) {
       debugPrint('读取 token 失败，跳过自动登录: $e');
       _sessionBootState = SessionBootState.unauthenticated;
@@ -689,14 +715,45 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    _logoutMode = _parseLogoutMode(logoutModeRaw);
+
     if (refreshToken != null && refreshToken.isNotEmpty) {
       _refreshToken = refreshToken;
       _username = username;
     }
-    if (token == null || token.isEmpty || refreshToken == null || refreshToken.isEmpty) {
+    if (_logoutMode == AuthLogoutMode.biometricReady) {
+      _isLoggedIn = false;
+      _token = null;
+      _api.clearToken();
       _sessionBootState = SessionBootState.unauthenticated;
       _isSessionChecking = false;
       notifyListeners();
+      return;
+    }
+
+    if (refreshToken == null || refreshToken.isEmpty) {
+      _sessionBootState = SessionBootState.unauthenticated;
+      _isSessionChecking = false;
+      notifyListeners();
+      return;
+    }
+
+    if (token == null || token.isEmpty) {
+      try {
+        final refreshed = _refreshSessionOverride != null
+            ? await _refreshSessionOverride(refreshToken)
+            : await _api.refreshSession(refreshToken: refreshToken);
+        if (refreshed != null) {
+          await _applyAuthResult(refreshed);
+          _isSessionChecking = false;
+          unawaited(_validateSessionInBackground());
+          return;
+        }
+      } catch (e) {
+        debugPrint('启动静默 refresh 失败: $e');
+      }
+      await _clearSessionAndUnauthenticated();
+      _isSessionChecking = false;
       return;
     }
 
@@ -717,7 +774,9 @@ class AppState extends ChangeNotifier {
         : await _api.getProfile();
     if (profile == null && _refreshToken != null && _refreshToken!.isNotEmpty) {
       try {
-        final refreshed = await _api.refreshSession(refreshToken: _refreshToken!);
+        final refreshed = _refreshSessionOverride != null
+            ? await _refreshSessionOverride(_refreshToken!)
+            : await _api.refreshSession(refreshToken: _refreshToken!);
         if (refreshed != null) {
           await _applyAuthResult(refreshed);
           profile = refreshed['user'] is Map<String, dynamic>
@@ -755,14 +814,23 @@ class AppState extends ChangeNotifier {
     _userNumber = null;
     _nickname = null;
     _avatar = null;
+    _logoutMode = AuthLogoutMode.normal;
     _sessionBootState = SessionBootState.unauthenticated;
     _api.clearToken();
     notifyListeners();
     try {
       await _secureStorage.clearAllAuth();
+      await _secureStorage.clearLogoutMode();
     } catch (e) {
       debugPrint('清理失效 token 失败: $e');
     }
+  }
+
+  AuthLogoutMode _parseLogoutMode(String? raw) {
+    if (raw == 'biometric_ready') {
+      return AuthLogoutMode.biometricReady;
+    }
+    return AuthLogoutMode.normal;
   }
 
   /// 切换金额隐藏

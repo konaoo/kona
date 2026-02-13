@@ -27,7 +27,8 @@ if not JWT_SECRET:
         "JWT_SECRET is required. Please set JWT_SECRET in environment (.env)."
     )
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "2"))  # access token 默认 2 小时
-AUTH_REFRESH_TOKEN_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_DAYS", "30"))
+AUTH_REFRESH_TOKEN_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_DAYS", "365"))
+AUTH_REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_RETENTION_DAYS", "90"))
 
 # API配置
 API_TIMEOUT = 3

@@ -40,6 +40,69 @@ void main() {
     expect(find.byType(MainApp), findsNothing);
   });
 
+  testWidgets('normal + refresh token：启动时静默 refresh 恢复登录', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'auth_refresh_token': 'refresh-only',
+      'auth_username': 'demo',
+      'auth_logout_mode': 'normal',
+    });
+    final appState = AppState(
+      tokenLoader: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return null;
+      },
+      profileLoader: () async => {
+        'username': 'demo',
+        'id': 'u-1',
+        'user_number': 1,
+        'nickname': 'demo',
+        'avatar': null,
+      },
+      refreshLoader: (refreshToken) async {
+        return {
+          'access_token': 'token-refreshed',
+          'refresh_token': 'refresh-refreshed',
+          'user': {
+            'username': 'demo',
+            'id': 'u-1',
+            'user_number': 1,
+            'nickname': 'demo',
+            'avatar': null,
+          },
+        };
+      },
+    );
+
+    await tester.pumpWidget(_buildApp(appState));
+    expect(find.byType(StartupSplashPage), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(find.byType(MainApp), findsOneWidget);
+    expect(find.byType(LoginPage), findsNothing);
+  });
+
+  testWidgets('biometric_ready：启动后停留登录页，不自动登录', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({
+      'auth_refresh_token': 'refresh-biometric',
+      'auth_username': 'demo',
+      'auth_biometric_enabled': '1',
+      'auth_logout_mode': 'biometric_ready',
+    });
+    final appState = AppState(
+      tokenLoader: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(_buildApp(appState));
+    expect(find.byType(StartupSplashPage), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(find.byType(MainApp), findsNothing);
+  });
+
   testWidgets('有 token 且校验成功：不出现登录页闪现', (tester) async {
     FlutterSecureStorage.setMockInitialValues({
       'auth_refresh_token': 'refresh-ok',
@@ -86,6 +149,10 @@ void main() {
       },
       profileLoader: () async {
         await Future<void>.delayed(const Duration(milliseconds: 30));
+        return null;
+      },
+      refreshLoader: (refreshToken) async {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
         return null;
       },
     );
