@@ -16,8 +16,10 @@
 - 登录体系已切换到：`用户名 + 密码`（不再依赖邮箱验证码）
 - 注册体系已切换到：`用户名 + 密码 + 邀请码`
 - 会话策略：`365 天滑动 refresh` + `生物识别退出后重登`
+- 后台体系已升级为“全中文运营工作台”（用户/邀请码/接口策略/数据运维/审计）
 - 详细设计、字段释义、验收命令请直接看：
   - `/Users/kona/Desktop/kaka/kona_repo/docs/README_AUTH_PERSISTENCE_BIOMETRIC.md`
+  - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
 
 ---
 
@@ -29,6 +31,7 @@
 - 前端目录：`/Users/kona/Desktop/kaka/kona_repo/flutter`
 - 线上后端（AWS）：`systemd + gunicorn` 管理，支持异常自动重启
 - CI/CD：`main` 分支必须通过后端门禁 + 前端门禁后才允许部署
+- 运营后台：已改为全中文、去技术化交互，支持风险确认与操作审计
 - 每日快照：使用 `systemd timer` 定时触发（北京 07:00）
 - 价格健康监控：`/api/system/price_health` 已上线（用于运维告警）
 - 告警体系：服务故障、健康检查失败、快照缺失、价格健康异常均可邮件告警
@@ -310,7 +313,7 @@ python3 app.py
 
 1. 先跑 `backend-gate`（Python compile + unittest）
 2. 再跑 `frontend-gate`（flutter analyze + test + debug build）
-3. 仅当门禁全绿时，执行 `deploy` 到 AWS
+3. 仅当门禁全绿时，执行 `deploy` 到 AWS（任一门禁失败则跳过部署）
 4. SSH 登录 AWS，`git pull` + `pip install`
 5. 刷新 `kona.service` 并重启
 6. 健康检查 `/api/rates`
@@ -327,6 +330,14 @@ python3 app.py
 2. 通过 PR 合并到 `main`（或将提交 cherry-pick 到 `main`）
 3. push `main` 后等待 Actions 门禁与部署
 4. 在 AWS 检查服务状态与关键页面
+
+### 7.1.2 严格门禁策略（2026-02-13 已启用）
+
+- 已在 `/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml` 中显式限制：
+  - `needs.backend-gate.result == 'success'`
+  - `needs.frontend-gate.result == 'success'`
+- 满足以上条件才允许执行 `Deploy to AWS`
+- 这意味着“push 成功”不等于“已上线”，必须看 Actions 三段都通过
 
 ### 7.2 生产运行（服务托管）
 
@@ -435,6 +446,7 @@ curl -i --max-time 5 http://127.0.0.1:5003/health
 - 邀请码：一次性消费，可作废，可导出 CSV 批量管理
 - 改密：必须提供原密码；成功后吊销该用户所有 refresh token
 - 生物识别：仅客户端本地校验（iOS/Android `local_auth`），服务端不存生物特征
+- 管理后台登录：复用同一套账号密码体系，登录后再校验 `is_admin`
 - 旧接口：`POST /api/auth/send_code` 已下线，返回 `410`
 
 ### 10.2 关键配置
@@ -563,31 +575,77 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
    - `kona-snapshot.timer` 每天 `23:00 UTC` 触发（等价北京时间次日 `07:00`）。
    - `kona-snapshot-verify.timer` 每天 `23:05 UTC` 触发（等价北京时间次日 `07:05`）。
    - 最近多日 `kona-snapshot.service` 均正常执行完成（`Finished`）。
+3. 分析页收益日历新增“年月选择器”（日+月视图）：
+   - 标题右侧新增周期按钮：日视图显示 `YYYY年MM月`，月视图显示 `YYYY年`。
+   - 选择器仅允许选择有快照数据的周期（空周期禁用）。
+   - `GET /api/analysis/calendar` 增加可选参数 `year`、`month`，并返回 `period`、`selectable` 元数据。
 
 ## 18. 今日改动（2026-02-13，后台重构）
 
-1. 管理后台能力重构（保留模板方案，不新建 SPA）：
-   - 邀请码管理增强：`/api/admin/invites/stats`，页面新增批次/状态统计卡与过滤联动。
-   - APP 用户管理增强：管理员角色切换、重置临时密码、强制改密、强制下线。
-   - 接口管理增强：新增策略中心（开关/限流/备注），支持运行时即时生效。
-2. 新增强制改密硬约束：
-   - `users.must_change_password=1` 时，仅允许访问 `/api/auth/password/change`、`/api/auth/logout`、`/api/auth/me`。
-   - 其他业务接口返回 `403 + PASSWORD_CHANGE_REQUIRED`。
-3. 新增数据库迁移：
-   - `migrations/009_add_user_force_password_change.py`
-   - `migrations/010_add_admin_api_policies.py`
-4. 新增后台服务层与运行时策略读取：
-   - `core/admin/user_admin.py`
-   - `core/admin/policies.py`
-   - `core/policy_runtime.py`
-5. 新增/更新测试：
-   - `test_admin_users_password_reset.py`
-   - `test_auth_force_password_change.py`
-   - `test_admin_api_policies.py`
-   - 以及 `test_admin_api_foundation.py`、`test_admin_invites.py`、`test_auth_rate_limit.py`。
-6. 详细交接文档：`/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
+1. 运营后台完成“全中文、去技术化、人性化”重构（保留模板方案，不新建 SPA）：
+   - 全局字典映射：状态/动作/策略/错误统一中文展示
+   - 全局交互组件：统一确认弹窗（普通/高风险/确认词）+ 统一详情抽屉
+   - 顶部改为“当前管理员 + 右上角退出登录”
+2. 信息架构重构：
+   - 菜单分组统一为：运营总览 / 用户中心 / 邀请码中心 / 接口与策略 / 数据运维 / 系统配置 / 操作审计
+3. 用户中心重构：
+   - 支持启用/停用、管理员切换、重置临时密码、强制改密、强制下线
+   - 支持批量停用/批量启用/批量强制下线
+   - 支持在线会话数预估，降低误操作风险
+4. 邀请码中心重构：
+   - 表头与字段改为运营语义：邀请码 / 可用性 / 使用用户名 / 使用用户编号 / 使用时间 / 操作
+   - 默认筛选“未使用”，分页 20 条，支持“未使用/已使用/已作废/全部”切换
+   - 已使用邀请码不可作废（前端明确禁用提示）
+5. 接口与策略页重构：
+   - 页面定位改为“接口与策略中心”
+   - 策略表改为业务语义：策略名称、分类、状态、限流、备注、影响说明
+   - 健康检测与策略编辑同屏，支持快速闭环
+6. 数据运维页重构：
+   - 历史数据归属迁移入口迁入数据页
+   - 周末收益清理支持预览影响条数
+   - 备份恢复增加“最近备份信息”与确认词保护（`立即恢复`）
+7. 系统配置页重构：
+   - 配置名称/说明/建议范围中文化
+   - 支持单项恢复默认、全部恢复默认（确认词）
+   - 支持“仅保存改动项”
+8. 审计页重构：
+   - 查询条件中文化（操作类型/操作人/时间范围/结果）
+   - 支持按当前筛选导出 CSV
+9. 后端新增/增强接口（保持兼容）：
+   - `GET /api/admin/meta/dictionaries`
+   - `GET /api/admin/summary/todo`
+   - `GET /api/admin/users/sessions/count`
+   - `POST /api/admin/data/snapshot/cleanup_weekend/preview`
+   - `GET /api/admin/data/backup/latest`
+   - `POST /api/admin/config/reset`
+   - `GET /api/admin/audit/export`
+10. Auth 与策略能力（本轮配套）：
+    - `must_change_password` 硬约束继续生效
+    - `admin_api_policies` 运行时即时生效（开关/限流）
+11. 数据迁移与编号规则：
+    - `009`：用户强制改密字段
+    - `010`：接口策略持久化
+    - `011`：用户编号重排并从 `10000` 起递增
+12. CI/CD 收敛：
+    - `Deploy to AWS` 已改为显式双门禁通过才执行（后端+前端）
+13. 详细交接文档：
+    - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ADMIN_CONSOLE_V2.md`
 
-## 19. 结论
+## 19. 线上入口与快速验收（当前）
+
+- 后端健康：`http://57.180.79.186:5003/health`
+- 后台登录：`http://57.180.79.186:5003/admin/login`
+
+一键检查（AWS）：
+
+```bash
+set -euo pipefail
+sudo systemctl status kona.service --no-pager -l | sed -n '1,80p'
+ss -ltnp | grep :5003 || true
+curl -sS http://127.0.0.1:5003/health
+```
+
+## 20. 结论
 
 当前项目已经具备：
 
