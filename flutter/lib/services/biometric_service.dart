@@ -27,7 +27,8 @@ class BiometricService {
           biometricOnly: true,
         ),
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Biometric authenticate error: $e');
       return false;
     }
   }

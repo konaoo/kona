@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 
@@ -24,6 +26,15 @@ class _LoginPageState extends State<LoginPage> {
   bool _submitting = false;
   String? _errorMessage;
   bool? _inviteValid;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() {
+      if (!mounted) return;
+      context.read<AppState>().reloadBiometricPreference();
+    });
+  }
 
   @override
   void dispose() {
@@ -56,12 +67,23 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _inviteValid = ok);
   }
 
+  void _handleFieldChanged() {
+    context.read<AppState>().clearAuthError();
+    if (_errorMessage == null) return;
+    setState(() => _errorMessage = null);
+  }
+
   Future<void> _submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final username = _usernameController.text.trim().toLowerCase();
     final password = _passwordController.text;
     final confirm = _confirmController.text;
     final invite = _inviteController.text.trim().toUpperCase();
 
+    if (!_isRegister && (username.isEmpty || password.isEmpty)) {
+      setState(() => _errorMessage = '请输入用户名和密码');
+      return;
+    }
     if (!_validUsername(username)) {
       setState(() => _errorMessage = '用户名格式不正确（4-24位，小写字母开头）');
       return;
@@ -111,13 +133,20 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    final authError = context.read<AppState>().authErrorMessage;
     setState(() {
       _submitting = false;
-      _errorMessage = _isRegister ? '注册失败，请检查邀请码或用户名' : '登录失败，请检查用户名或密码';
+      _errorMessage = authError?.trim().isNotEmpty == true
+          ? authError!.trim()
+          : (_isRegister ? '注册失败，请检查邀请码或用户名' : '登录失败，请检查用户名或密码');
     });
   }
 
   Future<void> _tryBiometricLogin() async {
+    // 某些安卓机型在输入法弹出时会打断生物识别弹窗，先收起键盘再触发认证。
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
     setState(() {
       _submitting = true;
       _errorMessage = null;
@@ -135,207 +164,317 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
+  Future<void> _openInviteAcquireLink() async {
+    final uri = Uri.tryParse(ApiConfig.inviteAcquireUrl);
+    if (uri == null || !uri.hasScheme) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '邀请码获取链接配置无效');
+      return;
+    }
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted || launched) return;
+    setState(() => _errorMessage = '无法打开邀请码获取链接');
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final showBiometric = !_isRegister && appState.biometricEnabled;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
-      body: SafeArea(
-        minimum: const EdgeInsets.only(top: 8),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
-          child: Column(
-            children: [
-              const SizedBox(height: 72),
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppTheme.bgCard,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  Icons.lock_person,
-                  size: 50,
-                  color: AppTheme.accent,
-                ),
-              ),
-              const SizedBox(height: Spacing.lg),
-              Text(
-                '咔咔记账',
-                style: TextStyle(
-                  fontSize: FontSize.title,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: Spacing.sm),
-              Text(
-                _isRegister ? '邀请码注册新账号' : '账号密码登录',
-                style: TextStyle(
-                  fontSize: FontSize.lg,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: Spacing.xl),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _submitting
-                          ? null
-                          : () {
-                              setState(() {
-                                _isRegister = false;
-                                _errorMessage = null;
-                              });
-                            },
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: _isRegister ? AppTheme.bgCard : AppTheme.accent,
-                        side: BorderSide(color: AppTheme.bgElevated),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? const [Color(0xFF0A0E1A), Color(0xFF131B2D), Color(0xFF1B2740)]
+                : [AppTheme.bgPrimary, AppTheme.bgElevated, AppTheme.bgPrimary],
+          ),
+        ),
+        child: SafeArea(
+          minimum: const EdgeInsets.only(top: 8),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
+            child: Column(
+              children: [
+                const SizedBox(height: 72),
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgCard.withValues(alpha: isDark ? 0.95 : 0.98),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppTheme.border.withValues(alpha: isDark ? 0.7 : 1),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark
+                            ? Colors.black.withValues(alpha: 0.25)
+                            : AppTheme.accent.withValues(alpha: 0.12),
+                        blurRadius: isDark ? 20 : 14,
+                        spreadRadius: -2,
+                        offset: const Offset(0, 8),
                       ),
-                      child: Text(
-                        '登录',
-                        style: TextStyle(color: AppTheme.textPrimary),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.lock_person,
+                    size: 50,
+                    color: AppTheme.accent,
+                  ),
+                ),
+                const SizedBox(height: Spacing.lg),
+                Text(
+                  '咔咔记账',
+                  style: TextStyle(
+                    fontSize: FontSize.title,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                Text(
+                  _isRegister ? '创建账号' : '账号密码登录',
+                  style: TextStyle(
+                    fontSize: FontSize.lg,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: Spacing.xl),
+
+                TextField(
+                  controller: _usernameController,
+                  keyboardType: TextInputType.text,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: '用户名',
+                  ),
+                  onChanged: (_) => _handleFieldChanged(),
+                ),
+
+                const SizedBox(height: Spacing.md),
+
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: '密码',
+                  ),
+                  onChanged: (_) => _handleFieldChanged(),
+                ),
+
+                if (_isRegister) ...[
+                  const SizedBox(height: Spacing.md),
+                  TextField(
+                    controller: _confirmController,
+                    obscureText: true,
+                    style: TextStyle(color: AppTheme.textPrimary),
+                    decoration: const InputDecoration(
+                      labelText: '确认密码',
+                    ),
+                    onChanged: (_) => _handleFieldChanged(),
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  TextField(
+                    controller: _inviteController,
+                    style: TextStyle(color: AppTheme.textPrimary),
+                    decoration: InputDecoration(
+                      labelText: '邀请码',
+                      hintText: '请输入邀请码',
+                      suffixIcon: IconButton(
+                        onPressed: _submitting ? null : _checkInviteCode,
+                        icon: Icon(
+                          _inviteValid == null
+                              ? Icons.help_outline
+                              : (_inviteValid! ? Icons.check_circle : Icons.error),
+                          color: _inviteValid == null
+                              ? AppTheme.textSecondary
+                              : (_inviteValid! ? AppTheme.success : AppTheme.danger),
+                        ),
                       ),
                     ),
+                    onChanged: (_) {
+                      _handleFieldChanged();
+                      _checkInviteCode();
+                    },
                   ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _submitting
-                          ? null
-                          : () {
-                              setState(() {
-                                _isRegister = true;
-                                _errorMessage = null;
-                              });
-                            },
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: _isRegister ? AppTheme.accent : AppTheme.bgCard,
-                        side: BorderSide(color: AppTheme.bgElevated),
+                  const SizedBox(height: Spacing.sm),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: _submitting ? null : _openInviteAcquireLink,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: EdgeInsets.zero,
+                        foregroundColor: AppTheme.accentLight,
                       ),
                       child: Text(
-                        '注册',
-                        style: TextStyle(color: AppTheme.textPrimary),
+                        '没有邀请码，点我获取',
+                        style: TextStyle(
+                          fontSize: FontSize.base,
+                          color: AppTheme.accentLight,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.accentLight,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ],
-              ),
 
-              const SizedBox(height: Spacing.lg),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Spacing.sm),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: AppTheme.danger),
+                    ),
+                  ),
 
-              TextField(
-                controller: _usernameController,
-                keyboardType: TextInputType.text,
-                style: TextStyle(color: AppTheme.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: '用户名',
-                  hintText: '例如 kona_user',
-                ),
-              ),
+                const SizedBox(height: Spacing.xl),
 
-              const SizedBox(height: Spacing.md),
-
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                style: TextStyle(color: AppTheme.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: '密码',
-                  hintText: '8-64位，字母+数字',
-                ),
-              ),
-
-              if (_isRegister) ...[
-                const SizedBox(height: Spacing.md),
-                TextField(
-                  controller: _confirmController,
-                  obscureText: true,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: '确认密码',
-                    hintText: '请再次输入密码',
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _submitting ? null : _submit,
+                    child: _submitting
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.textPrimary,
+                            ),
+                          )
+                        : Text(_isRegister ? '注册并登录' : '登录', style: TextStyle(fontSize: FontSize.lg)),
                   ),
                 ),
-                const SizedBox(height: Spacing.md),
-                TextField(
-                  controller: _inviteController,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: InputDecoration(
-                    labelText: '邀请码',
-                    hintText: '请输入邀请码',
-                    suffixIcon: IconButton(
-                      onPressed: _submitting ? null : _checkInviteCode,
-                      icon: Icon(
-                        _inviteValid == null
-                            ? Icons.help_outline
-                            : (_inviteValid! ? Icons.check_circle : Icons.error),
-                        color: _inviteValid == null
-                            ? AppTheme.textSecondary
-                            : (_inviteValid! ? AppTheme.success : AppTheme.danger),
+
+                if (showBiometric) ...[
+                  const SizedBox(height: Spacing.md),
+                  Center(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: _submitting ? null : _tryBiometricLogin,
+                        child: Ink(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Spacing.xl,
+                            vertical: Spacing.md,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.45)),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.bgCard.withValues(alpha: isDark ? 0.95 : 0.98),
+                                AppTheme.bgElevated.withValues(alpha: isDark ? 0.88 : 0.94),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accent.withValues(alpha: isDark ? 0.12 : 0.2),
+                                blurRadius: 16,
+                                spreadRadius: -2,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.fingerprint_rounded,
+                                size: 24,
+                                color: AppTheme.accentLight,
+                              ),
+                              const SizedBox(height: Spacing.xs),
+                              Text(
+                                '生物识别登录',
+                                style: TextStyle(
+                                  fontSize: FontSize.base,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  onChanged: (_) => _checkInviteCode(),
+                ],
+
+                const SizedBox(height: 48),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: AppTheme.border, height: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+                      child: Icon(
+                        Icons.diamond_outlined,
+                        size: 14,
+                        color: AppTheme.textTertiary,
+                      ),
+                    ),
+                    Expanded(child: Divider(color: AppTheme.border, height: 1)),
+                  ],
                 ),
+                const SizedBox(height: Spacing.sm),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _isRegister ? '已有账号？' : '还没有账号？',
+                      style: TextStyle(
+                        fontSize: FontSize.base,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () {
+                              setState(() {
+                                _isRegister = !_isRegister;
+                                _errorMessage = null;
+                                _inviteValid = null;
+                              });
+                              context.read<AppState>().clearAuthError();
+                            },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        _isRegister ? '返回登录' : '立即注册',
+                        style: TextStyle(
+                          fontSize: FontSize.base,
+                          color: AppTheme.accentLight,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.accentLight,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Spacing.lg),
               ],
-
-              if (_errorMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: Spacing.sm),
-                  child: Text(
-                    _errorMessage!,
-                    style: TextStyle(color: AppTheme.danger),
-                  ),
-                ),
-
-              const SizedBox(height: Spacing.xl),
-
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _submitting ? null : _submit,
-                  child: _submitting
-                      ? SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.textPrimary,
-                          ),
-                        )
-                      : Text(_isRegister ? '注册并登录' : '登录', style: TextStyle(fontSize: FontSize.lg)),
-                ),
-              ),
-
-              if (showBiometric) ...[
-                const SizedBox(height: Spacing.md),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: OutlinedButton.icon(
-                    onPressed: _submitting ? null : _tryBiometricLogin,
-                    icon: const Icon(Icons.fingerprint),
-                    label: const Text('使用生物识别登录'),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 80),
-              Text(
-                '登录即表示同意服务条款和隐私政策',
-                style: TextStyle(
-                  fontSize: FontSize.sm,
-                  color: AppTheme.textTertiary,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -42,6 +42,7 @@ class AppState extends ChangeNotifier {
   String? _nickname;
   String? _avatar;
   bool _biometricEnabled = false;
+  String? _authErrorMessage;
 
   // 资产数据
   double _totalAsset = 0;
@@ -95,6 +96,7 @@ class AppState extends ChangeNotifier {
   String? get nickname => _nickname;
   String? get avatar => _avatar;
   bool get biometricEnabled => _biometricEnabled;
+  String? get authErrorMessage => _authErrorMessage;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -400,17 +402,65 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearAuthError() {
+    _authErrorMessage = null;
+  }
+
+  Future<void> reloadBiometricPreference() async {
+    try {
+      final enabled = await _secureStorage.isBiometricEnabled();
+      if (_biometricEnabled == enabled) return;
+      _biometricEnabled = enabled;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('刷新生物识别开关失败: $e');
+    }
+  }
+
+  String _mapAuthErrorMessage(
+    Object error, {
+    required bool isRegister,
+  }) {
+    if (error is ApiException) {
+      final raw = error.message.trim();
+      final lower = raw.toLowerCase();
+      if (isRegister) {
+        if (error.statusCode == 409 || lower.contains('username already exists')) {
+          return '注册失败，用户名重复';
+        }
+        if (lower.contains('invite code')) {
+          return '邀请码不正确或已被使用';
+        }
+      } else {
+        final invalidCreds = error.statusCode == 401;
+        if (invalidCreds) {
+          return '用户名/密码错误，请重新再试';
+        }
+      }
+      return raw.isNotEmpty
+          ? raw
+          : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
+    }
+    return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
+  }
+
   /// 用户名密码登录
   Future<bool> login({
     required String username,
     required String password,
   }) async {
+    _authErrorMessage = null;
     try {
       final result = await _api.login(username: username, password: password);
-      if (result == null) return false;
+      if (result == null) {
+        _authErrorMessage = '登录失败，请稍后重试';
+        return false;
+      }
       await _applyAuthResult(result);
+      _authErrorMessage = null;
       return true;
     } catch (e) {
+      _authErrorMessage = _mapAuthErrorMessage(e, isRegister: false);
       debugPrint('登录异常: $e');
       return false;
     }
@@ -422,16 +472,22 @@ class AppState extends ChangeNotifier {
     required String password,
     required String inviteCode,
   }) async {
+    _authErrorMessage = null;
     try {
       final result = await _api.register(
         username: username,
         password: password,
         inviteCode: inviteCode,
       );
-      if (result == null) return false;
+      if (result == null) {
+        _authErrorMessage = '注册失败，请稍后重试';
+        return false;
+      }
       await _applyAuthResult(result);
+      _authErrorMessage = null;
       return true;
     } catch (e) {
+      _authErrorMessage = _mapAuthErrorMessage(e, isRegister: true);
       debugPrint('注册异常: $e');
       return false;
     }
@@ -462,28 +518,57 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> setBiometricEnabled(bool enabled) async {
+    final previous = _biometricEnabled;
+    _biometricEnabled = enabled;
+    notifyListeners();
     if (enabled) {
       final canUse = await _biometric.canUseBiometrics();
-      if (!canUse) return false;
+      if (!canUse) {
+        _biometricEnabled = previous;
+        notifyListeners();
+        return false;
+      }
     }
-    _biometricEnabled = enabled;
     await _secureStorage.setBiometricEnabled(enabled);
-    notifyListeners();
+    debugPrint('Biometric switch updated: enabled=$_biometricEnabled');
     return true;
   }
 
   Future<bool> tryBiometricLogin() async {
-    if (!_biometricEnabled || _refreshToken == null || _refreshToken!.isEmpty) {
+    if (!_biometricEnabled) {
+      debugPrint('Biometric login blocked: biometric switch disabled');
+      return false;
+    }
+    if (!await _biometric.canUseBiometrics()) {
+      debugPrint('Biometric login failed: device biometrics unavailable');
+      return false;
+    }
+    var refreshToken = _refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      try {
+        refreshToken = await _secureStorage.getRefreshToken();
+      } catch (_) {
+        debugPrint('Biometric login failed: unable to read refresh token');
+        return false;
+      }
+    }
+    if (refreshToken == null || refreshToken.isEmpty) {
+      debugPrint('Biometric login failed: refresh token missing');
       return false;
     }
     final ok = await _biometric.authenticate();
-    if (!ok) return false;
+    if (!ok) {
+      debugPrint('Biometric login cancelled/failed in local auth');
+      return false;
+    }
     try {
-      final result = await _api.refreshSession(refreshToken: _refreshToken!);
+      final result = await _api.refreshSession(refreshToken: refreshToken);
       if (result == null) return false;
       await _applyAuthResult(result);
+      debugPrint('Biometric login success');
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Biometric login refresh failed: $e');
       return false;
     }
   }
@@ -542,18 +627,27 @@ class AppState extends ChangeNotifier {
   /// 退出登录
   void logout() {
     final currentRefreshToken = _refreshToken;
-    unawaited(() async {
-      try {
-        await _api.logout(refreshToken: currentRefreshToken);
-      } catch (_) {
-        // 本地会话已清理，后端登出失败不阻断前端退出流程。
-      }
-    }());
+    final preserveBiometricSession =
+        _biometricEnabled &&
+        currentRefreshToken != null &&
+        currentRefreshToken.isNotEmpty;
+    if (!preserveBiometricSession) {
+      unawaited(() async {
+        try {
+          await _api.logout(refreshToken: currentRefreshToken);
+        } catch (_) {
+          // 本地会话已清理，后端登出失败不阻断前端退出流程。
+        }
+      }());
+    }
+    debugPrint('Logout called. preserveBiometricSession=$preserveBiometricSession');
     _isLoggedIn = false;
     _sessionBootState = SessionBootState.unauthenticated;
     _token = null;
-    _refreshToken = null;
-    _username = null;
+    if (!preserveBiometricSession) {
+      _refreshToken = null;
+      _username = null;
+    }
     _userId = null;
     _userNumber = null;
     _nickname = null;
@@ -565,7 +659,11 @@ class AppState extends ChangeNotifier {
     _otherAssets = [];
     _liabilities = [];
     _portfolioLoaded = false;
-    unawaited(_secureStorage.clearAllAuth());
+    if (preserveBiometricSession) {
+      unawaited(_secureStorage.clearToken());
+    } else {
+      unawaited(_secureStorage.clearAllAuth());
+    }
     notifyListeners();
   }
 
@@ -591,6 +689,10 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      _refreshToken = refreshToken;
+      _username = username;
+    }
     if (token == null || token.isEmpty || refreshToken == null || refreshToken.isEmpty) {
       _sessionBootState = SessionBootState.unauthenticated;
       _isSessionChecking = false;

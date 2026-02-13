@@ -58,7 +58,12 @@ class AssetDetailPage extends StatelessWidget {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(Spacing.xl),
+            padding: EdgeInsets.fromLTRB(
+              Spacing.xl,
+              Spacing.xl,
+              Spacing.xl,
+              _bottomContentPadding(context),
+            ),
             itemCount: assets.length,
             itemBuilder: (context, index) {
               final asset = assets[index];
@@ -94,6 +99,13 @@ class AssetDetailPage extends StatelessWidget {
       default:
         return Icons.attach_money;
     }
+  }
+
+  double _bottomContentPadding(BuildContext context) {
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    const navBarHeight = 60.0;
+    const fabRegion = 76.0;
+    return Spacing.xl + navBarHeight + safeBottom + fabRegion;
   }
 
   List<Asset> _getAssets(AppState appState) {
