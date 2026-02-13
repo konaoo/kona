@@ -71,6 +71,12 @@
             padding: 22px;
         }
 
+        .content-top {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+        }
+
         .toolbar {
             display: flex;
             justify-content: space-between;
@@ -212,11 +218,12 @@
             <a href="/admin/data" class="{% if admin_page == 'data' %}active{% endif %}">数据管理</a>
             <a href="/admin/apis" class="{% if admin_page == 'apis' %}active{% endif %}">接口测试</a>
             <a href="/admin/audit" class="{% if admin_page == 'audit' %}active{% endif %}">审计日志</a>
-            <a href="javascript:void(0);" onclick="adminLogout()">退出登录</a>
-            <a href="/" style="margin-top:10px;">返回主站</a>
         </nav>
     </aside>
     <main class="content">
+        <div class="content-top">
+            <button class="secondary" onclick="adminLogout()">退出登录</button>
+        </div>
         {% block content %}{% endblock %}
     </main>
 </div>

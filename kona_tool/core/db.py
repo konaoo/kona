@@ -1133,26 +1133,36 @@ class DatabaseManager:
         where: List[str] = []
         params: List[Any] = []
         if status and status != "all":
-            where.append("status = ?")
+            where.append("ic.status = ?")
             params.append(status)
         if batch_id:
-            where.append("batch_id = ?")
+            where.append("ic.batch_id = ?")
             params.append(batch_id)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                f"SELECT COUNT(1) AS c FROM invite_codes {where_sql}",
+                f"SELECT COUNT(1) AS c FROM invite_codes ic {where_sql}",
                 tuple(params),
             )
             total = int(cursor.fetchone()["c"])
             cursor.execute(
                 f"""
-                SELECT code, batch_id, status, created_by, created_at, used_by_user_id, used_at, note
-                FROM invite_codes
+                SELECT
+                    ic.code,
+                    ic.batch_id,
+                    ic.status,
+                    ic.created_by,
+                    ic.created_at,
+                    ic.used_by_user_id,
+                    ic.used_at,
+                    ic.note,
+                    COALESCE(u.username, '') AS used_by_username
+                FROM invite_codes ic
+                LEFT JOIN users u ON u.id = ic.used_by_user_id
                 {where_sql}
-                ORDER BY created_at DESC, code ASC
+                ORDER BY ic.created_at DESC, ic.code ASC
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params + [limit, offset]),
@@ -3188,7 +3198,7 @@ class DatabaseManager:
                 user_param,
             )
             all_dates = [str(row['date']) for row in cursor.fetchall() if row['date']]
-            months_by_year: Dict[int, set[int]] = {}
+            months_by_year: Dict[int, set] = {}
             for date_str in all_dates:
                 parts = date_str.split('-')
                 if len(parts) != 3:
@@ -3269,9 +3279,9 @@ class DatabaseManager:
 
                 month_start = f'{target_year:04d}-{target_month:02d}-01'
                 if target_month == 12:
-                    next_month = datetime(target_year + 1, 1, 1)
+                    next_month = dt.datetime(target_year + 1, 1, 1)
                 else:
-                    next_month = datetime(target_year, target_month + 1, 1)
+                    next_month = dt.datetime(target_year, target_month + 1, 1)
                 month_end = (next_month - timedelta(days=1)).strftime('%Y-%m-%d')
 
                 cursor.execute(

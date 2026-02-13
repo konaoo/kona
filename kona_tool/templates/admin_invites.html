@@ -27,30 +27,32 @@
 <div class="card">
     <div class="controls">
         <select id="statusFilter">
-            <option value="all">全部状态</option>
-            <option value="active">active</option>
-            <option value="used">used</option>
-            <option value="revoked">revoked</option>
+            <option value="active">未使用</option>
+            <option value="used">已使用</option>
+            <option value="all">全部</option>
         </select>
-        <input id="batchFilter" placeholder="按 batch_id 过滤" />
-        <button onclick="loadInvites()">查询</button>
+        <button onclick="applyFilters()">查询</button>
     </div>
 
     <div style="overflow:auto;">
         <table>
             <thead>
                 <tr>
-                    <th>code</th>
-                    <th>batch_id</th>
-                    <th>status</th>
-                    <th>used_by</th>
-                    <th>used_at</th>
-                    <th>created_at</th>
-                    <th>操作</th>
+                    <th>邀请码</th>
+                    <th>可用性</th>
+                    <th>使用用户名</th>
+                    <th>使用用户ID</th>
+                    <th>使用时间</th>
+                    <th>操作（作废）</th>
                 </tr>
             </thead>
             <tbody id="inviteRows"></tbody>
         </table>
+    </div>
+    <div class="controls" style="justify-content:flex-end; margin-top:10px;">
+        <button class="secondary" id="prevPageBtn" onclick="goPrevPage()">上一页</button>
+        <span class="muted" id="pageMeta">第 1 / 1 页</span>
+        <button class="secondary" id="nextPageBtn" onclick="goNextPage()">下一页</button>
     </div>
 </div>
 
@@ -70,9 +72,27 @@
 
 {% block scripts %}
 <script>
+    const PAGE_SIZE = 20;
+    let currentPage = 1;
+    let totalPages = 1;
+
     function statusPill(status) {
-        const cls = status === 'active' ? 'status-active' : (status === 'used' ? 'status-disabled' : 'status-disabled');
-        return `<span class="status-pill ${cls}">${status}</span>`;
+        const normalized = (status || '').toLowerCase();
+        if (normalized === 'active') {
+            return '<span class="status-pill status-active">未使用</span>';
+        }
+        if (normalized === 'used') {
+            return '<span class="status-pill status-disabled">已使用</span>';
+        }
+        return '<span class="status-pill status-disabled">已作废</span>';
+    }
+
+    function updatePager(total) {
+        totalPages = Math.max(1, Math.ceil((Number(total || 0)) / PAGE_SIZE));
+        if (currentPage > totalPages) currentPage = totalPages;
+        document.getElementById('pageMeta').innerText = `第 ${currentPage} / ${totalPages} 页`;
+        document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+        document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
     }
 
     async function generateInvites() {
@@ -87,41 +107,46 @@
             showToast(`生成完成: ${data.inserted}/${data.requested}`);
             if (!batchId && data.batch_id) {
                 document.getElementById('batchId').value = data.batch_id;
-                document.getElementById('batchFilter').value = data.batch_id;
             }
-            loadInvites();
+            applyFilters();
             loadInviteStats();
         } catch (e) {
             showToast(`生成失败: ${e.message}`, true);
         }
     }
 
-    async function loadInvites() {
+    async function loadInvites(page = 1) {
+        currentPage = Math.max(1, Number(page || 1));
         const status = encodeURIComponent(document.getElementById('statusFilter').value);
-        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
-        const url = `/api/admin/invites?status=${status}&batch_id=${batch}&limit=500&offset=0`;
+        const offset = (currentPage - 1) * PAGE_SIZE;
+        const url = `/api/admin/invites?status=${status}&limit=${PAGE_SIZE}&offset=${offset}`;
         try {
             const data = await adminFetch(url);
             const rows = data.items || [];
             const tbody = document.getElementById('inviteRows');
             tbody.innerHTML = '';
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无数据</td></tr>';
+                updatePager(data.total || 0);
                 return;
             }
             for (const r of rows) {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${r.code || ''}</td>
-                    <td>${r.batch_id || ''}</td>
                     <td>${statusPill(r.status || '')}</td>
+                    <td>${r.used_by_username || ''}</td>
                     <td>${r.used_by_user_id || ''}</td>
                     <td>${r.used_at || ''}</td>
-                    <td>${r.created_at || ''}</td>
-                    <td>${r.status === 'active' ? `<button class="warn" onclick="revokeInvite('${r.code}')">作废</button>` : '<span class="muted">-</span>'}</td>
+                    <td>${
+                        r.status === 'active'
+                            ? `<button class="warn" onclick="revokeInvite('${r.code}')">作废</button>`
+                            : `<span class="muted">${r.status === 'used' ? '已使用' : '已作废'}</span>`
+                    }</td>
                 `;
                 tbody.appendChild(tr);
             }
+            updatePager(data.total || 0);
             loadInviteStats();
         } catch (e) {
             showToast(`加载失败: ${e.message}`, true);
@@ -130,8 +155,7 @@
 
     async function loadInviteStats() {
         try {
-            const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
-            const data = await adminFetch(`/api/admin/invites/stats?batch_id=${batch}`);
+            const data = await adminFetch('/api/admin/invites/stats');
             document.getElementById('mTotal').innerText = data.total ?? 0;
             document.getElementById('mActive').innerText = data.active ?? 0;
             const used = Number(data.used || 0);
@@ -150,7 +174,7 @@
                 body: JSON.stringify({ code })
             });
             showToast('已作废');
-            loadInvites();
+            await loadInvites(currentPage);
             loadInviteStats();
         } catch (e) {
             showToast(`作废失败: ${e.message}`, true);
@@ -159,8 +183,21 @@
 
     function exportInvites() {
         const status = encodeURIComponent(document.getElementById('statusFilter').value);
-        const batch = encodeURIComponent(document.getElementById('batchFilter').value.trim());
-        window.open(`/api/admin/invites/export?status=${status}&batch_id=${batch}`, '_blank');
+        window.open(`/api/admin/invites/export?status=${status}`, '_blank');
+    }
+
+    function applyFilters() {
+        loadInvites(1);
+    }
+
+    function goPrevPage() {
+        if (currentPage <= 1) return;
+        loadInvites(currentPage - 1);
+    }
+
+    function goNextPage() {
+        if (currentPage >= totalPages) return;
+        loadInvites(currentPage + 1);
     }
 
     async function previewRebind() {
@@ -197,7 +234,7 @@
         }
     }
 
-    loadInvites();
+    loadInvites(1);
     loadInviteStats();
 </script>
 {% endblock %}
