@@ -147,9 +147,7 @@ class ApiService {
     if (error is ApiException) {
       return AssetActionResult.failure(
         error.message,
-        data: {
-          if (error.statusCode != null) 'status_code': error.statusCode,
-        },
+        data: {if (error.statusCode != null) 'status_code': error.statusCode},
       );
     }
     return AssetActionResult.failure(fallback);
@@ -216,7 +214,9 @@ class ApiService {
   }
 
   Future<bool> validateInviteCode(String inviteCode) async {
-    final data = await _post(ApiConfig.inviteValidate, {'invite_code': inviteCode});
+    final data = await _post(ApiConfig.inviteValidate, {
+      'invite_code': inviteCode,
+    });
     return data != null && data['valid'] == true;
   }
 
@@ -416,9 +416,9 @@ class ApiService {
     String code,
     double qty,
     double price,
-    double adjustment,
-    {String? requestId}
-  ) async {
+    double adjustment, {
+    String? requestId,
+  }) async {
     try {
       final response = await _post(ApiConfig.portfolioModify, {
         'code': code,
@@ -466,9 +466,7 @@ class ApiService {
   }
 
   /// 撤销投资写操作
-  Future<AssetActionResult> undoPortfolioOperation(
-    String undoToken,
-  ) async {
+  Future<AssetActionResult> undoPortfolioOperation(String undoToken) async {
     try {
       final response = await _post(ApiConfig.portfolioUndo, {
         'undo_token': undoToken,
@@ -657,8 +655,17 @@ class ApiService {
   /// 获取收益日历
   Future<Map<String, dynamic>> getAnalysisCalendar({
     String timeType = 'day',
+    int? year,
+    int? month,
   }) async {
-    return await _get('${ApiConfig.analysisCalendar}?type=$timeType') ?? {};
+    final query = <String, String>{
+      'type': timeType,
+      if (year != null) 'year': '$year',
+      if (month != null) 'month': '$month',
+    };
+    final endpoint =
+        '${ApiConfig.analysisCalendar}?${Uri(queryParameters: query).query}';
+    return await _get(endpoint) ?? {};
   }
 
   /// 获取盈亏排行
@@ -686,7 +693,7 @@ class ApiService {
       return data;
     }
     if (data is Map) {
-      return Map<String, dynamic>.from(data as Map);
+      return Map<String, dynamic>.from(data);
     }
     if (data is List) {
       return {

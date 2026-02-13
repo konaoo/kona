@@ -3,10 +3,19 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../providers/app_state.dart';
+import '../widgets/calendar_period_wheel_sheet.dart';
 
 /// 分析页面 - 盈亏分析
 class AnalysisPage extends StatefulWidget {
-  const AnalysisPage({super.key});
+  const AnalysisPage({super.key, this.overviewLoader, this.calendarLoader});
+
+  final Future<Map<String, dynamic>> Function(String period)? overviewLoader;
+  final Future<Map<String, dynamic>> Function({
+    required String timeType,
+    int? year,
+    int? month,
+  })?
+  calendarLoader;
 
   @override
   State<AnalysisPage> createState() => _AnalysisPageState();
@@ -24,6 +33,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Map<String, dynamic> _calendarData = {};
   bool _calendarLoading = false;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
+  int? _selectedDayYear;
+  int? _selectedDayMonth;
+  int? _selectedMonthYear;
+  List<int> _selectableDayYears = const [];
+  Map<int, List<int>> _selectableMonthsByYear = const {};
+  List<int> _selectableMonthYears = const [];
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
@@ -39,7 +54,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (_overviewLoaded && !force) return;
     setState(() => _loading = true);
     try {
-      final data = await _api.getAnalysisOverview(period: 'all');
+      final data = widget.overviewLoader != null
+          ? await widget.overviewLoader!('all')
+          : await _api.getAnalysisOverview(period: 'all');
       setState(() {
         _overview = data;
         _loading = false;
@@ -52,26 +69,233 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Future<void> _loadCalendar({bool force = false}) async {
-    if (_calendarCache.containsKey(_calendarTimeType) && !force) {
+    final cacheKey = _calendarCacheKey();
+    if (_calendarCache.containsKey(cacheKey) && !force) {
+      final cached = _calendarCache[cacheKey] ?? {};
       setState(() {
-        _calendarData = _calendarCache[_calendarTimeType] ?? {};
+        _syncCalendarMetaFromData(cached);
+        _normalizeCalendarSelections();
+        _calendarData = cached;
         _calendarLoading = false;
       });
       return;
     }
     setState(() => _calendarLoading = true);
     try {
-      final data = await _api.getAnalysisCalendar(timeType: _calendarTimeType);
+      final data = widget.calendarLoader != null
+          ? await widget.calendarLoader!(
+              timeType: _calendarTimeType,
+              year: _currentCalendarRequestYear,
+              month: _currentCalendarRequestMonth,
+            )
+          : await _api.getAnalysisCalendar(
+              timeType: _calendarTimeType,
+              year: _currentCalendarRequestYear,
+              month: _currentCalendarRequestMonth,
+            );
       debugPrint('收益日历数据: $data');
       setState(() {
+        _syncCalendarMetaFromData(data);
+        _normalizeCalendarSelections();
         _calendarData = data;
-        _calendarCache[_calendarTimeType] = data;
+        _calendarCache[_calendarCacheKey()] = data;
         _calendarLoading = false;
       });
     } catch (e) {
       debugPrint('加载收益日历失败: $e');
       setState(() => _calendarLoading = false);
     }
+  }
+
+  String _calendarCacheKey() {
+    if (_calendarTimeType == 'day') {
+      if (_selectedDayYear == null || _selectedDayMonth == null) {
+        return 'day:current';
+      }
+      return 'day:$_selectedDayYear-${_selectedDayMonth!.toString().padLeft(2, '0')}';
+    }
+    if (_calendarTimeType == 'month') {
+      if (_selectedMonthYear == null) return 'month:current';
+      return 'month:$_selectedMonthYear';
+    }
+    return 'year';
+  }
+
+  int? get _currentCalendarRequestYear {
+    if (_calendarTimeType == 'day') return _selectedDayYear;
+    if (_calendarTimeType == 'month') return _selectedMonthYear;
+    return null;
+  }
+
+  int? get _currentCalendarRequestMonth {
+    if (_calendarTimeType == 'day') return _selectedDayMonth;
+    return null;
+  }
+
+  void _syncCalendarMetaFromData(Map<String, dynamic> data) {
+    final selectable = _asMap(data['selectable']);
+    final daySelectable = _asMap(selectable['day']);
+    final monthSelectable = _asMap(selectable['month']);
+    final dayYears = _toIntList(daySelectable['years']);
+    final monthYears = _toIntList(monthSelectable['years']);
+    final monthsByYearRaw = _asMap(daySelectable['months_by_year']);
+    final monthsByYear = <int, List<int>>{};
+    monthsByYearRaw.forEach((k, v) {
+      final y = int.tryParse(k);
+      if (y == null) return;
+      monthsByYear[y] = _toIntList(v);
+    });
+
+    _selectableDayYears = dayYears;
+    _selectableMonthsByYear = monthsByYear;
+    _selectableMonthYears = monthYears;
+
+    final period = _asMap(data['period']);
+    final pYear = _asInt(period['year']);
+    final pMonth = _asInt(period['month']);
+    if (_calendarTimeType == 'day') {
+      if (pYear != null) _selectedDayYear = pYear;
+      if (pMonth != null) _selectedDayMonth = pMonth;
+    } else if (_calendarTimeType == 'month') {
+      if (pYear != null) _selectedMonthYear = pYear;
+    }
+  }
+
+  void _normalizeCalendarSelections() {
+    if (_selectableDayYears.isNotEmpty) {
+      var dayYear = _selectedDayYear;
+      if (dayYear == null || !_selectableDayYears.contains(dayYear)) {
+        dayYear = _selectableDayYears.last;
+      }
+      final months = _selectableMonthsByYear[dayYear] ?? const <int>[];
+      var dayMonth = _selectedDayMonth;
+      if (dayMonth == null || !months.contains(dayMonth)) {
+        dayMonth = months.isEmpty ? 1 : months.last;
+      }
+      _selectedDayYear = dayYear;
+      _selectedDayMonth = dayMonth;
+    }
+
+    if (_selectableMonthYears.isNotEmpty) {
+      var monthYear = _selectedMonthYear;
+      if (monthYear == null || !_selectableMonthYears.contains(monthYear)) {
+        monthYear = _selectableMonthYears.last;
+      }
+      _selectedMonthYear = monthYear;
+    }
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  List<int> _toIntList(dynamic value) {
+    if (value is! List) return const [];
+    final result = <int>[];
+    for (final item in value) {
+      final parsed = _asInt(item);
+      if (parsed != null) result.add(parsed);
+    }
+    result.sort();
+    return result;
+  }
+
+  void _onCalendarTypeChanged(String nextType) {
+    if (_calendarTimeType == nextType) return;
+    setState(() => _calendarTimeType = nextType);
+    _loadCalendar();
+  }
+
+  Future<void> _showCalendarPeriodPicker() async {
+    if (_calendarTimeType == 'day') {
+      if (_selectableDayYears.isEmpty) return;
+      final latestYear = _selectableDayYears.last;
+      final latestMonths = _selectableMonthsByYear[latestYear] ?? const <int>[];
+      final latestMonth = latestMonths.isNotEmpty ? latestMonths.last : 1;
+
+      final initialYear =
+          (_selectedDayYear != null &&
+              _selectableDayYears.contains(_selectedDayYear))
+          ? _selectedDayYear!
+          : latestYear;
+      final initialMonths =
+          _selectableMonthsByYear[initialYear] ?? const <int>[];
+      final initialMonth =
+          (_selectedDayMonth != null &&
+              initialMonths.contains(_selectedDayMonth))
+          ? _selectedDayMonth!
+          : (initialMonths.isNotEmpty ? initialMonths.last : latestMonth);
+
+      final picked = await showCalendarPeriodWheelSheet(
+        context: context,
+        mode: CalendarPeriodWheelMode.day,
+        selectableYears: _selectableDayYears,
+        selectableMonthsByYear: _selectableMonthsByYear,
+        initialYear: initialYear,
+        initialMonth: initialMonth,
+        resetYear: latestYear,
+        resetMonth: latestMonth,
+      );
+      if (!mounted || picked == null) return;
+      setState(() {
+        _selectedDayYear = picked.year;
+        _selectedDayMonth = picked.month;
+      });
+      _loadCalendar();
+      return;
+    }
+
+    if (_calendarTimeType == 'month') {
+      if (_selectableMonthYears.isEmpty) return;
+      final latestYear = _selectableMonthYears.last;
+      final initialYear =
+          (_selectedMonthYear != null &&
+              _selectableMonthYears.contains(_selectedMonthYear))
+          ? _selectedMonthYear!
+          : latestYear;
+
+      final picked = await showCalendarPeriodWheelSheet(
+        context: context,
+        mode: CalendarPeriodWheelMode.month,
+        selectableYears: _selectableMonthYears,
+        initialYear: initialYear,
+        resetYear: latestYear,
+      );
+      if (!mounted || picked == null) return;
+      setState(() {
+        _selectedMonthYear = picked.year;
+      });
+      _loadCalendar();
+    }
+  }
+
+  String _calendarPeriodButtonText() {
+    if (_calendarTimeType == 'day') {
+      if (_selectedDayYear == null || _selectedDayMonth == null) {
+        return '暂无可选周期';
+      }
+      return '$_selectedDayYear年${_selectedDayMonth!.toString().padLeft(2, '0')}月';
+    }
+    if (_calendarTimeType == 'month') {
+      if (_selectedMonthYear == null) return '暂无可选周期';
+      return '$_selectedMonthYear年';
+    }
+    return '';
+  }
+
+  bool get _calendarPeriodPickerEnabled {
+    if (_calendarTimeType == 'day') return _selectableDayYears.isNotEmpty;
+    if (_calendarTimeType == 'month') return _selectableMonthYears.isNotEmpty;
+    return false;
   }
 
   void _changePeriod(String period) {
@@ -106,9 +330,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final isDay = _currentPeriod == 'day';
     final pnl = isDay ? appState.investDayPnl : (apiPnl ?? 0);
     final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
-    final pnlColor = pnl >= 0 ? const Color(0xFFEF4444) : const Color(0xFF10B981);
+    final pnlColor = pnl >= 0
+        ? const Color(0xFFEF4444)
+        : const Color(0xFF10B981);
     final showLoading = _loading && !_overviewLoaded && !isDay;
-    final amountText = appState.amountHidden ? '****' : '¥${pnl.toStringAsFixed(0)}';
+    final amountText = appState.amountHidden
+        ? '****'
+        : '¥${pnl.toStringAsFixed(0)}';
 
     return Container(
       padding: const EdgeInsets.all(Spacing.xl),
@@ -124,7 +352,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Text(
             _getPeriodTitle(_currentPeriod),
-            style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+            style: TextStyle(
+              fontSize: FontSize.sm,
+              color: AppTheme.textSecondary,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -147,7 +378,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
               const SizedBox(width: 4),
               Text(
                 showLoading ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
-                style: TextStyle(fontSize: FontSize.sm, color: showLoading ? AppTheme.textTertiary : pnlColor),
+                style: TextStyle(
+                  fontSize: FontSize.sm,
+                  color: showLoading ? AppTheme.textTertiary : pnlColor,
+                ),
               ),
             ],
           ),
@@ -208,41 +442,31 @@ class _AnalysisPageState extends State<AnalysisPage> {
     // 根据时间类型生成日期网格数据
     final now = DateTime.now();
     List<Map<String, dynamic>> calendarGrid = [];
+    final dayYear = _selectedDayYear ?? now.year;
+    final dayMonth = _selectedDayMonth ?? now.month;
 
     if (_calendarTimeType == 'day') {
       // 显示本月每天，以日历网格形式
-      final firstDayOfMonth = DateTime(now.year, now.month, 1);
-      final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+      final lastDayOfMonth = DateTime(dayYear, dayMonth + 1, 0);
       final daysInMonth = lastDayOfMonth.day;
 
       // 生成本月所有日期
       for (int i = 1; i <= daysInMonth; i++) {
-        final date = DateTime(now.year, now.month, i);
-        final dateStr = '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        calendarGrid.add({
-          'day': i,
-          'date': dateStr,
-          'pnl': null,
-        });
+        final date = DateTime(dayYear, dayMonth, i);
+        final dateStr =
+            '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        calendarGrid.add({'day': i, 'date': dateStr, 'pnl': null});
       }
     } else if (_calendarTimeType == 'month') {
       // 显示今年12个月
       for (int i = 1; i <= 12; i++) {
-        calendarGrid.add({
-          'day': i,
-          'date': '${i}月',
-          'pnl': null,
-        });
+        calendarGrid.add({'day': i, 'date': '${i}月', 'pnl': null});
       }
     } else {
       // 显示最近5年
       for (int i = 0; i < 5; i++) {
         final year = now.year - 4 + i;
-        calendarGrid.add({
-          'day': year,
-          'date': '${year}年',
-          'pnl': null,
-        });
+        calendarGrid.add({'day': year, 'date': '${year}年', 'pnl': null});
       }
     }
 
@@ -258,7 +482,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
     // 当天数据始终用实时日盈亏，确保与“今日盈亏”一致
-    if (_calendarTimeType == 'day') {
+    if (_calendarTimeType == 'day' &&
+        dayYear == now.year &&
+        dayMonth == now.month) {
       final todayKey = DateTime.now().day;
       pnlMap[todayKey] = appState.investDayPnl;
     }
@@ -273,17 +499,69 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          '收益日历',
+          style: TextStyle(
+            fontSize: FontSize.xl,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: Spacing.sm),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          key: const Key('calendar-header-controls-row'),
           children: [
-            Text(
-              '收益日历',
-              style: TextStyle(
-                fontSize: FontSize.xl,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+            if (_calendarTimeType != 'year') ...[
+              GestureDetector(
+                key: const Key('calendar-period-button'),
+                onTap: _calendarPeriodPickerEnabled
+                    ? _showCalendarPeriodPicker
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.md,
+                    vertical: Spacing.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _calendarPeriodPickerEnabled
+                        ? AppTheme.bgCard
+                        : AppTheme.bgElevated.withOpacity(0.45),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: AppTheme.border.withOpacity(
+                        AppTheme.isLight ? 0.7 : 0.35,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _calendarPeriodButtonText(),
+                        style: TextStyle(
+                          fontSize: FontSize.sm,
+                          fontWeight: FontWeight.w600,
+                          color: _calendarPeriodPickerEnabled
+                              ? AppTheme.textPrimary
+                              : AppTheme.textTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                        color: _calendarPeriodPickerEnabled
+                            ? AppTheme.textSecondary
+                            : AppTheme.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
+              const Spacer(),
+            ] else ...[
+              const Spacer(),
+            ],
             Container(
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
@@ -291,18 +569,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildToggle('日', _calendarTimeType == 'day', () {
-                    setState(() => _calendarTimeType = 'day');
-                    _loadCalendar();
+                    _onCalendarTypeChanged('day');
                   }),
                   _buildToggle('月', _calendarTimeType == 'month', () {
-                    setState(() => _calendarTimeType = 'month');
-                    _loadCalendar();
+                    _onCalendarTypeChanged('month');
                   }),
                   _buildToggle('年', _calendarTimeType == 'year', () {
-                    setState(() => _calendarTimeType = 'year');
-                    _loadCalendar();
+                    _onCalendarTypeChanged('year');
                   }),
                 ],
               ),
@@ -317,14 +593,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: _calendarLoading
-              ? Center(
-                  child: CircularProgressIndicator(color: AppTheme.accent),
-                )
+              ? Center(child: CircularProgressIndicator(color: AppTheme.accent))
               : GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _calendarTimeType == 'day' ? 6 : (_calendarTimeType == 'month' ? 4 : 5),
+                    crossAxisCount: _calendarTimeType == 'day'
+                        ? 6
+                        : (_calendarTimeType == 'month' ? 4 : 5),
                     childAspectRatio: _calendarTimeType == 'day' ? 0.9 : 1.0,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
@@ -340,10 +616,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
                     if (pnl != null) {
                       if (pnl > 0) {
-                        backgroundColor = const Color(0xFFEF4444).withOpacity(0.15);
+                        backgroundColor = const Color(
+                          0xFFEF4444,
+                        ).withOpacity(0.15);
                         textColor = const Color(0xFFEF4444);
                       } else if (pnl < 0) {
-                        backgroundColor = const Color(0xFF10B981).withOpacity(0.15);
+                        backgroundColor = const Color(
+                          0xFF10B981,
+                        ).withOpacity(0.15);
                         textColor = const Color(0xFF10B981);
                       } else {
                         backgroundColor = AppTheme.bgElevated;
@@ -365,11 +645,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
                           Text(
                             _calendarTimeType == 'day'
                                 ? day.toString()
-                                : (_calendarTimeType == 'month' ? '${day}月' : day.toString()),
+                                : (_calendarTimeType == 'month'
+                                      ? '${day}月'
+                                      : day.toString()),
                             style: TextStyle(
                               fontSize: FontSize.sm,
                               color: textColor,
-                              fontWeight: pnl != null ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: pnl != null
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             ),
                           ),
                           if (pnl != null) ...[
@@ -390,10 +674,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                             const SizedBox(height: 2),
                             Text(
                               '-',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: textColor,
-                              ),
+                              style: TextStyle(fontSize: 11, color: textColor),
                             ),
                           ],
                         ],
@@ -404,7 +685,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
         ),
         const SizedBox(height: Spacing.md),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.lg,
+            vertical: Spacing.sm,
+          ),
           decoration: BoxDecoration(
             color: AppTheme.bgElevated,
             borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -413,7 +697,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               _calendarSummaryText(appState),
-              style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+              style: TextStyle(
+                fontSize: FontSize.sm,
+                color: AppTheme.textSecondary,
+              ),
             ),
           ),
         ),
@@ -443,8 +730,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Widget _buildRankSection(AppState appState) {
     final rankItems = _buildRankItems(appState);
-    final rankList =
-        _rankType == 'profit' ? rankItems.where((x) => x.pnl > 0).toList() : rankItems.where((x) => x.pnl < 0).toList();
+    final rankList = _rankType == 'profit'
+        ? rankItems.where((x) => x.pnl > 0).toList()
+        : rankItems.where((x) => x.pnl < 0).toList();
     if (_rankType == 'profit') {
       rankList.sort((a, b) => b.pnl.compareTo(a.pnl));
     } else {
@@ -476,12 +764,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
             GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => AnalysisRankAllPage(rankType: _rankType)),
+                  MaterialPageRoute(
+                    builder: (_) => AnalysisRankAllPage(rankType: _rankType),
+                  ),
                 );
               },
               child: Text(
                 '查看全部 >',
-                style: TextStyle(fontSize: FontSize.base, color: AppTheme.accentLight),
+                style: TextStyle(
+                  fontSize: FontSize.base,
+                  color: AppTheme.accentLight,
+                ),
               ),
             ),
           ],
@@ -520,7 +813,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: Spacing.sm,
+        ),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.md),
@@ -547,13 +843,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final cost = item.price * item.qty;
       final pnl = mv - cost + item.adjustment;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
-      items.add(_RankItem(
-        code: item.code,
-        name: item.name,
-        pnl: pnl,
-        pnlRate: pnlRate,
-        currencySymbol: item.currencySymbol,
-      ));
+      items.add(
+        _RankItem(
+          code: item.code,
+          name: item.name,
+          pnl: pnl,
+          pnlRate: pnlRate,
+          currencySymbol: item.currencySymbol,
+        ),
+      );
     }
     return items;
   }
@@ -591,7 +889,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 const SizedBox(height: 2),
                 Text(
                   _formatDisplayCode(item.code),
-                  style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                  style: TextStyle(
+                    color: AppTheme.textTertiary,
+                    fontSize: FontSize.sm,
+                  ),
                 ),
               ],
             ),
@@ -600,8 +901,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                appState.amountHidden ? '****' : appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
-                style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
+                appState.amountHidden
+                    ? '****'
+                    : appState.formatPnlIntWithCurrency(
+                        item.pnl,
+                        item.currencySymbol,
+                      ),
+                style: TextStyle(
+                  color: pnlColor,
+                  fontSize: FontSize.base,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -616,9 +926,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   String _formatDisplayCode(String code) {
-    const customMap = {
-      'ft_LU1116320737': 'BLK',
-    };
+    const customMap = {'ft_LU1116320737': 'BLK'};
     if (customMap.containsKey(code)) return customMap[code]!;
     var c = code;
     if (c.toLowerCase().startsWith('gb_')) {
@@ -664,16 +972,23 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   String _calendarSummaryText(AppState appState) {
+    final items = _calendarData['items'] as List<dynamic>? ?? [];
+    if (items.isEmpty) {
+      return '暂无快照数据';
+    }
     final totalPnl = (_calendarData['total_pnl'] as num?)?.toDouble() ?? 0.0;
     final totalRate = (_calendarData['total_rate'] as num?)?.toDouble() ?? 0.0;
     final label = _calendarTimeType == 'day'
-        ? '本月累计'
+        ? '当月累计'
         : (_calendarTimeType == 'month' ? '当年累计' : '历史累计');
     final sign = totalPnl > 0 ? '+' : (totalPnl < 0 ? '-' : '');
-    final amount = totalPnl.abs().toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    final amount = totalPnl
+        .abs()
+        .toStringAsFixed(0)
+        .replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
     final amountText = appState.amountHidden ? '****' : '$sign$amount';
     final rateSign = totalRate >= 0 ? '+' : '';
     return '$label  $amountText   收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
@@ -697,7 +1012,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: LinearGradient(
+                  colors: g,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -723,7 +1042,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ),
       child: Text(
         '$rank',
-        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 11,
+          color: AppTheme.textTertiary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -751,7 +1074,10 @@ class AnalysisRankAllPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.bgPrimary,
         elevation: 0,
-        title: Text(rankType == 'profit' ? '盈利榜' : '亏损榜', style: TextStyle(color: AppTheme.textPrimary)),
+        title: Text(
+          rankType == 'profit' ? '盈利榜' : '亏损榜',
+          style: TextStyle(color: AppTheme.textPrimary),
+        ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
@@ -789,7 +1115,10 @@ class AnalysisRankAllPage extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         _formatDisplayCode(item.code),
-                        style: TextStyle(color: AppTheme.textTertiary, fontSize: FontSize.sm),
+                        style: TextStyle(
+                          color: AppTheme.textTertiary,
+                          fontSize: FontSize.sm,
+                        ),
                       ),
                     ],
                   ),
@@ -798,8 +1127,17 @@ class AnalysisRankAllPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      appState.amountHidden ? '****' : appState.formatPnlIntWithCurrency(item.pnl, item.currencySymbol),
-                      style: TextStyle(color: pnlColor, fontSize: FontSize.base, fontWeight: FontWeight.w600),
+                      appState.amountHidden
+                          ? '****'
+                          : appState.formatPnlIntWithCurrency(
+                              item.pnl,
+                              item.currencySymbol,
+                            ),
+                      style: TextStyle(
+                        color: pnlColor,
+                        fontSize: FontSize.base,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -826,21 +1164,21 @@ class AnalysisRankAllPage extends StatelessWidget {
       final cost = item.price * item.qty;
       final pnl = mv - cost + item.adjustment;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
-      items.add(_RankItem(
-        code: item.code,
-        name: item.name,
-        pnl: pnl,
-        pnlRate: pnlRate,
-        currencySymbol: item.currencySymbol,
-      ));
+      items.add(
+        _RankItem(
+          code: item.code,
+          name: item.name,
+          pnl: pnl,
+          pnlRate: pnlRate,
+          currencySymbol: item.currencySymbol,
+        ),
+      );
     }
     return items;
   }
 
   String _formatDisplayCode(String code) {
-    const customMap = {
-      'ft_LU1116320737': 'BLK',
-    };
+    const customMap = {'ft_LU1116320737': 'BLK'};
     if (customMap.containsKey(code)) return customMap[code]!;
     var c = code;
     if (c.toLowerCase().startsWith('gb_')) {
@@ -878,7 +1216,11 @@ class AnalysisRankAllPage extends StatelessWidget {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: g, begin: Alignment.topLeft, end: Alignment.bottomRight),
+                gradient: LinearGradient(
+                  colors: g,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -904,7 +1246,11 @@ class AnalysisRankAllPage extends StatelessWidget {
       ),
       child: Text(
         '$rank',
-        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 11,
+          color: AppTheme.textTertiary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
