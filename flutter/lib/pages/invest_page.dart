@@ -38,6 +38,8 @@ class InvestPageState extends State<InvestPage> {
   bool _onScrollNotification(ScrollNotification notification) {
     final callback = widget.onFabVisibilityChanged;
     if (callback == null) return false;
+    // 只监听最外层滚动，避免子滚动组件噪声导致高频回调。
+    if (notification.depth != 0) return false;
 
     if (notification is ScrollUpdateNotification) {
       final delta = notification.scrollDelta;
@@ -248,107 +250,108 @@ class InvestPageState extends State<InvestPage> {
                       ),
                     ),
                   )
-                else
+                else ...[
                   SliverToBoxAdapter(
-                    child: Column(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.fromLTRB(
-                            Spacing.xl,
-                            Spacing.xs,
-                            Spacing.xl,
-                            2,
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(
+                        Spacing.xl,
+                        Spacing.xs,
+                        Spacing.xl,
+                        2,
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Spacing.md,
+                        vertical: isCompact ? 4 : 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.isLight
+                            ? AppTheme.bgElevated
+                            : AppTheme.bgCard.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppTheme.border.withOpacity(
+                            AppTheme.isLight ? 0.7 : 0.4,
                           ),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: Spacing.md,
-                            vertical: isCompact ? 4 : 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.isLight
-                                ? AppTheme.bgElevated
-                                : AppTheme.bgCard.withOpacity(0.45),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: AppTheme.border.withOpacity(
-                                AppTheme.isLight ? 0.7 : 0.4,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: isCompact ? 72 : 80,
+                            child: Text(
+                              '资产名称',
+                              style: TextStyle(
+                                fontSize: isCompact ? 9 : FontSize.base,
+                                color: AppTheme.textTertiary,
                               ),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: isCompact ? 72 : 80,
-                                child: Text(
-                                  '资产名称',
-                                  style: TextStyle(
-                                    fontSize: isCompact ? 9 : FontSize.base,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              '市值/数量',
+                              style: TextStyle(
+                                fontSize: isCompact ? 9 : FontSize.base,
+                                color: AppTheme.textTertiary,
                               ),
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  '市值/数量',
-                                  style: TextStyle(
-                                    fontSize: isCompact ? 9 : FontSize.base,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  '现价/成本',
-                                  style: TextStyle(
-                                    fontSize: isCompact ? 9 : FontSize.base,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  '累计盈亏',
-                                  textAlign: TextAlign.end,
-                                  style: TextStyle(
-                                    fontSize: isCompact ? 9 : FontSize.base,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  '当日盈亏',
-                                  textAlign: TextAlign.end,
-                                  style: TextStyle(
-                                    fontSize: isCompact ? 9 : FontSize.base,
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: appState.filteredPortfolio.length,
-                          itemBuilder: (context, index) {
-                            final item = appState.filteredPortfolio[index];
-                            final priceInfo = appState.prices[item.code];
-                            return _buildPortfolioCard(
-                              item,
-                              priceInfo,
-                              appState,
-                              isCompact,
-                            );
-                          },
-                        ),
-                      ],
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              '现价/成本',
+                              style: TextStyle(
+                                fontSize: isCompact ? 9 : FontSize.base,
+                                color: AppTheme.textTertiary,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              '累计盈亏',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: isCompact ? 9 : FontSize.base,
+                                color: AppTheme.textTertiary,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              '当日盈亏',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: isCompact ? 9 : FontSize.base,
+                                color: AppTheme.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = appState.filteredPortfolio[index];
+                        final priceInfo = appState.prices[item.code];
+                        return RepaintBoundary(
+                          child: _buildPortfolioCard(
+                            item,
+                            priceInfo,
+                            appState,
+                            isCompact,
+                          ),
+                        );
+                      },
+                      childCount: appState.filteredPortfolio.length,
+                      addAutomaticKeepAlives: false,
+                      addRepaintBoundaries: false,
+                    ),
+                  ),
+                ],
                 SliverToBoxAdapter(
                   child: SizedBox(height: _bottomContentPadding(context)),
                 ),
@@ -475,8 +478,11 @@ class InvestPageState extends State<InvestPage> {
           context: context,
           barrierDismissible: false,
           barrierColor: Colors.black.withOpacity(0.5),
-          builder: (_) =>
-              InvestTradeDialog(mode: 'trade', item: item, hostContext: context),
+          builder: (_) => InvestTradeDialog(
+            mode: 'trade',
+            item: item,
+            hostContext: context,
+          ),
         ),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
