@@ -276,7 +276,7 @@ python3 app.py
 - `code`, `name`
 - `qty`, `price`
 - `currency`
-- `adjustment`（手动校准项）
+- `adjustment`（校准项，承载“已实现收益/分红等”的累积值，影响累计收益口径）
 - `asset_type`（如 `a/us/hk/fund`）
 - `user_id`
 
@@ -294,6 +294,24 @@ python3 app.py
 - `total_pnl`
 - `user_id`
 - `updated_at`
+
+### 6.5 累计收益口径（重要）
+
+当前产品对“累计收益/累计盈亏”的最终口径定义为：
+
+- `累计收益(total_pnl) = 持仓未实现收益 + 已实现收益（卖出落袋）`
+
+其中：
+
+- 未实现收益：`(现价 - 成本价) * 数量`（按汇率折算后汇总）
+- 已实现收益：卖出时的成交差价收益（目前不计手续费/税费）
+- `portfolio.adjustment` 用于累积承载“已实现收益（以及后续可能的分红等）”，因此它会影响 `total_pnl`
+
+为保证“清仓后已实现收益不丢失”：
+
+- 当某资产卖到 `qty=0` 时，后端不再删除该 `portfolio` 记录，而是保留 `qty=0`，并将本次卖出盈亏累加到 `adjustment`
+- `GET /api/portfolio` 默认只返回 `qty>0` 的持仓，所以清仓资产不会在列表里出现
+- 快照计算会包含 `qty=0` 的记录（只为了把已实现收益纳入累计收益），从而保证 `daily_snapshots.total_pnl` 口径稳定
 
 ---
 
