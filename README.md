@@ -540,6 +540,18 @@ RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
    - 清理受影响快照区间（`daily_snapshots` 中 `date >= from_date`）
    - 成功后异步重建当日快照
 8. 纠错删除做了幂等/兜底：即使记录已不存在也按成功路径处理；前端在纠错删除失败时自动回退普通删除，避免“提示成功但列表回弹”。
+9. 新增“投资联动买入（现金账户扣款）”：
+   - 后端接口：`POST /api/portfolio/buy_with_cash`
+   - 前端买入时可选择现金账户，成交成功后对应现金资产同步减少。
+10. 新增“余额校验”：
+   - 买入前按币种换算校验现金余额，不足时返回明确错误（如 `INSUFFICIENT_CASH`）并阻止落库。
+11. 新增“15 秒撤销”：
+   - 写操作成功后返回 `undo_token`，支持 `POST /api/portfolio/undo` 在 15 秒窗口内撤销最近一次投资操作。
+   - 撤销成功后同步回滚持仓/交易与关联现金变动，并触发快照更新。
+12. 前后端接口与测试覆盖（`8fbb46f`）：
+   - 前端：`ApiService`、`AppState`、投资弹窗链路已接入 `buy_with_cash` 与 `undo`。
+   - 后端：`app.py`、`core/db.py` 增加联动买入与撤销实现。
+   - 测试：`flutter/test/app_state_smoke_test.dart` 与 `kona_tool/tests/test_api_baseline.py` 已补充对应场景。
 
 ## 17. 今日改动（2026-02-13）
 
