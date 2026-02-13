@@ -733,6 +733,12 @@ def settings_page():
     return make_response(render_template('settings.html', version=APP_VERSION))
 
 
+@app.route('/admin/login')
+def admin_login_page():
+    """管理后台登录页"""
+    return make_response(render_template('admin_login.html', version=APP_VERSION))
+
+
 @app.route('/admin')
 def admin_overview_page():
     """管理后台首页"""
@@ -1992,14 +1998,18 @@ def analysis_calendar():
             raise ValueError(name)
         return val
 
+    year = None
+    month = None
     try:
-        year = _parse_positive_int_arg('year')
-        month = _parse_positive_int_arg('month')
+        if time_type == 'day':
+            year = _parse_positive_int_arg('year')
+            month = _parse_positive_int_arg('month')
+            if month is not None and not 1 <= month <= 12:
+                return jsonify({"error": "Invalid month", "code": "INVALID_CALENDAR_PERIOD"}), 400
+        elif time_type == 'month':
+            year = _parse_positive_int_arg('year')
     except ValueError:
         return jsonify({"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}), 400
-
-    if month is not None and not 1 <= month <= 12:
-        return jsonify({"error": "Invalid month", "code": "INVALID_CALENDAR_PERIOD"}), 400
 
     user_id = g.user_id
     result = db.get_calendar_data(time_type, user_id, year=year, month=month)

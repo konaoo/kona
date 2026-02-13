@@ -81,8 +81,11 @@
 - `kona_tool/templates/admin_users.html`
 - `kona_tool/templates/admin_invites.html`
 - `kona_tool/templates/admin_apis.html`
+- `kona_tool/templates/admin_login.html`
 
 已完成：
+- 新增后台登录页：`/admin/login`（使用现有账号密码登录后校验 admin 权限）
+- 后台页面未登录自动跳转登录页，支持“退出登录”
 - 用户页新增：管理员切换、重置密码、强制下线、需改密展示
 - 邀请码页新增：统计卡、筛选联动、迁移入口
 - 接口页新增：策略表（启停/限流/备注）与健康检测同页
@@ -155,4 +158,3 @@ cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
 - 注册方式：`用户名 + 密码 + 邀请码`
 - 邀请码为一次性，可作废，可批次管理
 - 管理员可直接重置用户临时密码并触发强制改密
-

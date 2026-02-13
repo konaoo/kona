@@ -212,6 +212,7 @@
             <a href="/admin/data" class="{% if admin_page == 'data' %}active{% endif %}">数据管理</a>
             <a href="/admin/apis" class="{% if admin_page == 'apis' %}active{% endif %}">接口测试</a>
             <a href="/admin/audit" class="{% if admin_page == 'audit' %}active{% endif %}">审计日志</a>
+            <a href="javascript:void(0);" onclick="adminLogout()">退出登录</a>
             <a href="/" style="margin-top:10px;">返回主站</a>
         </nav>
     </aside>
@@ -221,7 +222,8 @@
 </div>
 <div id="toast"></div>
 <script>
-    const ADMIN_TOKEN_KEYS = ['token', 'kona_token', 'auth_token', 'jwt_token'];
+    const ADMIN_TOKEN_KEYS = ['admin_token', 'token', 'kona_token', 'auth_token', 'jwt_token'];
+    const ADMIN_LOGIN_PATH = '/admin/login';
 
     function getAdminToken() {
         for (const k of ADMIN_TOKEN_KEYS) {
@@ -229,6 +231,23 @@
             if (v) return v;
         }
         return '';
+    }
+
+    function clearAdminToken() {
+        for (const k of ADMIN_TOKEN_KEYS) {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        }
+    }
+
+    function toAdminLogin() {
+        const next = encodeURIComponent(`${window.location.pathname}${window.location.search}${window.location.hash}`);
+        window.location.href = `${ADMIN_LOGIN_PATH}?next=${next}`;
+    }
+
+    function adminLogout() {
+        clearAdminToken();
+        toAdminLogin();
     }
 
     function showToast(message, isError = false) {
@@ -248,9 +267,11 @@
             headers.set('Content-Type', 'application/json');
         }
         const token = getAdminToken();
-        if (token) {
-            headers.set('Authorization', `Bearer ${token}`);
+        if (!token) {
+            toAdminLogin();
+            throw new Error('请先登录后台');
         }
+        headers.set('Authorization', `Bearer ${token}`);
 
         const resp = await fetch(url, {
             ...options,
@@ -261,6 +282,10 @@
         const payload = ctype.includes('application/json') ? await resp.json() : await resp.text();
 
         if (!resp.ok) {
+            if (resp.status === 401 || resp.status === 403) {
+                clearAdminToken();
+                toAdminLogin();
+            }
             const msg = (payload && payload.error) ? payload.error : `HTTP ${resp.status}`;
             throw new Error(msg);
         }
