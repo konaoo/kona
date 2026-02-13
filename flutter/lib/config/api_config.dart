@@ -1,7 +1,7 @@
 /// API 配置
 class ApiConfig {
   /// API 基础地址
-  static const String baseUrl = 'http://35.78.253.89:5003';
+  static const String baseUrl = 'http://57.180.79.186:5003';
 
   /// 请求超时时间（秒）
   static const int timeout = 30;
