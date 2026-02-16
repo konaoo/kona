@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/asset_action_result.dart';
+import '../utils/network_error_stub.dart'
+    if (dart.library.io) '../utils/network_error_io.dart';
 
 /// API 服务 - 封装所有后端 API 调用
 class ApiService {
@@ -34,6 +36,30 @@ class ApiService {
     return headers;
   }
 
+  static Uri buildApiUri(
+    String endpoint, {
+    bool? isWebOverride,
+    String? webOriginOverride,
+    String? mobileBaseUrlOverride,
+  }) {
+    if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+      return Uri.parse(endpoint);
+    }
+    final normalizedEndpoint = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final isWebPlatform = isWebOverride ?? kIsWeb;
+    if (isWebPlatform) {
+      final rawOrigin = (webOriginOverride != null && webOriginOverride.trim().isNotEmpty)
+          ? webOriginOverride.trim()
+          : Uri.base.origin;
+      final origin = rawOrigin.replaceFirst(RegExp(r'/$'), '');
+      return Uri.parse('$origin$normalizedEndpoint');
+    }
+    final base = (mobileBaseUrlOverride ?? ApiConfig.baseUrl)
+        .trim()
+        .replaceFirst(RegExp(r'/$'), '');
+    return Uri.parse('$base$normalizedEndpoint');
+  }
+
   String _extractErrorMessage(http.Response response) {
     try {
       final decoded = jsonDecode(response.body);
@@ -49,7 +75,7 @@ class ApiService {
 
   bool _isRetryableError(Object error) {
     return error is TimeoutException ||
-        error is SocketException ||
+        isSocketLikeError(error) ||
         error is http.ClientException;
   }
 
@@ -57,7 +83,7 @@ class ApiService {
     if (error is TimeoutException) {
       return ApiException('请求超时，请稍后重试');
     }
-    if (error is SocketException || error is http.ClientException) {
+    if (isSocketLikeError(error) || error is http.ClientException) {
       return ApiException('网络连接异常，请检查网络后重试');
     }
     return ApiException('网络连接失败: $error');
@@ -70,7 +96,7 @@ class ApiService {
       try {
         final response = await _client
             .get(
-              Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+              buildApiUri(endpoint),
               headers: _getHeaders(),
             )
             .timeout(const Duration(seconds: ApiConfig.timeout));
@@ -111,7 +137,7 @@ class ApiService {
       try {
         final response = await _client
             .post(
-              Uri.parse('${ApiConfig.baseUrl}$endpoint'),
+              buildApiUri(endpoint),
               headers: _getHeaders(),
               body: jsonEncode(data),
             )

@@ -10,7 +10,7 @@ import secrets
 import json
 from functools import wraps
 from collections import defaultdict
-from flask import Flask, render_template, jsonify, request, make_response, send_file, g
+from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from pathlib import Path
@@ -242,6 +242,52 @@ limiter = Limiter(
 
 # 应用版本号，用于强制刷新缓存
 APP_VERSION = config.APP_VERSION
+WEB_APP_DIR = config.BASE_DIR / "static" / "app"
+
+
+def _is_long_cache_asset(path: str) -> bool:
+    suffix = Path(path).suffix.lower()
+    return suffix in {
+        ".js",
+        ".css",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".svg",
+        ".webp",
+        ".ico",
+        ".json",
+        ".map",
+        ".woff",
+        ".woff2",
+        ".ttf",
+    }
+
+
+def _serve_flutter_web_asset(asset_path: str = ""):
+    web_dir = WEB_APP_DIR
+    index_file = web_dir / "index.html"
+    if not index_file.exists():
+        return jsonify({"error": "Flutter web bundle not found"}), 404
+
+    normalized_path = (asset_path or "").strip().lstrip("/")
+    target_file = web_dir / normalized_path if normalized_path else index_file
+
+    if normalized_path and target_file.exists() and target_file.is_file():
+        response = make_response(send_from_directory(str(web_dir), normalized_path))
+        if _is_long_cache_asset(normalized_path):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+    response = make_response(send_from_directory(str(web_dir), "index.html"))
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 # 初始化数据库（从CSV导入备份数据）
 if not config.DATABASE_PATH.exists() and config.BACKUP_CSV_PATH.exists():
@@ -532,6 +578,19 @@ def index():
     response.headers['Expires'] = '0'
     response.headers['X-App-Version'] = APP_VERSION
     return response
+
+
+@app.route('/app')
+@app.route('/app/')
+def flutter_web_index():
+    """Flutter Web 入口。"""
+    return _serve_flutter_web_asset()
+
+
+@app.route('/app/<path:asset_path>')
+def flutter_web_assets(asset_path):
+    """Flutter Web 静态资源与前端路由回退。"""
+    return _serve_flutter_web_asset(asset_path)
 
 
 @app.route('/assets')

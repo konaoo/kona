@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -43,7 +42,7 @@ class _ProfilePageState extends State<ProfilePage> {
         maxHeight: 360,
       );
       if (file == null) return;
-      final bytes = await File(file.path).readAsBytes();
+      final bytes = await file.readAsBytes();
       final base64Str = base64Encode(bytes);
       final ok = await appState.updateProfile(avatar: base64Str);
       if (!ok && mounted) {

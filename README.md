@@ -204,6 +204,40 @@ flutter install -d <device_id> --debug
 - 本地调试：`http://127.0.0.1:5003`
 - 线上联调：`http://<EC2公网IP>:5003`
 
+### 4.5 Flutter Web（`/app`）接入规则（2026-02-16）
+
+本项目已支持把 Flutter Web 作为主项目 Web 端运行，挂载路径固定为：`/app`
+
+- Web 访问入口：`http://<host>:<port>/app/`
+- 后端托管目录：`/Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app`
+- Flask 路由：
+  - `GET /app`、`GET /app/`
+  - `GET /app/<path>`（静态资源 + SPA fallback 到 `index.html`）
+
+API 基址策略（避免影响 App）：
+
+- Web：同源（`Uri.base.origin + /api/...`）
+- Android/iOS：继续使用 `ApiConfig.baseUrl`
+
+本地构建与验收：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
+flutter build web --release --base-href /app/
+
+mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app
+rsync -a --delete \
+  /Users/kona/Desktop/kaka/kona_repo/flutter/build/web/ \
+  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app/
+
+cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
+JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
+```
+
+然后在浏览器访问：
+
+- `http://127.0.0.1:5003/app/`（若本机端口被占用，以启动日志端口为准）
+
 ---
 
 ## 5. 后端说明（Flask）
@@ -330,11 +364,28 @@ python3 app.py
 流程：
 
 1. 先跑 `backend-gate`（Python compile + unittest）
-2. 再跑 `frontend-gate`（flutter analyze + test + debug build）
+2. 再跑 `frontend-gate`（flutter analyze + test + debug build + web release build）
 3. 仅当门禁全绿时，执行 `deploy` 到 AWS（任一门禁失败则跳过部署）
-4. SSH 登录 AWS，`git pull` + `pip install`
-5. 刷新 `kona.service` 并重启
-6. 健康检查 `/api/rates`
+4. 打包并上传 Flutter Web 产物（`flutter-web.tar.gz`）
+5. SSH 登录 AWS，`git pull/reset` + `pip install`
+6. 解压 Web 产物到 `kona_tool/static/app`
+7. 刷新 `kona.service` 并重启
+8. 健康检查 `/health`
+
+### 7.1 Deploy 所需 Secrets（当前工作流补充）
+
+仓库 `Settings -> Secrets and variables -> Actions` 需配置：
+
+- `SSH_HOST`：EC2 公网 IP / EIP
+- `SSH_KEY`：可登录 `ec2-user` 的私钥
+- `APP_DIR`：服务器上的后端目录（如 `/home/ec2-user/portfolio/kona_tool` 或父目录）
+
+说明：
+
+- 当前 workflow 中 `username` 固定为 `ec2-user`
+- `deploy` 阶段会自动识别：
+  - 若 `APP_DIR/app.py` 存在，则 Web 解压到 `APP_DIR/static/app`
+  - 若 `APP_DIR/kona_tool` 存在，则 Web 解压到 `APP_DIR/kona_tool/static/app`
 
 ### 7.1.1 分支与 AWS 自动拉取约定（很重要）
 

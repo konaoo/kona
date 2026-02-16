@@ -79,6 +79,21 @@ jobs:
         working-directory: flutter
         run: flutter build apk --debug
 
+      - name: Flutter build web
+        working-directory: flutter
+        run: flutter build web --release --base-href /app/
+
+      - name: Package Flutter Web artifact
+        run: tar -C flutter/build/web -czf flutter-web.tar.gz .
+
+      - name: Upload Flutter Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-web-dist
+          path: flutter-web.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+
   deploy:
     name: Deploy to AWS
     needs: [ backend-gate, frontend-gate ]
@@ -89,6 +104,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Download Flutter Web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-web-dist
+          path: .
+
+      - name: Upload Flutter Web artifact to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ec2-user
+          key: ${{ secrets.SSH_KEY }}
+          source: flutter-web.tar.gz
+          target: /tmp
+
       - name: SSH and deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -103,6 +133,19 @@ jobs:
               echo "Invalid APP_DIR: $APP_DIR"
               exit 1
             fi
+
+            WEB_DIR="$APP_DIR/static/app"
+            if [ ! -f "$APP_DIR/app.py" ] && [ -d "$APP_DIR/kona_tool" ]; then
+              WEB_DIR="$APP_DIR/kona_tool/static/app"
+            fi
+            mkdir -p "$WEB_DIR"
+            if [ ! -f /tmp/flutter-web.tar.gz ]; then
+              echo "Missing /tmp/flutter-web.tar.gz"
+              exit 1
+            fi
+            rm -rf "$WEB_DIR"/*
+            tar -xzf /tmp/flutter-web.tar.gz -C "$WEB_DIR"
+            rm -f /tmp/flutter-web.tar.gz
 
             cd "$APP_DIR"
             echo "Deploy dir: $(pwd)"

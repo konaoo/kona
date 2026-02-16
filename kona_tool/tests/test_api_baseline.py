@@ -44,6 +44,46 @@ class ApiBaselineTests(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data.get('status'), 'ok')
 
+    def test_flutter_web_entry_served_from_app_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp)
+            (app_dir / "index.html").write_text(
+                "<!doctype html><html><body>flutter-web</body></html>",
+                encoding="utf-8",
+            )
+            (app_dir / "main.dart.js").write_text("console.log('ok');", encoding="utf-8")
+            old_dir = app_module.WEB_APP_DIR
+            app_module.WEB_APP_DIR = app_dir
+            try:
+                resp = self.client.get('/app/')
+                self.assertEqual(resp.status_code, 200)
+                self.assertIn("flutter-web", resp.get_data(as_text=True))
+                resp.close()
+
+                js_resp = self.client.get('/app/main.dart.js')
+                self.assertEqual(js_resp.status_code, 200)
+                self.assertIn("ok", js_resp.get_data(as_text=True))
+                js_resp.close()
+            finally:
+                app_module.WEB_APP_DIR = old_dir
+
+    def test_flutter_web_route_fallbacks_to_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp)
+            (app_dir / "index.html").write_text(
+                "<!doctype html><html><body>spa-entry</body></html>",
+                encoding="utf-8",
+            )
+            old_dir = app_module.WEB_APP_DIR
+            app_module.WEB_APP_DIR = app_dir
+            try:
+                resp = self.client.get('/app/analysis/deep-link')
+                self.assertEqual(resp.status_code, 200)
+                self.assertIn("spa-entry", resp.get_data(as_text=True))
+                resp.close()
+            finally:
+                app_module.WEB_APP_DIR = old_dir
+
     def test_price_missing_code(self):
         resp = self.client.get('/api/price')
         self.assertEqual(resp.status_code, 400)
