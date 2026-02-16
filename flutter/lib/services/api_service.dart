@@ -191,6 +191,17 @@ class ApiService {
     return const {};
   }
 
+  Map<String, dynamic> _ensureMapResponse(
+    dynamic value, {
+    required String actionLabel,
+  }) {
+    final map = _toMap(value);
+    if (map.isEmpty) {
+      throw ApiException('$actionLabel响应异常，请稍后重试');
+    }
+    return map;
+  }
+
   AssetActionResult _okResultOrFailure(dynamic response) {
     final data = _toMap(response);
     if (data.isEmpty) return const AssetActionResult.success();
@@ -210,11 +221,12 @@ class ApiService {
     required String password,
     String? deviceId,
   }) async {
-    final data = await _post(ApiConfig.login, {
+    final raw = await _post(ApiConfig.login, {
       'username': username,
       'password': password,
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
+    final data = _ensureMapResponse(raw, actionLabel: '登录');
     if (data != null && data['access_token'] != null) {
       _token = data['access_token'];
     }
@@ -227,12 +239,13 @@ class ApiService {
     required String inviteCode,
     String? deviceId,
   }) async {
-    final data = await _post(ApiConfig.register, {
+    final raw = await _post(ApiConfig.register, {
       'username': username,
       'password': password,
       'invite_code': inviteCode,
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
+    final data = _ensureMapResponse(raw, actionLabel: '注册');
     if (data != null && data['access_token'] != null) {
       _token = data['access_token'];
     }
@@ -250,10 +263,11 @@ class ApiService {
     required String refreshToken,
     String? deviceId,
   }) async {
-    final data = await _post(ApiConfig.refresh, {
+    final raw = await _post(ApiConfig.refresh, {
       'refresh_token': refreshToken,
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
+    final data = _ensureMapResponse(raw, actionLabel: '会话刷新');
     if (data != null && data['access_token'] != null) {
       _token = data['access_token'];
     }
