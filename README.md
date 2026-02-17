@@ -140,7 +140,10 @@ kona_repo/
 - GitHub Actions 拆分为三段：`backend-gate`、`frontend-gate`、`deploy`
 - `push main` 必须先通过两道门禁，部署才会执行
 - `pull_request` 只跑门禁，不部署
-- 前端门禁包含：`flutter analyze`、`flutter test`、`flutter build apk --debug`
+- 前端门禁固定包含：`flutter analyze`、`flutter test`、`flutter build web --release`
+- `flutter build apk --debug` 改为按路径触发：
+  - 仅当本次提交包含 `flutter/android/**` 变更时执行
+  - 或手动触发 `workflow_dispatch` 时执行
 
 ### 3.10 安全与限流（今天新增）
 
@@ -364,7 +367,7 @@ python3 app.py
 流程：
 
 1. 先跑 `backend-gate`（Python compile + unittest）
-2. 再跑 `frontend-gate`（flutter analyze + test + debug build + web release build）
+2. 再跑 `frontend-gate`（flutter analyze + test + web release build）
 3. 仅当门禁全绿时，执行 `deploy` 到 AWS（任一门禁失败则跳过部署）
 4. 打包并上传 Flutter Web 产物（`flutter-web.tar.gz`）
 5. SSH 登录 AWS，`git pull/reset` + `pip install`
@@ -407,6 +410,22 @@ python3 app.py
   - `needs.frontend-gate.result == 'success'`
 - 满足以上条件才允许执行 `Deploy to AWS`
 - 这意味着“push 成功”不等于“已上线”，必须看 Actions 三段都通过
+
+### 7.1.3 Push 说明（APK 构建触发规则）
+
+工作流文件：`/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml`
+
+- 默认规则（`push main` / `pull_request`）：
+  - 若未改动 `flutter/android/**`，则跳过 `Flutter build apk (debug smoke)`，其余门禁照常执行
+  - 若改动了 `flutter/android/**`，才执行 APK smoke 构建
+- 手动触发（`workflow_dispatch`）：
+  - 强制执行 APK smoke 构建（用于发布前手动全量验收）
+
+推荐用法：
+
+1. 仅后端 / Web / Dart 业务逻辑改动：直接 push，CI 会自动跳过 APK 构建。
+2. 涉及 Android 工程改动（`flutter/android/**`）：push 后会自动执行 APK smoke。
+3. 需要人工强制全量验证时：在 Actions 页面手动触发 `Deploy to AWS` workflow。
 
 ### 7.2 生产运行（服务托管）
 
