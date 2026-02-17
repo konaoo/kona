@@ -14,22 +14,39 @@ enum SessionBootState { initializing, authenticated, unauthenticated }
 
 enum AuthLogoutMode { normal, biometricReady }
 
+typedef LoginHandler =
+    Future<Map<String, dynamic>?> Function({
+      required String username,
+      required String password,
+    });
+
 /// 应用状态管理
 class AppState extends ChangeNotifier {
-  final ApiService _api = ApiService();
-  final CacheService _cache = CacheService();
-  final SecureStorageService _secureStorage = SecureStorageService();
-  final BiometricService _biometric = BiometricService();
+  final ApiService _api;
+  final CacheService _cache;
+  final SecureStorageService _secureStorage;
+  final BiometricService _biometric;
+  final LoginHandler? _loginHandlerOverride;
   final Future<String?> Function()? _tokenLoaderOverride;
   final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
   final Future<Map<String, dynamic>?> Function(String refreshToken)?
   _refreshSessionOverride;
 
   AppState({
+    ApiService? api,
+    CacheService? cache,
+    SecureStorageService? secureStorage,
+    BiometricService? biometric,
+    LoginHandler? loginHandler,
     Future<String?> Function()? tokenLoader,
     Future<Map<String, dynamic>?> Function()? profileLoader,
     Future<Map<String, dynamic>?> Function(String refreshToken)? refreshLoader,
-  }) : _tokenLoaderOverride = tokenLoader,
+  }) : _api = api ?? ApiService(),
+       _cache = cache ?? CacheService(),
+       _secureStorage = secureStorage ?? SecureStorageService(),
+       _biometric = biometric ?? BiometricService(),
+       _loginHandlerOverride = loginHandler,
+       _tokenLoaderOverride = tokenLoader,
        _profileLoaderOverride = profileLoader,
        _refreshSessionOverride = refreshLoader {
     _loadTheme();
@@ -416,18 +433,54 @@ class AppState extends ChangeNotifier {
     _api.setToken(accessToken);
     _sessionBootState = SessionBootState.authenticated;
     _logoutMode = AuthLogoutMode.normal;
-
-    await _secureStorage.setToken(accessToken);
-    await _secureStorage.setRefreshToken(refreshToken);
-    if (_username != null && _username!.isNotEmpty) {
-      await _secureStorage.setUsername(_username!);
-    }
-    await _secureStorage.clearLogoutMode();
     notifyListeners();
+
+    try {
+      await _secureStorage.setToken(accessToken);
+      await _secureStorage.setRefreshToken(refreshToken);
+      if (_username != null && _username!.isNotEmpty) {
+        await _secureStorage.setUsername(_username!);
+      }
+      await _secureStorage.clearLogoutMode();
+    } catch (e) {
+      debugPrint('登录态写入本地存储失败，已保留内存登录态: $e');
+    }
   }
 
   void clearAuthError() {
     _authErrorMessage = null;
+  }
+
+  Future<String?> _safeReadStorageString(
+    Future<String?> Function() reader,
+    String label,
+  ) async {
+    try {
+      return await reader();
+    } catch (e) {
+      debugPrint('读取$label失败: $e');
+      return null;
+    }
+  }
+
+  Future<bool> _safeReadStorageBool(
+    Future<bool> Function() reader,
+    String label,
+  ) async {
+    try {
+      return await reader();
+    } catch (e) {
+      debugPrint('读取$label失败: $e');
+      return false;
+    }
+  }
+
+  bool _isWebStorageRuntimeError(String lower) {
+    return lower.contains('null check operator used on a null value') ||
+        lower.contains('window.crypto') ||
+        lower.contains('secure storage') ||
+        lower.contains('fluttersecurestorage') ||
+        lower.contains('localstorage');
   }
 
   Future<void> reloadBiometricPreference() async {
@@ -463,7 +516,14 @@ class AppState extends ChangeNotifier {
     }
     final raw = error.toString().trim();
     if (raw.isNotEmpty) {
-      return raw.startsWith('Exception:') ? raw.replaceFirst('Exception:', '').trim() : raw;
+      final normalized = raw.startsWith('Exception:')
+          ? raw.replaceFirst('Exception:', '').trim()
+          : raw;
+      final lower = normalized.toLowerCase();
+      if (_isWebStorageRuntimeError(lower)) {
+        return '浏览器存储环境异常，请刷新页面或切换 HTTPS 后重试';
+      }
+      return normalized;
     }
     return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
   }
@@ -475,7 +535,9 @@ class AppState extends ChangeNotifier {
   }) async {
     _authErrorMessage = null;
     try {
-      final result = await _api.login(username: username, password: password);
+      final result = _loginHandlerOverride != null
+          ? await _loginHandlerOverride(username: username, password: password)
+          : await _api.login(username: username, password: password);
       if (result == null) {
         _authErrorMessage = '登录响应为空，请稍后重试';
         return false;
@@ -717,21 +779,34 @@ class AppState extends ChangeNotifier {
     String? refreshToken;
     String? username;
     String? logoutModeRaw;
-    try {
-      token = _tokenLoaderOverride != null
-          ? await _tokenLoaderOverride()
-          : await _secureStorage.getToken();
-      refreshToken = await _secureStorage.getRefreshToken();
-      username = await _secureStorage.getUsername();
-      _biometricEnabled = await _secureStorage.isBiometricEnabled();
-      logoutModeRaw = await _secureStorage.getLogoutMode();
-    } catch (e) {
-      debugPrint('读取 token 失败，跳过自动登录: $e');
-      _sessionBootState = SessionBootState.unauthenticated;
-      _isSessionChecking = false;
-      notifyListeners();
-      return;
+    if (_tokenLoaderOverride != null) {
+      try {
+        token = await _tokenLoaderOverride();
+      } catch (e) {
+        debugPrint('读取 access token 失败: $e');
+      }
+    } else {
+      token = await _safeReadStorageString(
+        _secureStorage.getToken,
+        'access token',
+      );
     }
+    refreshToken = await _safeReadStorageString(
+      _secureStorage.getRefreshToken,
+      'refresh token',
+    );
+    username = await _safeReadStorageString(
+      _secureStorage.getUsername,
+      'username',
+    );
+    _biometricEnabled = await _safeReadStorageBool(
+      _secureStorage.isBiometricEnabled,
+      'biometric enabled',
+    );
+    logoutModeRaw = await _safeReadStorageString(
+      _secureStorage.getLogoutMode,
+      'logout mode',
+    );
 
     _logoutMode = _parseLogoutMode(logoutModeRaw);
 
@@ -1419,11 +1494,7 @@ class AppState extends ChangeNotifier {
     }
     return AssetActionResult(
       ok: true,
-      data: {
-        ...data,
-        'undo_token': token,
-        'undo_expire_at': expire,
-      },
+      data: {...data, 'undo_token': token, 'undo_expire_at': expire},
     );
   }
 
@@ -1571,7 +1642,9 @@ class AppState extends ChangeNotifier {
       return const AssetActionResult.failure('请选择资金来源账户');
     }
 
-    final cashIndex = _cashAssets.indexWhere((asset) => asset.id == cashAssetId);
+    final cashIndex = _cashAssets.indexWhere(
+      (asset) => asset.id == cashAssetId,
+    );
     if (cashIndex < 0) {
       return const AssetActionResult.failure('未找到资金来源账户');
     }
@@ -1686,7 +1759,9 @@ class AppState extends ChangeNotifier {
     if (cashAssetId <= 0) {
       return const AssetActionResult.failure('请选择回款账户');
     }
-    final cashIndex = _cashAssets.indexWhere((asset) => asset.id == cashAssetId);
+    final cashIndex = _cashAssets.indexWhere(
+      (asset) => asset.id == cashAssetId,
+    );
     if (cashIndex < 0) {
       return const AssetActionResult.failure('未找到回款账户');
     }
