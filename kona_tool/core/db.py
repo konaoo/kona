@@ -12,9 +12,9 @@ import datetime as dt
 from pathlib import Path
 import config  # 添加导入
 try:
-    from .market_calendar import is_markets_closed_on_date
+    from .market_calendar import all_markets_closed, is_markets_closed_on_date
 except ImportError:  # 兼容被单文件动态加载的测试场景
-    from core.market_calendar import is_markets_closed_on_date
+    from core.market_calendar import all_markets_closed, is_markets_closed_on_date
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
@@ -32,6 +32,27 @@ def _is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MAR
         return is_markets_closed_on_date(markets, date_str)
     except Exception:
         return _is_weekend_date(date_str)
+
+
+def _is_market_closed_at_snapshot_time(
+    updated_at: Any, markets: Tuple[str, ...] = DEFAULT_MARKETS
+) -> bool:
+    """
+    判断快照写入时刻是否处于全市场休市。
+    用于避免在“非交易时段快照”里用 total_pnl 反推 day_pnl。
+    """
+    if not updated_at:
+        return False
+    try:
+        raw = str(updated_at).strip()
+        if not raw:
+            return False
+        snapshot_time = dt.datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=dt.timezone.utc
+        )
+        return all_markets_closed(markets, now=snapshot_time)
+    except Exception:
+        return False
 
 
 class DatabaseManager:
@@ -3388,7 +3409,7 @@ class DatabaseManager:
 
                 cursor.execute(
                     f'''
-                    SELECT date, day_pnl, total_pnl
+                    SELECT date, day_pnl, total_pnl, updated_at
                     FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
@@ -3400,12 +3421,15 @@ class DatabaseManager:
                     date_str = row['date']
                     day = int(str(date_str).split('-')[2])
                     is_market_closed = _is_market_closed_date(date_str)
+                    closed_at_snapshot = _is_market_closed_at_snapshot_time(
+                        row['updated_at']
+                    )
                     pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
-                    if is_market_closed:
+                    if is_market_closed or closed_at_snapshot:
                         pnl = 0.0
                     elif (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
                         pnl = float(row['total_pnl']) - prev_total
-                    if not is_market_closed and row['total_pnl'] is not None:
+                    if (not is_market_closed) and (not closed_at_snapshot) and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl

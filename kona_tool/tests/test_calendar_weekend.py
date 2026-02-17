@@ -22,16 +22,23 @@ db_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(db_module)
 
 
-def _insert_snapshot(date, total_pnl, day_pnl, user_id="u1"):
+def _insert_snapshot(
+    date,
+    total_pnl,
+    day_pnl,
+    user_id="u1",
+    updated_at=None,
+):
     conn = db_module.db.get_connection()
     cursor = conn.cursor()
+    ts = updated_at or f"{date} 00:00:00"
     cursor.execute(
         """
         INSERT OR REPLACE INTO daily_snapshots
-        (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (date, 0, 1000, 0, 0, 0, total_pnl, day_pnl, user_id),
+        (date, 0, 1000, 0, 0, 0, total_pnl, day_pnl, user_id, ts),
     )
     conn.commit()
     conn.close()
@@ -71,6 +78,29 @@ class CalendarWeekendTests(unittest.TestCase):
             with patch.object(db_module, "datetime") as mock_dt:
                 mock_dt.now.return_value = real_dt(2026, 2, 12)
                 data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("11"), 0)
+
+    def test_day_view_snapshot_closed_time_does_not_backfill_from_total_pnl(self):
+        _insert_snapshot("2026-02-10", 100, 10, updated_at="2026-02-10 10:00:00")
+        _insert_snapshot("2026-02-11", 108, 0, updated_at="2026-02-11 23:00:00")
+        _insert_snapshot("2026-02-12", 110, 2, updated_at="2026-02-12 10:00:00")
+
+        real_dt = datetime
+        with patch.object(db_module, "_is_market_closed_date", create=True) as mock_closed:
+            mock_closed.return_value = False
+            with patch.object(
+                db_module,
+                "_is_market_closed_at_snapshot_time",
+                create=True,
+            ) as mock_closed_at_snapshot:
+                mock_closed_at_snapshot.side_effect = (
+                    lambda ts: str(ts).startswith("2026-02-11")
+                )
+                with patch.object(db_module, "datetime") as mock_dt:
+                    mock_dt.now.return_value = real_dt(2026, 2, 12)
+                    data = db_module.db.get_calendar_data("day", "u1")
 
         items = {i["label"]: i["pnl"] for i in data["items"]}
         self.assertEqual(items.get("11"), 0)
