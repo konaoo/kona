@@ -263,7 +263,9 @@ void main() {
       buildTestPage(
         calendarLoader: ({required timeType, year, month}) async {
           secondLoaderCalls += 1;
-          throw Exception('should not request network when persistent cache exists');
+          throw Exception(
+            'should not request network when persistent cache exists',
+          );
         },
       ),
     );
@@ -271,5 +273,53 @@ void main() {
 
     expect(secondLoaderCalls, 0);
     expect(find.text('2001年01月'), findsOneWidget);
+  });
+
+  testWidgets('分析页支持下拉刷新并触发概览与日历重拉', (tester) async {
+    var overviewCalls = 0;
+    var calendarCalls = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>(
+        create: (_) => AppState(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnalysisPage(
+              overviewLoader: (_) async {
+                overviewCalls += 1;
+                return {
+                  'day': {'pnl': 0, 'pnl_rate': 0},
+                  'month': {'pnl': 0, 'pnl_rate': 0},
+                  'year': {'pnl': 0, 'pnl_rate': 0},
+                  'all': {'pnl': 0, 'pnl_rate': 0},
+                };
+              },
+              calendarLoader: ({required timeType, year, month}) async {
+                calendarCalls += 1;
+                return calendarResponse(
+                  timeType: timeType,
+                  year: year,
+                  month: month,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+    expect(overviewCalls, 1);
+    expect(calendarCalls, 1);
+
+    final refresh = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    await refresh.onRefresh();
+    await tester.pump();
+
+    expect(overviewCalls, greaterThanOrEqualTo(2));
+    expect(calendarCalls, greaterThanOrEqualTo(2));
   });
 }

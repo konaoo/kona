@@ -105,6 +105,9 @@ class AppState extends ChangeNotifier {
   bool _overviewMilestonesReady = false;
   bool _monthFromFirst = false;
   bool _yearFromFirst = false;
+  bool _priceRefreshInFlight = false;
+  DateTime? _lastPriceRefreshAt;
+  static const Duration _priceRefreshMinInterval = Duration(seconds: 2);
 
   // 金额隐藏
   bool _amountHidden = false;
@@ -199,6 +202,20 @@ class AppState extends ChangeNotifier {
     return isMarketOpen(item.marketType);
   }
 
+  bool _isUsExtendedSessionActive(PortfolioItem item, PriceInfo? priceInfo) {
+    if (priceInfo == null) return false;
+    if (_normalizeMarketKey(item.marketType) != 'us') return false;
+    if (priceInfo.price <= 0 || priceInfo.yclose <= 0) return false;
+    if (priceInfo.extendedActive) return true;
+    final session = priceInfo.effectiveSession.trim().toLowerCase();
+    return session == 'pre' || session == 'post';
+  }
+
+  bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (isAssetMarketOpen(item)) return true;
+    return _isUsExtendedSessionActive(item, priceInfo ?? _prices[item.code]);
+  }
+
   /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。
   String normalizeInvestmentCurrency({required String code, String? curr}) {
     final raw = code.trim();
@@ -246,8 +263,8 @@ class AppState extends ChangeNotifier {
   double get investDayPnl {
     double total = 0;
     for (var item in _portfolio) {
-      if (!isAssetMarketOpen(item)) continue;
       final priceInfo = _prices[item.code];
+      if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
       if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
         total += priceInfo.change * item.qty * rate;
@@ -261,8 +278,8 @@ class AppState extends ChangeNotifier {
     double pnl = 0;
     double base = 0;
     for (var item in _portfolio) {
-      if (!isAssetMarketOpen(item)) continue;
       final priceInfo = _prices[item.code];
+      if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
       if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
         final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
@@ -436,6 +453,12 @@ class AppState extends ChangeNotifier {
           'yclose': value.yclose,
           'amt': value.change,
           'chg': value.changePct,
+          'regular_price': value.regularPrice,
+          'premarket_price': value.premarketPrice,
+          'after_hours_price': value.afterHoursPrice,
+          'session': value.session,
+          'effective_session': value.effectiveSession,
+          'extended_active': value.extendedActive,
         }),
       ),
     });
@@ -927,6 +950,7 @@ class AppState extends ChangeNotifier {
         if (refreshed != null) {
           await _applyAuthResult(refreshed);
           _isSessionChecking = false;
+          unawaited(refreshAll());
           unawaited(_validateSessionInBackground());
           return;
         }
@@ -946,6 +970,7 @@ class AppState extends ChangeNotifier {
     _sessionBootState = SessionBootState.authenticated;
     _isSessionChecking = false;
     notifyListeners();
+    unawaited(refreshAll());
     unawaited(_validateSessionInBackground());
   }
 
@@ -1085,7 +1110,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
 
       // 行情慢时后台更新，不影响首页收益首屏展示。
-      unawaited(_refreshPortfolioPricesInBackground());
+      unawaited(_refreshPortfolioPricesInBackground(force: true));
     } catch (e) {
       debugPrint('刷新首页数据失败: $e');
     }
@@ -1122,7 +1147,15 @@ class AppState extends ChangeNotifier {
     return total;
   }
 
-  Future<void> _refreshPortfolioPricesInBackground() async {
+  Future<void> _refreshPortfolioPricesInBackground({bool force = false}) async {
+    final now = DateTime.now();
+    if (_priceRefreshInFlight) return;
+    if (!force &&
+        _lastPriceRefreshAt != null &&
+        now.difference(_lastPriceRefreshAt!) < _priceRefreshMinInterval) {
+      return;
+    }
+    _priceRefreshInFlight = true;
     try {
       final marketStatus = await _loadMarketOpenStatusSafe();
       _marketOpenStatus = marketStatus;
@@ -1157,14 +1190,15 @@ class AppState extends ChangeNotifier {
             final parsed = PriceInfo.fromJson(pricesData[apiCode]);
             final market = marketByCode[originalCode] ?? 'a';
             final marketOpen = marketStatus[market] ?? false;
-            nextPrices[originalCode] = marketOpen
+            final effectiveSession = parsed.effectiveSession.toLowerCase();
+            final keepClosedMarketDayPnl =
+                market == 'us' &&
+                (parsed.extendedActive ||
+                    effectiveSession == 'pre' ||
+                    effectiveSession == 'post');
+            nextPrices[originalCode] = (marketOpen || keepClosedMarketDayPnl)
                 ? parsed
-                : PriceInfo(
-                    price: parsed.price,
-                    yclose: parsed.yclose,
-                    change: 0,
-                    changePct: 0,
-                  );
+                : parsed.withDayChangeZeroed();
           } catch (e) {
             debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
           }
@@ -1178,12 +1212,15 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('后台刷新行情失败: $e');
+    } finally {
+      _priceRefreshInFlight = false;
+      _lastPriceRefreshAt = DateTime.now();
     }
   }
 
   /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
   Future<void> refreshPricesOnly() async {
-    await _refreshPortfolioPricesInBackground();
+    await _refreshPortfolioPricesInBackground(force: true);
   }
 
   /// 刷新所有核心数据（用于启动与下拉刷新）

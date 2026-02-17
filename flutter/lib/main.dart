@@ -192,6 +192,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   void _startPriceTimer() {
     _priceTimer?.cancel();
+    unawaited(context.read<AppState>().refreshPricesOnly());
     _priceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       context.read<AppState>().refreshPricesOnly();

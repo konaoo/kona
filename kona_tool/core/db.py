@@ -55,6 +55,23 @@ def _is_market_closed_at_snapshot_time(
         return False
 
 
+def _is_snapshot_updated_on_same_date(date_str: Any, updated_at: Any) -> bool:
+    """
+    仅当 updated_at 与快照日期同日时，才认为它可用于“快照写入时刻”判断。
+    避免后续运维操作改写 updated_at 导致历史交易日被误判为休市时写入。
+    """
+    if not date_str or not updated_at:
+        return False
+    try:
+        d = str(date_str).strip()[:10]
+        ts = str(updated_at).strip()[:10]
+        if not d or not ts:
+            return False
+        return d == ts
+    except Exception:
+        return False
+
+
 class DatabaseManager:
     """数据库管理类"""
     
@@ -3421,9 +3438,11 @@ class DatabaseManager:
                     date_str = row['date']
                     day = int(str(date_str).split('-')[2])
                     is_market_closed = _is_market_closed_date(date_str)
-                    closed_at_snapshot = _is_market_closed_at_snapshot_time(
-                        row['updated_at']
-                    )
+                    closed_at_snapshot = False
+                    if _is_snapshot_updated_on_same_date(date_str, row['updated_at']):
+                        closed_at_snapshot = _is_market_closed_at_snapshot_time(
+                            row['updated_at']
+                        )
                     pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
                     if is_market_closed or closed_at_snapshot:
                         pnl = 0.0

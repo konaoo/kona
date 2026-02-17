@@ -384,6 +384,17 @@ class InvestPageState extends State<InvestPage> {
     return value.toStringAsFixed(decimals);
   }
 
+  String? _priceSessionLabel(dynamic item, dynamic priceInfo) {
+    if (priceInfo == null) return null;
+    if (item.marketType != 'us') return null;
+    final session = (priceInfo.effectiveSession as String? ?? '')
+        .trim()
+        .toLowerCase();
+    if (session == 'pre') return '盘前';
+    if (session == 'post') return '盘后';
+    return null;
+  }
+
   Widget _buildCategoryTabs(AppState appState) {
     final categories = [
       ('all', '全部'),
@@ -447,17 +458,21 @@ class InvestPageState extends State<InvestPage> {
     // 检查价格数据是否有效
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
     final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+    final sessionLabel = _priceSessionLabel(item, priceInfo);
     final mv = currentPrice * item.qty;
     final costTotal = item.price * item.qty;
     final holdingPnl = mv - costTotal + item.adjustment;
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
     final rate = appState.getCurrencyRate(item.curr);
-    final marketOpen = appState.isAssetMarketOpen(item);
-    final dailyPnl = (marketOpen && hasValidPrice)
+    final dayPnlEnabled = appState.isAssetDayPnlEnabled(
+      item,
+      priceInfo: priceInfo,
+    );
+    final dailyPnl = (dayPnlEnabled && hasValidPrice)
         ? priceInfo.change * item.qty * rate
         : 0.0;
-    final dailyBase = (marketOpen && hasValidPrice && priceInfo.yclose > 0)
+    final dailyBase = (dayPnlEnabled && hasValidPrice && priceInfo.yclose > 0)
         ? priceInfo.yclose * item.qty * rate
         : 0.0;
     final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
@@ -573,7 +588,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${_formatDisplayPrice(currentPrice)}',
+                        '${item.currencySymbol}${_formatDisplayPrice(currentPrice)}${sessionLabel == null ? '' : '($sessionLabel)'}',
                         style: TextStyle(
                           fontSize: valueSize,
                           color: AppTheme.textPrimary,

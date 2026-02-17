@@ -914,3 +914,107 @@ curl -sS http://127.0.0.1:5003/health
 - 可稳定产出统计（定时快照 + 缺失巡检）
 
 如果你后续换电脑或让新成员接手，按本 README + `docs/` 可以完整恢复上下文并继续开发。
+
+---
+
+## 22. 今日改动（2026-02-17，休市口径 + Web/App 一致性）
+
+本节对应本轮你重点反馈的问题：
+
+1. 分析页无数据、无法下拉刷新。  
+2. 美股仅有盘中价，盘前盘后未纳入展示与当日盈亏。  
+3. Web 与 App 在登录、价格、收益口径上需保持一致。  
+
+### 22.1 分析页（Flutter）
+
+1. 分析页已支持下拉刷新（`RefreshIndicator`）。  
+2. 下拉刷新会强制重拉：
+   - 分析概览（`/api/analysis/overview`）
+   - 收益日历（`/api/analysis/calendar`）
+3. 当分析页处于“空数据首开”时，会补触发一次首页核心数据刷新，避免“分析页无任何数据”。  
+
+代码位置：
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart`
+
+### 22.2 美股盘前/盘后行情（后端 + Flutter）
+
+后端：
+
+1. `/api/prices/batch` 增强美股扩展时段字段（盘前/盘后）：
+   - `regular_price`
+   - `premarket_price`
+   - `after_hours_price`
+   - `session`
+   - `effective_session`
+   - `extended_active`
+2. 美股扩展时段数据源使用 Nasdaq quote info 接口，按状态计算有效价格与涨跌额。  
+
+代码位置：
+- `/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/stock.py`
+- `/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py`
+
+前端：
+
+1. `PriceInfo` 扩展上述字段并持久化到本地缓存。  
+2. 当 `US regular 休市` 但 `pre/post 活跃` 时：
+   - 允许该美股参与当日盈亏计算；
+   - 投资页现价旁显示 `盘前` / `盘后` 标记。  
+
+代码位置：
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/models/portfolio.dart`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart`
+
+### 22.3 休市口径（A/HK/US/Fund）
+
+本轮延续并补强“统一休市口径”：
+
+1. 非开市市场默认当日盈亏为 0。  
+2. 美股扩展时段（盘前/盘后）是唯一例外：可参与当日盈亏。  
+3. 目标是“现价展示 + 当日盈亏口径”在 Web / App 同步一致。  
+
+### 22.4 Web 登录与一致性说明
+
+1. Web 登录成功后，存储异常不再阻断登录态建立。  
+2. HTTP 场景下，secure storage 异常会 fallback，避免 `Null check operator used on a null value`。  
+3. Web 与 App 共用同一套 API 与核心口径：
+   - `AppState`
+   - `ApiService`
+   - `/api/market/status`
+   - `/api/prices/batch`
+
+### 22.5 CI / Push 规则（重点）
+
+为避免每次都慢速跑 APK：
+
+1. 若本次提交未改动 `flutter/android/**`，CI 跳过 `Flutter build apk (debug smoke)`。  
+2. 其余门禁（后端测试、Flutter analyze/test/web build）照常执行。  
+3. 仅改后端/Web/Dart 业务逻辑时，可直接 push，不需要强制 APK smoke。  
+4. 如需手动全量验证，可在 Actions 手动触发 `workflow_dispatch`。  
+
+### 22.6 本轮已执行的验证（本地）
+
+Flutter：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
+flutter test test/analysis_calendar_picker_test.dart test/app_state_market_day_pnl_test.dart
+flutter test test/widget_test.dart
+```
+
+后端：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
+JWT_SECRET=test .venv/bin/python -m unittest -q tests/test_api_baseline.py
+```
+
+### 22.7 真机安装（推荐 USB）
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
+flutter build apk --debug
+adb devices -l
+adb -s <USB_DEVICE_ID> install -r -t build/app/outputs/flutter-apk/app-debug.apk
+adb -s <USB_DEVICE_ID> shell am start -n com.example.tool/com.example.tool.MainActivity
+```

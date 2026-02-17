@@ -14,6 +14,8 @@ void main() {
   Future<AppState> _buildStateWithCache({
     required Map<String, bool> openStatus,
     required double changeAmt,
+    bool usExtendedActive = false,
+    String usSession = 'regular',
   }) async {
     SharedPreferences.setMockInitialValues({
       'cache_portfolio': jsonEncode({
@@ -56,7 +58,14 @@ void main() {
         'items': {
           'sh600000': {'price': 11, 'yclose': 10, 'amt': changeAmt, 'chg': 10},
           'hk00700': {'price': 21, 'yclose': 20, 'amt': changeAmt, 'chg': 5},
-          'gb_aapl': {'price': 31, 'yclose': 30, 'amt': changeAmt, 'chg': 3.33},
+          'gb_aapl': {
+            'price': 31,
+            'yclose': 30,
+            'amt': changeAmt,
+            'chg': 3.33,
+            'session': usSession,
+            'extended_active': usExtendedActive,
+          },
           'f_161725': {'price': 41, 'yclose': 40, 'amt': changeAmt, 'chg': 2.5},
         },
       }),
@@ -93,5 +102,18 @@ void main() {
     // hk: 1 * 200 * 0.93 = 186
     // us: 1 * 300 * 7.25 = 2175
     expect(state.investDayPnl, closeTo(2361, 1e-6));
+  });
+
+  test('美股休市但盘前盘后活跃时，允许按扩展时段计算当日盈亏', () async {
+    final state = await _buildStateWithCache(
+      openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
+      changeAmt: 1,
+      usExtendedActive: true,
+      usSession: 'pre',
+    );
+
+    // us: 1 * 300 * 7.25 = 2175
+    expect(state.investDayPnl, closeTo(2175, 1e-6));
+    expect(state.investDayPnlRate, greaterThan(0));
   });
 }

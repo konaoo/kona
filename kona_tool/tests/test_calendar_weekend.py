@@ -105,6 +105,19 @@ class CalendarWeekendTests(unittest.TestCase):
         items = {i["label"]: i["pnl"] for i in data["items"]}
         self.assertEqual(items.get("11"), 0)
 
+    def test_day_view_ignores_closed_time_guard_when_snapshot_updated_cross_day(self):
+        _insert_snapshot("2026-02-11", 108, 8, updated_at="2026-02-17 23:00:00")
+
+        real_dt = datetime
+        with patch.object(db_module, "_is_market_closed_date", create=True) as mock_closed:
+            mock_closed.return_value = False
+            with patch.object(db_module, "datetime") as mock_dt:
+                mock_dt.now.return_value = real_dt(2026, 2, 17)
+                data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("11"), 8)
+
     def test_month_view_ignores_weekend_totals(self):
         _insert_snapshot("2026-02-06", 100, 10)
         _insert_snapshot("2026-02-07", 200, 0)

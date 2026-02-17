@@ -4,14 +4,171 @@
 """
 import re
 import logging
-import requests
-from typing import Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Tuple, Optional, Dict, Any, List
 from bs4 import BeautifulSoup
 
 import config
 from .utils import safe_float, retry_on_failure, get_first_valid_price, monitored_http_get
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_us_symbol(code: str) -> str:
+    return code.upper().replace('GB_', '').replace('US.', '').strip()
+
+
+def _normalize_market_state(raw_state: Any) -> str:
+    state = str(raw_state or '').strip().lower()
+    if 'pre' in state:
+        return 'pre'
+    if 'after' in state or 'post' in state:
+        return 'post'
+    if 'regular' in state:
+        return 'regular'
+    return 'closed'
+
+
+def _build_nasdaq_effective_quote(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    primary = data.get("primaryData") or {}
+    secondary = data.get("secondaryData") or {}
+    summary = data.get("summaryData") or {}
+
+    market_status = data.get("marketStatus")
+    session = _normalize_market_state(market_status)
+
+    primary_price = safe_float(primary.get("lastSalePrice"))
+    primary_change = safe_float(primary.get("netChange"))
+    primary_chg = safe_float(primary.get("percentageChange"))
+
+    secondary_price = safe_float(secondary.get("lastSalePrice"))
+    secondary_change = safe_float(secondary.get("netChange"))
+
+    yclose = safe_float((summary.get("PreviousClose") or {}).get("value"))
+    if yclose <= 0:
+        if session in ("pre", "post") and secondary_price > 0 and secondary_change != 0:
+            yclose = secondary_price - secondary_change
+        elif primary_price > 0 and primary_change != 0:
+            yclose = primary_price - primary_change
+        elif secondary_price > 0:
+            yclose = secondary_price
+        elif primary_price > 0:
+            yclose = primary_price
+
+    regular_price = (
+        secondary_price
+        if session in ("pre", "post") and secondary_price > 0
+        else primary_price
+    )
+    if regular_price <= 0 and yclose > 0:
+        regular_price = yclose
+
+    if regular_price <= 0 and primary_price <= 0:
+        return None
+
+    effective_price = regular_price
+    effective_amt = (regular_price - yclose) if yclose > 0 else 0.0
+    effective_chg = (
+        (effective_amt / yclose * 100) if yclose > 0 else 0.0
+    )
+    effective_session = session
+    extended_active = False
+    pre_price = 0.0
+    post_price = 0.0
+
+    if session == 'pre' and primary_price > 0:
+        pre_price = primary_price
+        effective_price = primary_price
+        effective_amt = (
+            primary_change if primary_change != 0 else (primary_price - yclose)
+        )
+        effective_chg = primary_chg if primary_chg != 0 else (
+            (effective_amt / yclose * 100) if yclose > 0 else 0.0
+        )
+        effective_session = 'pre'
+        extended_active = True
+    elif session == 'post' and primary_price > 0:
+        post_price = primary_price
+        effective_price = primary_price
+        effective_amt = (
+            primary_change if primary_change != 0 else (primary_price - yclose)
+        )
+        effective_chg = primary_chg if primary_chg != 0 else (
+            (effective_amt / yclose * 100) if yclose > 0 else 0.0
+        )
+        effective_session = 'post'
+        extended_active = True
+    elif primary_price > 0:
+        effective_price = primary_price
+        effective_amt = (
+            primary_change if primary_change != 0 else (primary_price - yclose)
+        )
+        effective_chg = primary_chg if primary_chg != 0 else (
+            (effective_amt / yclose * 100) if yclose > 0 else 0.0
+        )
+
+    return {
+        'price': effective_price,
+        'yclose': yclose,
+        'amt': effective_amt,
+        'chg': effective_chg,
+        'regular_price': regular_price,
+        'premarket_price': pre_price,
+        'after_hours_price': post_price,
+        'session': session,
+        'effective_session': effective_session,
+        'extended_active': extended_active,
+    }
+
+
+def _get_nasdaq_extended_quote(symbol: str) -> Optional[Dict[str, Any]]:
+    url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass=stocks"
+    headers = config.API_HEADERS.get("default", config.HEADERS)
+    r = monitored_http_get("nasdaq_quote", url, headers=headers, timeout=config.API_TIMEOUT)
+    if r.status_code != 200:
+        return None
+    payload = r.json()
+    data = payload.get("data") or {}
+    if not isinstance(data, dict):
+        return None
+    return _build_nasdaq_effective_quote(data)
+
+
+def get_us_extended_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    批量获取美股盘中/盘前/盘后报价（Nasdaq）。
+
+    返回键使用规范化后的 symbol（大写，无 gb_ 前缀）。
+    """
+    normalized = []
+    seen = set()
+    for raw in symbols or []:
+        symbol = _normalize_us_symbol(str(raw or ''))
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        normalized.append(symbol)
+
+    if not normalized:
+        return {}
+
+    result: Dict[str, Dict[str, Any]] = {}
+    max_workers = min(6, len(normalized))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_symbol = {
+            executor.submit(_get_nasdaq_extended_quote, symbol): symbol
+            for symbol in normalized
+        }
+        for future in as_completed(future_to_symbol):
+            symbol = future_to_symbol[future]
+            try:
+                quote = future.result()
+            except Exception as exc:
+                logger.warning(f"Nasdaq extended quote API error for {symbol}: {exc}")
+                continue
+            if quote:
+                result[symbol] = quote
+    return result
 
 
 @retry_on_failure(max_retries=2, delay=0.5)

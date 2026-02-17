@@ -32,6 +32,7 @@ from core.price import (
 )
 from core.parser import parse_code, get_display_code
 from core.asset_type import infer_asset_type
+from core.stock import get_us_extended_quotes
 from core.market_calendar import all_markets_closed, get_market_statuses
 from core.snapshot import take_snapshot, calculate_portfolio_stats
 from core.news import news_fetcher
@@ -676,6 +677,49 @@ def api_prices_batch():
             "amt": amt,
             "chg": chg
         }
+
+    us_codes = []
+    symbol_by_code = {}
+    for code in codes:
+        code_text = str(code or '').strip()
+        if not code_text:
+            continue
+        lower = code_text.lower()
+        is_us_code = lower.startswith('gb_') or bool(re.fullmatch(r'[A-Za-z][A-Za-z\.\-]*', code_text))
+        if not is_us_code:
+            continue
+        symbol = code_text[3:] if code_text.lower().startswith('gb_') else code_text
+        symbol = symbol.strip().upper()
+        if not symbol:
+            continue
+        us_codes.append(code_text)
+        symbol_by_code[code_text] = symbol
+
+    if symbol_by_code:
+        try:
+            us_quotes = get_us_extended_quotes(list(set(symbol_by_code.values())))
+            for code in us_codes:
+                symbol = symbol_by_code.get(code)
+                quote = us_quotes.get(symbol or '', {})
+                if not quote:
+                    continue
+                base = dict(formatted_results.get(code, {}))
+                yclose = quote.get('yclose', base.get('yclose', 0))
+                if quote.get('price', 0) > 0:
+                    base['price'] = quote.get('price', 0)
+                if yclose:
+                    base['yclose'] = yclose
+                base['amt'] = quote.get('amt', base.get('amt', 0))
+                base['chg'] = quote.get('chg', base.get('chg', 0))
+                base['regular_price'] = quote.get('regular_price', 0)
+                base['premarket_price'] = quote.get('premarket_price', 0)
+                base['after_hours_price'] = quote.get('after_hours_price', 0)
+                base['session'] = quote.get('session', 'closed')
+                base['effective_session'] = quote.get('effective_session', base['session'])
+                base['extended_active'] = bool(quote.get('extended_active', False))
+                formatted_results[code] = base
+        except Exception as exc:
+            logger.warning("US extended quote merge failed: %s", exc)
     
     return jsonify(formatted_results)
 

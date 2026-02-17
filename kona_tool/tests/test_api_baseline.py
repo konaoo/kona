@@ -135,6 +135,36 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertIn('sh600000', data)
             self.assertEqual(data['sh600000']['price'], 10)
 
+    def test_prices_batch_merges_us_extended_quote(self):
+        with patch.object(app_module, 'batch_get_prices', return_value={'AAPL': (10, 9, 1, 11.1)}):
+            with patch.object(
+                app_module,
+                'get_us_extended_quotes',
+                return_value={
+                    'AAPL': {
+                        'price': 10.5,
+                        'yclose': 9.0,
+                        'amt': 1.5,
+                        'chg': 16.6,
+                        'regular_price': 10.0,
+                        'premarket_price': 10.5,
+                        'after_hours_price': 0.0,
+                        'session': 'pre',
+                        'effective_session': 'pre',
+                        'extended_active': True,
+                    }
+                },
+            ):
+                resp = self.client.post('/api/prices/batch', json={'codes': ['AAPL']})
+                self.assertEqual(resp.status_code, 200)
+                body = resp.get_json() or {}
+                self.assertIn('AAPL', body)
+                quote = body['AAPL']
+                self.assertEqual(float(quote.get('price', 0)), 10.5)
+                self.assertEqual(float(quote.get('amt', 0)), 1.5)
+                self.assertEqual(str(quote.get('session')), 'pre')
+                self.assertEqual(bool(quote.get('extended_active')), True)
+
     def test_market_status_endpoint(self):
         mocked_markets = {
             "a": {"open": False, "reason": "holiday_or_weekend"},

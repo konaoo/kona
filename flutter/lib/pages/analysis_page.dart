@@ -28,6 +28,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
   static const int _maxTransientRetry = 3;
+  static const String _overviewStorageKey = 'cache_analysis_overview';
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
@@ -67,8 +68,21 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Future<void> _loadData({bool force = false}) async {
+    var renderedByCache = false;
+    if (!force && !_overviewLoaded) {
+      final cached = await _loadOverviewFromStorage();
+      if (cached != null && mounted) {
+        setState(() {
+          _overview = cached;
+          _loading = false;
+        });
+        renderedByCache = true;
+      }
+    }
     if (_overviewLoaded && !force) return;
-    setState(() => _loading = true);
+    if (!renderedByCache) {
+      setState(() => _loading = true);
+    }
     try {
       final data = widget.overviewLoader != null
           ? await widget.overviewLoader!('all')
@@ -78,11 +92,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _loading = false;
         _overviewLoaded = true;
       });
+      unawaited(_saveOverviewToStorage(data));
       _overviewRetryTimer?.cancel();
       _overviewRetryCount = 0;
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
-      setState(() => _loading = false);
+      if (!renderedByCache) {
+        setState(() => _loading = false);
+      }
       if (_overviewRetryCount < _maxTransientRetry) {
         _overviewRetryCount += 1;
         final retryCount = _overviewRetryCount;
@@ -93,6 +110,30 @@ class _AnalysisPageState extends State<AnalysisPage> {
           unawaited(_loadData(force: true));
         });
       }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadOverviewFromStorage() async {
+    try {
+      final payload = await _cache.getJson(_overviewStorageKey);
+      if (payload == null) return null;
+      final data = payload['data'];
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (e) {
+      debugPrint('读取概览持久缓存失败: $e');
+    }
+    return null;
+  }
+
+  Future<void> _saveOverviewToStorage(Map<String, dynamic> data) async {
+    try {
+      await _cache.setJson(_overviewStorageKey, {
+        'saved_at': DateTime.now().millisecondsSinceEpoch,
+        'data': data,
+      });
+    } catch (e) {
+      debugPrint('写入概览持久缓存失败: $e');
     }
   }
 
@@ -422,23 +463,44 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
   }
 
+  Future<void> _onPullToRefresh() async {
+    _overviewRetryTimer?.cancel();
+    _calendarRetryTimer?.cancel();
+    _overviewRetryCount = 0;
+    _calendarRetryCount = 0;
+    final appState = context.read<AppState>();
+    if (!appState.portfolioLoaded) {
+      // 分析页空数据时补拉一次首页核心数据（不阻塞手动刷新返回）。
+      unawaited(appState.refreshHomeData());
+    }
+    await Future.wait<void>([
+      _loadData(force: true),
+      _loadCalendar(force: true),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(Spacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 盈亏概览卡片
-          _buildOverviewCard(appState),
-          const SizedBox(height: Spacing.xl),
-          // 收益日历
-          _buildCalendarSection(appState),
-          const SizedBox(height: Spacing.xl),
-          // 盈亏排行
-          _buildRankSection(appState),
-        ],
+    return RefreshIndicator(
+      onRefresh: _onPullToRefresh,
+      color: AppTheme.accent,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(Spacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 盈亏概览卡片
+            _buildOverviewCard(appState),
+            const SizedBox(height: Spacing.xl),
+            // 收益日历
+            _buildCalendarSection(appState),
+            const SizedBox(height: Spacing.xl),
+            // 盈亏排行
+            _buildRankSection(appState),
+          ],
+        ),
       ),
     );
   }

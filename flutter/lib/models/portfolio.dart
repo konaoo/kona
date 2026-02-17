@@ -52,7 +52,8 @@ class PortfolioItem {
     final lowerCode = code.toLowerCase();
     if (lowerCode.startsWith('hk')) return 'hk';
     if (lowerCode.startsWith('gb_') || lowerCode.startsWith('us')) return 'us';
-    if (lowerCode.startsWith('f_') || lowerCode.startsWith('ft_')) return 'fund';
+    if (lowerCode.startsWith('f_') || lowerCode.startsWith('ft_'))
+      return 'fund';
     return 'a';
   }
 
@@ -83,12 +84,24 @@ class PriceInfo {
   final double yclose;
   final double change;
   final double changePct;
+  final double regularPrice;
+  final double premarketPrice;
+  final double afterHoursPrice;
+  final String session;
+  final String effectiveSession;
+  final bool extendedActive;
 
   PriceInfo({
     required this.price,
     required this.yclose,
     required this.change,
     required this.changePct,
+    this.regularPrice = 0,
+    this.premarketPrice = 0,
+    this.afterHoursPrice = 0,
+    this.session = 'closed',
+    this.effectiveSession = 'closed',
+    this.extendedActive = false,
   });
 
   factory PriceInfo.fromJson(Map<String, dynamic> json) {
@@ -102,6 +115,12 @@ class PriceInfo {
         : amt;
     final chgRaw = json['chg'] ?? json['change_pct'] ?? json['pct'];
     final chg = _parseDouble(chgRaw);
+    final session = _parseString(json['session'], fallback: 'closed');
+    final effectiveSession = _parseString(
+      json['effective_session'],
+      fallback: session,
+    );
+    final extendedActive = _parseBool(json['extended_active']);
     return PriceInfo(
       price: price,
       yclose: yclose,
@@ -109,7 +128,46 @@ class PriceInfo {
       changePct: chg != 0
           ? chg
           : (yclose > 0 ? (inferredAmt / yclose * 100) : 0),
+      regularPrice: _parseDouble(json['regular_price']),
+      premarketPrice: _parseDouble(json['premarket_price']),
+      afterHoursPrice: _parseDouble(json['after_hours_price']),
+      session: session,
+      effectiveSession: effectiveSession,
+      extendedActive: extendedActive,
     );
+  }
+
+  PriceInfo withDayChangeZeroed() {
+    return PriceInfo(
+      price: price,
+      yclose: yclose,
+      change: 0,
+      changePct: 0,
+      regularPrice: regularPrice,
+      premarketPrice: premarketPrice,
+      afterHoursPrice: afterHoursPrice,
+      session: session,
+      effectiveSession: effectiveSession,
+      extendedActive: extendedActive,
+    );
+  }
+
+  static bool _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == '1' || normalized == 'true' || normalized == 'yes';
+    }
+    return false;
+  }
+
+  static String _parseString(dynamic value, {required String fallback}) {
+    if (value is String) {
+      final text = value.trim();
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
   }
 
   static double _parseDouble(dynamic value) {
