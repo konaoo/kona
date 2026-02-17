@@ -3,6 +3,7 @@ import sys
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -135,6 +136,19 @@ class MarketCalendarTests(unittest.TestCase):
                 )
             )
             mocked.assert_called_once()
+
+    def test_hk_half_day_afternoon_closed_by_calendar(self):
+        # 2026-02-16 港股半日市，14:00 HKT(06:00 UTC) 应为休市。
+        probe_utc = datetime(2026, 2, 16, 6, 0, 0, tzinfo=timezone.utc)
+        status = market_calendar.get_market_status("hk", now=probe_utc)
+        self.assertFalse(status["open"])
+
+    def test_trading_day_matrix_for_2026_02_16(self):
+        # 该日期在交易日历中：A/Fund 休市，HK 交易日，US 休市（总统日）。
+        self.assertFalse(market_calendar.is_trading_day("a", "2026-02-16"))
+        self.assertTrue(market_calendar.is_trading_day("hk", "2026-02-16"))
+        self.assertFalse(market_calendar.is_trading_day("us", "2026-02-16"))
+        self.assertFalse(market_calendar.is_trading_day("fund", "2026-02-16"))
 
 
 if __name__ == "__main__":

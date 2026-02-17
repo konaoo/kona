@@ -212,6 +212,38 @@ def _is_open_in_session(market: str, now_local: datetime) -> bool:
     return False
 
 
+def _is_open_from_calendar(market: str, now_utc: datetime) -> Optional[bool]:
+    """
+    优先使用 exchange_calendars 按分钟判断开市状态。
+    - 能识别半日市、午休、夏令时等特殊时段；
+    - 依赖不可用时返回 None，由静态时段兜底。
+    """
+    if xcals is None or pd is None:
+        return None
+
+    cal = _get_calendar(market)
+    if cal is None:
+        return None
+
+    try:
+        ts = pd.Timestamp(now_utc)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        if hasattr(cal, "is_open_on_minute"):
+            return bool(cal.is_open_on_minute(ts, ignore_breaks=False))
+    except Exception as exc:
+        logger.warning(
+            "Calendar open-minute check failed for market=%s now=%s: %s",
+            market,
+            now_utc,
+            exc,
+        )
+        return None
+    return None
+
+
 def get_market_status(market: str, now: Optional[datetime] = None) -> Dict[str, Any]:
     try:
         m = _normalize_market(market)
@@ -228,7 +260,9 @@ def get_market_status(market: str, now: Optional[datetime] = None) -> Dict[str, 
                 "reason": "override" if state == "force_closed" else "holiday_or_weekend",
             }
 
-        open_now = _is_open_in_session(m, local_now)
+        open_now = _is_open_from_calendar(m, utc_now)
+        if open_now is None:
+            open_now = _is_open_in_session(m, local_now)
         if open_now:
             return {
                 "open": True,
