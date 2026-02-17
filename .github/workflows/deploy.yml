@@ -219,16 +219,7 @@ jobs:
               cat /tmp/kona_market_status.json || true
               exit 1
             fi
-            python3 - <<'PY'
-import json
-with open('/tmp/kona_market_status.json', 'r', encoding='utf-8') as f:
-    data = json.load(f)
-required = ['server_time_utc', 'markets', 'all_closed']
-missing = [k for k in required if k not in data]
-if missing:
-    raise SystemExit(f"missing keys in /api/market/status: {missing}")
-print("market status payload OK")
-PY
+            python3 -c "import json; data=json.load(open('/tmp/kona_market_status.json','r',encoding='utf-8')); required=['server_time_utc','markets','all_closed']; missing=[k for k in required if k not in data]; assert not missing, f'missing keys in /api/market/status: {missing}'; print('market status payload OK')"
 
             login_status=$(curl -sS -o /tmp/kona_login_probe.json -w "%{http_code}" --max-time 3 \
               -H 'Content-Type: application/json' \
@@ -240,14 +231,7 @@ PY
               cat /tmp/kona_login_probe.json || true
               exit 1
             fi
-            python3 - <<'PY'
-import json
-with open('/tmp/kona_login_probe.json', 'r', encoding='utf-8') as f:
-    data = json.load(f)
-if 'error' not in data:
-    raise SystemExit("missing error field in /api/auth/login probe response")
-print("login probe payload OK")
-PY
+            python3 -c "import json; data=json.load(open('/tmp/kona_login_probe.json','r',encoding='utf-8')); assert 'error' in data, 'missing error field in /api/auth/login probe response'; print('login probe payload OK')"
 
             app_js_headers=$(curl -sS -I --max-time 3 http://127.0.0.1:5003/app/main.dart.js | tr -d '\r' || true)
             echo "$app_js_headers" | sed -n '1,20p'
