@@ -12,6 +12,7 @@ class ApiConfig {
   static const String refresh = '/api/auth/refresh';
   static const String logout = '/api/auth/logout';
   static const String inviteValidate = '/api/auth/invite/validate';
+
   /// 邀请码申请入口（可替换为你的问卷/表单链接）
   static const String inviteAcquireUrl = 'https://github.com/konaoo/kona';
   static const String changePassword = '/api/auth/password/change';
@@ -26,7 +27,8 @@ class ApiConfig {
   static const String portfolioSellToCash = '/api/portfolio/sell_to_cash';
   static const String portfolioModify = '/api/portfolio/modify';
   static const String portfolioDelete = '/api/portfolio/delete';
-  static const String portfolioDeleteCorrective = '/api/portfolio/delete_corrective';
+  static const String portfolioDeleteCorrective =
+      '/api/portfolio/delete_corrective';
   static const String portfolioUndo = '/api/portfolio/undo';
   static const String pricesBatch = '/api/prices/batch';
   static const String cashAssets = '/api/cash_assets';
@@ -38,5 +40,6 @@ class ApiConfig {
   static const String news = '/api/news/latest';
   static const String rates = '/api/rates';
   static const String history = '/api/history';
+  static const String marketStatus = '/api/market/status';
   static const String search = '/api/search';
 }

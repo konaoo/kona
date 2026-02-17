@@ -45,10 +45,13 @@ class ApiService {
     if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
       return Uri.parse(endpoint);
     }
-    final normalizedEndpoint = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final normalizedEndpoint = endpoint.startsWith('/')
+        ? endpoint
+        : '/$endpoint';
     final isWebPlatform = isWebOverride ?? kIsWeb;
     if (isWebPlatform) {
-      final rawOrigin = (webOriginOverride != null && webOriginOverride.trim().isNotEmpty)
+      final rawOrigin =
+          (webOriginOverride != null && webOriginOverride.trim().isNotEmpty)
           ? webOriginOverride.trim()
           : Uri.base.origin;
       final origin = rawOrigin.replaceFirst(RegExp(r'/$'), '');
@@ -95,10 +98,7 @@ class ApiService {
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final response = await _client
-            .get(
-              buildApiUri(endpoint),
-              headers: _getHeaders(),
-            )
+            .get(buildApiUri(endpoint), headers: _getHeaders())
             .timeout(const Duration(seconds: ApiConfig.timeout));
 
         if (response.statusCode == 200) {
@@ -758,6 +758,37 @@ class ApiService {
           {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
     } catch (e) {
       return {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
+    }
+  }
+
+  /// 获取市场开闭状态（A/HK/US/Fund）。
+  /// 失败时安全降级为全部休市，避免误算当日盈亏。
+  Future<Map<String, bool>> getMarketOpenStatus() async {
+    const fallback = {'a': false, 'hk': false, 'us': false, 'fund': false};
+    bool parseBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final lower = value.trim().toLowerCase();
+        return lower == '1' || lower == 'true' || lower == 'yes';
+      }
+      return false;
+    }
+
+    try {
+      final data = await _get(ApiConfig.marketStatus);
+      final map = _toMap(data);
+      final markets = map['markets'];
+      if (markets is! Map) return fallback;
+      return {
+        'a': parseBool((markets['a'] as Map?)?['open']),
+        'hk': parseBool((markets['hk'] as Map?)?['open']),
+        'us': parseBool((markets['us'] as Map?)?['open']),
+        'fund': parseBool((markets['fund'] as Map?)?['open']),
+      };
+    } catch (e) {
+      debugPrint('获取市场状态失败: $e');
+      return fallback;
     }
   }
 

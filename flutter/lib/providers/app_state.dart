@@ -89,6 +89,12 @@ class AppState extends ChangeNotifier {
 
   // 汇率
   Map<String, double> _exchangeRates = {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
+  Map<String, bool> _marketOpenStatus = const {
+    'a': false,
+    'hk': false,
+    'us': false,
+    'fund': false,
+  };
 
   // 历史数据
   double _monthChange = 0;
@@ -140,6 +146,8 @@ class AppState extends ChangeNotifier {
   List<Asset> get liabilities => _liabilities;
 
   Map<String, double> get exchangeRates => _exchangeRates;
+  Map<String, bool> get marketOpenStatus =>
+      Map<String, bool>.from(_marketOpenStatus);
   bool get amountHidden => _amountHidden;
   ThemeMode get themeMode => _themeMode;
   bool get isLightTheme => _themeMode == ThemeMode.light;
@@ -168,6 +176,27 @@ class AppState extends ChangeNotifier {
 
   double convertToCny(double amount, String curr) {
     return amount * _rateForCurrency(curr);
+  }
+
+  String _normalizeMarketKey(String? market) {
+    final key = (market ?? '').trim().toLowerCase();
+    switch (key) {
+      case 'a':
+      case 'hk':
+      case 'us':
+      case 'fund':
+        return key;
+      default:
+        return 'a';
+    }
+  }
+
+  bool isMarketOpen(String? market) {
+    return _marketOpenStatus[_normalizeMarketKey(market)] ?? false;
+  }
+
+  bool isAssetMarketOpen(PortfolioItem item) {
+    return isMarketOpen(item.marketType);
   }
 
   /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。
@@ -217,6 +246,7 @@ class AppState extends ChangeNotifier {
   double get investDayPnl {
     double total = 0;
     for (var item in _portfolio) {
+      if (!isAssetMarketOpen(item)) continue;
       final priceInfo = _prices[item.code];
       if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
@@ -231,6 +261,7 @@ class AppState extends ChangeNotifier {
     double pnl = 0;
     double base = 0;
     for (var item in _portfolio) {
+      if (!isAssetMarketOpen(item)) continue;
       final priceInfo = _prices[item.code];
       if (priceInfo != null && priceInfo.price > 0) {
         final rate = _rateForCurrency(item.curr);
@@ -311,6 +342,11 @@ class AppState extends ChangeNotifier {
           _prices[key.toString()] = PriceInfo.fromJson(value);
         }
       });
+    }
+
+    final cachedMarketStatus = await _cache.getJson('cache_market_status');
+    if (cachedMarketStatus != null) {
+      _marketOpenStatus = _parseMarketOpenStatus(cachedMarketStatus);
     }
 
     final cachedHistory = await _cache.getJson('cache_history');
@@ -449,6 +485,58 @@ class AppState extends ChangeNotifier {
 
   void clearAuthError() {
     _authErrorMessage = null;
+  }
+
+  static const Map<String, bool> _fallbackMarketOpenStatus = {
+    'a': false,
+    'hk': false,
+    'us': false,
+    'fund': false,
+  };
+
+  bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final lower = value.trim().toLowerCase();
+      return lower == '1' || lower == 'true' || lower == 'yes';
+    }
+    return false;
+  }
+
+  Map<String, bool> _parseMarketOpenStatus(Map<String, dynamic> payload) {
+    final markets = payload['markets'];
+    if (markets is! Map) {
+      return Map<String, bool>.from(_fallbackMarketOpenStatus);
+    }
+
+    bool readOpen(String key) {
+      final node = markets[key];
+      if (node is Map) return _asBool(node['open']);
+      return _asBool(node);
+    }
+
+    return {
+      'a': readOpen('a'),
+      'hk': readOpen('hk'),
+      'us': readOpen('us'),
+      'fund': readOpen('fund'),
+    };
+  }
+
+  Future<Map<String, bool>> _loadMarketOpenStatusSafe() async {
+    try {
+      final status = await _api.getMarketOpenStatus();
+      return {
+        'a': _asBool(status['a']),
+        'hk': _asBool(status['hk']),
+        'us': _asBool(status['us']),
+        'fund': _asBool(status['fund']),
+      };
+    } catch (e) {
+      debugPrint('读取市场状态失败，按全休市降级: $e');
+      return Map<String, bool>.from(_fallbackMarketOpenStatus);
+    }
   }
 
   Future<String?> _safeReadStorageString(
@@ -1036,15 +1124,22 @@ class AppState extends ChangeNotifier {
 
   Future<void> _refreshPortfolioPricesInBackground() async {
     try {
+      final marketStatus = await _loadMarketOpenStatusSafe();
+      _marketOpenStatus = marketStatus;
       if (_portfolio.isEmpty) {
         _prices = {};
         _totalInvest = 0;
         _totalAsset = _totalCash + _totalOther - _totalLiability;
+        await _cache.setJson('cache_market_status', {'markets': marketStatus});
         notifyListeners();
         return;
       }
 
       final codes = _portfolio.map((e) => e.code).toList();
+      final marketByCode = {
+        for (final item in _portfolio)
+          item.code: _normalizeMarketKey(item.marketType),
+      };
       final priceApiCodes = codes.map((code) {
         if (code.startsWith('gb_')) {
           return code.substring(3);
@@ -1059,7 +1154,17 @@ class AppState extends ChangeNotifier {
         final apiCode = priceApiCodes[i];
         if (pricesData.containsKey(apiCode)) {
           try {
-            nextPrices[originalCode] = PriceInfo.fromJson(pricesData[apiCode]);
+            final parsed = PriceInfo.fromJson(pricesData[apiCode]);
+            final market = marketByCode[originalCode] ?? 'a';
+            final marketOpen = marketStatus[market] ?? false;
+            nextPrices[originalCode] = marketOpen
+                ? parsed
+                : PriceInfo(
+                    price: parsed.price,
+                    yclose: parsed.yclose,
+                    change: 0,
+                    changePct: 0,
+                  );
           } catch (e) {
             debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
           }
@@ -1069,6 +1174,7 @@ class AppState extends ChangeNotifier {
       _prices = nextPrices;
       _totalInvest = investTotalMV;
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+      await _cache.setJson('cache_market_status', {'markets': marketStatus});
       notifyListeners();
     } catch (e) {
       debugPrint('后台刷新行情失败: $e');

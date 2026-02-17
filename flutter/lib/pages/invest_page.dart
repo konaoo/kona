@@ -453,8 +453,11 @@ class InvestPageState extends State<InvestPage> {
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
     final rate = appState.getCurrencyRate(item.curr);
-    final dailyPnl = hasValidPrice ? priceInfo.change * item.qty * rate : 0.0;
-    final dailyBase = (hasValidPrice && priceInfo.yclose > 0)
+    final marketOpen = appState.isAssetMarketOpen(item);
+    final dailyPnl = (marketOpen && hasValidPrice)
+        ? priceInfo.change * item.qty * rate
+        : 0.0;
+    final dailyBase = (marketOpen && hasValidPrice && priceInfo.yclose > 0)
         ? priceInfo.yclose * item.qty * rate
         : 0.0;
     final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
