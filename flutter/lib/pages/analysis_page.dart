@@ -33,12 +33,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
   bool _loading = true;
   bool _overviewLoaded = false;
   int _overviewRetryCount = 0;
+  Timer? _overviewRetryTimer;
 
   // 收益日历相关
   String _calendarTimeType = 'day';
   Map<String, dynamic> _calendarData = {};
   bool _calendarLoading = false;
   int _calendarRetryCount = 0;
+  Timer? _calendarRetryTimer;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
   int? _selectedDayYear;
   int? _selectedDayMonth;
@@ -57,6 +59,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _loadCalendar();
   }
 
+  @override
+  void dispose() {
+    _overviewRetryTimer?.cancel();
+    _calendarRetryTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _loadData({bool force = false}) async {
     if (_overviewLoaded && !force) return;
     setState(() => _loading = true);
@@ -69,6 +78,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _loading = false;
         _overviewLoaded = true;
       });
+      _overviewRetryTimer?.cancel();
       _overviewRetryCount = 0;
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
@@ -77,12 +87,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _overviewRetryCount += 1;
         final retryCount = _overviewRetryCount;
         final delayMs = 600 * retryCount;
-        unawaited(
-          Future<void>.delayed(Duration(milliseconds: delayMs), () async {
-            if (!mounted) return;
-            await _loadData(force: true);
-          }),
-        );
+        _overviewRetryTimer?.cancel();
+        _overviewRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+          if (!mounted) return;
+          unawaited(_loadData(force: true));
+        });
       }
     }
   }
@@ -143,6 +152,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _calendarCache[resolvedCacheKey] = data;
         _calendarLoading = false;
       });
+      _calendarRetryTimer?.cancel();
       _calendarRetryCount = 0;
       final resolvedStorageKey = _calendarStorageKey(_calendarCacheKey());
       unawaited(_saveCalendarToStorage(resolvedStorageKey, data));
@@ -156,12 +166,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _calendarRetryCount += 1;
         final retryCount = _calendarRetryCount;
         final delayMs = 700 * retryCount;
-        unawaited(
-          Future<void>.delayed(Duration(milliseconds: delayMs), () async {
-            if (!mounted) return;
-            await _loadCalendar(force: true);
-          }),
-        );
+        _calendarRetryTimer?.cancel();
+        _calendarRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+          if (!mounted) return;
+          unawaited(_loadCalendar(force: true));
+        });
       }
     }
   }
