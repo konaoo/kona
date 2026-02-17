@@ -95,7 +95,7 @@ class ApiService {
   /// 通用 GET 请求
   Future<dynamic> _get(String endpoint) async {
     Object? lastError;
-    for (int attempt = 0; attempt < 2; attempt++) {
+    for (int attempt = 0; attempt < 3; attempt++) {
       try {
         final response = await _client
             .get(buildApiUri(endpoint), headers: _getHeaders())
@@ -114,7 +114,7 @@ class ApiService {
       } catch (e) {
         if (e is ApiException) rethrow;
         lastError = e;
-        if (_isRetryableError(e) && attempt == 0) {
+        if (_isRetryableError(e) && attempt < 2) {
           await Future<void>.delayed(const Duration(milliseconds: 300));
           continue;
         }

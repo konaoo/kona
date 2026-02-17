@@ -27,15 +27,18 @@ class AnalysisPage extends StatefulWidget {
 class _AnalysisPageState extends State<AnalysisPage> {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
+  static const int _maxTransientRetry = 3;
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
   bool _overviewLoaded = false;
+  int _overviewRetryCount = 0;
 
   // 收益日历相关
   String _calendarTimeType = 'day';
   Map<String, dynamic> _calendarData = {};
   bool _calendarLoading = false;
+  int _calendarRetryCount = 0;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
   int? _selectedDayYear;
   int? _selectedDayMonth;
@@ -66,9 +69,21 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _loading = false;
         _overviewLoaded = true;
       });
+      _overviewRetryCount = 0;
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
       setState(() => _loading = false);
+      if (_overviewRetryCount < _maxTransientRetry) {
+        _overviewRetryCount += 1;
+        final retryCount = _overviewRetryCount;
+        final delayMs = 600 * retryCount;
+        unawaited(
+          Future<void>.delayed(Duration(milliseconds: delayMs), () async {
+            if (!mounted) return;
+            await _loadData(force: true);
+          }),
+        );
+      }
     }
   }
 
@@ -128,6 +143,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _calendarCache[resolvedCacheKey] = data;
         _calendarLoading = false;
       });
+      _calendarRetryCount = 0;
       final resolvedStorageKey = _calendarStorageKey(_calendarCacheKey());
       unawaited(_saveCalendarToStorage(resolvedStorageKey, data));
     } catch (e) {
@@ -135,6 +151,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
       if (!mounted) return;
       if (!renderedByCache) {
         setState(() => _calendarLoading = false);
+      }
+      if (_calendarRetryCount < _maxTransientRetry) {
+        _calendarRetryCount += 1;
+        final retryCount = _calendarRetryCount;
+        final delayMs = 700 * retryCount;
+        unawaited(
+          Future<void>.delayed(Duration(milliseconds: delayMs), () async {
+            if (!mounted) return;
+            await _loadCalendar(force: true);
+          }),
+        );
       }
     }
   }
