@@ -241,6 +241,29 @@ JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
 
 - `http://127.0.0.1:5003/app/`（若本机端口被占用，以启动日志端口为准）
 
+### 4.6 Web 端近期改动（2026-02）
+
+为保证 Web 与 App 行为一致，已落地以下修复：
+
+1. 登录链路一致性：
+   - Web 端登录改为“内存登录态优先 + 本地存储失败不阻断登录成功”。
+   - 在 HTTP 场景下，secure storage 异常时会自动走 fallback 存储，避免 `Null check operator used on a null value`。
+2. 前端资源缓存策略：
+   - `/app/main.dart.js` 已禁用 immutable 强缓存，避免旧 bundle 导致“代码已修但页面仍是旧逻辑”。
+3. 休市口径一致性：
+   - Web 端当日盈亏按 `/api/market/status` 判定，仅开市市场计入当日收益。
+4. 行情显示稳定性：
+   - 批量行情接口增加瞬时网络错误重试。
+   - 后端补齐 5 位港股代码规范化（如 `00700`），避免 Web 端出现现价回退成本价。
+
+说明：
+
+- Web 与 App 共用同一套业务代码（`AppState + ApiService`），核心口径一致。
+- 若出现“App 正常、Web 异常”，优先排查：
+  1. 是否命中旧前端缓存（强刷或清缓存）
+  2. 是否部署到最新 `main`
+  3. `/api/prices/batch` 返回中目标 code 是否有有效 `price`
+
 ---
 
 ## 5. 后端说明（Flask）
