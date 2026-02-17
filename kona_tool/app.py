@@ -248,9 +248,21 @@ WEB_APP_DIR = config.BASE_DIR / "static" / "app"
 
 
 def _is_long_cache_asset(path: str) -> bool:
-    suffix = Path(path).suffix.lower()
+    normalized = (path or "").strip().lower()
+    if normalized in {
+        "main.dart.js",
+        "flutter_bootstrap.js",
+        "flutter_service_worker.js",
+        "version.json",
+        "manifest.json",
+    }:
+        return False
+
+    suffix = Path(normalized).suffix.lower()
+    if suffix in {".js", ".json", ".map", ".html"}:
+        return False
+
     return suffix in {
-        ".js",
         ".css",
         ".png",
         ".jpg",

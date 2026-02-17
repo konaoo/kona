@@ -67,6 +67,26 @@ class ApiBaselineTests(unittest.TestCase):
             finally:
                 app_module.WEB_APP_DIR = old_dir
 
+    def test_flutter_web_main_js_is_not_immutable_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = Path(tmp)
+            (app_dir / "index.html").write_text(
+                "<!doctype html><html><body>flutter-web</body></html>",
+                encoding="utf-8",
+            )
+            (app_dir / "main.dart.js").write_text("console.log('ok');", encoding="utf-8")
+            old_dir = app_module.WEB_APP_DIR
+            app_module.WEB_APP_DIR = app_dir
+            try:
+                js_resp = self.client.get('/app/main.dart.js')
+                self.assertEqual(js_resp.status_code, 200)
+                cache_control = js_resp.headers.get("Cache-Control", "")
+                self.assertIn("no-cache", cache_control)
+                self.assertNotIn("immutable", cache_control)
+                js_resp.close()
+            finally:
+                app_module.WEB_APP_DIR = old_dir
+
     def test_flutter_web_route_fallbacks_to_index(self):
         with tempfile.TemporaryDirectory() as tmp:
             app_dir = Path(tmp)
