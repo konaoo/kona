@@ -57,11 +57,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Java (Gradle cache)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Detect Android-impacting changes
+        id: apk_scope
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            apk:
+              - 'flutter/android/**'
+              - 'flutter/lib/**'
+              - 'flutter/assets/**'
+              - 'flutter/pubspec.yaml'
+              - 'flutter/pubspec.lock'
+              - 'flutter/integration_test/**'
+              - '.github/workflows/deploy.yml'
 
       - name: Flutter pub get
         working-directory: flutter
@@ -76,6 +97,7 @@ jobs:
         run: flutter test
 
       - name: Flutter build apk (debug smoke)
+        if: steps.apk_scope.outputs.apk == 'true' || github.event_name == 'workflow_dispatch'
         working-directory: flutter
         run: flutter build apk --debug
 
