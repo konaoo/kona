@@ -198,13 +198,61 @@ jobs:
                 cat /tmp/kona_health.json || true
                 echo
                 echo "Health check passed."
-                exit 0
+                break
               fi
               i=$((i + 1))
               sleep 1
             done
 
-            echo "Health check failed after restart."
-            sudo systemctl status kona -l --no-pager || true
-            sudo journalctl -u kona -n 120 --no-pager || true
-            exit 1
+            if [ "$i" -gt 60 ]; then
+              echo "Health check failed after restart."
+              sudo systemctl status kona -l --no-pager || true
+              sudo journalctl -u kona -n 120 --no-pager || true
+              exit 1
+            fi
+
+            echo "Running post-deploy API smoke checks..."
+            market_status=$(curl -sS -o /tmp/kona_market_status.json -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/api/market/status || true)
+            echo "market status -> $market_status"
+            if [ "$market_status" != "200" ]; then
+              echo "ERROR: /api/market/status unexpected status: $market_status"
+              cat /tmp/kona_market_status.json || true
+              exit 1
+            fi
+            python3 - <<'PY'
+import json
+with open('/tmp/kona_market_status.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+required = ['server_time_utc', 'markets', 'all_closed']
+missing = [k for k in required if k not in data]
+if missing:
+    raise SystemExit(f"missing keys in /api/market/status: {missing}")
+print("market status payload OK")
+PY
+
+            login_status=$(curl -sS -o /tmp/kona_login_probe.json -w "%{http_code}" --max-time 3 \
+              -H 'Content-Type: application/json' \
+              -X POST 'http://127.0.0.1:5003/api/auth/login' \
+              --data '{"username":"ci_probe_user","password":"ci_probe_bad_password"}' || true)
+            echo "login probe -> $login_status"
+            if [ "$login_status" != "401" ]; then
+              echo "ERROR: /api/auth/login probe unexpected status: $login_status"
+              cat /tmp/kona_login_probe.json || true
+              exit 1
+            fi
+            python3 - <<'PY'
+import json
+with open('/tmp/kona_login_probe.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+if 'error' not in data:
+    raise SystemExit("missing error field in /api/auth/login probe response")
+print("login probe payload OK")
+PY
+
+            app_js_headers=$(curl -sS -I --max-time 3 http://127.0.0.1:5003/app/main.dart.js | tr -d '\r' || true)
+            echo "$app_js_headers" | sed -n '1,20p'
+            if echo "$app_js_headers" | grep -qi '^Cache-Control:.*immutable'; then
+              echo "ERROR: /app/main.dart.js should not be immutable-cached"
+              exit 1
+            fi
+            echo "Post-deploy smoke checks passed."
