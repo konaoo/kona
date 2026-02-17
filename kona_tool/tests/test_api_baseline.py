@@ -115,6 +115,22 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertIn('sh600000', data)
             self.assertEqual(data['sh600000']['price'], 10)
 
+    def test_market_status_endpoint(self):
+        mocked_markets = {
+            "a": {"open": False, "reason": "holiday_or_weekend"},
+            "hk": {"open": False, "reason": "holiday_or_weekend"},
+            "us": {"open": False, "reason": "off_hours"},
+            "fund": {"open": False, "reason": "holiday_or_weekend"},
+        }
+        with patch.object(app_module, "get_market_statuses", return_value=mocked_markets):
+            with patch.object(app_module, "all_markets_closed", return_value=True):
+                resp = self.client.get('/api/market/status')
+                self.assertEqual(resp.status_code, 200)
+                body = resp.get_json() or {}
+                self.assertIn("server_time_utc", body)
+                self.assertEqual(body.get("all_closed"), True)
+                self.assertEqual(body.get("markets"), mocked_markets)
+
     def test_analysis_calendar_supports_year_month_query(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()

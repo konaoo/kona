@@ -11,6 +11,12 @@ BASE_DIR = Path(__file__).parent.absolute()
 DATABASE_PATH = Path(os.getenv("KONA_DATABASE_PATH", str(BASE_DIR / "portfolio.db")))
 BACKUP_CSV_PATH = BASE_DIR / "portfolio.csv"
 TRANSACTION_PATH = BASE_DIR / "transactions.csv"
+MARKET_HOLIDAY_OVERRIDES_PATH = Path(
+    os.getenv(
+        "MARKET_HOLIDAY_OVERRIDES_PATH",
+        str(BASE_DIR / "market_holidays.json"),
+    )
+)
 
 # 服务器配置
 # 优先读取 KONA_HOST/KONA_PORT，兼容旧变量 HOST/PORT

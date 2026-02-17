@@ -129,6 +129,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.config.reset": "恢复系统配置默认值",
     "admin.data.snapshot.trigger": "手动触发快照",
     "admin.data.snapshot.cleanup_weekend": "清理周末日收益",
+    "admin.data.snapshot.cleanup_market_closed": "清理休市日收益",
     "admin.data.backup": "创建数据库备份",
     "admin.data.restore": "恢复数据库备份",
     "admin.data.rebind.execute": "执行历史数据归属迁移",
@@ -1118,6 +1119,22 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
         return jsonify({"error": "Failed to take snapshot"}), 500
 
+    def _parse_cleanup_markets(data: Dict[str, Any]) -> List[str]:
+        raw = data.get("markets", ["a", "hk", "us", "fund"])
+        if isinstance(raw, str):
+            values = [part.strip() for part in raw.split(",")]
+        elif isinstance(raw, list):
+            values = [str(item).strip() for item in raw]
+        else:
+            values = []
+        allowed = {"a", "hk", "us", "fund"}
+        result: List[str] = []
+        for value in values:
+            market = value.lower()
+            if market in allowed and market not in result:
+                result.append(market)
+        return result or ["a", "hk", "us", "fund"]
+
     @bp.route("/data/snapshot/cleanup_weekend", methods=["POST"])
     @admin_write_audit(action="admin.data.snapshot.cleanup_weekend", target_type="snapshot")
     @admin_required
@@ -1186,6 +1203,39 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify({"status": "ok", "affected": int((row["c"] if row else 0) or 0)})
         finally:
             conn.close()
+
+    @bp.route("/data/snapshot/cleanup_market_closed/preview", methods=["POST"])
+    @admin_required
+    def admin_data_snapshot_cleanup_market_closed_preview():
+        data = _json_body()
+        user_id = str(data.get("user_id", "")).strip()
+        start_date = str(data.get("start_date", "")).strip()
+        end_date = str(data.get("end_date", "")).strip()
+        markets = _parse_cleanup_markets(data)
+        affected = db.preview_cleanup_market_closed(
+            markets=markets,
+            user_id=user_id or None,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return jsonify({"status": "ok", "affected": int(affected or 0), "markets": markets})
+
+    @bp.route("/data/snapshot/cleanup_market_closed", methods=["POST"])
+    @admin_write_audit(action="admin.data.snapshot.cleanup_market_closed", target_type="snapshot")
+    @admin_required
+    def admin_data_snapshot_cleanup_market_closed():
+        data = _json_body()
+        user_id = str(data.get("user_id", "")).strip()
+        start_date = str(data.get("start_date", "")).strip()
+        end_date = str(data.get("end_date", "")).strip()
+        markets = _parse_cleanup_markets(data)
+        cleaned = db.cleanup_market_closed_day_pnl(
+            markets=markets,
+            user_id=user_id or None,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return jsonify({"status": "ok", "cleaned": int(cleaned or 0), "markets": markets})
 
     @bp.route("/data/backup", methods=["POST"])
     @admin_write_audit(action="admin.data.backup", target_type="backup")

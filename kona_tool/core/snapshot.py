@@ -3,39 +3,22 @@
 负责在后台计算并保存每日资产快照
 """
 import logging
-import time
 from datetime import datetime
 from typing import Dict
 
 from .db import db
+from .market_calendar import all_markets_closed, get_market_statuses, market_from_asset
 from .price import batch_get_prices, get_forex_rates
 
 logger = logging.getLogger(__name__)
+DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
 
 
 def is_market_closed() -> bool:
     """
-    判断当前是否休市
-    
-    休市条件：
-    1. 周末（周六、周日）
-    2. 非交易时间（9:30前或15:00后）
-    
-    Returns:
-        True 表示休市，False 表示开市
+    判断当前是否全市场休市。
     """
-    now = datetime.now()
-    
-    # 周末休市
-    if now.weekday() >= 5:  # 5=周六, 6=周日
-        return True
-    
-    # 交易时间判断 (9:30 - 15:00)
-    current_time = now.hour * 100 + now.minute
-    if current_time < 930 or current_time >= 1500:
-        return True
-    
-    return False
+    return all_markets_closed(DEFAULT_MARKETS)
 
 def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     """
@@ -67,6 +50,7 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     invest_mv = 0.0
     day_pnl = 0.0
     total_pnl = 0.0
+    market_statuses = get_market_statuses(DEFAULT_MARKETS)
     
     for asset in portfolio:
         code = asset['code']
@@ -91,7 +75,9 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
         
         # 计算单项指标 (转换为CNY)
         item_mv = cur_price * qty * rate
-        item_day_pnl = (cur_price - yclose_ref) * qty * rate
+        market = market_from_asset(asset)
+        market_open = bool((market_statuses.get(market) or {}).get("open"))
+        item_day_pnl = ((cur_price - yclose_ref) * qty * rate) if market_open else 0.0
         item_float_pnl = (cur_price - cost) * qty * rate
         item_total_pnl = item_float_pnl + (adj * rate)
         
@@ -107,7 +93,8 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     
     # 5. 获取今日已实现盈亏（卖出）
     realized_pnl = db.get_today_realized_pnl(user_id=user_id)
-    day_pnl += realized_pnl
+    if not all_markets_closed(DEFAULT_MARKETS):
+        day_pnl += realized_pnl
     # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
     # adjustment 字段通常用于存储 "已实现盈亏 + 分红" 等历史调整。
     # 当我们减仓时，modify_asset/sell_asset 会更新 adjustment 吗？
@@ -150,8 +137,8 @@ def take_snapshot(user_id: str = None) -> bool:
         success_any = False
         for uid in user_ids:
             stats = calculate_portfolio_stats(uid)
-            if is_weekend():
-                logger.info("Weekend, setting day_pnl to 0")
+            if all_markets_closed(DEFAULT_MARKETS):
+                logger.info("All markets closed, setting day_pnl to 0")
                 stats['day_pnl'] = 0.0
             success = db.save_daily_snapshot(stats, uid)
             success_any = success_any or success

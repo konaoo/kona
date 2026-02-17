@@ -182,6 +182,47 @@ class AdminApiFoundationTests(unittest.TestCase):
         row = self._latest_audit()
         self.assertEqual(row["action"], "admin.data.snapshot.cleanup_weekend")
 
+    def test_admin_cleanup_market_closed_writes_audit(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-02-07", 1, 1, 0, 0, 0, 1, 12, "u_admin"),
+        )
+        conn.commit()
+        conn.close()
+
+        preview_resp = self.client.post(
+            "/api/admin/data/snapshot/cleanup_market_closed/preview",
+            json={"user_id": "u_admin", "markets": ["a", "hk", "us", "fund"]},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(preview_resp.status_code, 200)
+        self.assertGreaterEqual(int(preview_resp.get_json().get("affected", 0)), 1)
+
+        resp = self.client.post(
+            "/api/admin/data/snapshot/cleanup_market_closed",
+            json={"user_id": "u_admin", "markets": ["a", "hk", "us", "fund"]},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json().get("status"), "ok")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT day_pnl FROM daily_snapshots WHERE date = ? AND user_id = ?", ("2026-02-07", "u_admin"))
+        day_pnl = cursor.fetchone()["day_pnl"]
+        conn.close()
+        self.assertEqual(day_pnl, 0)
+
+        row = self._latest_audit()
+        self.assertEqual(row["action"], "admin.data.snapshot.cleanup_market_closed")
+
     @patch.object(admin_routes, "take_snapshot", return_value=True)
     def test_admin_snapshot_trigger_writes_audit(self, _mock_take_snapshot):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

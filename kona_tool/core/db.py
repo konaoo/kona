@@ -11,8 +11,13 @@ from datetime import datetime, timedelta
 import datetime as dt
 from pathlib import Path
 import config  # 添加导入
+try:
+    from .market_calendar import is_markets_closed_on_date
+except ImportError:  # 兼容被单文件动态加载的测试场景
+    from core.market_calendar import is_markets_closed_on_date
 
 logger = logging.getLogger(__name__)
+DEFAULT_MARKETS = ("a", "hk", "us", "fund")
 
 
 def _is_weekend_date(date_str: str) -> bool:
@@ -20,6 +25,13 @@ def _is_weekend_date(date_str: str) -> bool:
         return dt.datetime.strptime(date_str, "%Y-%m-%d").weekday() >= 5
     except Exception:
         return False
+
+
+def _is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MARKETS) -> bool:
+    try:
+        return is_markets_closed_on_date(markets, date_str)
+    except Exception:
+        return _is_weekend_date(date_str)
 
 
 class DatabaseManager:
@@ -3387,13 +3399,13 @@ class DatabaseManager:
                 for row in cursor.fetchall():
                     date_str = row['date']
                     day = int(str(date_str).split('-')[2])
-                    is_weekend = _is_weekend_date(date_str)
+                    is_market_closed = _is_market_closed_date(date_str)
                     pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
-                    if is_weekend:
+                    if is_market_closed:
                         pnl = 0.0
                     elif (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
                         pnl = float(row['total_pnl']) - prev_total
-                    if not is_weekend and row['total_pnl'] is not None:
+                    if not is_market_closed and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl
@@ -3446,7 +3458,7 @@ class DatabaseManager:
                 month_last: Dict[int, float] = {}
                 for row in cursor.fetchall():
                     date_str = row['date']
-                    if _is_weekend_date(date_str):
+                    if _is_market_closed_date(date_str):
                         continue
                     m = int(str(date_str).split('-')[1])
                     tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
@@ -3492,7 +3504,7 @@ class DatabaseManager:
                     year_last: Dict[int, float] = {}
                     for row in rows:
                         date_str = row['date']
-                        if _is_weekend_date(date_str):
+                        if _is_market_closed_date(date_str):
                             continue
                         y = int(str(date_str).split('-')[0])
                         tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
@@ -3646,6 +3658,128 @@ class DatabaseManager:
             return 'fund'
         else:
             return 'other'
+
+    def _normalize_cleanup_markets(self, markets: Optional[List[str]]) -> List[str]:
+        allowed = {"a", "hk", "us", "fund"}
+        result: List[str] = []
+        for raw in (markets or list(DEFAULT_MARKETS)):
+            market = str(raw or "").strip().lower()
+            if market in allowed and market not in result:
+                result.append(market)
+        return result or list(DEFAULT_MARKETS)
+
+    def get_closed_snapshot_dates(
+        self,
+        markets: Optional[List[str]] = None,
+        user_id: str = None,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> List[str]:
+        """
+        获取在指定市场集合下判定为“休市日”的快照日期列表。
+        """
+        normalized_markets = self._normalize_cleanup_markets(markets)
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        sql = "SELECT DISTINCT date FROM daily_snapshots WHERE 1=1"
+        params: List[Any] = []
+        if user_id:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        if start_date:
+            sql += " AND date >= ?"
+            params.append(start_date)
+        if end_date:
+            sql += " AND date <= ?"
+            params.append(end_date)
+        sql += " ORDER BY date ASC"
+
+        try:
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            result: List[str] = []
+            for row in rows:
+                date_str = str(row["date"])
+                if is_markets_closed_on_date(normalized_markets, date_str):
+                    result.append(date_str)
+            return result
+        finally:
+            conn.close()
+
+    def preview_cleanup_market_closed(
+        self,
+        markets: Optional[List[str]] = None,
+        user_id: str = None,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> int:
+        """
+        预览休市日清理将影响的快照条数（按日期去重后的数量）。
+        """
+        return len(
+            self.get_closed_snapshot_dates(
+                markets=markets,
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        )
+
+    def cleanup_market_closed_day_pnl(
+        self,
+        markets: Optional[List[str]] = None,
+        user_id: str = None,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> int:
+        """
+        将判定为休市日的 day_pnl 批量清零。
+
+        Returns:
+            被更新的记录数。
+        """
+        dates = self.get_closed_snapshot_dates(
+            markets=markets,
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not dates:
+            return 0
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cleaned = 0
+
+        try:
+            for date_str in dates:
+                if user_id:
+                    cursor.execute(
+                        """
+                        UPDATE daily_snapshots
+                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE date = ? AND user_id = ?
+                        """,
+                        (date_str, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE daily_snapshots
+                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        WHERE date = ?
+                        """,
+                        (date_str,),
+                    )
+                cleaned += int(cursor.rowcount or 0)
+            conn.commit()
+            return cleaned
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     
     def fix_snapshot_day_pnl(self, dates: list, user_id: str = None) -> bool:
         """

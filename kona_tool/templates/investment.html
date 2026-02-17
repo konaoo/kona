@@ -585,6 +585,42 @@
         let isFirstLoad = true;
         let forceRenderFull = false;
         const syms = { USD: '$', HKD: 'HK$', CNY: '¥' };
+        const marketKeys = ['a', 'hk', 'us', 'fund'];
+        let marketStatus = {
+            a: { open: false, reason: 'unavailable' },
+            hk: { open: false, reason: 'unavailable' },
+            us: { open: false, reason: 'unavailable' },
+            fund: { open: false, reason: 'unavailable' }
+        };
+
+        function normalizeMarket(market) {
+            const m = String(market || '').toLowerCase().trim();
+            return marketKeys.includes(m) ? m : 'a';
+        }
+
+        function detectAssetMarket(asset) {
+            const explicit = normalizeMarket(asset.asset_type || '');
+            if (asset.asset_type && marketKeys.includes(String(asset.asset_type).toLowerCase())) return explicit;
+
+            const code = String(asset.code || '').toLowerCase();
+            if (code.startsWith('f_') || code.startsWith('ft_')) return 'fund';
+            if (code.startsWith('hk') || code.includes('.hk')) return 'hk';
+            if (code.startsWith('gb_') || /^[a-z]+(\.[a-z]+)?$/.test(code)) return 'us';
+            return 'a';
+        }
+
+        async function fetchMarketStatus(timestamp) {
+            try {
+                const data = await (await fetch(`/api/market/status?t=${timestamp}`)).json();
+                if (data && data.markets) return data.markets;
+            } catch (e) { }
+            return {
+                a: { open: false, reason: 'unavailable' },
+                hk: { open: false, reason: 'unavailable' },
+                us: { open: false, reason: 'unavailable' },
+                fund: { open: false, reason: 'unavailable' }
+            };
+        }
 
         // 供 base.html 调用的更新函数
         function updatePageData() {
@@ -687,6 +723,7 @@
             const timestamp = Date.now();
 
             try { FX = await (await fetch(`/api/rates?t=${timestamp}`)).json(); } catch(e) {}
+            marketStatus = await fetchMarketStatus(timestamp);
 
             const idxs = ['s_sh000001', 'rt_hkHSTECH', 'gb_ixic'];
             try {
@@ -751,12 +788,17 @@
                     const qty = parseFloat(s.qty);
                     const cost = parseFloat(s.price);
                     const adj = parseFloat(s.adjustment) || 0;
+                    const market = detectAssetMarket(s);
+                    const marketOpen = !!((marketStatus[market] || {}).open);
                     
                     let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : cost);
                     const mv = curPrice * qty;
                     const ycloseRef = d.yclose || cost;
-                    const day = (curPrice - ycloseRef) * qty;
-                    const dayPnlRate = ycloseRef > 0 && d.chg === 0 ? ((curPrice - ycloseRef) / ycloseRef * 100) : (d.chg || 0);
+                    const rawDay = (curPrice - ycloseRef) * qty;
+                    const day = marketOpen ? rawDay : 0;
+                    const dayPnlRate = marketOpen
+                        ? (ycloseRef > 0 && d.chg === 0 ? ((curPrice - ycloseRef) / ycloseRef * 100) : (d.chg || 0))
+                        : 0;
                     const totPnl = (curPrice - cost) * qty + adj;
                     const rate = FX[s.curr] || 1;
                     const totPnlRate = cost * qty > 0 ? (totPnl / (cost * qty) * 100) : 0;
@@ -769,7 +811,7 @@
 
                     newData[s.code] = {
                         s, d, qty, cost, adj, curPrice, mv, day,
-                        dayPnlRate, totPnl, totPnlRate, rate
+                        dayPnlRate, totPnl, totPnlRate, rate, market, marketOpen
                     };
                     newCodes.add(s.code);
                 }

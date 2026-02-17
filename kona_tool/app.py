@@ -32,7 +32,8 @@ from core.price import (
 )
 from core.parser import parse_code, get_display_code
 from core.asset_type import infer_asset_type
-from core.snapshot import take_snapshot, calculate_portfolio_stats, is_market_closed, is_weekend
+from core.market_calendar import all_markets_closed, get_market_statuses
+from core.snapshot import take_snapshot, calculate_portfolio_stats
 from core.news import news_fetcher
 from core.system import system_manager
 from core.policy_runtime import (
@@ -74,6 +75,7 @@ _snapshot_lock = threading.Lock()
 _snapshot_inflight = set()
 _snapshot_last_run_ts = {}
 _SNAPSHOT_MIN_INTERVAL_SECONDS = 3.0
+_MARKET_SCOPE = ["a", "hk", "us", "fund"]
 _idempotency_lock = threading.Lock()
 _idempotency_records = {}
 _IDEMPOTENCY_WINDOW_SECONDS = 20.0
@@ -1472,7 +1474,7 @@ def _save_snapshot_for_user(user_id=None):
     """保存用户当日快照（更实时）"""
     try:
         stats = calculate_portfolio_stats(user_id)
-        if is_weekend():
+        if all_markets_closed(_MARKET_SCOPE):
             stats['day_pnl'] = 0.0
         db.save_daily_snapshot(stats, user_id)
     except Exception as e:
@@ -1969,6 +1971,20 @@ def auth_send_code():
 def health():
     """健康检查"""
     return jsonify({"status": "ok", "version": config.APP_VERSION})
+
+
+@app.route('/api/market/status')
+def api_market_status():
+    """主流市场开休市状态。"""
+    now_utc = datetime.now(timezone.utc)
+    markets = get_market_statuses(_MARKET_SCOPE, now=now_utc)
+    return jsonify(
+        {
+            "server_time_utc": now_utc.isoformat(),
+            "markets": markets,
+            "all_closed": all_markets_closed(_MARKET_SCOPE, now=now_utc),
+        }
+    )
 
 
 @app.route('/api/system/price_health')

@@ -52,8 +52,14 @@
             <input id="cleanup_user_id" placeholder="用户内部编号（可选）" style="min-width:220px;">
             <input id="cleanup_start" placeholder="开始日期（可选）">
             <input id="cleanup_end" placeholder="结束日期（可选）">
-            <button class="secondary" onclick="previewCleanupWeekend()">预览影响条数</button>
-            <button class="warn" onclick="cleanupWeekend()">执行周末收益清理</button>
+            <button class="secondary" onclick="previewCleanupMarketClosed()">预览影响条数</button>
+            <button class="warn" onclick="cleanupMarketClosed()">执行休市日收益清理</button>
+        </div>
+        <div class="controls" style="gap: 10px;">
+            <label><input type="checkbox" name="cleanup_market" value="a" checked> A股</label>
+            <label><input type="checkbox" name="cleanup_market" value="hk" checked> 港股</label>
+            <label><input type="checkbox" name="cleanup_market" value="us" checked> 美股</label>
+            <label><input type="checkbox" name="cleanup_market" value="fund" checked> 基金</label>
         </div>
         <div class="muted" id="cleanupPreviewText">尚未预览影响范围</div>
     </div>
@@ -153,44 +159,47 @@
     }
 
     function cleanupPayload() {
+        const markets = Array.from(document.querySelectorAll('input[name="cleanup_market"]:checked'))
+            .map((el) => el.value);
         return {
             user_id: document.getElementById('cleanup_user_id').value.trim(),
             start_date: document.getElementById('cleanup_start').value.trim(),
             end_date: document.getElementById('cleanup_end').value.trim(),
+            markets: markets,
         };
     }
 
-    async function previewCleanupWeekend() {
+    async function previewCleanupMarketClosed() {
         try {
-            const data = await adminFetch('/api/admin/data/snapshot/cleanup_weekend/preview', {
+            const data = await adminFetch('/api/admin/data/snapshot/cleanup_market_closed/preview', {
                 method: 'POST',
                 body: JSON.stringify(cleanupPayload()),
             });
-            document.getElementById('cleanupPreviewText').innerText = `预计影响 ${data.affected || 0} 条周末快照记录。`;
+            document.getElementById('cleanupPreviewText').innerText = `预计影响 ${data.affected || 0} 条休市日快照记录。`;
             showToast(`预览完成：${data.affected || 0} 条`);
         } catch (e) {
             showToast(`预览失败：${e.message}`, true);
         }
     }
 
-    async function cleanupWeekend() {
+    async function cleanupMarketClosed() {
         const payload = cleanupPayload();
-        const preview = await adminFetch('/api/admin/data/snapshot/cleanup_weekend/preview', {
+        const preview = await adminFetch('/api/admin/data/snapshot/cleanup_market_closed/preview', {
             method: 'POST',
             body: JSON.stringify(payload),
         }).catch(() => ({ affected: null }));
         const affectedText = preview.affected == null ? '未知' : `${preview.affected} 条`;
 
         const confirmed = await confirmAction({
-            title: '执行周末收益清理',
-            message: `预计影响：${affectedText}\n将把周末快照的“当日盈亏”重置为 0。\n确认继续吗？`,
+            title: '执行休市日收益清理',
+            message: `预计影响：${affectedText}\n将把休市日快照的“当日盈亏”重置为 0。\n确认继续吗？`,
             confirmText: '确认清理',
             danger: true,
         });
         if (!confirmed) return;
 
         try {
-            const data = await adminFetch('/api/admin/data/snapshot/cleanup_weekend', {
+            const data = await adminFetch('/api/admin/data/snapshot/cleanup_market_closed', {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });

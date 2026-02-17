@@ -60,6 +60,21 @@ class CalendarWeekendTests(unittest.TestCase):
         self.assertEqual(items.get("7"), 0)
         self.assertEqual(items.get("8"), 0)
 
+    def test_day_view_market_closed_day_does_not_backfill_from_total_pnl(self):
+        _insert_snapshot("2026-02-10", 100, 10)
+        _insert_snapshot("2026-02-11", 108, 0)
+        _insert_snapshot("2026-02-12", 110, 2)
+
+        real_dt = datetime
+        with patch.object(db_module, "_is_market_closed_date", create=True) as mock_closed:
+            mock_closed.side_effect = lambda date_str: str(date_str) == "2026-02-11"
+            with patch.object(db_module, "datetime") as mock_dt:
+                mock_dt.now.return_value = real_dt(2026, 2, 12)
+                data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("11"), 0)
+
     def test_month_view_ignores_weekend_totals(self):
         _insert_snapshot("2026-02-06", 100, 10)
         _insert_snapshot("2026-02-07", 200, 0)

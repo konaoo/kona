@@ -600,6 +600,12 @@
         let cashAssets = [];
         let otherAssets = [];
         let liabilities = [];
+        let marketStatus = {
+            a: { open: false, reason: 'unavailable' },
+            hk: { open: false, reason: 'unavailable' },
+            us: { open: false, reason: 'unavailable' },
+            fund: { open: false, reason: 'unavailable' }
+        };
         
         // 投资数据
         let investData = {
@@ -610,12 +616,36 @@
             fund: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 }
         };
         
-        function getCategory(code) {
-            code = code.toLowerCase();
+        function detectAssetMarket(asset) {
+            const explicit = String(asset.asset_type || '').toLowerCase().trim();
+            if (['a', 'hk', 'us', 'fund'].includes(explicit)) return explicit;
+
+            const code = String(asset.code || '').toLowerCase();
             if (code.startsWith('f_') || code.startsWith('ft_')) return 'fund';
             if (code.startsWith('hk') || code.includes('.hk')) return 'hk';
-            if (code.startsWith('gb_') || /^[a-z]+$/.test(code)) return 'us';
+            if (code.startsWith('gb_') || /^[a-z]+(\.[a-z]+)?$/.test(code)) return 'us';
+            return 'a';
+        }
+
+        function getCategory(asset) {
+            const market = detectAssetMarket(asset);
+            if (market === 'fund') return 'fund';
+            if (market === 'hk') return 'hk';
+            if (market === 'us') return 'us';
             return 'cn';
+        }
+
+        async function fetchMarketStatus() {
+            try {
+                const data = await (await fetch('/api/market/status')).json();
+                if (data && data.markets) return data.markets;
+            } catch (e) { }
+            return {
+                a: { open: false, reason: 'unavailable' },
+                hk: { open: false, reason: 'unavailable' },
+                us: { open: false, reason: 'unavailable' },
+                fund: { open: false, reason: 'unavailable' }
+            };
         }
         
         // 供 base.html 调用的更新函数
@@ -662,6 +692,7 @@
                 hk: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 },
                 fund: { mv: 0, cost: 0, dayPnl: 0, floatPnl: 0, totalPnl: 0 }
             };
+            marketStatus = await fetchMarketStatus();
             
             const portfolio = await (await fetch('/api/portfolio')).json();
             if (portfolio.length === 0) {
@@ -687,11 +718,13 @@
                 
                 const mv = curPrice * qty * rate;
                 const costVal = cost * qty * rate;
-                const dayPnl = (curPrice - ycloseRef) * qty * rate;
+                const market = detectAssetMarket(s);
+                const marketOpen = !!((marketStatus[market] || {}).open);
+                const dayPnl = marketOpen ? ((curPrice - ycloseRef) * qty * rate) : 0;
                 const floatPnl = (curPrice - cost) * qty * rate;
                 const totalPnl = floatPnl + adj * rate;
                 
-                const cat = getCategory(s.code);
+                const cat = getCategory(s);
                 
                 // 分类累加
                 investData[cat].mv += mv;
