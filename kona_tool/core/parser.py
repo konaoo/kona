@@ -42,8 +42,13 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     
     # 如果是纯数字
     if code.isdigit():
+        # 5位纯数字默认视为港股（如 00700）
+        if len(code) == 5:
+            code = f"{code}.HK"
+            if not curr:
+                curr = 'HKD'
         # 11开头 -> 场外基金
-        if code.startswith('11'):
+        elif code.startswith('11'):
             code = f"f_{code}"
             if not curr:
                 curr = 'CNY'

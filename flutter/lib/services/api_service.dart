@@ -519,7 +519,12 @@ class ApiService {
 
   /// 批量获取价格
   Future<Map<String, dynamic>> getPricesBatch(List<String> codes) async {
-    return await _post(ApiConfig.pricesBatch, {'codes': codes}) ?? {};
+    return await _post(
+          ApiConfig.pricesBatch,
+          {'codes': codes},
+          retryOnTransient: true,
+        ) ??
+        {};
   }
 
   /// 获取现金资产

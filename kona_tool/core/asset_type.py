@@ -32,6 +32,8 @@ def infer_asset_type(code: str, name: str = '') -> str:
     # 港股
     if '.HK' in c.upper() or c.lower().startswith('hk'):
         return 'hk'
+    if re.fullmatch(r'\d{5}', c):
+        return 'hk'
 
     # 名称包含 ETF / 基金
     if _name_hint_is_fund(name):

@@ -255,6 +255,9 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
         # 代码格式转换
         if s.isdigit() and len(s) == 6:
             s = ('sh' if s[0] in ['5', '6', '9'] else 'sz') + s
+        elif s.isdigit() and len(s) == 5:
+            # 5位纯数字按港股处理（如 00700 -> hk00700）
+            s = 'hk' + s
         elif '.hk' in s:
             s = 'hk' + s.replace('.hk', '')
         elif not any(x in s for x in ['sh', 'sz', 'hk', 'gb_', 's_', 'f_', 'of']):
@@ -317,7 +320,7 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
                     curr = safe_float(data[21])
                 if curr == 0:
                     curr = yclose
-            elif 'rt_hk' in s:  # 港股
+            elif s.startswith('hk') or 'rt_hk' in s:  # 港股
                 curr = safe_float(data[6])
                 yclose = safe_float(data[3])
             else:  # A股
