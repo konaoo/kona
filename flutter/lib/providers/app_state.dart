@@ -461,6 +461,10 @@ class AppState extends ChangeNotifier {
       }
       return raw.isNotEmpty ? raw : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
     }
+    final raw = error.toString().trim();
+    if (raw.isNotEmpty) {
+      return raw.startsWith('Exception:') ? raw.replaceFirst('Exception:', '').trim() : raw;
+    }
     return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
   }
 
@@ -473,7 +477,7 @@ class AppState extends ChangeNotifier {
     try {
       final result = await _api.login(username: username, password: password);
       if (result == null) {
-        _authErrorMessage = '登录失败，请稍后重试';
+        _authErrorMessage = '登录响应为空，请稍后重试';
         return false;
       }
       await _applyAuthResult(result);
