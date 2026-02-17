@@ -77,12 +77,6 @@ jobs:
           filters: |
             apk:
               - 'flutter/android/**'
-              - 'flutter/lib/**'
-              - 'flutter/assets/**'
-              - 'flutter/pubspec.yaml'
-              - 'flutter/pubspec.lock'
-              - 'flutter/integration_test/**'
-              - '.github/workflows/deploy.yml'
 
       - name: Flutter pub get
         working-directory: flutter
