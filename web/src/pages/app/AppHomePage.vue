@@ -99,7 +99,7 @@
       <section class="legacy-section">
         <div class="section-header">
           <div class="section-title">现金资产</div>
-          <button class="legacy-btn-primary" @click="openModal('cash')">+ 添加</button>
+          <button class="legacy-btn-primary section-add-btn" @click="openModal('cash')">+ 添加</button>
         </div>
         <div class="invest-total-label">现金总额 (CNY)</div>
         <div class="invest-total-value cash">{{ masked(formatCny(cashTotal)) }}</div>
@@ -121,7 +121,7 @@
       <section class="legacy-section">
         <div class="section-header">
           <div class="section-title">其他资产</div>
-          <button class="legacy-btn-primary" @click="openModal('other')">+ 添加</button>
+          <button class="legacy-btn-primary section-add-btn" @click="openModal('other')">+ 添加</button>
         </div>
         <div class="invest-total-label">其他资产总额 (CNY)</div>
         <div class="invest-total-value other">{{ masked(formatCny(otherTotal)) }}</div>
@@ -143,7 +143,7 @@
       <section class="legacy-section">
         <div class="section-header">
           <div class="section-title">我的负债</div>
-          <button class="legacy-btn-primary" @click="openModal('liability')">+ 添加</button>
+          <button class="legacy-btn-primary section-add-btn" @click="openModal('liability')">+ 添加</button>
         </div>
         <div class="invest-total-label">负债总额 (CNY)</div>
         <div class="invest-total-value liability">{{ masked(formatCny(liabilityTotal)) }}</div>
@@ -458,8 +458,17 @@ onMounted(refresh)
 .asset-card-value.invest { color: var(--legacy-blue); }
 .asset-card-value.other { color: var(--legacy-orange); }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--legacy-border);
+}
+
 .section-title {
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 700;
   margin: 0;
 }
@@ -467,7 +476,23 @@ onMounted(refresh)
 .goto-link {
   color: var(--legacy-text-secondary);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.section-add-btn {
+  min-width: 88px;
+  height: 36px;
+  border-radius: 999px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #4d7dff 0%, #6b6cff 100%);
+  box-shadow: 0 8px 20px rgba(77, 125, 255, 0.32);
+}
+
+.section-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(77, 125, 255, 0.4);
 }
 
 .invest-header {
@@ -574,32 +599,39 @@ onMounted(refresh)
 .asset-card-grid {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .asset-card-item {
   background: var(--legacy-bg-tertiary);
   border: 2px solid var(--legacy-border);
   border-radius: 12px;
-  padding: 10px 12px;
-  min-height: 82px;
+  padding: 14px;
+  min-height: 108px;
+  position: relative;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.asset-card-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .asset-card-item-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
+  display: block;
+  min-height: 22px;
 }
 
 .asset-card-item-name {
   color: var(--legacy-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
+  padding-right: 88px;
 }
 
 .asset-card-item-value {
-  margin-top: 10px;
-  font-size: 22px;
+  margin-top: 14px;
+  font-size: 24px;
   font-weight: 700;
 }
 
@@ -608,15 +640,29 @@ onMounted(refresh)
 .asset-card-item-value.liability { color: var(--legacy-red); }
 
 .row-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   display: flex;
   gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.asset-card-item:hover .row-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .action-btn {
-  border: none;
-  background: transparent;
+  height: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
   color: var(--legacy-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
+  padding: 0 8px;
   cursor: pointer;
 }
 
@@ -694,7 +740,7 @@ onMounted(refresh)
 
 @media (max-width: 1400px) {
   .asset-card-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 
   .category-grid {
@@ -721,5 +767,12 @@ onMounted(refresh)
   .asset-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .category-grid { grid-template-columns: 1fr; }
   .modal { width: 90%; padding: 20px; }
+}
+
+@media (hover: none) {
+  .row-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 </style>

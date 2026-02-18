@@ -61,7 +61,6 @@
         <table class="table-legacy">
           <thead>
             <tr>
-              <th>资产代码</th>
               <th>资产名称</th>
               <th>持有数量</th>
               <th>成本/现价</th>
@@ -72,32 +71,39 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in filteredRows" :key="row.code">
-              <td class="code-cell">{{ displayCode(row.code) }}</td>
-              <td class="name-cell">{{ row.name || '-' }}</td>
-              <td>{{ toNumber(row.qty).toFixed(3) }}</td>
-              <td class="price-cell">
-                <span>{{ formatMoney(row.costPrice, row.curr || 'CNY') }}</span>
-                <span>{{ formatMoney(row.currentPrice, row.curr || 'CNY') }}</span>
+            <tr v-for="row in filteredRows" :key="String(row.code)">
+              <td class="name-code-cell">
+                <div class="name-primary">{{ row.name || '-' }}</div>
+                <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
               </td>
-              <td>{{ formatCny(toCny(row.value, row.curr)) }}</td>
-              <td class="pnl-cell" :class="valueClass(toCny(row.dayPnl, row.curr))">
-                <span>{{ formatSignedCny(toCny(row.dayPnl, row.curr)) }}</span>
+              <td class="qty-cell">{{ formatHoldingQty(row.qty) }}</td>
+              <td class="price-cell">
+                <span class="price-line cost">成本 {{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
+                <span class="price-line current">现价 {{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
+              </td>
+              <td class="holding-cell">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
+              <td class="pnl-cell" :class="valueClass(toNumber(row.dayPnl))">
+                <span>{{ formatSignedMoney(toNumber(row.dayPnl), rowCurrency(row)) }}</span>
                 <span>{{ formatPct(toNumber(row.dayPnlRate)) }}</span>
               </td>
-              <td class="pnl-cell" :class="valueClass(toCny(row.totalPnl, row.curr))">
-                <span>{{ formatSignedCny(toCny(row.totalPnl, row.curr)) }}</span>
+              <td class="pnl-cell" :class="valueClass(toNumber(row.totalPnl))">
+                <span>{{ formatSignedMoney(toNumber(row.totalPnl), rowCurrency(row)) }}</span>
                 <span>{{ formatPct(toNumber(row.totalPnlRate)) }}</span>
               </td>
               <td class="actions">
-                <button class="action-btn" @click="openModal('buy', row)">买入</button>
-                <button class="action-btn" @click="openModal('sell', row)">卖出</button>
-                <button class="action-btn" @click="openModal('edit', row)">修正</button>
-                <button class="action-btn danger" @click="remove(row.code)">删</button>
+                <div class="action-menu" @click.stop>
+                  <button class="action-trigger" @click.stop="toggleActionMenu(String(row.code || ''))">操作 ▾</button>
+                  <div v-if="isActionMenuOpen(String(row.code || ''))" class="action-dropdown">
+                    <button class="menu-item" @click="openAction('buy', row)">买入</button>
+                    <button class="menu-item" @click="openAction('sell', row)">卖出</button>
+                    <button class="menu-item" @click="openAction('edit', row)">调整</button>
+                    <button class="menu-item danger" @click="remove(String(row.code || ''))">删除</button>
+                  </div>
+                </div>
               </td>
             </tr>
             <tr v-if="!filteredRows.length">
-              <td colspan="8" class="empty">暂无持仓</td>
+              <td colspan="7" class="empty">暂无持仓</td>
             </tr>
           </tbody>
         </table>
@@ -121,7 +127,7 @@
           </div>
           <div class="input-group">
             <label class="input-label">{{ modal.type === 'edit' ? '数量' : '交易数量' }}</label>
-            <input v-model.number="form.qty" type="number" step="0.0001" class="modal-input" required />
+            <input v-model.number="form.qty" type="number" min="1" step="1" class="modal-input" required />
           </div>
           <div class="input-group">
             <label class="input-label">{{ modal.type === 'edit' ? '平均成本' : '成交价格' }}</label>
@@ -139,14 +145,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
+import { money, marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
-import { money, toNumber } from '../../shared/format'
 import { useKonaStore } from '../../shared/store'
 
 type TabKey = 'all' | 'a' | 'fund' | 'us' | 'hk'
 type ModalType = 'add' | 'buy' | 'sell' | 'edit'
+type ActionMenuState = { openCode: string | null }
 
 const store = useKonaStore()
 const rows = computed(() => store.rows.value)
@@ -173,6 +180,10 @@ const modal = reactive<{ visible: boolean; type: ModalType; code: string }>({
   code: '',
 })
 
+const actionMenu = reactive<ActionMenuState>({
+  openCode: null,
+})
+
 const form = reactive({
   code: '',
   name: '',
@@ -187,12 +198,13 @@ function rateToCny(curr?: string): number {
   return toNumber(rates.value[code], 1) || 1
 }
 
-function toCny(amount: unknown, curr?: string): number {
-  return toNumber(amount) * rateToCny(curr)
+function formatMoney(value: unknown, curr: string): string {
+  return money(toNumber(value), curr)
 }
 
-function formatMoney(value: number, curr: string): string {
-  return money(toNumber(value), curr)
+function formatSignedMoney(value: number, curr: string): string {
+  const sign = value >= 0 ? '+' : '-'
+  return `${sign}${money(Math.abs(toNumber(value)), curr)}`
 }
 
 function formatCny(value: number): string {
@@ -219,6 +231,20 @@ function displayCode(code: string): string {
   if (lower.startsWith('f_')) return code.slice(2)
   if (lower.startsWith('ft_')) return code.slice(3)
   return code.toUpperCase()
+}
+
+function rowCurrency(row: Record<string, unknown>): 'CNY' | 'HKD' | 'USD' {
+  return marketDisplayCurrency(row.market, row.curr)
+}
+
+function formatHoldingQty(qty: unknown): string {
+  const n = toNumber(qty)
+  if (Number.isInteger(n)) return n.toLocaleString('zh-CN')
+  return n.toFixed(3)
+}
+
+function validatePositiveIntegerQty(qty: number): boolean {
+  return Number.isInteger(qty) && qty > 0
 }
 
 const filteredRows = computed(() => {
@@ -263,10 +289,11 @@ const modalTitle = computed(() => {
   if (modal.type === 'add') return '添加资产'
   if (modal.type === 'buy') return `买入 ${modal.code}`
   if (modal.type === 'sell') return `卖出 ${modal.code}`
-  return `修正 ${modal.code}`
+  return `调整 ${modal.code}`
 })
 
 function openModal(type: ModalType, row?: Record<string, unknown>) {
+  closeActionMenu()
   modal.visible = true
   modal.type = type
   modal.code = String(row?.code || '')
@@ -282,11 +309,35 @@ function openModal(type: ModalType, row?: Record<string, unknown>) {
   }
 }
 
+function openAction(type: Exclude<ModalType, 'add'>, row: Record<string, unknown>) {
+  openModal(type, row)
+}
+
 function closeModal() {
   modal.visible = false
 }
 
+function toggleActionMenu(code: string) {
+  actionMenu.openCode = actionMenu.openCode === code ? null : code
+}
+
+function isActionMenuOpen(code: string): boolean {
+  return actionMenu.openCode === code
+}
+
+function closeActionMenu() {
+  actionMenu.openCode = null
+}
+
+function ensureValidQty(): boolean {
+  if (validatePositiveIntegerQty(toNumber(form.qty))) return true
+  alert('数量必须是正整数')
+  return false
+}
+
 async function submitModal() {
+  if (!ensureValidQty()) return
+
   if (modal.type === 'add') {
     await api.post('/api/portfolio/add', {
       code: form.code,
@@ -309,6 +360,7 @@ async function submitModal() {
 }
 
 async function remove(code: string) {
+  closeActionMenu()
   if (!confirm(`确认删除 ${code} ？`)) return
   await api.post('/api/portfolio/delete', { code })
   await refresh()
@@ -336,7 +388,18 @@ async function refresh() {
   await Promise.all([store.refreshAll(), loadIndexes()])
 }
 
-onMounted(refresh)
+function handleDocumentClick() {
+  closeActionMenu()
+}
+
+onMounted(async () => {
+  document.addEventListener('click', handleDocumentClick)
+  await refresh()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+})
 </script>
 
 <style scoped>
@@ -489,16 +552,25 @@ onMounted(refresh)
   border-bottom: 1px solid var(--legacy-border);
 }
 
-.code-cell {
-  color: var(--legacy-blue);
-  font-weight: 700;
+.name-code-cell {
+  min-width: 190px;
 }
 
-.name-cell {
-  max-width: 140px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.name-primary {
+  color: var(--legacy-text-primary);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.name-secondary {
+  margin-top: 4px;
+  color: var(--legacy-text-secondary);
+  font-size: 12px;
+}
+
+.qty-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .price-cell,
@@ -508,25 +580,89 @@ onMounted(refresh)
   gap: 3px;
 }
 
+.price-line {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.price-line.cost {
+  color: var(--legacy-text-secondary);
+}
+
+.price-line.current {
+  color: #dbeafe;
+  font-weight: 600;
+}
+
+.holding-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .actions {
   text-align: right;
   white-space: nowrap;
 }
 
-.action-btn {
+.action-menu {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+.action-trigger {
+  min-width: 74px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--legacy-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.action-trigger:hover {
+  background: rgba(30, 41, 59, 0.9);
+}
+
+.action-dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  width: 110px;
+  background: #0f172a;
+  border: 1px solid var(--legacy-border);
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.menu-item {
   border: none;
   background: transparent;
-  color: var(--legacy-text-secondary);
-  cursor: pointer;
-  margin-left: 8px;
-}
-
-.action-btn:hover {
   color: var(--legacy-text-primary);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.action-btn.danger:hover {
-  color: #ff9ca8;
+.menu-item:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.menu-item.danger {
+  color: #ffb4b4;
+}
+
+.menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.18);
 }
 
 .empty {

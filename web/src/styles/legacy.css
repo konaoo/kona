@@ -17,6 +17,31 @@
   --legacy-radius-sm: 12px;
 }
 
+@media (min-width: 1280px) {
+  html.density-compact #app {
+    zoom: 0.75;
+  }
+}
+
+@supports not (zoom: 1) {
+  @media (min-width: 1280px) {
+    html.density-compact {
+      overflow-x: hidden;
+    }
+
+    html.density-compact body {
+      overflow-x: hidden;
+    }
+
+    html.density-compact #app {
+      transform: scale(0.75);
+      transform-origin: top left;
+      width: calc(100% / 0.75);
+      min-height: calc(100vh / 0.75);
+    }
+  }
+}
+
 .legacy-page {
   color: var(--legacy-text-primary);
   --text-primary: var(--legacy-text-primary);
