@@ -588,6 +588,7 @@ onBeforeUnmount(() => {
   --inv-lh-sub: 1.2;
   --inv-cell-py: calc(9px * var(--legacy-density-space-scale));
   --inv-cell-px: calc(10px * var(--legacy-density-space-scale));
+  --inv-col-gap: calc(12px * var(--legacy-density-space-scale));
 }
 
 .table-legacy {
@@ -623,7 +624,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   line-height: var(--inv-lh-sub);
   color: var(--legacy-text-secondary);
-  padding: var(--inv-cell-py) var(--inv-cell-px);
+  padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   text-align: left;
   border-bottom: 1px solid var(--legacy-border);
   background: var(--legacy-bg-tertiary);
@@ -631,7 +632,7 @@ onBeforeUnmount(() => {
 
 .table-legacy td {
   vertical-align: top;
-  padding: var(--inv-cell-py) var(--inv-cell-px);
+  padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   line-height: var(--inv-lh-main);
   border-bottom: 1px solid var(--legacy-border);
 }
