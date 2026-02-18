@@ -613,11 +613,6 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.th-action,
-.td-action {
-  text-align: right;
-}
-
 .table-legacy th {
   vertical-align: middle;
   font-size: var(--inv-fs-head);
@@ -625,7 +620,7 @@ onBeforeUnmount(() => {
   line-height: var(--inv-lh-sub);
   color: var(--legacy-text-secondary);
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
-  text-align: left;
+  text-align: center;
   border-bottom: 1px solid var(--legacy-border);
   background: var(--legacy-bg-tertiary);
 }
@@ -634,6 +629,7 @@ onBeforeUnmount(() => {
   vertical-align: top;
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   line-height: var(--inv-lh-main);
+  text-align: center;
   border-bottom: 1px solid var(--legacy-border);
 }
 
@@ -651,6 +647,7 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-name);
   font-weight: 700;
   line-height: var(--inv-lh-main);
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -662,12 +659,13 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-sub);
   font-weight: 500;
   line-height: var(--inv-lh-sub);
+  text-align: center;
 }
 
 .qty-cell {
   font-size: var(--inv-fs-main);
   font-weight: 700;
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -675,6 +673,7 @@ onBeforeUnmount(() => {
 .pnl-cell {
   display: flex;
   flex-direction: column;
+  align-items: center;
   width: 100%;
   gap: 2px;
   line-height: var(--inv-lh-sub);
@@ -700,7 +699,7 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-main);
   font-weight: 700;
   white-space: nowrap;
-  text-align: right;
+  text-align: center;
 }
 
 .table-pnl-amount,
@@ -720,32 +719,26 @@ onBeforeUnmount(() => {
   line-height: var(--inv-lh-sub);
 }
 
-.table-legacy th.th-day-pnl,
-.table-legacy th.th-total-pnl,
-.table-legacy th.th-holding,
-.table-legacy th.th-qty,
-.table-legacy th.th-action {
-  text-align: right;
-}
-
 .table-legacy th.th-name,
 .table-legacy th.th-price,
+.table-legacy th.th-qty,
+.table-legacy th.th-holding,
+.table-legacy th.th-day-pnl,
+.table-legacy th.th-total-pnl,
+.table-legacy th.th-action,
 .table-legacy td.td-name,
-.table-legacy td.td-price {
-  text-align: left;
-}
-
+.table-legacy td.td-price,
+.table-legacy td.td-qty,
+.table-legacy td.td-holding,
 .table-legacy td.td-day-pnl,
 .table-legacy td.td-total-pnl,
-.table-legacy td.td-holding,
-.table-legacy td.td-qty,
 .table-legacy td.td-action {
-  text-align: right;
+  text-align: center;
 }
 
 .td-day-pnl .pnl-cell,
 .td-total-pnl .pnl-cell {
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-start;
   min-height: calc(54px * var(--legacy-density-space-scale));
 }
@@ -764,7 +757,7 @@ onBeforeUnmount(() => {
 .action-menu {
   position: relative;
   display: inline-flex;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .action-trigger {
@@ -786,7 +779,8 @@ onBeforeUnmount(() => {
 .action-dropdown {
   position: absolute;
   top: calc(32px * var(--legacy-density-space-scale));
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   width: calc(102px * var(--legacy-density-card-minh));
   background: #0f172a;
   border: 1px solid var(--legacy-border);
