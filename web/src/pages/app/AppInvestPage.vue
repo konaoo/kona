@@ -647,7 +647,7 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-name);
   font-weight: 700;
   line-height: var(--inv-lh-main);
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -659,7 +659,7 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-sub);
   font-weight: 500;
   line-height: var(--inv-lh-sub);
-  text-align: center;
+  text-align: left;
 }
 
 .qty-cell {
@@ -720,25 +720,20 @@ onBeforeUnmount(() => {
 }
 
 .table-legacy th.th-name,
-.table-legacy th.th-price,
-.table-legacy th.th-qty,
-.table-legacy th.th-holding,
+.table-legacy td.td-name {
+  text-align: left;
+}
+
 .table-legacy th.th-day-pnl,
 .table-legacy th.th-total-pnl,
-.table-legacy th.th-action,
-.table-legacy td.td-name,
-.table-legacy td.td-price,
-.table-legacy td.td-qty,
-.table-legacy td.td-holding,
 .table-legacy td.td-day-pnl,
-.table-legacy td.td-total-pnl,
-.table-legacy td.td-action {
-  text-align: center;
+.table-legacy td.td-total-pnl {
+  text-align: right;
 }
 
 .td-day-pnl .pnl-cell,
 .td-total-pnl .pnl-cell {
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-start;
   min-height: calc(54px * var(--legacy-density-space-scale));
 }
