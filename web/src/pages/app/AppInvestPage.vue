@@ -597,13 +597,15 @@ onBeforeUnmount(() => {
   table-layout: fixed;
 }
 
-.col-name { width: 24%; }
-.col-qty { width: 10%; }
-.col-price { width: 14%; }
-.col-holding { width: 14%; }
-.col-day { width: 16%; }
-.col-total { width: 16%; }
-.col-action { width: 6%; }
+.col-name,
+.col-qty,
+.col-price,
+.col-holding,
+.col-day,
+.col-total,
+.col-action {
+  width: calc(100% / 7);
+}
 
 .table-legacy th,
 .table-legacy td {
@@ -636,7 +638,6 @@ onBeforeUnmount(() => {
 
 .name-code-cell {
   min-width: 0;
-  padding-right: calc(8px * var(--legacy-density-space-scale));
 }
 
 .name-primary {
@@ -736,21 +737,11 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.td-total-pnl,
-.th-total-pnl {
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  padding-left: calc(14px * var(--legacy-density-space-scale));
-}
-
 .td-day-pnl .pnl-cell,
 .td-total-pnl .pnl-cell {
   align-items: flex-end;
   justify-content: flex-start;
   min-height: calc(54px * var(--legacy-density-space-scale));
-}
-
-.td-day-pnl {
-  padding-right: calc(12px * var(--legacy-density-space-scale));
 }
 
 .pnl-hint {
@@ -934,23 +925,4 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (min-width: 1280px) and (max-width: 1599px) {
-  .col-name { width: 25%; }
-  .col-qty { width: 10%; }
-  .col-price { width: 14%; }
-  .col-holding { width: 14%; }
-  .col-day { width: 16%; }
-  .col-total { width: 15%; }
-  .col-action { width: 6%; }
-}
-
-@media (min-width: 1600px) {
-  .col-name { width: 23%; }
-  .col-qty { width: 10%; }
-  .col-price { width: 14%; }
-  .col-holding { width: 14%; }
-  .col-day { width: 16%; }
-  .col-total { width: 17%; }
-  .col-action { width: 6%; }
-}
 </style>
