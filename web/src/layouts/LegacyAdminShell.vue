@@ -61,8 +61,11 @@ async function goApp() {
 
 <style scoped>
 .admin-layout {
+  --admin-font-scale: var(--density-font-scale, 1);
+  --admin-space-scale: var(--density-space-scale, 1);
+  --admin-control-scale: var(--density-control-scale, 1);
   display: grid;
-  grid-template-columns: 256px 1fr;
+  grid-template-columns: calc(244px * var(--admin-space-scale)) 1fr;
   min-height: 100vh;
   background:
     radial-gradient(920px 420px at 8% 6%, rgba(10, 143, 152, 0.08), transparent 64%),
@@ -77,18 +80,18 @@ async function goApp() {
   background: linear-gradient(180deg, #0a2c42 0%, #0a2439 100%);
   color: #d9ebff;
   border-right: 1px solid #1d3d56;
-  padding: 20px 14px;
+  padding: calc(18px * var(--admin-space-scale)) calc(12px * var(--admin-space-scale));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
 .brand {
-  margin: 2px 10px 16px;
+  margin: 2px calc(10px * var(--admin-space-scale)) calc(14px * var(--admin-space-scale));
 }
 
 .brand-title {
-  font-size: 20px;
+  font-size: calc(18px * var(--admin-font-scale));
   font-weight: 800;
   letter-spacing: 0.5px;
 }
@@ -96,25 +99,25 @@ async function goApp() {
 .brand-sub {
   margin-top: 4px;
   color: #97b8d6;
-  font-size: 12px;
+  font-size: calc(11px * var(--admin-font-scale));
 }
 
 .nav-group-title {
-  margin: 0 10px 6px;
+  margin: 0 calc(10px * var(--admin-space-scale)) calc(6px * var(--admin-space-scale));
   color: #7ba2c5;
-  font-size: 11px;
+  font-size: calc(10px * var(--admin-font-scale));
   letter-spacing: 0.8px;
   text-transform: uppercase;
 }
 
 .nav a {
   display: block;
-  margin-bottom: 6px;
-  padding: 10px 12px;
+  margin-bottom: calc(5px * var(--admin-space-scale));
+  padding: calc(9px * var(--admin-space-scale)) calc(11px * var(--admin-space-scale));
   color: #d6e9ff;
   text-decoration: none;
   border-radius: 10px;
-  font-size: 14px;
+  font-size: calc(13px * var(--admin-font-scale));
   transition: background .2s ease;
 }
 
@@ -131,16 +134,16 @@ async function goApp() {
 .side-actions {
   margin-top: auto;
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: calc(7px * var(--admin-space-scale));
+  padding: calc(8px * var(--admin-space-scale));
 }
 
 .btn-secondary,
 .btn-danger {
   border: 0;
   border-radius: 10px;
-  padding: 9px 13px;
-  font-size: 14px;
+  padding: calc(8px * var(--admin-control-scale)) calc(12px * var(--admin-control-scale));
+  font-size: calc(13px * var(--admin-font-scale));
   font-weight: 600;
   cursor: pointer;
 }
@@ -158,15 +161,15 @@ async function goApp() {
 
 .admin-main {
   min-width: 0;
-  padding: 18px 20px 22px;
+  padding: calc(16px * var(--admin-space-scale)) clamp(12px, 1.8vw, 22px) calc(20px * var(--admin-space-scale));
 }
 
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin-bottom: 14px;
-  padding: 10px 14px;
+  margin-bottom: calc(12px * var(--admin-space-scale));
+  padding: calc(9px * var(--admin-space-scale)) calc(12px * var(--admin-space-scale));
   border: 1px solid #d7e1ee;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.84);
@@ -175,22 +178,22 @@ async function goApp() {
 }
 
 .topbar-title {
-  font-size: 14px;
+  font-size: calc(13px * var(--admin-font-scale));
   color: #55708f;
 }
 
 .admin-main :deep(.panel) {
   border: 1px solid #d7e1ee;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 12px 36px rgba(16, 36, 62, 0.08);
 }
 
 .admin-main :deep(.btn) {
   border: 0;
-  border-radius: 10px;
-  padding: 9px 13px;
-  font-size: 14px;
+  border-radius: 9px;
+  padding: calc(8px * var(--admin-control-scale)) calc(12px * var(--admin-control-scale));
+  font-size: calc(13px * var(--admin-font-scale));
   font-weight: 600;
   cursor: pointer;
   color: #fff;
@@ -217,9 +220,9 @@ async function goApp() {
 .admin-main :deep(select),
 .admin-main :deep(textarea) {
   border: 1px solid #cfd9e7;
-  border-radius: 10px;
-  padding: 9px 11px;
-  font-size: 14px;
+  border-radius: 9px;
+  padding: calc(8px * var(--admin-control-scale)) calc(10px * var(--admin-control-scale));
+  font-size: calc(13px * var(--admin-font-scale));
   color: #10243e;
   background: #fff;
 }
@@ -234,7 +237,7 @@ async function goApp() {
 
 .admin-main :deep(.table th) {
   color: #55708f;
-  font-size: 12px;
+  font-size: calc(11px * var(--admin-font-scale));
   letter-spacing: 0.02em;
   text-transform: none;
   background: #f8fbff;
@@ -242,6 +245,7 @@ async function goApp() {
 
 .admin-main :deep(.table td) {
   color: #10243e;
+  font-size: calc(13px * var(--admin-font-scale));
 }
 
 .admin-main :deep(.table tbody tr:hover) {
