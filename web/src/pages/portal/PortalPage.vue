@@ -1,53 +1,62 @@
 <template>
   <div class="portal page-wrap">
-    <section class="hero panel">
-      <div class="hero-main">
-        <p class="eyebrow">KONA PORTAL</p>
-        <h1>{{ portalTitle }}</h1>
-        <p class="desc">
-          全市场资产管理与分析工作台。Web 端与 App 端统一业务口径，提供实时价格、收益分析、休市控制与管理后台能力。
-        </p>
-        <div class="actions">
-          <RouterLink class="btn primary" to="/app/login">网页端登录</RouterLink>
+    <section class="hero-shell" aria-label="咔咔记账首页主视觉">
+      <header class="hero-top">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">{{ portalTitle }}</span>
+        </div>
+        <nav class="hero-nav" aria-label="首页导航">
+          <RouterLink class="nav-link" to="/app/login">网页端登录</RouterLink>
           <a
-            class="btn"
+            class="nav-link"
             :class="{ disabled: !apkUrl }"
             :href="apkUrl || undefined"
             :target="apkUrl ? '_blank' : undefined"
             :rel="apkUrl ? 'noreferrer' : undefined"
             :aria-disabled="!apkUrl"
+            :tabindex="apkUrl ? 0 : -1"
             @click="onApkClick"
+            @keydown.enter="onApkClick"
+            @keydown.space.prevent="onApkClick"
           >{{ apkUrl ? '下载 APK' : 'APK 暂未提供' }}</a>
-        </div>
-      </div>
-      <div class="hero-grid">
-        <div class="metric panel">
-          <div class="label">资产覆盖</div>
-          <div class="value">A/HK/US/Fund</div>
-        </div>
-        <div class="metric panel">
-          <div class="label">核心能力</div>
-          <div class="value">实时行情 + 收益分析</div>
-        </div>
-        <div class="metric panel">
-          <div class="label">一致性</div>
-          <div class="value">Web / App 同口径</div>
-        </div>
-      </div>
-    </section>
+          <RouterLink class="nav-link" to="/admin/login">管理后台</RouterLink>
+        </nav>
+      </header>
 
-    <section class="features grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px">
-      <article class="panel card" v-for="feature in features" :key="feature.title">
-        <h3>{{ feature.title }}</h3>
-        <p>{{ feature.body }}</p>
-      </article>
-    </section>
+      <div class="hero-content">
+        <div class="hero-copy">
+          <p class="hero-kicker">GLOBAL ASSET DESK</p>
+          <h1>咔咔记账</h1>
+          <h2>一站式管理全球市场资产</h2>
+          <p class="hero-desc">
+            覆盖全球主流市场资产，聚焦实时可读性与操作效率，帮助你在一个工作台内完成记录、跟踪与决策。
+          </p>
+          <div class="hero-actions">
+            <RouterLink class="btn primary" to="/app/login">进入网页端</RouterLink>
+            <a
+              class="btn"
+              :class="{ disabled: !apkUrl }"
+              :href="apkUrl || undefined"
+              :target="apkUrl ? '_blank' : undefined"
+              :rel="apkUrl ? 'noreferrer' : undefined"
+              :aria-disabled="!apkUrl"
+              :tabindex="apkUrl ? 0 : -1"
+              @click="onApkClick"
+              @keydown.enter="onApkClick"
+              @keydown.space.prevent="onApkClick"
+            >{{ apkUrl ? '下载 APK' : 'APK 暂未提供' }}</a>
+          </div>
+        </div>
 
-    <section class="faq panel" style="margin-top: 16px; padding: 20px">
-      <h3>FAQ</h3>
-      <div class="faq-item" v-for="item in faq" :key="item.q">
-        <h4>{{ item.q }}</h4>
-        <p>{{ item.a }}</p>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="orb orb-1"></div>
+          <div class="orb orb-2"></div>
+          <div class="orb orb-3"></div>
+          <div class="star star-1">✦</div>
+          <div class="star star-2">✦</div>
+          <div class="star star-3">✦</div>
+        </div>
       </div>
     </section>
   </div>
@@ -58,20 +67,8 @@ import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../../shared/http'
 
-const portalTitle = ref('Kona Portfolio')
+const portalTitle = ref('咔咔记账')
 const apkUrl = ref('')
-
-const features = [
-  { title: '统一市场休市逻辑', body: 'A股、港股、美股、基金按交易日历统一判定，当日收益按开市状态计算。' },
-  { title: '投资与分析双视角', body: '投资页查看实时持仓与盈亏，分析页按日/月/年维度查看收益结构与排行。' },
-  { title: '管理后台闭环', body: '用户、邀请码、策略、快照与审计统一在后台管理，支持风险操作预览。' },
-]
-
-const faq = [
-  { q: '网页端和 App 端口径一致吗？', a: '一致。都走同一套后端 API，并使用同样的休市与收益口径。' },
-  { q: '是否支持邀请码注册？', a: '支持。登录页可直接输入邀请码完成注册。' },
-  { q: '管理后台入口在哪？', a: '访问 /admin/login 后使用管理员账号登录。' },
-]
 
 onMounted(async () => {
   try {
@@ -92,98 +89,359 @@ function onApkClick(event: Event) {
 
 <style scoped>
 .portal {
-  padding-top: 24px;
-  padding-bottom: 30px;
-}
-
-.hero {
-  padding: 28px;
+  min-height: calc(100vh - 48px);
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 18px;
+  align-items: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
-.eyebrow {
-  color: var(--brand-2);
-  letter-spacing: 0.8px;
-  font-size: 12px;
+.hero-shell {
+  position: relative;
+  overflow: hidden;
+  padding: 26px 30px 30px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  background:
+    radial-gradient(800px 380px at 95% 20%, rgba(184, 143, 255, 0.35), rgba(184, 143, 255, 0)),
+    radial-gradient(640px 280px at 8% 92%, rgba(255, 176, 130, 0.28), rgba(255, 176, 130, 0)),
+    linear-gradient(112deg, #f8f6fb 0%, #f6f4ff 45%, #f5eeff 100%);
+  box-shadow:
+    0 40px 90px rgba(9, 20, 39, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.hero-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #a1aec4;
+  background:
+    radial-gradient(circle at 45% 50%, #11356f 0 3px, transparent 4px),
+    radial-gradient(circle at 50% 50%, rgba(17, 53, 111, 0.36) 0 10px, transparent 11px);
+}
+
+.brand-name {
+  color: #0f2f63;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.hero-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  border: 1px solid rgba(28, 63, 117, 0.14);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #1c3f75;
+  font-size: 13px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.nav-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(28, 63, 117, 0.3);
+  box-shadow: 0 8px 20px rgba(36, 69, 127, 0.12);
+}
+
+.nav-link.disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 22px;
+  margin-top: 28px;
+}
+
+.hero-copy {
+  max-width: 620px;
+}
+
+.hero-kicker {
+  color: #5f6e89;
+  letter-spacing: 1.3px;
+  font-size: 11px;
+  font-weight: 700;
   margin: 0;
 }
 
 h1 {
-  margin: 8px 0;
-  font-size: clamp(34px, 5vw, 52px);
+  margin: 10px 0 0;
+  font-size: clamp(38px, 7vw, 72px);
+  line-height: 1.02;
+  color: #102d60;
+  letter-spacing: -1.4px;
 }
 
-.desc {
-  color: var(--muted);
-  max-width: 640px;
-  line-height: 1.65;
+h2 {
+  margin: 14px 0 0;
+  font-size: clamp(22px, 3.6vw, 38px);
+  line-height: 1.16;
+  color: #173b78;
+  font-weight: 600;
 }
 
-.actions {
-  margin-top: 18px;
+.hero-desc {
+  margin: 18px 0 0;
+  color: #4f627f;
+  line-height: 1.72;
+  font-size: 15px;
+  max-width: 560px;
+}
+
+.hero-actions {
+  margin-top: 26px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.actions .btn.disabled {
+.hero-actions .btn {
+  border-color: rgba(28, 63, 117, 0.18);
+  color: #1c3f75;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.hero-actions .btn.primary {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(90deg, #183e79, #24559f);
+}
+
+.hero-actions .btn.disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.hero-grid {
-  display: grid;
-  gap: 12px;
+.hero-visual {
+  position: relative;
+  min-height: 420px;
 }
 
-.metric {
-  padding: 14px;
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.4px solid rgba(255, 255, 255, 0.75);
+  pointer-events: none;
+  animation: drift 12s ease-in-out infinite;
 }
 
-.metric .label {
-  font-size: 12px;
-  color: var(--muted);
+.orb-1 {
+  width: 410px;
+  height: 240px;
+  top: 8px;
+  right: -34px;
+  transform: rotate(18deg);
 }
 
-.metric .value {
-  margin-top: 6px;
+.orb-2 {
+  width: 360px;
+  height: 210px;
+  top: 124px;
+  right: -18px;
+  transform: rotate(-8deg);
+  animation-delay: 1.1s;
+}
+
+.orb-3 {
+  width: 280px;
+  height: 180px;
+  top: 246px;
+  right: 8px;
+  transform: rotate(10deg);
+  border-style: dashed;
+  animation-delay: 2.2s;
+}
+
+.star {
+  position: absolute;
+  color: rgba(165, 106, 210, 0.62);
   font-size: 20px;
-  font-weight: 700;
+  animation: twinkle 4.8s ease-in-out infinite;
 }
 
-.card {
-  padding: 18px;
+.star-1 {
+  top: 64px;
+  right: 286px;
 }
 
-.card h3 {
-  margin: 0 0 8px;
+.star-2 {
+  top: 188px;
+  right: 62px;
+  animation-delay: 1.6s;
 }
 
-.card p,
-.faq p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.65;
+.star-3 {
+  top: 312px;
+  right: 238px;
+  animation-delay: 2.7s;
 }
 
-.faq-item {
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(98, 126, 172, 0.2);
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(10deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(13deg);
+  }
 }
 
-.faq-item:last-child {
-  border-bottom: 0;
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.04);
+  }
 }
 
-@media (max-width: 900px) {
-  .hero {
-    grid-template-columns: 1fr;
-    padding: 18px;
+@media (max-width: 1023px) {
+  .hero-shell {
+    padding: 20px 22px 24px;
   }
 
-  .features {
-    grid-template-columns: 1fr !important;
+  .hero-content {
+    grid-template-columns: 1fr 0.9fr;
+    gap: 14px;
+    margin-top: 20px;
+  }
+
+  .hero-visual {
+    min-height: 360px;
+  }
+
+  .orb-1 {
+    width: 310px;
+    height: 190px;
+    right: -18px;
+  }
+
+  .orb-2 {
+    width: 278px;
+    height: 170px;
+    top: 112px;
+    right: -8px;
+  }
+
+  .orb-3 {
+    width: 224px;
+    height: 142px;
+    top: 218px;
+    right: 10px;
+  }
+}
+
+@media (max-width: 767px) {
+  .portal {
+    min-height: auto;
+  }
+
+  .hero-shell {
+    padding: 16px 16px 20px;
+  }
+
+  .hero-top {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hero-nav {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .nav-link {
+    flex: 1;
+    min-width: 104px;
+    text-align: center;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .hero-content {
+    grid-template-columns: 1fr;
+    margin-top: 16px;
+  }
+
+  .hero-desc {
+    font-size: 14px;
+  }
+
+  .hero-actions .btn {
+    flex: 1;
+    min-width: 132px;
+    text-align: center;
+  }
+
+  .hero-visual {
+    min-height: 220px;
+  }
+
+  .orb-1 {
+    width: 220px;
+    height: 140px;
+    top: 14px;
+    right: 8px;
+  }
+
+  .orb-2 {
+    width: 188px;
+    height: 118px;
+    top: 88px;
+    right: 18px;
+  }
+
+  .orb-3 {
+    width: 156px;
+    height: 94px;
+    top: 144px;
+    right: 24px;
+  }
+
+  .star-1 {
+    top: 26px;
+    right: 152px;
+  }
+
+  .star-2 {
+    top: 118px;
+    right: 46px;
+  }
+
+  .star-3 {
+    top: 170px;
+    right: 122px;
   }
 }
 </style>
