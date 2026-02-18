@@ -588,7 +588,7 @@ onBeforeUnmount(() => {
   --inv-lh-sub: 1.2;
   --inv-cell-py: calc(9px * var(--legacy-density-space-scale));
   --inv-cell-px: calc(10px * var(--legacy-density-space-scale));
-  --inv-col-gap: calc(12px * var(--legacy-density-space-scale));
+  --inv-col-gap: calc(16px * var(--legacy-density-space-scale));
 }
 
 .table-legacy {
@@ -635,6 +635,11 @@ onBeforeUnmount(() => {
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   line-height: var(--inv-lh-main);
   border-bottom: 1px solid var(--legacy-border);
+}
+
+.table-legacy th + th,
+.table-legacy td + td {
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .name-code-cell {
