@@ -1,10 +1,13 @@
 <template>
   <AppShell title="投资" subtitle="持仓、交易与实时价格">
-    <section class="panel" style="padding: 16px; margin-bottom: 16px">
-      <h3>快捷交易</h3>
+    <section class="panel section">
+      <div class="section-head">
+        <h3 class="section-title">快捷交易</h3>
+        <span class="text-muted">所有操作提交后会自动刷新持仓</span>
+      </div>
       <div class="actions-grid">
         <form class="action panel" @submit.prevent="addAsset">
-          <h4>新增持仓</h4>
+          <h4 class="form-title">新增持仓</h4>
           <input class="input" v-model.trim="addForm.code" placeholder="代码，如 sh600000 / hk00700 / AAPL" />
           <input class="input" v-model.trim="addForm.name" placeholder="名称" />
           <input class="input" v-model.number="addForm.qty" type="number" step="0.0001" placeholder="数量" />
@@ -29,12 +32,12 @@
           <button class="btn primary" type="submit">卖出</button>
         </form>
       </div>
-      <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
+      <p v-if="message" class="feedback" :class="ok ? 'value-up' : 'value-down'">{{ message }}</p>
     </section>
 
-    <section class="panel" style="padding: 16px">
+    <section class="panel section">
       <div class="table-head">
-        <h3>全部持仓</h3>
+        <h3 class="section-title">全部持仓</h3>
         <button class="btn" @click="refresh">刷新行情</button>
       </div>
       <table class="table">
@@ -56,8 +59,8 @@
             <td>{{ row.market }}</td>
             <td>{{ row.qty }}</td>
             <td>{{ money(row.currentPrice, row.curr || 'CNY') }} / {{ money(row.costPrice, row.curr || 'CNY') }}</td>
-            <td :class="row.dayPnl >= 0 ? 'up' : 'down'">{{ money(row.dayPnl, row.curr || 'CNY') }} ({{ pct(row.dayPnlRate) }})</td>
-            <td :class="row.totalPnl >= 0 ? 'up' : 'down'">{{ money(row.totalPnl, row.curr || 'CNY') }} ({{ pct(row.totalPnlRate) }})</td>
+            <td :class="row.dayPnl >= 0 ? 'value-up' : 'value-down'">{{ money(row.dayPnl, row.curr || 'CNY') }} ({{ pct(row.dayPnlRate) }})</td>
+            <td :class="row.totalPnl >= 0 ? 'value-up' : 'value-down'">{{ money(row.totalPnl, row.curr || 'CNY') }} ({{ pct(row.totalPnlRate) }})</td>
           </tr>
         </tbody>
       </table>
@@ -126,40 +129,59 @@ onMounted(refresh)
 </script>
 
 <style scoped>
+.section {
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
 .actions-grid {
   margin-top: 10px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .action {
-  padding: 12px;
+  padding: 14px;
   display: grid;
-  gap: 8px;
+  gap: 9px;
+  border-radius: 14px;
+  border-color: rgba(84, 117, 170, 0.28);
 }
 
-.action h4 {
-  margin: 0 0 4px;
+.form-title {
+  margin: 0 0 2px;
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.feedback {
+  margin: 12px 0 0;
+  border-radius: 10px;
+  border: 1px solid rgba(85, 117, 170, 0.32);
+  background: rgba(11, 20, 37, 0.5);
+  padding: 8px 12px;
+  width: fit-content;
 }
 
 .table-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 8px;
 }
 
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
+.table td a {
+  color: #a9cbff;
+  font-weight: 600;
 }
 
 @media (max-width: 1100px) {
   .actions-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .section {
+    padding: 14px;
   }
 }
 </style>

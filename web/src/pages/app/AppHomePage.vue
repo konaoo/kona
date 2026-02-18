@@ -1,27 +1,27 @@
 <template>
   <AppShell title="首页" subtitle="总览与市场状态">
-    <div class="grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 16px">
-      <section class="panel metric">
+    <div class="kpi-grid metrics">
+      <section class="panel metric metric-primary">
         <div class="label">总市值</div>
         <div class="value">{{ money(summary.totalValue) }}</div>
       </section>
       <section class="panel metric">
         <div class="label">累计盈亏</div>
-        <div class="value" :class="summary.totalPnl >= 0 ? 'up' : 'down'">{{ money(summary.totalPnl) }}</div>
+        <div class="value" :class="summary.totalPnl >= 0 ? 'value-up' : 'value-down'">{{ money(summary.totalPnl) }}</div>
       </section>
       <section class="panel metric">
         <div class="label">当日盈亏</div>
-        <div class="value" :class="summary.todayPnl >= 0 ? 'up' : 'down'">{{ money(summary.todayPnl) }}</div>
+        <div class="value" :class="summary.todayPnl >= 0 ? 'value-up' : 'value-down'">{{ money(summary.todayPnl) }}</div>
       </section>
       <section class="panel metric">
         <div class="label">累计收益率</div>
-        <div class="value" :class="summary.totalRate >= 0 ? 'up' : 'down'">{{ pct(summary.totalRate) }}</div>
+        <div class="value" :class="summary.totalRate >= 0 ? 'value-up' : 'value-down'">{{ pct(summary.totalRate) }}</div>
       </section>
     </div>
 
-    <section class="panel" style="padding: 16px; margin-bottom: 16px">
+    <section class="panel section">
       <div class="section-head">
-        <h3>市场状态</h3>
+        <h3 class="section-title">市场状态</h3>
         <button class="btn" @click="refresh">刷新</button>
       </div>
       <div class="chips">
@@ -31,8 +31,8 @@
       </div>
     </section>
 
-    <section class="panel" style="padding: 16px">
-      <h3>持仓预览</h3>
+    <section class="panel section">
+      <h3 class="section-title">持仓预览</h3>
       <table class="table">
         <thead>
           <tr>
@@ -50,8 +50,8 @@
             <td>{{ row.name }}</td>
             <td>{{ row.market }}</td>
             <td>{{ money(row.currentPrice, row.curr || 'CNY') }}</td>
-            <td :class="row.dayPnl >= 0 ? 'up' : 'down'">{{ money(row.dayPnl, row.curr || 'CNY') }}</td>
-            <td :class="row.totalPnl >= 0 ? 'up' : 'down'">{{ money(row.totalPnl, row.curr || 'CNY') }}</td>
+            <td :class="row.dayPnl >= 0 ? 'value-up' : 'value-down'">{{ money(row.dayPnl, row.curr || 'CNY') }}</td>
+            <td :class="row.totalPnl >= 0 ? 'value-up' : 'value-down'">{{ money(row.totalPnl, row.curr || 'CNY') }}</td>
           </tr>
         </tbody>
       </table>
@@ -87,61 +87,71 @@ onMounted(refresh)
 </script>
 
 <style scoped>
+.metrics {
+  margin-bottom: 14px;
+}
+
 .metric {
-  padding: 16px;
+  padding: 18px;
+}
+
+.metric-primary {
+  background:
+    radial-gradient(220px 120px at 12% -16%, rgba(131, 174, 255, 0.24), rgba(131, 174, 255, 0)),
+    linear-gradient(150deg, #14233d, #112035);
 }
 
 .label {
   color: var(--muted);
   font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .value {
-  margin-top: 6px;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
+  margin-top: 8px;
+  font-size: clamp(24px, 2.8vw, 30px);
+  font-weight: 780;
+  line-height: 1.1;
 }
 
 .section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section {
+  padding: 16px;
+  margin-bottom: 14px;
 }
 
 .chips {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .chip {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 7px 12px;
   font-size: 12px;
+  letter-spacing: 0.02em;
+  background: rgba(10, 20, 37, 0.62);
 }
 
 .chip.open {
-  border-color: #226f5b;
-  color: #70f0c6;
+  border-color: #2a7d67;
+  color: #80f5cf;
 }
 
 .chip.closed {
-  border-color: #5e3440;
-  color: #ff9fb0;
+  border-color: #6d3f49;
+  color: #ffacba;
 }
 
 @media (max-width: 900px) {
-  .grid {
-    grid-template-columns: 1fr !important;
+  .section {
+    padding: 14px;
   }
 }
 </style>
