@@ -147,8 +147,12 @@ h2 {
 }
 
 .hero-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 148px;
   height: 52px;
+  padding: 0 24px;
   border-radius: 999px;
   border: 1px solid rgba(22, 57, 109, 0.2);
   color: #1d3f76;
@@ -157,6 +161,7 @@ h2 {
   font-family: 'Avenir Next', 'PingFang SC', sans-serif;
   font-size: 17px;
   font-weight: 600;
+  line-height: 1;
   letter-spacing: 0.2px;
   transition:
     transform 180ms ease,
@@ -178,7 +183,7 @@ h2 {
     linear-gradient(93deg, #113267 0%, #1a4e96 52%, #1d5cac 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 12px 28px rgba(16, 47, 99, 0.24);
+    0 8px 16px rgba(16, 47, 99, 0.14);
 }
 
 .hero-actions .btn.primary:hover {
@@ -197,7 +202,10 @@ h2 {
 }
 
 .hero-actions .btn.disabled {
-  opacity: 0.5;
+  opacity: 1;
+  color: #8d9ebc;
+  border-color: rgba(141, 158, 188, 0.28);
+  background: rgba(255, 255, 255, 0.52);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
