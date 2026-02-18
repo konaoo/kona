@@ -713,26 +713,26 @@ onBeforeUnmount(() => {
   line-height: var(--inv-lh-sub);
 }
 
-.th-day-pnl,
-.th-total-pnl,
-.th-holding,
-.th-qty,
-.th-action {
+.table-legacy th.th-day-pnl,
+.table-legacy th.th-total-pnl,
+.table-legacy th.th-holding,
+.table-legacy th.th-qty,
+.table-legacy th.th-action {
   text-align: right;
 }
 
-.th-name,
-.th-price,
-.td-name,
-.td-price {
+.table-legacy th.th-name,
+.table-legacy th.th-price,
+.table-legacy td.td-name,
+.table-legacy td.td-price {
   text-align: left;
 }
 
-.td-day-pnl,
-.td-total-pnl,
-.td-holding,
-.td-qty,
-.td-action {
+.table-legacy td.td-day-pnl,
+.table-legacy td.td-total-pnl,
+.table-legacy td.td-holding,
+.table-legacy td.td-qty,
+.table-legacy td.td-action {
   text-align: right;
 }
 
