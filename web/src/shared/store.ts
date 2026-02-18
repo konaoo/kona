@@ -84,8 +84,8 @@ const rows = computed(() => {
     const value = currentPrice * qty
     const cost = costPrice * qty
     const totalPnl = value - cost + adjustment
-    const dayPnl = open && yclose > 0 ? (currentPrice - yclose) * qty : 0
-    const dayPnlRate = open && yclose > 0 ? ((currentPrice - yclose) / yclose) * 100 : 0
+    const dayPnl = yclose > 0 ? (currentPrice - yclose) * qty : 0
+    const dayPnlRate = yclose > 0 ? ((currentPrice - yclose) / yclose) * 100 : 0
     const totalPnlRate = cost > 0 ? (totalPnl / cost) * 100 : 0
 
     return {
