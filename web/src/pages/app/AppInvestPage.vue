@@ -86,19 +86,25 @@
                 <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
               </td>
               <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty) }}</td>
-              <td class="price-cell td-price">
-                <span class="price-line cost">成本 {{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
-                <span class="price-line current">现价 {{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
+              <td class="td-price">
+                <div class="price-cell">
+                  <span class="price-line cost">成本 {{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
+                  <span class="price-line current">现价 {{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
+                </div>
               </td>
               <td class="holding-cell td-holding">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
-              <td class="pnl-cell td-day-pnl" :class="valueClass(toNumber(row.dayPnl))">
-                <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnl, rowCurrency(row)) }}</span>
-                <span class="pnl-rate">{{ formatPctOrDash(row.dayPnlRate) }}</span>
-                <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
+              <td class="td-day-pnl">
+                <div class="pnl-cell" :class="valueClass(toNumber(row.dayPnl))">
+                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnl, rowCurrency(row)) }}</span>
+                  <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRate) }}</span>
+                  <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
+                </div>
               </td>
-              <td class="pnl-cell td-total-pnl" :class="valueClass(toNumber(row.totalPnl))">
-                <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.totalPnl, rowCurrency(row)) }}</span>
-                <span class="pnl-rate">{{ formatPctOrDash(row.totalPnlRate) }}</span>
+              <td class="td-total-pnl">
+                <div class="pnl-cell" :class="valueClass(toNumber(row.totalPnl))">
+                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.totalPnl, rowCurrency(row)) }}</span>
+                  <span class="table-pnl-rate">{{ formatPctOrDash(row.totalPnlRate) }}</span>
+                </div>
               </td>
               <td class="actions td-action">
                 <div class="action-menu" @click.stop>
@@ -668,9 +674,10 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.pnl-amount,
-.pnl-rate {
+.table-pnl-amount,
+.table-pnl-rate {
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .th-day-pnl,
@@ -682,16 +689,20 @@ onBeforeUnmount(() => {
 
 .td-day-pnl,
 .td-total-pnl {
-  justify-content: flex-start;
-  align-items: flex-end;
   text-align: right;
-  min-height: calc(54px * var(--legacy-density-space-scale));
 }
 
 .td-total-pnl,
 .th-total-pnl {
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   padding-left: calc(14px * var(--legacy-density-space-scale));
+}
+
+.td-day-pnl .pnl-cell,
+.td-total-pnl .pnl-cell {
+  align-items: flex-end;
+  justify-content: flex-start;
+  min-height: calc(54px * var(--legacy-density-space-scale));
 }
 
 .td-day-pnl {
