@@ -1,37 +1,11 @@
 <template>
-  <div class="portal page-wrap">
+  <div class="portal">
     <section class="hero-shell" aria-label="咔咔记账首页主视觉">
-      <header class="hero-top">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span class="brand-name">{{ portalTitle }}</span>
-        </div>
-        <nav class="hero-nav" aria-label="首页导航">
-          <RouterLink class="nav-link" to="/app/login">网页端登录</RouterLink>
-          <a
-            class="nav-link"
-            :class="{ disabled: !apkUrl }"
-            :href="apkUrl || undefined"
-            :target="apkUrl ? '_blank' : undefined"
-            :rel="apkUrl ? 'noreferrer' : undefined"
-            :aria-disabled="!apkUrl"
-            :tabindex="apkUrl ? 0 : -1"
-            @click="onApkClick"
-            @keydown.enter="onApkClick"
-            @keydown.space.prevent="onApkClick"
-          >{{ apkUrl ? '下载 APK' : 'APK 暂未提供' }}</a>
-          <RouterLink class="nav-link" to="/admin/login">管理后台</RouterLink>
-        </nav>
-      </header>
-
       <div class="hero-content">
         <div class="hero-copy">
           <p class="hero-kicker">GLOBAL ASSET DESK</p>
           <h1>咔咔记账</h1>
           <h2>一站式管理全球市场资产</h2>
-          <p class="hero-desc">
-            覆盖全球主流市场资产，聚焦实时可读性与操作效率，帮助你在一个工作台内完成记录、跟踪与决策。
-          </p>
           <div class="hero-actions">
             <RouterLink class="btn primary" to="/app/login">进入网页端</RouterLink>
             <a
@@ -67,13 +41,11 @@ import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../../shared/http'
 
-const portalTitle = ref('咔咔记账')
 const apkUrl = ref('')
 
 onMounted(async () => {
   try {
     const payload = await api.get<{ portal_title?: string; apk_download_url?: string }>('/api/web/config', false)
-    if (payload.portal_title) portalTitle.value = payload.portal_title
     if (payload.apk_download_url) apkUrl.value = payload.apk_download_url
   } catch {
     // keep fallback config
@@ -89,86 +61,21 @@ function onApkClick(event: Event) {
 
 <style scoped>
 .portal {
-  min-height: calc(100vh - 48px);
-  display: grid;
-  align-items: center;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  min-height: 100vh;
+  width: 100%;
 }
 
 .hero-shell {
   position: relative;
   overflow: hidden;
-  padding: 26px 30px 30px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  min-height: 100vh;
+  padding: 52px clamp(20px, 5vw, 64px) 42px;
+  border-radius: 0;
+  border: 0;
   background:
     radial-gradient(800px 380px at 95% 20%, rgba(184, 143, 255, 0.35), rgba(184, 143, 255, 0)),
     radial-gradient(640px 280px at 8% 92%, rgba(255, 176, 130, 0.28), rgba(255, 176, 130, 0)),
     linear-gradient(112deg, #f8f6fb 0%, #f6f4ff 45%, #f5eeff 100%);
-  box-shadow:
-    0 40px 90px rgba(9, 20, 39, 0.38),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-}
-
-.hero-top {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid #a1aec4;
-  background:
-    radial-gradient(circle at 45% 50%, #11356f 0 3px, transparent 4px),
-    radial-gradient(circle at 50% 50%, rgba(17, 53, 111, 0.36) 0 10px, transparent 11px);
-}
-
-.brand-name {
-  color: #0f2f63;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-
-.hero-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.nav-link {
-  border: 1px solid rgba(28, 63, 117, 0.14);
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.58);
-  color: #1c3f75;
-  font-size: 13px;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
-}
-
-.nav-link:hover {
-  transform: translateY(-1px);
-  border-color: rgba(28, 63, 117, 0.3);
-  box-shadow: 0 8px 20px rgba(36, 69, 127, 0.12);
-}
-
-.nav-link.disabled {
-  opacity: 0.58;
-  cursor: not-allowed;
-  box-shadow: none;
 }
 
 .hero-content {
@@ -177,7 +84,7 @@ function onApkClick(event: Event) {
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
   gap: 22px;
-  margin-top: 28px;
+  margin-top: 8px;
 }
 
 .hero-copy {
@@ -208,16 +115,8 @@ h2 {
   font-weight: 600;
 }
 
-.hero-desc {
-  margin: 18px 0 0;
-  color: #4f627f;
-  line-height: 1.72;
-  font-size: 15px;
-  max-width: 560px;
-}
-
 .hero-actions {
-  margin-top: 26px;
+  margin-top: 34px;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
@@ -328,13 +227,14 @@ h2 {
 
 @media (max-width: 1023px) {
   .hero-shell {
-    padding: 20px 22px 24px;
+    min-height: 100vh;
+    padding: 34px 20px 24px;
   }
 
   .hero-content {
     grid-template-columns: 1fr 0.9fr;
     gap: 14px;
-    margin-top: 20px;
+    margin-top: 6px;
   }
 
   .hero-visual {
@@ -364,38 +264,17 @@ h2 {
 
 @media (max-width: 767px) {
   .portal {
-    min-height: auto;
+    min-height: 100vh;
   }
 
   .hero-shell {
-    padding: 16px 16px 20px;
-  }
-
-  .hero-top {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .hero-nav {
-    width: 100%;
-    gap: 8px;
-  }
-
-  .nav-link {
-    flex: 1;
-    min-width: 104px;
-    text-align: center;
-    padding: 8px 10px;
-    font-size: 12px;
+    min-height: 100vh;
+    padding: 22px 16px 20px;
   }
 
   .hero-content {
     grid-template-columns: 1fr;
-    margin-top: 16px;
-  }
-
-  .hero-desc {
-    font-size: 14px;
+    margin-top: 0;
   }
 
   .hero-actions .btn {
