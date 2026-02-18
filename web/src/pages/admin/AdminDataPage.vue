@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="数据管理" subtitle="快照清理与备份操作">
+  <LegacyAdminShell title="数据管理" subtitle="快照清理与备份操作">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
         <button class="btn" @click="load">刷新快照</button>
@@ -28,12 +28,12 @@
       <h3>预览结果</h3>
       <pre>{{ preview }}</pre>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
 const snapshots = reactive<Record<string, any>>({ items: [] })

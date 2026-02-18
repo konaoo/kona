@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="配置管理" subtitle="读取与更新系统配置">
+  <LegacyAdminShell title="配置管理" subtitle="读取与更新系统配置">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="head">
         <h3>配置列表</h3>
@@ -27,12 +27,12 @@
       </div>
       <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
 const config = reactive<Record<string, any>>({ data: {} })

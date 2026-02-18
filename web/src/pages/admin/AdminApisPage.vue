@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="接口策略" subtitle="健康检查与策略开关">
+  <LegacyAdminShell title="接口策略" subtitle="健康检查与策略开关">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
         <button class="btn" @click="load">刷新</button>
@@ -27,12 +27,12 @@
         </tbody>
       </table>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
 const health = reactive<Record<string, any>>({})

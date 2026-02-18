@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="邀请码管理" subtitle="生成、查询、撤销">
+  <LegacyAdminShell title="邀请码管理" subtitle="生成、查询、撤销">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
         <input class="input" v-model.number="count" type="number" min="1" max="50" placeholder="生成数量" />
@@ -22,12 +22,12 @@
         </tbody>
       </table>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
 const invites = reactive<Record<string, any>>({ items: [] })

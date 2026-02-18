@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="后台概览" subtitle="运营与审计摘要">
+  <LegacyAdminShell title="后台概览" subtitle="运营与审计摘要">
     <section class="grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 16px;">
       <article class="panel card">
         <div class="label">用户总数</div>
@@ -48,12 +48,12 @@
         </tbody>
       </table>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 import { shortDateTime } from '../../shared/format'
 

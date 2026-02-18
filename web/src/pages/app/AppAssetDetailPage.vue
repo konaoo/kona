@@ -1,11 +1,11 @@
 <template>
-  <AppShell :title="`资产详情 · ${code}`" subtitle="交易流水与持仓状态">
-    <section class="panel" style="padding:16px; margin-bottom:16px;">
+  <LegacyAppShell>
+    <section class="legacy-section">
       <div class="head">
-        <h3>当前持仓</h3>
-        <button class="btn" @click="load">刷新</button>
+        <h2>资产详情 · {{ code }}</h2>
+        <button class="legacy-btn-primary" @click="load">刷新</button>
       </div>
-      <table class="table">
+      <table class="table-legacy">
         <thead><tr><th>代码</th><th>名称</th><th>数量</th><th>现价</th><th>累计盈亏</th></tr></thead>
         <tbody>
           <tr v-if="row">
@@ -22,9 +22,9 @@
       </table>
     </section>
 
-    <section class="panel" style="padding:16px;">
-      <h3>相关交易</h3>
-      <table class="table">
+    <section class="legacy-section">
+      <h2>相关交易</h2>
+      <table class="table-legacy">
         <thead><tr><th>日期</th><th>类型</th><th>数量</th><th>价格</th><th>盈亏</th></tr></thead>
         <tbody>
           <tr v-for="item in txList" :key="item.id || `${item.date}-${item.type}-${item.qty}`">
@@ -38,13 +38,13 @@
         </tbody>
       </table>
     </section>
-  </AppShell>
+  </LegacyAppShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import AppShell from '../../layouts/AppShell.vue'
+import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { money } from '../../shared/format'
 import { useKonaStore } from '../../shared/store'
@@ -70,8 +70,26 @@ onMounted(load)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 10px;
 }
 
 .up { color: var(--success); }
 .down { color: var(--danger); }
+
+h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.table-legacy {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-legacy th,
+.table-legacy td {
+  padding: 12px;
+  border-bottom: 1px solid var(--legacy-border);
+  text-align: left;
+}
 </style>

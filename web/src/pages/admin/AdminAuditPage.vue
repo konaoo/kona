@@ -1,5 +1,5 @@
 <template>
-  <AdminShell title="操作审计" subtitle="后台操作日志与追溯">
+  <LegacyAdminShell title="操作审计" subtitle="后台操作日志与追溯">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
         <input class="input" v-model.trim="action" placeholder="按 action 过滤" />
@@ -31,12 +31,12 @@
         </tbody>
       </table>
     </section>
-  </AdminShell>
+  </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import AdminShell from '../../layouts/AdminShell.vue'
+import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 import { shortDateTime } from '../../shared/format'
 
