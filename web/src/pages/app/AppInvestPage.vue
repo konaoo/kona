@@ -545,7 +545,9 @@ onBeforeUnmount(() => {
 }
 
 .table-header h2 {
-  font-size: calc(20px * var(--legacy-density-font-scale));
+  font-size: calc(18px * var(--legacy-density-font-scale));
+  font-weight: 700;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -577,6 +579,15 @@ onBeforeUnmount(() => {
 
 .table-container {
   overflow-x: auto;
+  --inv-fs-head: calc(12px * var(--legacy-density-font-scale));
+  --inv-fs-name: calc(16px * var(--legacy-density-font-scale));
+  --inv-fs-main: calc(16px * var(--legacy-density-font-scale));
+  --inv-fs-sub: calc(13px * var(--legacy-density-font-scale));
+  --inv-fs-hint: calc(11px * var(--legacy-density-font-scale));
+  --inv-lh-main: 1.25;
+  --inv-lh-sub: 1.2;
+  --inv-cell-py: calc(9px * var(--legacy-density-space-scale));
+  --inv-cell-px: calc(10px * var(--legacy-density-space-scale));
 }
 
 .table-legacy {
@@ -606,9 +617,11 @@ onBeforeUnmount(() => {
 
 .table-legacy th {
   vertical-align: middle;
-  font-size: calc(12px * var(--legacy-density-font-scale));
+  font-size: var(--inv-fs-head);
+  font-weight: 600;
+  line-height: var(--inv-lh-sub);
   color: var(--legacy-text-secondary);
-  padding: calc(8px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
+  padding: var(--inv-cell-py) var(--inv-cell-px);
   text-align: left;
   border-bottom: 1px solid var(--legacy-border);
   background: var(--legacy-bg-tertiary);
@@ -616,7 +629,8 @@ onBeforeUnmount(() => {
 
 .table-legacy td {
   vertical-align: top;
-  padding: calc(8px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
+  padding: var(--inv-cell-py) var(--inv-cell-px);
+  line-height: var(--inv-lh-main);
   border-bottom: 1px solid var(--legacy-border);
 }
 
@@ -627,8 +641,9 @@ onBeforeUnmount(() => {
 
 .name-primary {
   color: var(--legacy-text-primary);
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: var(--inv-fs-name);
+  font-weight: 700;
+  line-height: var(--inv-lh-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -637,11 +652,14 @@ onBeforeUnmount(() => {
 .name-secondary {
   margin-top: calc(3px * var(--legacy-density-space-scale));
   color: var(--legacy-text-secondary);
-  font-size: calc(11px * var(--legacy-density-font-scale));
+  font-size: var(--inv-fs-sub);
+  font-weight: 500;
+  line-height: var(--inv-lh-sub);
 }
 
 .qty-cell {
-  font-weight: 600;
+  font-size: var(--inv-fs-main);
+  font-weight: 700;
   text-align: right;
   white-space: nowrap;
 }
@@ -651,11 +669,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  line-height: 1.2;
+  line-height: var(--inv-lh-sub);
 }
 
 .price-line {
-  font-size: calc(12px * var(--legacy-density-font-scale));
+  font-size: var(--inv-fs-sub);
+  font-weight: 500;
+  line-height: var(--inv-lh-sub);
   white-space: nowrap;
 }
 
@@ -669,7 +689,8 @@ onBeforeUnmount(() => {
 }
 
 .holding-cell {
-  font-weight: 600;
+  font-size: var(--inv-fs-main);
+  font-weight: 700;
   white-space: nowrap;
   text-align: right;
 }
@@ -677,7 +698,18 @@ onBeforeUnmount(() => {
 .table-pnl-amount,
 .table-pnl-rate {
   white-space: nowrap;
-  line-height: 1.2;
+}
+
+.table-pnl-amount {
+  font-size: var(--inv-fs-main);
+  font-weight: 700;
+  line-height: var(--inv-lh-main);
+}
+
+.table-pnl-rate {
+  font-size: var(--inv-fs-sub);
+  font-weight: 500;
+  line-height: var(--inv-lh-sub);
 }
 
 .th-day-pnl,
@@ -687,8 +719,18 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
+.th-name,
+.th-price,
+.td-name,
+.td-price {
+  text-align: left;
+}
+
 .td-day-pnl,
-.td-total-pnl {
+.td-total-pnl,
+.td-holding,
+.td-qty,
+.td-action {
   text-align: right;
 }
 
@@ -711,8 +753,9 @@ onBeforeUnmount(() => {
 
 .pnl-hint {
   color: rgba(148, 163, 184, 0.85);
-  font-size: calc(11px * var(--legacy-density-font-scale));
-  line-height: 1.1;
+  font-size: var(--inv-fs-hint);
+  font-weight: 500;
+  line-height: var(--inv-lh-sub);
 }
 
 .actions {
@@ -732,7 +775,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(15, 23, 42, 0.8);
   color: var(--legacy-text-primary);
-  font-size: calc(11px * var(--legacy-density-font-scale));
+  font-size: var(--inv-fs-sub);
   font-weight: 600;
   cursor: pointer;
 }
@@ -763,7 +806,8 @@ onBeforeUnmount(() => {
   color: var(--legacy-text-primary);
   border-radius: 8px;
   padding: calc(5px * var(--legacy-density-space-scale)) calc(7px * var(--legacy-density-space-scale));
-  font-size: calc(11px * var(--legacy-density-font-scale));
+  font-size: var(--inv-fs-sub);
+  line-height: var(--inv-lh-sub);
   text-align: left;
   cursor: pointer;
 }
