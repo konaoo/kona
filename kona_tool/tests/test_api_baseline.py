@@ -44,65 +44,104 @@ class ApiBaselineTests(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data.get('status'), 'ok')
 
-    def test_flutter_web_entry_served_from_app_route(self):
+    def test_web_config_endpoint(self):
+        resp = self.client.get('/api/web/config')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertIn('portal_title', data)
+        self.assertIn('apk_download_url', data)
+
+    def test_web_portal_entry_served_from_root_route(self):
         with tempfile.TemporaryDirectory() as tmp:
-            app_dir = Path(tmp)
-            (app_dir / "index.html").write_text(
-                "<!doctype html><html><body>flutter-web</body></html>",
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
+                "<!doctype html><html><body>kona-web-portal</body></html>",
                 encoding="utf-8",
             )
-            (app_dir / "main.dart.js").write_text("console.log('ok');", encoding="utf-8")
-            old_dir = app_module.WEB_APP_DIR
-            app_module.WEB_APP_DIR = app_dir
+            old_dir = app_module.WEB_DIST_DIR
+            app_module.WEB_DIST_DIR = web_dir
             try:
-                resp = self.client.get('/app/')
+                resp = self.client.get('/')
                 self.assertEqual(resp.status_code, 200)
-                self.assertIn("flutter-web", resp.get_data(as_text=True))
+                self.assertIn("kona-web-portal", resp.get_data(as_text=True))
                 resp.close()
-
-                js_resp = self.client.get('/app/main.dart.js')
-                self.assertEqual(js_resp.status_code, 200)
-                self.assertIn("ok", js_resp.get_data(as_text=True))
-                js_resp.close()
             finally:
-                app_module.WEB_APP_DIR = old_dir
+                app_module.WEB_DIST_DIR = old_dir
 
-    def test_flutter_web_main_js_is_not_immutable_cached(self):
+    def test_web_spa_entry_served_from_app_and_admin_routes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            app_dir = Path(tmp)
-            (app_dir / "index.html").write_text(
-                "<!doctype html><html><body>flutter-web</body></html>",
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
+                "<!doctype html><html><body>kona-web-spa</body></html>",
                 encoding="utf-8",
             )
-            (app_dir / "main.dart.js").write_text("console.log('ok');", encoding="utf-8")
-            old_dir = app_module.WEB_APP_DIR
-            app_module.WEB_APP_DIR = app_dir
+            old_dir = app_module.WEB_DIST_DIR
+            app_module.WEB_DIST_DIR = web_dir
             try:
-                js_resp = self.client.get('/app/main.dart.js')
-                self.assertEqual(js_resp.status_code, 200)
-                cache_control = js_resp.headers.get("Cache-Control", "")
+                app_resp = self.client.get('/app/login')
+                self.assertEqual(app_resp.status_code, 200)
+                self.assertIn("kona-web-spa", app_resp.get_data(as_text=True))
+                app_resp.close()
+
+                admin_resp = self.client.get('/admin/login')
+                self.assertEqual(admin_resp.status_code, 200)
+                self.assertIn("kona-web-spa", admin_resp.get_data(as_text=True))
+                admin_resp.close()
+            finally:
+                app_module.WEB_DIST_DIR = old_dir
+
+    def test_web_index_is_not_immutable_cached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
+                "<!doctype html><html><body>kona-web</body></html>",
+                encoding="utf-8",
+            )
+            old_dir = app_module.WEB_DIST_DIR
+            app_module.WEB_DIST_DIR = web_dir
+            try:
+                resp = self.client.get('/app/login')
+                self.assertEqual(resp.status_code, 200)
+                cache_control = resp.headers.get("Cache-Control", "")
                 self.assertIn("no-cache", cache_control)
                 self.assertNotIn("immutable", cache_control)
-                js_resp.close()
+                resp.close()
             finally:
-                app_module.WEB_APP_DIR = old_dir
+                app_module.WEB_DIST_DIR = old_dir
 
-    def test_flutter_web_route_fallbacks_to_index(self):
+    def test_web_hashed_asset_uses_long_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
-            app_dir = Path(tmp)
-            (app_dir / "index.html").write_text(
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
                 "<!doctype html><html><body>spa-entry</body></html>",
                 encoding="utf-8",
             )
-            old_dir = app_module.WEB_APP_DIR
-            app_module.WEB_APP_DIR = app_dir
+            assets_dir = web_dir / "assets"
+            assets_dir.mkdir(parents=True, exist_ok=True)
+            (assets_dir / "app.123.js").write_text("console.log('asset');", encoding="utf-8")
+            old_dir = app_module.WEB_DIST_DIR
+            app_module.WEB_DIST_DIR = web_dir
             try:
-                resp = self.client.get('/app/analysis/deep-link')
+                resp = self.client.get('/assets/app.123.js')
                 self.assertEqual(resp.status_code, 200)
-                self.assertIn("spa-entry", resp.get_data(as_text=True))
+                cache_control = resp.headers.get("Cache-Control", "")
+                self.assertIn("immutable", cache_control)
                 resp.close()
             finally:
-                app_module.WEB_APP_DIR = old_dir
+                app_module.WEB_DIST_DIR = old_dir
+
+    def test_legacy_template_routes_redirect_to_new_spa_paths(self):
+        analysis = self.client.get('/analysis', follow_redirects=False)
+        self.assertEqual(analysis.status_code, 302)
+        self.assertTrue((analysis.headers.get('Location') or '').endswith('/app/analysis'))
+
+        news = self.client.get('/news', follow_redirects=False)
+        self.assertEqual(news.status_code, 302)
+        self.assertTrue((news.headers.get('Location') or '').endswith('/app/news'))
+
+        settings = self.client.get('/settings', follow_redirects=False)
+        self.assertEqual(settings.status_code, 302)
+        self.assertTrue((settings.headers.get('Location') or '').endswith('/app/profile'))
 
     def test_price_missing_code(self):
         resp = self.client.get('/api/price')

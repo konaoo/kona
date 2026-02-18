@@ -2,7 +2,7 @@
 
 个人资产与投资管理系统。
 
-- 前端：Flutter（Android / iOS / macOS / Web）
+- 前端：Flutter（Android / iOS / macOS）+ Vue3（Web）
 - 后端：Python Flask
 - 数据库：SQLite（`portfolio.db`）
 - 部署：GitHub Actions + AWS EC2
@@ -29,6 +29,7 @@
 - 仓库根目录：`/Users/kona/Desktop/kaka/kona_repo`
 - 后端目录：`/Users/kona/Desktop/kaka/kona_repo/kona_tool`
 - 前端目录：`/Users/kona/Desktop/kaka/kona_repo/flutter`
+- Web 目录：`/Users/kona/Desktop/kaka/kona_repo/web`
 - 线上后端（AWS）：`systemd + gunicorn` 管理，支持异常自动重启
 - CI/CD：`main` 分支必须通过后端门禁 + 前端门禁后才允许部署
 - 运营后台：已改为全中文、去技术化交互，支持风险确认与操作审计
@@ -57,6 +58,12 @@ kona_repo/
 │  │  ├─ services/               # API 调用层
 │  │  └─ widgets/                # 弹窗、复用组件
 │  └─ android/ios/macos/web/...  # 多端工程
+├─ web/                          # 独立 H5 前端（Vue3 + Vite + TypeScript）
+│  ├─ src/pages/portal/          # 公开主页
+│  ├─ src/pages/app/             # 业务端页面
+│  ├─ src/pages/admin/           # 管理端页面
+│  ├─ src/shared/                # API 封装、鉴权存储、状态逻辑
+│  └─ src/styles/                # 设计 token（Linear 风格）
 ├─ kona_tool/                    # Flask 后端
 │  ├─ app.py                     # API 入口
 │  ├─ config.py                  # 后端配置
@@ -140,7 +147,7 @@ kona_repo/
 - GitHub Actions 拆分为三段：`backend-gate`、`frontend-gate`、`deploy`
 - `push main` 必须先通过两道门禁，部署才会执行
 - `pull_request` 只跑门禁，不部署
-- 前端门禁固定包含：`flutter analyze`、`flutter test`、`flutter build web --release`
+- 前端门禁固定包含：`flutter analyze`、`flutter test`、`web/npm run build`
 - `flutter build apk --debug` 改为按路径触发：
   - 仅当本次提交包含 `flutter/android/**` 变更时执行
   - 或手动触发 `workflow_dispatch` 时执行
@@ -207,62 +214,60 @@ flutter install -d <device_id> --debug
 - 本地调试：`http://127.0.0.1:5003`
 - 线上联调：`http://<EC2公网IP>:5003`
 
-### 4.5 Flutter Web（`/app`）接入规则（2026-02-16）
+### 4.5 Web 前端（Vue3 + Vite）接入规则（2026-02-18）
 
-本项目已支持把 Flutter Web 作为主项目 Web 端运行，挂载路径固定为：`/app`
+当前 Web 已迁移为独立 H5（`Vue3 + Vite + TypeScript`），并采用纯 Linear 风格重设计。
 
-- Web 访问入口：`http://<host>:<port>/app/`
-- 后端托管目录：`/Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app`
-- Flask 路由：
-  - `GET /app`、`GET /app/`
-  - `GET /app/<path>`（静态资源 + SPA fallback 到 `index.html`）
+- 门户入口：`GET /`
+- 业务端入口：`GET /app/*`
+- 管理端入口：`GET /admin/*`
+- 后端托管目录：`/Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web`
+- 兼容重定向（默认开启）：
+  - `/analysis` -> `/app/analysis`
+  - `/news` -> `/app/news`
+  - `/settings` -> `/app/profile`
 
-API 基址策略（避免影响 App）：
+新增公开配置接口：
 
-- Web：同源（`Uri.base.origin + /api/...`）
-- Android/iOS：继续使用 `ApiConfig.baseUrl`
+- `GET /api/web/config`：
+  - `portal_title`
+  - `apk_download_url`
+  - `app_version`
 
 本地构建与验收：
 
 ```bash
-cd /Users/kona/Desktop/kaka/kona_repo/flutter
-flutter build web --release --base-href /app/
+cd /Users/kona/Desktop/kaka/kona_repo/web
+npm ci
+npm run build
 
-mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app
+mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web
 rsync -a --delete \
-  /Users/kona/Desktop/kaka/kona_repo/flutter/build/web/ \
-  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/app/
+  /Users/kona/Desktop/kaka/kona_repo/web/dist/ \
+  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/
 
 cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
 JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
 ```
 
-然后在浏览器访问：
+浏览器验收地址：
 
-- `http://127.0.0.1:5003/app/`（若本机端口被占用，以启动日志端口为准）
+- `http://127.0.0.1:52345/`
+- `http://127.0.0.1:52345/app/login`
+- `http://127.0.0.1:52345/admin/login`
 
-### 4.6 Web 端近期改动（2026-02）
+线上验收地址（当前 AWS）：
 
-为保证 Web 与 App 行为一致，已落地以下修复：
+- `http://57.180.79.186:5003/`
+- `http://57.180.79.186:5003/app/login`
+- `http://57.180.79.186:5003/admin/login`
 
-1. 登录链路一致性：
-   - Web 端登录改为“内存登录态优先 + 本地存储失败不阻断登录成功”。
-   - 在 HTTP 场景下，secure storage 异常时会自动走 fallback 存储，避免 `Null check operator used on a null value`。
-2. 前端资源缓存策略：
-   - `/app/main.dart.js` 已禁用 immutable 强缓存，避免旧 bundle 导致“代码已修但页面仍是旧逻辑”。
-3. 休市口径一致性：
-   - Web 端当日盈亏按 `/api/market/status` 判定，仅开市市场计入当日收益。
-4. 行情显示稳定性：
-   - 批量行情接口增加瞬时网络错误重试。
-   - 后端补齐 5 位港股代码规范化（如 `00700`），避免 Web 端出现现价回退成本价。
+### 4.6 Web 口径说明（迁移后）
 
-说明：
-
-- Web 与 App 共用同一套业务代码（`AppState + ApiService`），核心口径一致。
-- 若出现“App 正常、Web 异常”，优先排查：
-  1. 是否命中旧前端缓存（强刷或清缓存）
-  2. 是否部署到最新 `main`
-  3. `/api/prices/batch` 返回中目标 code 是否有有效 `price`
+- 登录态：沿用后端 `JWT + refresh token`，本地存储持久化。
+- 收益口径：按 `/api/market/status` 判定开休市，仅开市市场计入当日收益。
+- API 协议：`/api/*` 保持不变，Web 仅替换前端实现，不改业务语义。
+- APK 下载：由 `WEB_APK_DOWNLOAD_URL` 配置注入；为空时门户按钮显示“APK 暂未提供”。
 
 ---
 
@@ -390,13 +395,14 @@ python3 app.py
 流程：
 
 1. 先跑 `backend-gate`（Python compile + unittest）
-2. 再跑 `frontend-gate`（flutter analyze + test + web release build）
+2. 再跑 `frontend-gate`（flutter analyze + test + `web` 前端构建）
 3. 仅当门禁全绿时，执行 `deploy` 到 AWS（任一门禁失败则跳过部署）
-4. 打包并上传 Flutter Web 产物（`flutter-web.tar.gz`）
+4. 打包并上传 Web 产物（`web-dist.tar.gz`）
 5. SSH 登录 AWS，`git pull/reset` + `pip install`
-6. 解压 Web 产物到 `kona_tool/static/app`
+6. 解压 Web 产物到 `kona_tool/static/web`
 7. 刷新 `kona.service` 并重启
-8. 健康检查 `/health`
+8. 健康检查 + Web 路由 smoke（`/`、`/app/login`、`/admin/login`）
+9. smoke 失败时自动回滚上一版 Web 静态产物
 
 ### 7.1 Deploy 所需 Secrets（当前工作流补充）
 
@@ -410,8 +416,8 @@ python3 app.py
 
 - 当前 workflow 中 `username` 固定为 `ec2-user`
 - `deploy` 阶段会自动识别：
-  - 若 `APP_DIR/app.py` 存在，则 Web 解压到 `APP_DIR/static/app`
-  - 若 `APP_DIR/kona_tool` 存在，则 Web 解压到 `APP_DIR/kona_tool/static/app`
+  - 若 `APP_DIR/app.py` 存在，则 Web 解压到 `APP_DIR/static/web`
+  - 若 `APP_DIR/kona_tool` 存在，则 Web 解压到 `APP_DIR/kona_tool/static/web`
 
 ### 7.1.1 分支与 AWS 自动拉取约定（很重要）
 

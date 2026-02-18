@@ -41,6 +41,13 @@ portfolio.db
 app.log
 app_output.log
 
+# keep web build config JSON tracked
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
+!web/tsconfig.app.json
+!web/tsconfig.node.json
+
 # Node modules
 node_modules/
 

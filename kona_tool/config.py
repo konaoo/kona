@@ -26,6 +26,14 @@ PORT = int(os.getenv("KONA_PORT", os.getenv("PORT", "52345")))
 DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
+# 新 Web 门户配置（独立 H5）
+WEB_APK_DOWNLOAD_URL = os.getenv(
+    "WEB_APK_DOWNLOAD_URL",
+    "",
+).strip()
+WEB_PORTAL_TITLE = os.getenv("WEB_PORTAL_TITLE", "Kona Portfolio").strip() or "Kona Portfolio"
+WEB_ENABLE_LEGACY_REDIRECT = os.getenv("WEB_ENABLE_LEGACY_REDIRECT", "true").lower() != "false"
+
 # JWT 认证配置（必须显式配置，缺失即启动失败）
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:

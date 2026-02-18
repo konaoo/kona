@@ -10,7 +10,7 @@ import secrets
 import json
 from functools import wraps
 from collections import defaultdict
-from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g
+from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from pathlib import Path
@@ -245,45 +245,28 @@ limiter = Limiter(
 
 # 应用版本号，用于强制刷新缓存
 APP_VERSION = config.APP_VERSION
-WEB_APP_DIR = config.BASE_DIR / "static" / "app"
+WEB_DIST_DIR = config.BASE_DIR / "static" / "web"
 
 
 def _is_long_cache_asset(path: str) -> bool:
     normalized = (path or "").strip().lower()
-    if normalized in {
-        "main.dart.js",
-        "flutter_bootstrap.js",
-        "flutter_service_worker.js",
-        "version.json",
-        "manifest.json",
-    }:
+    if not normalized:
+        return False
+
+    if normalized in {"index.html", "manifest.json"}:
         return False
 
     suffix = Path(normalized).suffix.lower()
-    if suffix in {".js", ".json", ".map", ".html"}:
+    if suffix in {".html", ".json"}:
         return False
-
-    return suffix in {
-        ".css",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".svg",
-        ".webp",
-        ".ico",
-        ".json",
-        ".map",
-        ".woff",
-        ".woff2",
-        ".ttf",
-    }
+    return suffix in {".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico", ".map", ".woff", ".woff2", ".ttf"}
 
 
-def _serve_flutter_web_asset(asset_path: str = ""):
-    web_dir = WEB_APP_DIR
+def _serve_web_asset(asset_path: str = ""):
+    web_dir = WEB_DIST_DIR
     index_file = web_dir / "index.html"
     if not index_file.exists():
-        return jsonify({"error": "Flutter web bundle not found"}), 404
+        return jsonify({"error": "Web bundle not found"}), 404
 
     normalized_path = (asset_path or "").strip().lstrip("/")
     target_file = web_dir / normalized_path if normalized_path else index_file
@@ -586,31 +569,37 @@ def open_browser():
 
 @app.route('/')
 def index():
-    """主页 - 我的投资"""
-    response = make_response(render_template('investment.html', version=APP_VERSION))
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    response.headers['X-App-Version'] = APP_VERSION
-    return response
+    """新 Web 门户入口。"""
+    return _serve_web_asset()
 
 
 @app.route('/app')
 @app.route('/app/')
-def flutter_web_index():
-    """Flutter Web 入口。"""
-    return _serve_flutter_web_asset()
-
-
 @app.route('/app/<path:asset_path>')
-def flutter_web_assets(asset_path):
-    """Flutter Web 静态资源与前端路由回退。"""
-    return _serve_flutter_web_asset(asset_path)
+def web_app_route(asset_path: str = ""):
+    """业务端 SPA 入口与深链回退。"""
+    return _serve_web_asset(asset_path)
+
+
+@app.route('/admin')
+@app.route('/admin/')
+@app.route('/admin/<path:asset_path>')
+def web_admin_route(asset_path: str = ""):
+    """管理端 SPA 入口与深链回退。"""
+    return _serve_web_asset(asset_path)
+
+
+@app.route('/assets/<path:asset_path>')
+def web_assets(asset_path: str):
+    """独立 H5 静态资源目录（Vite 默认 /assets/*）。"""
+    return _serve_web_asset(f"assets/{asset_path}")
 
 
 @app.route('/assets')
 def assets():
-    """我的资产页面"""
+    """旧资产页入口兼容跳转。"""
+    if config.WEB_ENABLE_LEGACY_REDIRECT:
+        return redirect('/app/invest', code=302)
     response = make_response(render_template('assets.html', version=APP_VERSION))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -834,68 +823,26 @@ def update_asset():
 
 @app.route('/analysis')
 def analysis():
-    """资产分析页面"""
+    """旧分析页入口兼容跳转。"""
+    if config.WEB_ENABLE_LEGACY_REDIRECT:
+        return redirect('/app/analysis', code=302)
     return make_response(render_template('analysis.html', version=APP_VERSION))
 
 
 @app.route('/news')
 def news_page():
-    """市场快讯页面"""
+    """旧快讯页入口兼容跳转。"""
+    if config.WEB_ENABLE_LEGACY_REDIRECT:
+        return redirect('/app/news', code=302)
     return make_response(render_template('news.html', version=APP_VERSION))
 
 
 @app.route('/settings')
 def settings_page():
-    """设置页面"""
+    """旧设置页入口兼容跳转。"""
+    if config.WEB_ENABLE_LEGACY_REDIRECT:
+        return redirect('/app/profile', code=302)
     return make_response(render_template('settings.html', version=APP_VERSION))
-
-
-@app.route('/admin/login')
-def admin_login_page():
-    """管理后台登录页"""
-    return make_response(render_template('admin_login.html', version=APP_VERSION))
-
-
-@app.route('/admin')
-def admin_overview_page():
-    """管理后台首页"""
-    return make_response(render_template('admin_overview.html', version=APP_VERSION))
-
-
-@app.route('/admin/users')
-def admin_users_page():
-    """管理后台-用户管理"""
-    return make_response(render_template('admin_users.html', version=APP_VERSION))
-
-
-@app.route('/admin/config')
-def admin_config_page():
-    """管理后台-配置管理"""
-    return make_response(render_template('admin_config.html', version=APP_VERSION))
-
-
-@app.route('/admin/invites')
-def admin_invites_page():
-    """管理后台-邀请码管理"""
-    return make_response(render_template('admin_invites.html', version=APP_VERSION))
-
-
-@app.route('/admin/data')
-def admin_data_page():
-    """管理后台-数据管理"""
-    return make_response(render_template('admin_data.html', version=APP_VERSION))
-
-
-@app.route('/admin/apis')
-def admin_apis_page():
-    """管理后台-接口测试"""
-    return make_response(render_template('admin_apis.html', version=APP_VERSION))
-
-
-@app.route('/admin/audit')
-def admin_audit_page():
-    """管理后台-审计日志"""
-    return make_response(render_template('admin_audit.html', version=APP_VERSION))
 
 
 @app.route('/api/settings/info')
@@ -903,6 +850,18 @@ def get_system_info():
     """获取系统版本信息"""
     info = system_manager.get_version_info()
     return jsonify(info)
+
+
+@app.route('/api/web/config')
+def get_web_config():
+    """公开 Web 门户配置（无需鉴权）。"""
+    return jsonify(
+        {
+            "portal_title": config.WEB_PORTAL_TITLE,
+            "apk_download_url": config.WEB_APK_DOWNLOAD_URL,
+            "app_version": APP_VERSION,
+        }
+    )
 
 
 @app.route('/api/settings/check_api')
