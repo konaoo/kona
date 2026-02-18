@@ -94,6 +94,7 @@
               <td class="pnl-cell td-day-pnl" :class="valueClass(toNumber(row.dayPnl))">
                 <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnl, rowCurrency(row)) }}</span>
                 <span class="pnl-rate">{{ formatPctOrDash(row.dayPnlRate) }}</span>
+                <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
               </td>
               <td class="pnl-cell td-total-pnl" :class="valueClass(toNumber(row.totalPnl))">
                 <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.totalPnl, rowCurrency(row)) }}</span>
@@ -275,6 +276,16 @@ function formatHoldingQty(qty: unknown): string {
 
 function validatePositiveIntegerQty(qty: number): boolean {
   return Number.isInteger(qty) && qty > 0
+}
+
+function showClosedHint(row: Record<string, unknown>): boolean {
+  const marketOpen = row.marketOpen
+  const isClosed =
+    marketOpen === false ||
+    marketOpen === 0 ||
+    marketOpen === '0' ||
+    String(marketOpen ?? '').toLowerCase() === 'false'
+  return isClosed && toNumber(row.dayPnl) === 0
 }
 
 const filteredRows = computed(() => {
@@ -569,17 +580,17 @@ onBeforeUnmount(() => {
   table-layout: fixed;
 }
 
-.col-name { width: 26%; }
-.col-qty { width: 9%; }
-.col-price { width: 15%; }
+.col-name { width: 24%; }
+.col-qty { width: 10%; }
+.col-price { width: 14%; }
 .col-holding { width: 14%; }
-.col-day { width: 15%; }
-.col-total { width: 15%; }
+.col-day { width: 16%; }
+.col-total { width: 16%; }
 .col-action { width: 6%; }
 
 .table-legacy th,
 .table-legacy td {
-  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
 }
 
 .th-action,
@@ -588,16 +599,18 @@ onBeforeUnmount(() => {
 }
 
 .table-legacy th {
+  vertical-align: middle;
   font-size: calc(12px * var(--legacy-density-font-scale));
   color: var(--legacy-text-secondary);
-  padding: calc(10px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
+  padding: calc(8px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
   text-align: left;
   border-bottom: 1px solid var(--legacy-border);
   background: var(--legacy-bg-tertiary);
 }
 
 .table-legacy td {
-  padding: calc(10px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
+  vertical-align: top;
+  padding: calc(8px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
   border-bottom: 1px solid var(--legacy-border);
 }
 
@@ -622,7 +635,6 @@ onBeforeUnmount(() => {
 }
 
 .qty-cell {
-  font-variant-numeric: tabular-nums;
   font-weight: 600;
   text-align: right;
   white-space: nowrap;
@@ -632,13 +644,13 @@ onBeforeUnmount(() => {
 .pnl-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  line-height: 1.25;
+  gap: 2px;
+  line-height: 1.2;
 }
 
 .price-line {
-  font-variant-numeric: tabular-nums;
   font-size: calc(12px * var(--legacy-density-font-scale));
+  white-space: nowrap;
 }
 
 .price-line.cost {
@@ -651,7 +663,6 @@ onBeforeUnmount(() => {
 }
 
 .holding-cell {
-  font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
   text-align: right;
@@ -671,14 +682,26 @@ onBeforeUnmount(() => {
 
 .td-day-pnl,
 .td-total-pnl {
+  justify-content: flex-start;
   align-items: flex-end;
   text-align: right;
+  min-height: calc(54px * var(--legacy-density-space-scale));
 }
 
 .td-total-pnl,
 .th-total-pnl {
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   padding-left: calc(14px * var(--legacy-density-space-scale));
+}
+
+.td-day-pnl {
+  padding-right: calc(12px * var(--legacy-density-space-scale));
+}
+
+.pnl-hint {
+  color: rgba(148, 163, 184, 0.85);
+  font-size: calc(11px * var(--legacy-density-font-scale));
+  line-height: 1.1;
 }
 
 .actions {
@@ -855,22 +878,22 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1280px) and (max-width: 1599px) {
-  .col-name { width: 27%; }
-  .col-qty { width: 9%; }
-  .col-price { width: 15%; }
+  .col-name { width: 25%; }
+  .col-qty { width: 10%; }
+  .col-price { width: 14%; }
   .col-holding { width: 14%; }
-  .col-day { width: 14%; }
+  .col-day { width: 16%; }
   .col-total { width: 15%; }
   .col-action { width: 6%; }
 }
 
 @media (min-width: 1600px) {
-  .col-name { width: 25%; }
-  .col-qty { width: 9%; }
-  .col-price { width: 15%; }
+  .col-name { width: 23%; }
+  .col-qty { width: 10%; }
+  .col-price { width: 14%; }
   .col-holding { width: 14%; }
-  .col-day { width: 15%; }
-  .col-total { width: 16%; }
+  .col-day { width: 16%; }
+  .col-total { width: 17%; }
   .col-action { width: 6%; }
 }
 </style>
