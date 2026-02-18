@@ -668,6 +668,7 @@ onBeforeUnmount(() => {
 .pnl-cell {
   display: flex;
   flex-direction: column;
+  width: 100%;
   gap: 2px;
   line-height: var(--inv-lh-sub);
 }
@@ -715,7 +716,8 @@ onBeforeUnmount(() => {
 .th-day-pnl,
 .th-total-pnl,
 .th-holding,
-.th-qty {
+.th-qty,
+.th-action {
   text-align: right;
 }
 
