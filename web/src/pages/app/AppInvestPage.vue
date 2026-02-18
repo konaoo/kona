@@ -59,6 +59,15 @@
 
       <div class="table-container">
         <table class="table-legacy">
+          <colgroup>
+            <col class="col-name" />
+            <col class="col-qty" />
+            <col class="col-price" />
+            <col class="col-holding" />
+            <col class="col-day" />
+            <col class="col-total" />
+            <col class="col-action" />
+          </colgroup>
           <thead>
             <tr>
               <th>资产名称</th>
@@ -536,6 +545,20 @@ onBeforeUnmount(() => {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
+}
+
+.col-name { width: 33%; }
+.col-qty { width: 10%; }
+.col-price { width: 14%; }
+.col-holding { width: 14%; }
+.col-day { width: 14%; }
+.col-total { width: 13%; }
+.col-action { width: 8%; }
+
+.table-legacy th,
+.table-legacy td {
+  vertical-align: middle;
 }
 
 .table-legacy th {
@@ -553,13 +576,17 @@ onBeforeUnmount(() => {
 }
 
 .name-code-cell {
-  min-width: calc(170px * var(--legacy-density-card-minh));
+  min-width: 0;
+  padding-right: calc(8px * var(--legacy-density-space-scale));
 }
 
 .name-primary {
   color: var(--legacy-text-primary);
   font-weight: 600;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .name-secondary {
@@ -571,6 +598,8 @@ onBeforeUnmount(() => {
 .qty-cell {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .price-cell,
@@ -597,6 +626,7 @@ onBeforeUnmount(() => {
 .holding-cell {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .actions {
@@ -760,6 +790,12 @@ onBeforeUnmount(() => {
   .modal {
     width: 90%;
     padding: 20px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .table-legacy {
+    min-width: 1040px;
   }
 }
 </style>
