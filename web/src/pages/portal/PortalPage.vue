@@ -24,12 +24,14 @@
         </div>
 
         <div class="hero-visual" aria-hidden="true">
-          <div class="orb orb-1"></div>
-          <div class="orb orb-2"></div>
-          <div class="orb orb-3"></div>
-          <div class="star star-1">✦</div>
-          <div class="star star-2">✦</div>
-          <div class="star star-3">✦</div>
+          <div class="glow glow-1"></div>
+          <div class="glow glow-2"></div>
+          <div class="trail trail-1"></div>
+          <div class="trail trail-2"></div>
+          <div class="trail trail-3"></div>
+          <div class="spark spark-1">✦</div>
+          <div class="spark spark-2">✶</div>
+          <div class="spark spark-3">✦</div>
         </div>
       </div>
     </section>
@@ -63,143 +65,232 @@ function onApkClick(event: Event) {
 .portal {
   min-height: 100vh;
   width: 100%;
+  background:
+    radial-gradient(1200px 560px at 112% 22%, rgba(192, 156, 255, 0.14), rgba(192, 156, 255, 0)),
+    radial-gradient(900px 540px at -8% 96%, rgba(255, 190, 154, 0.16), rgba(255, 190, 154, 0)),
+    linear-gradient(180deg, #f5f4fa 0%, #f3f1fa 100%);
 }
 
 .hero-shell {
   position: relative;
   overflow: hidden;
   min-height: 100vh;
-  padding: 52px clamp(20px, 5vw, 64px) 42px;
+  padding: 62px clamp(24px, 6vw, 86px) 48px;
   border-radius: 0;
   border: 0;
   background:
-    radial-gradient(800px 380px at 95% 20%, rgba(184, 143, 255, 0.35), rgba(184, 143, 255, 0)),
-    radial-gradient(640px 280px at 8% 92%, rgba(255, 176, 130, 0.28), rgba(255, 176, 130, 0)),
-    linear-gradient(112deg, #f8f6fb 0%, #f6f4ff 45%, #f5eeff 100%);
+    radial-gradient(840px 420px at 94% 18%, rgba(181, 136, 255, 0.34), rgba(181, 136, 255, 0)),
+    radial-gradient(640px 300px at 8% 91%, rgba(255, 184, 130, 0.26), rgba(255, 184, 130, 0)),
+    linear-gradient(115deg, #fbfafd 0%, #f8f6ff 44%, #f5eeff 100%);
 }
 
 .hero-content {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1.08fr 0.92fr;
-  gap: 22px;
-  margin-top: 8px;
+  grid-template-columns: 1.03fr 0.97fr;
+  gap: clamp(16px, 2.8vw, 30px);
+  margin-top: 14px;
+  align-items: center;
 }
 
 .hero-copy {
-  max-width: 620px;
+  max-width: 650px;
 }
 
 .hero-kicker {
-  color: #5f6e89;
-  letter-spacing: 1.3px;
-  font-size: 11px;
-  font-weight: 700;
+  color: #65718a;
+  letter-spacing: 2.2px;
+  font-size: 12px;
+  font-weight: 600;
   margin: 0;
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
 }
 
 h1 {
-  margin: 10px 0 0;
-  font-size: clamp(38px, 7vw, 72px);
-  line-height: 1.02;
-  color: #102d60;
-  letter-spacing: -1.4px;
+  margin: 16px 0 0;
+  font-size: clamp(54px, 7.8vw, 104px);
+  line-height: 0.95;
+  color: #112f64;
+  letter-spacing: -2.8px;
+  font-weight: 760;
+  font-family:
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Noto Sans SC',
+    'Microsoft YaHei',
+    sans-serif;
+  text-wrap: balance;
 }
 
 h2 {
-  margin: 14px 0 0;
-  font-size: clamp(22px, 3.6vw, 38px);
-  line-height: 1.16;
-  color: #173b78;
-  font-weight: 600;
+  margin: 18px 0 0;
+  font-size: clamp(26px, 3.2vw, 44px);
+  line-height: 1.1;
+  color: #193f7f;
+  font-weight: 640;
+  letter-spacing: -0.9px;
+  text-wrap: balance;
+  font-family:
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Noto Sans SC',
+    'Microsoft YaHei',
+    sans-serif;
 }
 
 .hero-actions {
-  margin-top: 34px;
+  margin-top: clamp(30px, 4vw, 44px);
   display: flex;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .hero-actions .btn {
-  border-color: rgba(28, 63, 117, 0.18);
-  color: #1c3f75;
-  background: rgba(255, 255, 255, 0.72);
+  min-width: 148px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 57, 109, 0.2);
+  color: #1d3f76;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  font-family: 'Avenir Next', 'PingFang SC', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.hero-actions .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(20, 51, 100, 0.15);
 }
 
 .hero-actions .btn.primary {
-  border-color: transparent;
+  border-color: rgba(17, 45, 93, 0.2);
   color: #ffffff;
-  background: linear-gradient(90deg, #183e79, #24559f);
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(93deg, #113267 0%, #1a4e96 52%, #1d5cac 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 12px 28px rgba(16, 47, 99, 0.24);
+}
+
+.hero-actions .btn.primary:hover {
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(93deg, #0f2d5d 0%, #18498d 52%, #1b55a0 100%);
+}
+
+.hero-actions .btn:active {
+  transform: translateY(0);
+}
+
+.hero-actions .btn:focus-visible {
+  outline: 2px solid rgba(24, 79, 158, 0.42);
+  outline-offset: 2px;
 }
 
 .hero-actions .btn.disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .hero-visual {
   position: relative;
-  min-height: 420px;
+  min-height: 500px;
 }
 
-.orb {
+.glow {
   position: absolute;
   border-radius: 50%;
-  border: 1.4px solid rgba(255, 255, 255, 0.75);
+  filter: blur(0.4px);
   pointer-events: none;
-  animation: drift 12s ease-in-out infinite;
 }
 
-.orb-1 {
-  width: 410px;
-  height: 240px;
-  top: 8px;
-  right: -34px;
+.glow-1 {
+  width: 470px;
+  height: 304px;
+  top: -8px;
+  right: -84px;
+  background: radial-gradient(ellipse at center, rgba(240, 227, 255, 0.62), rgba(240, 227, 255, 0));
+}
+
+.glow-2 {
+  width: 350px;
+  height: 230px;
+  top: 240px;
+  right: -16px;
+  background: radial-gradient(ellipse at center, rgba(246, 237, 255, 0.68), rgba(246, 237, 255, 0));
+}
+
+.trail {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.6px solid rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  animation: drift 13s ease-in-out infinite;
+}
+
+.trail-1 {
+  width: 460px;
+  height: 250px;
+  top: 12px;
+  right: -46px;
   transform: rotate(18deg);
 }
 
-.orb-2 {
-  width: 360px;
-  height: 210px;
-  top: 124px;
-  right: -18px;
+.trail-2 {
+  width: 404px;
+  height: 236px;
+  top: 150px;
+  right: -24px;
   transform: rotate(-8deg);
-  animation-delay: 1.1s;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.66);
+  animation-delay: 1s;
 }
 
-.orb-3 {
-  width: 280px;
-  height: 180px;
-  top: 246px;
-  right: 8px;
+.trail-3 {
+  width: 310px;
+  height: 188px;
+  top: 292px;
+  right: 26px;
   transform: rotate(10deg);
-  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.54);
   animation-delay: 2.2s;
 }
 
-.star {
+.spark {
   position: absolute;
-  color: rgba(165, 106, 210, 0.62);
-  font-size: 20px;
-  animation: twinkle 4.8s ease-in-out infinite;
+  color: rgba(166, 108, 211, 0.56);
+  font-size: 23px;
+  animation: twinkle 4.9s ease-in-out infinite;
 }
 
-.star-1 {
+.spark-1 {
   top: 64px;
-  right: 286px;
+  right: 276px;
 }
 
-.star-2 {
-  top: 188px;
-  right: 62px;
+.spark-2 {
+  top: 204px;
+  right: 74px;
+  color: rgba(250, 173, 126, 0.74);
   animation-delay: 1.6s;
 }
 
-.star-3 {
-  top: 312px;
-  right: 238px;
+.spark-3 {
+  top: 344px;
+  right: 244px;
+  color: rgba(176, 133, 225, 0.6);
   animation-delay: 2.7s;
 }
 
@@ -228,37 +319,57 @@ h2 {
 @media (max-width: 1023px) {
   .hero-shell {
     min-height: 100vh;
-    padding: 34px 20px 24px;
+    padding: 40px 20px 28px;
   }
 
   .hero-content {
     grid-template-columns: 1fr 0.9fr;
-    gap: 14px;
-    margin-top: 6px;
+    gap: 16px;
+    margin-top: 8px;
   }
 
   .hero-visual {
-    min-height: 360px;
+    min-height: 420px;
   }
 
-  .orb-1 {
-    width: 310px;
-    height: 190px;
+  h1 {
+    font-size: clamp(48px, 7vw, 74px);
+  }
+
+  h2 {
+    font-size: clamp(24px, 3.8vw, 34px);
+  }
+
+  .trail-1 {
+    width: 352px;
+    height: 208px;
     right: -18px;
   }
 
-  .orb-2 {
-    width: 278px;
-    height: 170px;
+  .trail-2 {
+    width: 290px;
+    height: 182px;
     top: 112px;
     right: -8px;
   }
 
-  .orb-3 {
-    width: 224px;
-    height: 142px;
+  .trail-3 {
+    width: 246px;
+    height: 154px;
     top: 218px;
     right: 10px;
+  }
+
+  .spark-1 {
+    right: 202px;
+  }
+
+  .spark-2 {
+    right: 46px;
+  }
+
+  .spark-3 {
+    right: 168px;
   }
 }
 
@@ -269,7 +380,7 @@ h2 {
 
   .hero-shell {
     min-height: 100vh;
-    padding: 22px 16px 20px;
+    padding: 24px 16px 20px;
   }
 
   .hero-content {
@@ -277,50 +388,82 @@ h2 {
     margin-top: 0;
   }
 
+  h1 {
+    letter-spacing: -1.8px;
+  }
+
+  h2 {
+    margin-top: 12px;
+  }
+
+  .hero-actions {
+    margin-top: 26px;
+    gap: 10px;
+  }
+
   .hero-actions .btn {
     flex: 1;
     min-width: 132px;
     text-align: center;
+    height: 48px;
+    font-size: 15px;
   }
 
   .hero-visual {
-    min-height: 220px;
+    min-height: 260px;
   }
 
-  .orb-1 {
+  .glow-1 {
+    width: 230px;
+    height: 154px;
+    top: 8px;
+    right: 0;
+  }
+
+  .glow-2 {
+    width: 190px;
+    height: 128px;
+    top: 136px;
+    right: 20px;
+  }
+
+  .trail-1 {
     width: 220px;
     height: 140px;
     top: 14px;
     right: 8px;
   }
 
-  .orb-2 {
+  .trail-2 {
     width: 188px;
     height: 118px;
     top: 88px;
     right: 18px;
   }
 
-  .orb-3 {
+  .trail-3 {
     width: 156px;
     height: 94px;
     top: 144px;
     right: 24px;
   }
 
-  .star-1 {
+  .spark-1 {
     top: 26px;
     right: 152px;
+    font-size: 18px;
   }
 
-  .star-2 {
+  .spark-2 {
     top: 118px;
     right: 46px;
+    font-size: 17px;
   }
 
-  .star-3 {
+  .spark-3 {
     top: 170px;
     right: 122px;
+    font-size: 17px;
   }
 }
 </style>
