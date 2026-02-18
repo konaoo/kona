@@ -82,7 +82,7 @@
           <tbody>
             <tr v-for="row in filteredRows" :key="String(row.code)">
               <td class="name-code-cell td-name">
-                <div class="name-primary">{{ row.name || '-' }}</div>
+                <div class="name-primary" :title="String(row.name || '-')">{{ truncateAssetName(row.name) }}</div>
                 <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
               </td>
               <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty) }}</td>
@@ -253,6 +253,14 @@ function displayCode(code: string): string {
   if (lower.startsWith('f_')) return code.slice(2)
   if (lower.startsWith('ft_')) return code.slice(3)
   return code.toUpperCase()
+}
+
+function truncateAssetName(name: unknown): string {
+  const text = String(name || '-')
+  if (text === '-') return text
+  const chars = [...text]
+  const maxChars = 10
+  return chars.length > maxChars ? `${chars.slice(0, maxChars).join('')}...` : text
 }
 
 function rowCurrency(row: Record<string, unknown>): 'CNY' | 'HKD' | 'USD' {
