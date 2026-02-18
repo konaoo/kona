@@ -99,22 +99,24 @@ function onApkClick(event: Event) {
 }
 
 .hero-kicker {
-  color: #65718a;
-  letter-spacing: 2.2px;
-  font-size: 12px;
-  font-weight: 600;
+  color: #6b7893;
+  letter-spacing: 2.6px;
+  font-size: 11px;
+  font-weight: 650;
   margin: 0;
-  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+  font-family: 'SF Pro Text', 'Avenir Next', 'Segoe UI', sans-serif;
+  text-transform: uppercase;
 }
 
 h1 {
   margin: 16px 0 0;
-  font-size: clamp(54px, 7.8vw, 104px);
-  line-height: 0.95;
+  font-size: clamp(58px, 7.2vw, 92px);
+  line-height: 0.94;
   color: #112f64;
-  letter-spacing: -2.8px;
-  font-weight: 760;
+  letter-spacing: -2.2px;
+  font-weight: 790;
   font-family:
+    'SF Pro Display',
     'PingFang SC',
     'Hiragino Sans GB',
     'Noto Sans SC',
@@ -124,14 +126,15 @@ h1 {
 }
 
 h2 {
-  margin: 18px 0 0;
-  font-size: clamp(26px, 3.2vw, 44px);
-  line-height: 1.1;
+  margin: 16px 0 0;
+  font-size: clamp(24px, 2.8vw, 38px);
+  line-height: 1.14;
   color: #193f7f;
-  font-weight: 640;
-  letter-spacing: -0.9px;
+  font-weight: 670;
+  letter-spacing: -0.5px;
   text-wrap: balance;
   font-family:
+    'SF Pro Display',
     'PingFang SC',
     'Hiragino Sans GB',
     'Noto Sans SC',
@@ -150,19 +153,19 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 148px;
-  height: 52px;
-  padding: 0 24px;
+  min-width: 164px;
+  height: 54px;
+  padding: 0 28px;
   border-radius: 999px;
   border: 1px solid rgba(22, 57, 109, 0.2);
   color: #1d3f76;
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(10px);
-  font-family: 'Avenir Next', 'PingFang SC', sans-serif;
-  font-size: 17px;
-  font-weight: 600;
+  font-family: 'SF Pro Text', 'Avenir Next', 'PingFang SC', sans-serif;
+  font-size: 18px;
+  font-weight: 660;
   line-height: 1;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
   transition:
     transform 180ms ease,
     box-shadow 180ms ease,
@@ -206,6 +209,7 @@ h2 {
   color: #8d9ebc;
   border-color: rgba(141, 158, 188, 0.28);
   background: rgba(255, 255, 255, 0.52);
+  font-weight: 620;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
@@ -341,11 +345,11 @@ h2 {
   }
 
   h1 {
-    font-size: clamp(48px, 7vw, 74px);
+    font-size: clamp(50px, 7vw, 76px);
   }
 
   h2 {
-    font-size: clamp(24px, 3.8vw, 34px);
+    font-size: clamp(22px, 3.7vw, 32px);
   }
 
   .trail-1 {
@@ -413,8 +417,9 @@ h2 {
     flex: 1;
     min-width: 132px;
     text-align: center;
-    height: 48px;
-    font-size: 15px;
+    height: 50px;
+    font-size: 16px;
+    padding: 0 18px;
   }
 
   .hero-visual {
