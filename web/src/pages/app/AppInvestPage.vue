@@ -70,36 +70,36 @@
           </colgroup>
           <thead>
             <tr>
-              <th>资产名称</th>
-              <th>持有数量</th>
-              <th>成本/现价</th>
-              <th>持有金额</th>
-              <th>当日盈亏</th>
-              <th>累计盈亏</th>
-              <th style="text-align:right">操作</th>
+              <th class="th-name">资产名称</th>
+              <th class="th-qty">持有数量</th>
+              <th class="th-price">成本/现价</th>
+              <th class="th-holding">持有金额</th>
+              <th class="th-day-pnl">当日盈亏</th>
+              <th class="th-total-pnl">累计盈亏</th>
+              <th class="th-action">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in filteredRows" :key="String(row.code)">
-              <td class="name-code-cell">
+              <td class="name-code-cell td-name">
                 <div class="name-primary">{{ row.name || '-' }}</div>
                 <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
               </td>
-              <td class="qty-cell">{{ formatHoldingQty(row.qty) }}</td>
-              <td class="price-cell">
+              <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty) }}</td>
+              <td class="price-cell td-price">
                 <span class="price-line cost">成本 {{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
                 <span class="price-line current">现价 {{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
               </td>
-              <td class="holding-cell">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
-              <td class="pnl-cell" :class="valueClass(toNumber(row.dayPnl))">
-                <span>{{ formatSignedMoney(toNumber(row.dayPnl), rowCurrency(row)) }}</span>
-                <span>{{ formatPct(toNumber(row.dayPnlRate)) }}</span>
+              <td class="holding-cell td-holding">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
+              <td class="pnl-cell td-day-pnl" :class="valueClass(toNumber(row.dayPnl))">
+                <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnl, rowCurrency(row)) }}</span>
+                <span class="pnl-rate">{{ formatPctOrDash(row.dayPnlRate) }}</span>
               </td>
-              <td class="pnl-cell" :class="valueClass(toNumber(row.totalPnl))">
-                <span>{{ formatSignedMoney(toNumber(row.totalPnl), rowCurrency(row)) }}</span>
-                <span>{{ formatPct(toNumber(row.totalPnlRate)) }}</span>
+              <td class="pnl-cell td-total-pnl" :class="valueClass(toNumber(row.totalPnl))">
+                <span class="pnl-amount">{{ formatSignedMoneyOrDash(row.totalPnl, rowCurrency(row)) }}</span>
+                <span class="pnl-rate">{{ formatPctOrDash(row.totalPnlRate) }}</span>
               </td>
-              <td class="actions">
+              <td class="actions td-action">
                 <div class="action-menu" @click.stop>
                   <button class="action-trigger" @click.stop="toggleActionMenu(String(row.code || ''))">操作 ▾</button>
                   <div v-if="isActionMenuOpen(String(row.code || ''))" class="action-dropdown">
@@ -216,6 +216,12 @@ function formatSignedMoney(value: number, curr: string): string {
   return `${sign}${money(Math.abs(toNumber(value)), curr)}`
 }
 
+function formatSignedMoneyOrDash(value: unknown, curr: string): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  return formatSignedMoney(n, curr)
+}
+
 function formatCny(value: number): string {
   return `¥ ${Math.round(value).toLocaleString('zh-CN')}`
 }
@@ -229,7 +235,14 @@ function formatPct(value: number): string {
   return `${value >= 0 ? '+' : ''}${toNumber(value).toFixed(2)}%`
 }
 
-function valueClass(value: number): 'up' | 'down' {
+function formatPctOrDash(value: unknown): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  return formatPct(n)
+}
+
+function valueClass(value: number): 'up' | 'down' | 'neutral' {
+  if (!Number.isFinite(value)) return 'neutral'
   return value >= 0 ? 'up' : 'down'
 }
 
@@ -548,30 +561,35 @@ onBeforeUnmount(() => {
   table-layout: fixed;
 }
 
-.col-name { width: 33%; }
-.col-qty { width: 10%; }
-.col-price { width: 14%; }
+.col-name { width: 26%; }
+.col-qty { width: 9%; }
+.col-price { width: 15%; }
 .col-holding { width: 14%; }
-.col-day { width: 14%; }
-.col-total { width: 13%; }
-.col-action { width: 8%; }
+.col-day { width: 15%; }
+.col-total { width: 15%; }
+.col-action { width: 6%; }
 
 .table-legacy th,
 .table-legacy td {
   vertical-align: middle;
 }
 
+.th-action,
+.td-action {
+  text-align: right;
+}
+
 .table-legacy th {
   font-size: calc(12px * var(--legacy-density-font-scale));
   color: var(--legacy-text-secondary);
-  padding: calc(11px * var(--legacy-density-space-scale));
+  padding: calc(10px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
   text-align: left;
   border-bottom: 1px solid var(--legacy-border);
   background: var(--legacy-bg-tertiary);
 }
 
 .table-legacy td {
-  padding: calc(11px * var(--legacy-density-space-scale));
+  padding: calc(10px * var(--legacy-density-space-scale)) calc(10px * var(--legacy-density-space-scale));
   border-bottom: 1px solid var(--legacy-border);
 }
 
@@ -598,7 +616,7 @@ onBeforeUnmount(() => {
 .qty-cell {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  text-align: left;
+  text-align: right;
   white-space: nowrap;
 }
 
@@ -607,6 +625,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  line-height: 1.25;
 }
 
 .price-line {
@@ -627,10 +646,34 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
+  text-align: right;
+}
+
+.pnl-amount,
+.pnl-rate {
+  white-space: nowrap;
+}
+
+.th-day-pnl,
+.th-total-pnl,
+.th-holding,
+.th-qty {
+  text-align: right;
+}
+
+.td-day-pnl,
+.td-total-pnl {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.td-total-pnl,
+.th-total-pnl {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding-left: calc(14px * var(--legacy-density-space-scale));
 }
 
 .actions {
-  text-align: right;
   white-space: nowrap;
 }
 
@@ -693,6 +736,10 @@ onBeforeUnmount(() => {
 
 .menu-item.danger:hover {
   background: rgba(239, 68, 68, 0.18);
+}
+
+.neutral {
+  color: var(--legacy-text-secondary);
 }
 
 .empty {
@@ -797,5 +844,25 @@ onBeforeUnmount(() => {
   .table-legacy {
     min-width: 1040px;
   }
+}
+
+@media (min-width: 1280px) and (max-width: 1599px) {
+  .col-name { width: 27%; }
+  .col-qty { width: 9%; }
+  .col-price { width: 15%; }
+  .col-holding { width: 14%; }
+  .col-day { width: 14%; }
+  .col-total { width: 15%; }
+  .col-action { width: 6%; }
+}
+
+@media (min-width: 1600px) {
+  .col-name { width: 25%; }
+  .col-qty { width: 9%; }
+  .col-price { width: 15%; }
+  .col-holding { width: 14%; }
+  .col-day { width: 15%; }
+  .col-total { width: 16%; }
+  .col-action { width: 6%; }
 }
 </style>
