@@ -274,11 +274,13 @@ JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
 Web 端的完整实现与修改细节（包含路由、鉴权、市场口径、投资页表格对齐规范、部署与排障）已单独维护在：
 
 - `/Users/kona/Desktop/kaka/kona_repo/web/README.md`
+- `/Users/kona/Desktop/kaka/kona_repo/docs/README_WEB_CHANGELOG_TIMELINE.md`（按 commit 的 Web 修改时间线）
 
 建议：
 
 1. 看总览与部署流程：先读本 README。
 2. 看 Web 具体实现与验收细节：再读 `web/README.md`。
+3. 按日期追溯每次 Web 修改与截图位：读 `docs/README_WEB_CHANGELOG_TIMELINE.md`。
 
 ### 4.8 Web 近期关键改动摘要（2026-02）
 
