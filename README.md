@@ -269,6 +269,44 @@ JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
 - API 协议：`/api/*` 保持不变，Web 仅替换前端实现，不改业务语义。
 - APK 下载：由 `WEB_APK_DOWNLOAD_URL` 配置注入；为空时门户按钮显示“APK 暂未提供”。
 
+### 4.7 Web 完整修改文档入口（新增）
+
+Web 端的完整实现与修改细节（包含路由、鉴权、市场口径、投资页表格对齐规范、部署与排障）已单独维护在：
+
+- `/Users/kona/Desktop/kaka/kona_repo/web/README.md`
+
+建议：
+
+1. 看总览与部署流程：先读本 README。
+2. 看 Web 具体实现与验收细节：再读 `web/README.md`。
+
+### 4.8 Web 近期关键改动摘要（2026-02）
+
+- 架构迁移：
+  - Web 已迁移为独立 `Vue3 + Vite + TypeScript` 工程。
+  - 路由统一为门户 `/`、业务端 `/app/*`、管理端 `/admin/*`。
+- 门户页重构：
+  - 改为单屏 Hero 风格入口。
+  - `apk_download_url` 为空时置灰并提示“APK 暂未提供”。
+- 业务端与管理端重构：
+  - 业务端采用 `LegacyAppShell`，管理端采用 `LegacyAdminShell`。
+  - 页面映射固定为“我的资产/我的投资/资产分析/市场分析/设置”。
+- 登录与会话：
+  - Web 使用 `kona_web_access_token` / `kona_web_refresh_token` 持久化。
+  - 401 自动 refresh 并重试，失败时清理会话回登录页。
+- 收益口径：
+  - Web 通过 `/api/market/status` 判定开休市。
+  - 休市时当日盈亏显示 0；开市时按 `current - yclose` 计算。
+- 投资页重点修复：
+  - 7 列等宽布局 + 轻量列分隔线。
+  - 字阶统一（12/16/13/11）与行高统一（1.25/1.2）。
+  - 资产名称支持截断（>10 中文字符显示 `...`）。
+  - 数量提交强校验正整数；操作菜单统一下拉。
+  - 当前对齐规则：资产名称左对齐；当日盈亏与累计盈亏右对齐。
+- CI 策略：
+  - 非 `flutter/android/**` 改动默认跳过 APK smoke。
+  - Web 门禁固定包含 `npm run build`。
+
 ---
 
 ## 5. 后端说明（Flask）
