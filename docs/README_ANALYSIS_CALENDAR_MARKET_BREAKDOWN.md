@@ -250,3 +250,19 @@ curl -s "http://57.180.79.186:5003/api/analysis/calendar/market_breakdown?type=d
 - `e2a1fd0`：分市场日历与回填流程
 - `b3549e3`：相关测试稳定性修复
 - `570ad74`：数字港股代码归因修复（`00700` -> `hk`）
+
+---
+
+## 9. 与 Flutter 刷新口径的衔接（2026-02-22）
+
+本手册侧重后端与 DB。若要完整理解“用户在 App 上看到什么”，需结合 Flutter 最新口径：
+
+1. 休市时显示冻结的最近有效日涨跌，不再统一压零。
+2. 行情失败回退链：
+   - 实时价 -> 上次缓存价 -> 收盘快照价 -> 成本价。
+3. 首页投资资产按价格口径重算，不再固定成本口径。
+4. 首页不再展示“资产更新时间/行情更新时间/离线缓存”文案。
+
+详细见：
+
+- `/Users/kona/Desktop/kaka/kona_repo/docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md`

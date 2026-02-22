@@ -187,6 +187,17 @@ kona_repo/
 - 详细设计、命令与验收步骤见：
   - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md`
 
+### 3.14 启动增量刷新与休市冻结口径（2026-02）
+
+- 新增版本驱动增量同步接口：`POST /api/sync/bootstrap`
+- Flutter 启动链路改为“缓存先渲染 + bootstrap 增量刷新 + 行情独立刷新”
+- 休市口径改为“冻结最近有效日涨跌”，不再默认清零
+- 行情失败回退链改为：实时价 -> 上次缓存价 -> 收盘快照价 -> 成本价
+- 首页投资资产重算改为价格口径（非固定成本口径）
+- 首页移除“资产更新时间/行情更新时间/离线缓存”文案显示
+- 接手总文档：
+  - `/Users/kona/Desktop/kaka/kona_repo/docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md`
+
 ---
 
 ## 4. 前端说明（Flutter）
@@ -276,7 +287,7 @@ JWT_SECRET=local_debug_secret_2026 .venv/bin/python app.py
 ### 4.6 Web 口径说明（迁移后）
 
 - 登录态：沿用后端 `JWT + refresh token`，本地存储持久化。
-- 收益口径：按 `/api/market/status` 判定开休市，仅开市市场计入当日收益。
+- 收益口径：按 `/api/market/status` 判定开休市；休市时默认展示“最近有效价+冻结日涨跌”（不强制清零）。
 - API 协议：`/api/*` 保持不变，Web 仅替换前端实现，不改业务语义。
 - APK 下载：由 `WEB_APK_DOWNLOAD_URL` 配置注入；为空时门户按钮显示“APK 暂未提供”。
 
@@ -309,7 +320,7 @@ Web 端的完整实现与修改细节（包含路由、鉴权、市场口径、�
   - 401 自动 refresh 并重试，失败时清理会话回登录页。
 - 收益口径：
   - Web 通过 `/api/market/status` 判定开休市。
-  - 休市时当日盈亏显示 0；开市时按 `current - yclose` 计算。
+  - 开市按 `current - yclose` 计算；休市默认冻结最近有效日涨跌，不再统一压 0。
 - 投资页重点修复：
   - 7 列等宽布局 + 轻量列分隔线。
   - 字阶统一（12/16/13/11）与行高统一（1.25/1.2）。
@@ -1026,9 +1037,10 @@ curl -sS http://127.0.0.1:5003/health
 
 本轮延续并补强“统一休市口径”：
 
-1. 非开市市场默认当日盈亏为 0。  
-2. 美股扩展时段（盘前/盘后）是唯一例外：可参与当日盈亏。  
-3. 目标是“现价展示 + 当日盈亏口径”在 Web / App 同步一致。  
+1. 非开市市场不再默认强制 `day_pnl=0`，改为冻结最近有效价格与日涨跌。  
+2. 美股扩展时段（盘前/盘后）若有有效行情，按有效价与 `yclose` 计算。  
+3. 若实时行情失败，前端按“内存缓存 -> 本地快照 -> 成本价”回退。  
+4. 目标是“现价展示 + 当日盈亏口径”在 Web / App 同步一致。  
 
 ### 22.4 Web 登录与一致性说明
 
@@ -1075,3 +1087,67 @@ adb devices -l
 adb -s <USB_DEVICE_ID> install -r -t build/app/outputs/flutter-apk/app-debug.apk
 adb -s <USB_DEVICE_ID> shell am start -n com.example.tool/com.example.tool.MainActivity
 ```
+
+---
+
+## 23. 最新状态（2026-02-22，增量刷新 + 休市冻结最终口径）
+
+本节是当前“资产刷新与收益展示”的最终口径，优先级高于旧描述。
+
+### 23.1 后端接口与策略（当前）
+
+1. 健康检查：
+   - `GET /health`
+2. 市场状态：
+   - `GET /api/market/status`
+3. 增量同步：
+   - `POST /api/sync/bootstrap`
+   - 返回 `versions + changed + data + market_status + quote_policy`
+
+`quote_policy` 当前默认：
+
+- `interval_open_sec = 5`
+- `interval_closed_sec = 120`
+- `interval_us_extended_sec = 10`
+
+### 23.2 Flutter 刷新口径（当前）
+
+1. 启动顺序：
+   - `hydrateFromCache()` 先渲染
+   - `refreshAll()` 走 `refreshByVersion()` 增量刷新
+2. 行情与静态分层：
+   - 静态域由 `sync/bootstrap` 版本驱动
+   - 行情由 `refreshPricesOnly()` 定时刷新
+3. 行情失败回退链（最终）：
+   - 实时价 -> 上次缓存价 -> 收盘快照价 -> 成本价
+
+### 23.3 休市显示与收益口径（当前）
+
+1. 休市时不再统一清零 `day_pnl`。
+2. 投资页显示最近有效价格与冻结日涨跌。
+3. 若无可用行情证据，才兜底成本价。
+4. 首页投资资产改为价格口径重算（非固定成本）。
+
+### 23.4 UI 约束（当前）
+
+1. 首页不显示：
+   - 资产更新时间
+   - 行情更新时间
+   - 离线缓存提示文案
+2. 投资页“现价/成本”列优先显示可用行情价，休市保留冻结值。
+
+### 23.5 关键代码索引（接手优先看）
+
+- `/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py`
+- `/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db.py`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/main.dart`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart`
+- `/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/home_page.dart`
+
+### 23.6 详细接手文档
+
+1. 收益日历与分市场回填：
+   - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md`
+2. 本轮完整接手手册（含命令、验收、边界）：
+   - `/Users/kona/Desktop/kaka/kona_repo/docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md`
