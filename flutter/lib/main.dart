@@ -161,6 +161,8 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _currentIndex = 0;
   Timer? _priceTimer;
+  DateTime? _lastResumeAt;
+  DateTime? _lastPausedAt;
   bool _fabVisible = true;
   final GlobalKey<HomePageState> _homePageKey = GlobalKey<HomePageState>();
   final GlobalKey<InvestPageState> _investPageKey =
@@ -183,20 +185,57 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _startPriceTimer();
+      final now = DateTime.now();
+      final shouldImmediate =
+          _lastResumeAt == null ||
+          now.difference(_lastResumeAt!) > const Duration(seconds: 15);
+      _lastResumeAt = now;
+      _startPriceTimer(immediate: shouldImmediate);
+
+      final pausedAt = _lastPausedAt;
+      if (pausedAt != null) {
+        final awayDuration = now.difference(pausedAt);
+        final appState = context.read<AppState>();
+        if (awayDuration > const Duration(minutes: 30)) {
+          unawaited(appState.refreshAll());
+        } else if (awayDuration > const Duration(minutes: 5)) {
+          unawaited(
+            appState.refreshByVersion(force: false, refreshQuotes: false),
+          );
+        }
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
+      _lastPausedAt = DateTime.now();
       _stopPriceTimer();
     }
   }
 
-  void _startPriceTimer() {
-    _priceTimer?.cancel();
-    unawaited(context.read<AppState>().refreshPricesOnly());
-    _priceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+  Future<void> _runPriceRefresh() async {
+    if (!mounted) return;
+    await context.read<AppState>().refreshPricesOnly();
+  }
+
+  void _scheduleNextPriceRefresh() {
+    if (!mounted) return;
+    final intervalSeconds = context
+        .read<AppState>()
+        .quoteRefreshIntervalSeconds;
+    _priceTimer = Timer(Duration(seconds: intervalSeconds), () {
       if (!mounted) return;
-      context.read<AppState>().refreshPricesOnly();
+      unawaited(() async {
+        await _runPriceRefresh();
+        _scheduleNextPriceRefresh();
+      }());
     });
+  }
+
+  void _startPriceTimer({bool immediate = true}) {
+    _priceTimer?.cancel();
+    if (immediate) {
+      unawaited(_runPriceRefresh());
+    }
+    _scheduleNextPriceRefresh();
   }
 
   void _stopPriceTimer() {

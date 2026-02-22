@@ -28,7 +28,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
   static const int _maxTransientRetry = 3;
-  static const String _overviewStorageKey = 'cache_analysis_overview';
+  static const String _legacyOverviewStorageKey = 'cache_analysis_overview';
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
@@ -115,7 +115,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Future<Map<String, dynamic>?> _loadOverviewFromStorage() async {
     try {
-      final payload = await _cache.getJson(_overviewStorageKey);
+      final payload =
+          await _cache.getJson(_overviewStorageKey()) ??
+          await _cache.getJson(_legacyOverviewStorageKey);
       if (payload == null) return null;
       final data = payload['data'];
       if (data is Map<String, dynamic>) return data;
@@ -128,7 +130,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Future<void> _saveOverviewToStorage(Map<String, dynamic> data) async {
     try {
-      await _cache.setJson(_overviewStorageKey, {
+      await _cache.setJson(_overviewStorageKey(), {
         'saved_at': DateTime.now().millisecondsSinceEpoch,
         'data': data,
       });
@@ -222,6 +224,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
         ? 'guest'
         : rawUserId;
     return 'analysis_calendar_v1:$userId:$cacheKey';
+  }
+
+  String _overviewStorageKey() {
+    final rawUserId = context.read<AppState>().userId?.trim();
+    final userId = (rawUserId == null || rawUserId.isEmpty)
+        ? 'guest'
+        : rawUserId;
+    return 'analysis_overview_v1:$userId';
   }
 
   Future<Map<String, dynamic>?> _loadCalendarFromStorage(String key) async {

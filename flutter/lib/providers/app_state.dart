@@ -22,6 +22,20 @@ typedef LoginHandler =
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
+  static const Duration _staticDataTtl = Duration(minutes: 5);
+  static const Duration _historyDataTtl = Duration(minutes: 10);
+  static const Duration _ratesDataTtl = Duration(minutes: 10);
+  static const Duration _syncVersionTtl = Duration(days: 365);
+  static const List<String> _syncBootstrapDomains = <String>[
+    'portfolio',
+    'cash_assets',
+    'other_assets',
+    'liabilities',
+    'history',
+    'overview_all',
+    'rates',
+  ];
+
   final ApiService _api;
   final CacheService _cache;
   final SecureStorageService _secureStorage;
@@ -108,6 +122,16 @@ class AppState extends ChangeNotifier {
   bool _priceRefreshInFlight = false;
   DateTime? _lastPriceRefreshAt;
   static const Duration _priceRefreshMinInterval = Duration(seconds: 2);
+  Future<void>? _refreshAllInFlight;
+  Future<void>? _refreshByVersionInFlight;
+  final Map<String, String> _syncVersions = <String, String>{};
+  DateTime? _lastAssetDataUpdatedAt;
+  DateTime? _lastQuoteDataUpdatedAt;
+  bool _assetDataFromCache = false;
+  bool _quoteDataFromCache = false;
+  int _quoteIntervalOpenSec = 5;
+  int _quoteIntervalClosedSec = 120;
+  int _quoteIntervalUsExtendedSec = 10;
 
   // 金额隐藏
   bool _amountHidden = false;
@@ -163,6 +187,19 @@ class AppState extends ChangeNotifier {
   bool get overviewMilestonesReady => _overviewMilestonesReady;
   bool get monthFromFirst => _monthFromFirst;
   bool get yearFromFirst => _yearFromFirst;
+  DateTime? get assetDataUpdatedAt => _lastAssetDataUpdatedAt;
+  DateTime? get quoteDataUpdatedAt => _lastQuoteDataUpdatedAt;
+  bool get assetDataFromCache => _assetDataFromCache;
+  bool get quoteDataFromCache => _quoteDataFromCache;
+  int get quoteRefreshIntervalSeconds {
+    if (_marketOpenStatus.values.any((open) => open)) {
+      return _quoteIntervalOpenSec;
+    }
+    if (_hasActiveUsExtendedSession()) {
+      return _quoteIntervalUsExtendedSec;
+    }
+    return _quoteIntervalClosedSec;
+  }
 
   double _rateForCurrency(String curr) {
     switch (curr.toUpperCase()) {
@@ -209,6 +246,16 @@ class AppState extends ChangeNotifier {
     if (priceInfo.extendedActive) return true;
     final session = priceInfo.effectiveSession.trim().toLowerCase();
     return session == 'pre' || session == 'post';
+  }
+
+  bool _hasActiveUsExtendedSession() {
+    for (final item in _portfolio) {
+      if (_normalizeMarketKey(item.marketType) != 'us') continue;
+      if (_isUsExtendedSessionActive(item, _prices[item.code])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
@@ -322,64 +369,264 @@ class AppState extends ChangeNotifier {
   // Methods
   // ============================================================
 
+  static const Map<String, String> _legacyCacheKeys = {
+    'portfolio': 'cache_portfolio',
+    'cash_assets': 'cache_cash_assets',
+    'other_assets': 'cache_other_assets',
+    'liabilities': 'cache_liabilities',
+    'prices': 'cache_prices',
+    'market_status': 'cache_market_status',
+    'history': 'cache_history',
+    'analysis_overview': 'cache_analysis_overview',
+    'exchange_rates': 'cache_exchange_rates',
+  };
+
+  String _cacheUserScope() {
+    final uid = (_userId ?? '').trim();
+    if (uid.isNotEmpty) return uid;
+    final uname = (_username ?? '').trim().toLowerCase();
+    if (uname.isNotEmpty) return 'name:$uname';
+    return 'guest';
+  }
+
+  String _cacheKey(String domain) => 'u:${_cacheUserScope()}:$domain';
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  DateTime? _envelopeSavedAt(Map<String, dynamic>? envelope) {
+    if (envelope == null) return null;
+    final savedAtMs = _asInt(envelope['saved_at_ms']);
+    if (savedAtMs <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(savedAtMs);
+  }
+
+  Map<String, dynamic>? _normalizeEnvelope(Map<String, dynamic>? raw) {
+    if (raw == null) return null;
+    final hasEnvelopeFields =
+        raw.containsKey('data') && raw.containsKey('saved_at_ms');
+    if (hasEnvelopeFields) return raw;
+    return <String, dynamic>{
+      'user_id': _cacheUserScope(),
+      'version': '',
+      'saved_at_ms': 0,
+      'stale_after_ms': 0,
+      'data': raw,
+    };
+  }
+
+  Map<String, dynamic> _buildEnvelope({
+    required dynamic data,
+    String? version,
+    required Duration staleAfter,
+  }) {
+    return <String, dynamic>{
+      'user_id': _cacheUserScope(),
+      'version': (version ?? '').trim(),
+      'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
+      'stale_after_ms': staleAfter.inMilliseconds,
+      'data': data,
+    };
+  }
+
+  Future<Map<String, dynamic>?> _loadDomainEnvelope(String domain) async {
+    final scoped = _normalizeEnvelope(await _cache.getJson(_cacheKey(domain)));
+    if (scoped != null) return scoped;
+    final legacyKey = _legacyCacheKeys[domain];
+    if (legacyKey == null) return null;
+    return _normalizeEnvelope(await _cache.getJson(legacyKey));
+  }
+
+  Future<void> _saveDomainEnvelope(
+    String domain, {
+    required dynamic data,
+    String? version,
+    required Duration staleAfter,
+  }) async {
+    await _cache.setJson(
+      _cacheKey(domain),
+      _buildEnvelope(data: data, version: version, staleAfter: staleAfter),
+    );
+  }
+
+  Future<void> _loadSyncVersionsFromCache() async {
+    final envelope = await _loadDomainEnvelope('sync_versions');
+    final payload = _asMap(envelope?['data']);
+    final versions = _asMap(payload['versions']);
+    if (versions.isEmpty) return;
+    _syncVersions
+      ..clear()
+      ..addAll(
+        versions.map((k, v) => MapEntry(k.toString(), (v ?? '').toString())),
+      );
+  }
+
+  Future<void> _saveSyncVersionsToCache() async {
+    if (_syncVersions.isEmpty) return;
+    await _saveDomainEnvelope(
+      'sync_versions',
+      data: <String, dynamic>{
+        'versions': Map<String, String>.from(_syncVersions),
+      },
+      staleAfter: _syncVersionTtl,
+    );
+  }
+
   Future<void> hydrateFromCache() async {
-    final cachedPortfolio = await _cache.getJson('cache_portfolio');
-    if (cachedPortfolio != null && cachedPortfolio['items'] is List) {
+    await _loadSyncVersionsFromCache();
+
+    DateTime? assetSavedAt;
+    DateTime? quoteSavedAt;
+    bool hasAssetCache = false;
+    bool hasQuoteCache = false;
+
+    DateTime? mergeLatest(DateTime? current, DateTime? next) {
+      if (next == null) return current;
+      if (current == null) return next;
+      return next.isAfter(current) ? next : current;
+    }
+
+    final portfolioEnvelope = await _loadDomainEnvelope('portfolio');
+    final cachedPortfolio = _asMap(portfolioEnvelope?['data']);
+    if (cachedPortfolio['items'] is List) {
       _portfolio = (cachedPortfolio['items'] as List)
           .map((e) => PortfolioItem.fromJson(e))
           .toList();
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(
+        assetSavedAt,
+        _envelopeSavedAt(portfolioEnvelope),
+      );
+      final cachedVersion = '${portfolioEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) _syncVersions['portfolio'] = cachedVersion;
     }
 
-    final cachedCash = await _cache.getJson('cache_cash_assets');
-    if (cachedCash != null && cachedCash['items'] is List) {
+    final cashEnvelope = await _loadDomainEnvelope('cash_assets');
+    final cachedCash = _asMap(cashEnvelope?['data']);
+    if (cachedCash['items'] is List) {
       _cashAssets = (cachedCash['items'] as List)
           .map((e) => Asset.fromJson(e))
           .toList();
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(cashEnvelope));
+      final cachedVersion = '${cashEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) {
+        _syncVersions['cash_assets'] = cachedVersion;
+      }
     }
 
-    final cachedOther = await _cache.getJson('cache_other_assets');
-    if (cachedOther != null && cachedOther['items'] is List) {
+    final otherEnvelope = await _loadDomainEnvelope('other_assets');
+    final cachedOther = _asMap(otherEnvelope?['data']);
+    if (cachedOther['items'] is List) {
       _otherAssets = (cachedOther['items'] as List)
           .map((e) => Asset.fromJson(e))
           .toList();
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(otherEnvelope));
+      final cachedVersion = '${otherEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) {
+        _syncVersions['other_assets'] = cachedVersion;
+      }
     }
 
-    final cachedLiabilities = await _cache.getJson('cache_liabilities');
-    if (cachedLiabilities != null && cachedLiabilities['items'] is List) {
+    final liabilitiesEnvelope = await _loadDomainEnvelope('liabilities');
+    final cachedLiabilities = _asMap(liabilitiesEnvelope?['data']);
+    if (cachedLiabilities['items'] is List) {
       _liabilities = (cachedLiabilities['items'] as List)
           .map((e) => Asset.fromJson(e))
           .toList();
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(
+        assetSavedAt,
+        _envelopeSavedAt(liabilitiesEnvelope),
+      );
+      final cachedVersion = '${liabilitiesEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) {
+        _syncVersions['liabilities'] = cachedVersion;
+      }
     }
 
-    final cachedPrices = await _cache.getJson('cache_prices');
-    if (cachedPrices != null && cachedPrices['items'] is Map) {
+    final pricesEnvelope = await _loadDomainEnvelope('prices');
+    final cachedPrices = _asMap(pricesEnvelope?['data']);
+    if (cachedPrices['items'] is Map) {
       _prices = {};
       (cachedPrices['items'] as Map).forEach((key, value) {
         if (value is Map<String, dynamic>) {
           _prices[key.toString()] = PriceInfo.fromJson(value);
         }
       });
-    }
-
-    final cachedMarketStatus = await _cache.getJson('cache_market_status');
-    if (cachedMarketStatus != null) {
-      _marketOpenStatus = _parseMarketOpenStatus(cachedMarketStatus);
-    }
-
-    final cachedHistory = await _cache.getJson('cache_history');
-    if (cachedHistory != null && cachedHistory['items'] is List) {
-      _calculateHistoryStats(cachedHistory['items'] as List);
-    }
-    final cachedOverview = await _cache.getJson('cache_analysis_overview');
-    if (cachedOverview != null && cachedOverview['data'] is Map) {
-      applyOverviewMilestones(
-        Map<String, dynamic>.from(cachedOverview['data'] as Map),
+      hasQuoteCache = true;
+      quoteSavedAt = mergeLatest(
+        quoteSavedAt,
+        _envelopeSavedAt(pricesEnvelope),
       );
     }
 
-    final cachedRates = await _cache.getJson('cache_exchange_rates');
-    if (cachedRates != null && cachedRates['rates'] is Map) {
+    final marketStatusEnvelope = await _loadDomainEnvelope('market_status');
+    final cachedMarketStatus = _asMap(marketStatusEnvelope?['data']);
+    if (cachedMarketStatus.isNotEmpty) {
+      _marketOpenStatus = _parseMarketOpenStatus(cachedMarketStatus);
+      hasQuoteCache = true;
+      quoteSavedAt = mergeLatest(
+        quoteSavedAt,
+        _envelopeSavedAt(marketStatusEnvelope),
+      );
+    }
+
+    final historyEnvelope = await _loadDomainEnvelope('history');
+    final cachedHistory = _asMap(historyEnvelope?['data']);
+    if (cachedHistory['items'] is List) {
+      _calculateHistoryStats(cachedHistory['items'] as List);
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(
+        assetSavedAt,
+        _envelopeSavedAt(historyEnvelope),
+      );
+      final cachedVersion = '${historyEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) _syncVersions['history'] = cachedVersion;
+    }
+    final overviewEnvelope = await _loadDomainEnvelope('analysis_overview');
+    final cachedOverview = _asMap(overviewEnvelope?['data']);
+    if (cachedOverview['data'] is Map) {
+      applyOverviewMilestones(
+        Map<String, dynamic>.from(cachedOverview['data'] as Map),
+      );
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(
+        assetSavedAt,
+        _envelopeSavedAt(overviewEnvelope),
+      );
+      final cachedVersion = '${overviewEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) {
+        _syncVersions['overview_all'] = cachedVersion;
+      }
+    } else if (cachedOverview.isNotEmpty) {
+      applyOverviewMilestones(cachedOverview);
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(
+        assetSavedAt,
+        _envelopeSavedAt(overviewEnvelope),
+      );
+    }
+
+    final ratesEnvelope = await _loadDomainEnvelope('exchange_rates');
+    final cachedRates = _asMap(ratesEnvelope?['data']);
+    if (cachedRates['rates'] is Map) {
       updateExchangeRates(cachedRates['rates'] as Map<String, dynamic>);
+      hasAssetCache = true;
+      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(ratesEnvelope));
+      final cachedVersion = '${ratesEnvelope?['version'] ?? ''}'.trim();
+      if (cachedVersion.isNotEmpty) _syncVersions['rates'] = cachedVersion;
     }
 
     // recompute totals
@@ -390,6 +637,18 @@ class AppState extends ChangeNotifier {
     _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
 
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
+    if (hasAssetCache) {
+      _assetDataFromCache = true;
+      if (assetSavedAt != null) {
+        _lastAssetDataUpdatedAt = assetSavedAt;
+      }
+    }
+    if (hasQuoteCache) {
+      _quoteDataFromCache = true;
+      if (quoteSavedAt != null) {
+        _lastQuoteDataUpdatedAt = quoteSavedAt;
+      }
+    }
     notifyListeners();
   }
 
@@ -423,48 +682,93 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> savePortfolioToCache() async {
-    await _cache.setJson('cache_portfolio', {
-      'items': _portfolio.map((e) => e.toJson()).toList(),
-    });
+    await _saveDomainEnvelope(
+      'portfolio',
+      data: <String, dynamic>{
+        'items': _portfolio.map((e) => e.toJson()).toList(),
+      },
+      version: _syncVersions['portfolio'],
+      staleAfter: _staticDataTtl,
+    );
   }
 
   Future<void> saveHomeCache(
     List<dynamic> history, {
     Map<String, dynamic>? overview,
   }) async {
-    await _cache.setJson('cache_portfolio', {
-      'items': _portfolio.map((e) => e.toJson()).toList(),
-    });
-    await _cache.setJson('cache_cash_assets', {
-      'items': _cashAssets.map((e) => e.toJson()).toList(),
-    });
-    await _cache.setJson('cache_other_assets', {
-      'items': _otherAssets.map((e) => e.toJson()).toList(),
-    });
-    await _cache.setJson('cache_liabilities', {
-      'items': _liabilities.map((e) => e.toJson()).toList(),
-    });
-    await _cache.setJson('cache_history', {'items': history});
-    await _cache.setJson('cache_exchange_rates', {'rates': _exchangeRates});
-    await _cache.setJson('cache_prices', {
-      'items': _prices.map(
-        (key, value) => MapEntry(key, {
-          'price': value.price,
-          'yclose': value.yclose,
-          'amt': value.change,
-          'chg': value.changePct,
-          'regular_price': value.regularPrice,
-          'premarket_price': value.premarketPrice,
-          'after_hours_price': value.afterHoursPrice,
-          'session': value.session,
-          'effective_session': value.effectiveSession,
-          'extended_active': value.extendedActive,
-        }),
-      ),
-    });
+    await _saveDomainEnvelope(
+      'portfolio',
+      data: <String, dynamic>{
+        'items': _portfolio.map((e) => e.toJson()).toList(),
+      },
+      version: _syncVersions['portfolio'],
+      staleAfter: _staticDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'cash_assets',
+      data: <String, dynamic>{
+        'items': _cashAssets.map((e) => e.toJson()).toList(),
+      },
+      version: _syncVersions['cash_assets'],
+      staleAfter: _staticDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'other_assets',
+      data: <String, dynamic>{
+        'items': _otherAssets.map((e) => e.toJson()).toList(),
+      },
+      version: _syncVersions['other_assets'],
+      staleAfter: _staticDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'liabilities',
+      data: <String, dynamic>{
+        'items': _liabilities.map((e) => e.toJson()).toList(),
+      },
+      version: _syncVersions['liabilities'],
+      staleAfter: _staticDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'history',
+      data: <String, dynamic>{'items': history},
+      version: _syncVersions['history'],
+      staleAfter: _historyDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'exchange_rates',
+      data: <String, dynamic>{'rates': _exchangeRates},
+      version: _syncVersions['rates'],
+      staleAfter: _ratesDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'prices',
+      data: <String, dynamic>{
+        'items': _prices.map(
+          (key, value) => MapEntry(key, {
+            'price': value.price,
+            'yclose': value.yclose,
+            'amt': value.change,
+            'chg': value.changePct,
+            'regular_price': value.regularPrice,
+            'premarket_price': value.premarketPrice,
+            'after_hours_price': value.afterHoursPrice,
+            'session': value.session,
+            'effective_session': value.effectiveSession,
+            'extended_active': value.extendedActive,
+          }),
+        ),
+      },
+      staleAfter: _staticDataTtl,
+    );
     if (overview != null && overview.isNotEmpty) {
-      await _cache.setJson('cache_analysis_overview', {'data': overview});
+      await _saveDomainEnvelope(
+        'analysis_overview',
+        data: <String, dynamic>{'data': overview},
+        version: _syncVersions['overview_all'],
+        staleAfter: _historyDataTtl,
+      );
     }
+    await _saveSyncVersionsToCache();
   }
 
   Future<void> _applyAuthResult(Map<String, dynamic> result) async {
@@ -867,6 +1171,11 @@ class AppState extends ChangeNotifier {
     _cashAssets = [];
     _otherAssets = [];
     _liabilities = [];
+    _syncVersions.clear();
+    _lastAssetDataUpdatedAt = null;
+    _lastQuoteDataUpdatedAt = null;
+    _assetDataFromCache = false;
+    _quoteDataFromCache = false;
     _portfolioLoaded = false;
     if (preserveBiometricSession) {
       unawaited(() async {
@@ -950,6 +1259,7 @@ class AppState extends ChangeNotifier {
         if (refreshed != null) {
           await _applyAuthResult(refreshed);
           _isSessionChecking = false;
+          unawaited(hydrateFromCache());
           unawaited(refreshAll());
           unawaited(_validateSessionInBackground());
           return;
@@ -970,6 +1280,7 @@ class AppState extends ChangeNotifier {
     _sessionBootState = SessionBootState.authenticated;
     _isSessionChecking = false;
     notifyListeners();
+    unawaited(hydrateFromCache());
     unawaited(refreshAll());
     unawaited(_validateSessionInBackground());
   }
@@ -1023,6 +1334,11 @@ class AppState extends ChangeNotifier {
     _logoutMode = AuthLogoutMode.normal;
     _sessionBootState = SessionBootState.unauthenticated;
     _api.clearToken();
+    _syncVersions.clear();
+    _lastAssetDataUpdatedAt = null;
+    _lastQuoteDataUpdatedAt = null;
+    _assetDataFromCache = false;
+    _quoteDataFromCache = false;
     notifyListeners();
     try {
       await _secureStorage.clearAllAuth();
@@ -1067,6 +1383,57 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _positiveInt(dynamic value, {required int fallback}) {
+    final parsed = _asInt(value);
+    return parsed > 0 ? parsed : fallback;
+  }
+
+  void _applyQuotePolicy(dynamic rawPolicy) {
+    final policy = _asMap(rawPolicy);
+    if (policy.isEmpty) return;
+    _quoteIntervalOpenSec = _positiveInt(
+      policy['interval_open_sec'],
+      fallback: _quoteIntervalOpenSec,
+    );
+    _quoteIntervalClosedSec = _positiveInt(
+      policy['interval_closed_sec'],
+      fallback: _quoteIntervalClosedSec,
+    );
+    _quoteIntervalUsExtendedSec = _positiveInt(
+      policy['interval_us_extended_sec'],
+      fallback: _quoteIntervalUsExtendedSec,
+    );
+  }
+
+  void _applySyncMarketStatus(dynamic rawStatus) {
+    final status = _asMap(rawStatus);
+    if (status.isEmpty) return;
+    _marketOpenStatus = {
+      'a': _asBool(status['a']),
+      'hk': _asBool(status['hk']),
+      'us': _asBool(status['us']),
+      'fund': _asBool(status['fund']),
+    };
+  }
+
+  void _recalculateHomeTotals() {
+    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+    _totalInvest = _portfolioCostMV;
+    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
+  }
+
+  bool _canSkipStaticSyncCheck({required bool force}) {
+    if (force) return false;
+    if (_syncVersions.isEmpty) return false;
+    final lastAt = _lastAssetDataUpdatedAt;
+    if (lastAt == null) return false;
+    return DateTime.now().difference(lastAt) < _staticDataTtl;
+  }
+
+  /// 刷新首页数据（全量）
   /// 刷新首页数据
   Future<void> refreshHomeData() async {
     try {
@@ -1092,11 +1459,7 @@ class AppState extends ChangeNotifier {
           .toList();
 
       // 计算总额（必须在历史数据计算之前）
-      _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
-      _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
-      _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
-      _totalInvest = _portfolioCostMV;
-      _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+      _recalculateHomeTotals();
 
       // 处理历史数据（必须在总资产计算之后）
       final history = results[4] as List;
@@ -1105,6 +1468,8 @@ class AppState extends ChangeNotifier {
       applyOverviewMilestones(overview);
 
       await saveHomeCache(history, overview: overview);
+      _assetDataFromCache = false;
+      _lastAssetDataUpdatedAt = DateTime.now();
 
       _portfolioLoaded = true;
       notifyListeners();
@@ -1113,6 +1478,194 @@ class AppState extends ChangeNotifier {
       unawaited(_refreshPortfolioPricesInBackground(force: true));
     } catch (e) {
       debugPrint('刷新首页数据失败: $e');
+    }
+  }
+
+  Future<void> _applySyncDomainData({
+    required String domain,
+    required dynamic payload,
+  }) async {
+    if (domain == 'portfolio') {
+      final list = (payload is List) ? payload : const <dynamic>[];
+      _portfolio = list.map((e) => PortfolioItem.fromJson(e)).toList();
+      final validCodes = _portfolio.map((e) => e.code).toSet();
+      _prices.removeWhere((code, _) => !validCodes.contains(code));
+      _recalculateHomeTotals();
+      await _saveDomainEnvelope(
+        'portfolio',
+        data: <String, dynamic>{
+          'items': _portfolio.map((e) => e.toJson()).toList(),
+        },
+        version: _syncVersions['portfolio'],
+        staleAfter: _staticDataTtl,
+      );
+      return;
+    }
+    if (domain == 'cash_assets') {
+      final list = (payload is List) ? payload : const <dynamic>[];
+      _cashAssets = list.map((e) => Asset.fromJson(e)).toList();
+      _recalculateHomeTotals();
+      await _saveDomainEnvelope(
+        'cash_assets',
+        data: <String, dynamic>{
+          'items': _cashAssets.map((e) => e.toJson()).toList(),
+        },
+        version: _syncVersions['cash_assets'],
+        staleAfter: _staticDataTtl,
+      );
+      return;
+    }
+    if (domain == 'other_assets') {
+      final list = (payload is List) ? payload : const <dynamic>[];
+      _otherAssets = list.map((e) => Asset.fromJson(e)).toList();
+      _recalculateHomeTotals();
+      await _saveDomainEnvelope(
+        'other_assets',
+        data: <String, dynamic>{
+          'items': _otherAssets.map((e) => e.toJson()).toList(),
+        },
+        version: _syncVersions['other_assets'],
+        staleAfter: _staticDataTtl,
+      );
+      return;
+    }
+    if (domain == 'liabilities') {
+      final list = (payload is List) ? payload : const <dynamic>[];
+      _liabilities = list.map((e) => Asset.fromJson(e)).toList();
+      _recalculateHomeTotals();
+      await _saveDomainEnvelope(
+        'liabilities',
+        data: <String, dynamic>{
+          'items': _liabilities.map((e) => e.toJson()).toList(),
+        },
+        version: _syncVersions['liabilities'],
+        staleAfter: _staticDataTtl,
+      );
+      return;
+    }
+    if (domain == 'history') {
+      final history = (payload is List) ? payload : const <dynamic>[];
+      _calculateHistoryStats(history);
+      await _saveDomainEnvelope(
+        'history',
+        data: <String, dynamic>{'items': history},
+        version: _syncVersions['history'],
+        staleAfter: _historyDataTtl,
+      );
+      return;
+    }
+    if (domain == 'overview_all') {
+      final overview = _asMap(payload);
+      applyOverviewMilestones(overview);
+      await _saveDomainEnvelope(
+        'analysis_overview',
+        data: <String, dynamic>{'data': overview},
+        version: _syncVersions['overview_all'],
+        staleAfter: _historyDataTtl,
+      );
+      return;
+    }
+    if (domain == 'rates') {
+      final rates = _asMap(payload);
+      if (rates.isNotEmpty) {
+        updateExchangeRates(rates);
+      }
+      await _saveDomainEnvelope(
+        'exchange_rates',
+        data: <String, dynamic>{'rates': _exchangeRates},
+        version: _syncVersions['rates'],
+        staleAfter: _ratesDataTtl,
+      );
+    }
+  }
+
+  /// 按版本增量刷新，失败时自动回退全量刷新。
+  Future<void> refreshByVersion({
+    bool force = false,
+    bool refreshQuotes = true,
+  }) async {
+    final existing = _refreshByVersionInFlight;
+    if (existing != null) return existing;
+
+    final future = _refreshByVersionInternal(
+      force: force,
+      refreshQuotes: refreshQuotes,
+    );
+    _refreshByVersionInFlight = future;
+    try {
+      await future;
+    } finally {
+      _refreshByVersionInFlight = null;
+    }
+  }
+
+  Future<void> _refreshByVersionInternal({
+    required bool force,
+    required bool refreshQuotes,
+  }) async {
+    if (_canSkipStaticSyncCheck(force: force)) {
+      if (refreshQuotes) {
+        await _refreshPortfolioPricesInBackground(force: true);
+      }
+      return;
+    }
+
+    try {
+      final response = await _api.getSyncBootstrap(
+        include: _syncBootstrapDomains,
+        clientVersions: force
+            ? const <String, String>{}
+            : Map<String, String>.from(_syncVersions),
+      );
+      _applyQuotePolicy(response['quote_policy']);
+      _applySyncMarketStatus(response['market_status']);
+
+      final versions = _asMap(response['versions']);
+      if (versions.isNotEmpty) {
+        _syncVersions.addAll(
+          versions.map((k, v) => MapEntry(k.toString(), (v ?? '').toString())),
+        );
+        await _saveSyncVersionsToCache();
+      }
+
+      final changedRaw = response['changed'];
+      final changed = <String>[];
+      if (changedRaw is List) {
+        for (final item in changedRaw) {
+          final key = '$item'.trim();
+          if (key.isNotEmpty) changed.add(key);
+        }
+      }
+      final data = _asMap(response['data']);
+
+      bool staticChanged = false;
+      for (final domain in changed) {
+        await _applySyncDomainData(domain: domain, payload: data[domain]);
+        if (domain != 'rates') {
+          staticChanged = true;
+        }
+      }
+
+      await _saveDomainEnvelope(
+        'market_status',
+        data: <String, dynamic>{'markets': _marketOpenStatus},
+        staleAfter: _staticDataTtl,
+      );
+
+      if (staticChanged || changed.contains('rates')) {
+        _assetDataFromCache = false;
+        _lastAssetDataUpdatedAt = DateTime.now();
+      }
+      if (changed.isNotEmpty) {
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('版本增量刷新失败，降级全量刷新: $e');
+      await Future.wait([refreshHomeData(), loadExchangeRates()]);
+    }
+
+    if (refreshQuotes) {
+      await _refreshPortfolioPricesInBackground(force: true);
     }
   }
 
@@ -1163,7 +1716,18 @@ class AppState extends ChangeNotifier {
         _prices = {};
         _totalInvest = 0;
         _totalAsset = _totalCash + _totalOther - _totalLiability;
-        await _cache.setJson('cache_market_status', {'markets': marketStatus});
+        await _saveDomainEnvelope(
+          'market_status',
+          data: <String, dynamic>{'markets': marketStatus},
+          staleAfter: _staticDataTtl,
+        );
+        await _saveDomainEnvelope(
+          'prices',
+          data: <String, dynamic>{'items': <String, dynamic>{}},
+          staleAfter: _staticDataTtl,
+        );
+        _quoteDataFromCache = false;
+        _lastQuoteDataUpdatedAt = DateTime.now();
         notifyListeners();
         return;
       }
@@ -1208,7 +1772,33 @@ class AppState extends ChangeNotifier {
       _prices = nextPrices;
       _totalInvest = investTotalMV;
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
-      await _cache.setJson('cache_market_status', {'markets': marketStatus});
+      await _saveDomainEnvelope(
+        'market_status',
+        data: <String, dynamic>{'markets': marketStatus},
+        staleAfter: _staticDataTtl,
+      );
+      await _saveDomainEnvelope(
+        'prices',
+        data: <String, dynamic>{
+          'items': _prices.map(
+            (key, value) => MapEntry(key, {
+              'price': value.price,
+              'yclose': value.yclose,
+              'amt': value.change,
+              'chg': value.changePct,
+              'regular_price': value.regularPrice,
+              'premarket_price': value.premarketPrice,
+              'after_hours_price': value.afterHoursPrice,
+              'session': value.session,
+              'effective_session': value.effectiveSession,
+              'extended_active': value.extendedActive,
+            }),
+          ),
+        },
+        staleAfter: _staticDataTtl,
+      );
+      _quoteDataFromCache = false;
+      _lastQuoteDataUpdatedAt = DateTime.now();
       notifyListeners();
     } catch (e) {
       debugPrint('后台刷新行情失败: $e');
@@ -1224,8 +1814,26 @@ class AppState extends ChangeNotifier {
   }
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
-  Future<void> refreshAll() async {
-    await Future.wait([refreshHomeData(), loadExchangeRates()]);
+  Future<void> refreshAll({bool force = false}) async {
+    final existing = _refreshAllInFlight;
+    if (existing != null) return existing;
+
+    final future = _refreshAllInternal(force: force);
+    _refreshAllInFlight = future;
+    try {
+      await future;
+    } finally {
+      _refreshAllInFlight = null;
+    }
+  }
+
+  Future<void> _refreshAllInternal({required bool force}) async {
+    if (force) {
+      await Future.wait([refreshHomeData(), loadExchangeRates()]);
+      await _refreshPortfolioPricesInBackground(force: true);
+      return;
+    }
+    await refreshByVersion(force: false, refreshQuotes: true);
   }
 
   _AssetSnapshot _captureAssetSnapshot() {
@@ -2253,6 +2861,14 @@ class AppState extends ChangeNotifier {
     try {
       final rates = await _api.getExchangeRates();
       updateExchangeRates(rates);
+      await _saveDomainEnvelope(
+        'exchange_rates',
+        data: <String, dynamic>{'rates': _exchangeRates},
+        version: _syncVersions['rates'],
+        staleAfter: _ratesDataTtl,
+      );
+      _assetDataFromCache = false;
+      _lastAssetDataUpdatedAt = DateTime.now();
     } catch (e) {
       debugPrint('加载汇率失败: $e');
     }

@@ -519,11 +519,9 @@ class ApiService {
 
   /// 批量获取价格
   Future<Map<String, dynamic>> getPricesBatch(List<String> codes) async {
-    return await _post(
-          ApiConfig.pricesBatch,
-          {'codes': codes},
-          retryOnTransient: true,
-        ) ??
+    return await _post(ApiConfig.pricesBatch, {
+          'codes': codes,
+        }, retryOnTransient: true) ??
         {};
   }
 
@@ -795,6 +793,28 @@ class ApiService {
       debugPrint('获取市场状态失败: $e');
       return fallback;
     }
+  }
+
+  /// 增量同步引导：按版本比较返回变更域。
+  Future<Map<String, dynamic>> getSyncBootstrap({
+    List<String>? include,
+    Map<String, String>? clientVersions,
+  }) async {
+    final response = await _post(ApiConfig.syncBootstrap, {
+      'include':
+          include ??
+          const [
+            'portfolio',
+            'cash_assets',
+            'other_assets',
+            'liabilities',
+            'history',
+            'overview_all',
+            'rates',
+          ],
+      'client_versions': clientVersions ?? const {},
+    }, retryOnTransient: true);
+    return _toMap(response);
   }
 
   /// 获取资产历史

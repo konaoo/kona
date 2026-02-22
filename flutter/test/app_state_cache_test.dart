@@ -17,24 +17,24 @@ void main() {
             'qty': 1,
             'price': 10,
             'curr': 'CNY',
-            'adjustment': 0
-          }
-        ]
+            'adjustment': 0,
+          },
+        ],
       }),
       'cache_cash_assets': jsonEncode({
         'items': [
-          {'id': 1, 'name': '现金', 'amount': 5, 'curr': 'CNY'}
-        ]
+          {'id': 1, 'name': '现金', 'amount': 5, 'curr': 'CNY'},
+        ],
       }),
       'cache_other_assets': jsonEncode({
         'items': [
-          {'id': 2, 'name': '其他', 'amount': 2, 'curr': 'CNY'}
-        ]
+          {'id': 2, 'name': '其他', 'amount': 2, 'curr': 'CNY'},
+        ],
       }),
       'cache_liabilities': jsonEncode({
         'items': [
-          {'id': 3, 'name': '负债', 'amount': 1, 'curr': 'CNY'}
-        ]
+          {'id': 3, 'name': '负债', 'amount': 1, 'curr': 'CNY'},
+        ],
       }),
       'cache_history': jsonEncode({
         'items': [
@@ -47,18 +47,18 @@ void main() {
             'total_liability': 0,
             'total_pnl': 0,
             'day_pnl': 0,
-            'updated_at': '2026-01-01'
-          }
-        ]
+            'updated_at': '2026-01-01',
+          },
+        ],
       }),
       'cache_exchange_rates': jsonEncode({
-        'rates': {'USD': 8.0, 'HKD': 1.0, 'CNY': 1.0}
+        'rates': {'USD': 8.0, 'HKD': 1.0, 'CNY': 1.0},
       }),
       'cache_prices': jsonEncode({
         'items': {
-          'sh600000': {'price': 11, 'yclose': 10, 'chg': 1}
-        }
-      })
+          'sh600000': {'price': 11, 'yclose': 10, 'chg': 1},
+        },
+      }),
     });
 
     final state = AppState();
@@ -82,12 +82,12 @@ void main() {
     await state.saveHomeCache([]);
     final prefs = await SharedPreferences.getInstance();
 
-    expect(prefs.getString('cache_portfolio'), isNotNull);
-    expect(prefs.getString('cache_cash_assets'), isNotNull);
-    expect(prefs.getString('cache_other_assets'), isNotNull);
-    expect(prefs.getString('cache_liabilities'), isNotNull);
-    expect(prefs.getString('cache_history'), isNotNull);
-    expect(prefs.getString('cache_exchange_rates'), isNotNull);
-    expect(prefs.getString('cache_prices'), isNotNull);
+    expect(prefs.getString('u:guest:portfolio'), isNotNull);
+    expect(prefs.getString('u:guest:cash_assets'), isNotNull);
+    expect(prefs.getString('u:guest:other_assets'), isNotNull);
+    expect(prefs.getString('u:guest:liabilities'), isNotNull);
+    expect(prefs.getString('u:guest:history'), isNotNull);
+    expect(prefs.getString('u:guest:exchange_rates'), isNotNull);
+    expect(prefs.getString('u:guest:prices'), isNotNull);
   });
 }

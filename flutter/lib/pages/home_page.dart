@@ -35,7 +35,7 @@ class HomePageState extends State<HomePage> {
 
   Future<void> _refreshData() async {
     final appState = context.read<AppState>();
-    await appState.refreshAll();
+    await appState.refreshAll(force: true);
   }
 
   void resetFabVisibilityController() {
@@ -70,6 +70,14 @@ class HomePageState extends State<HomePage> {
     const navBarHeight = 60.0;
     const fabRegion = 76.0;
     return navBarHeight + safeBottom + fabRegion;
+  }
+
+  String _formatUpdateLabel(DateTime? ts) {
+    if (ts == null) return '--';
+    final local = ts.toLocal();
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
   }
 
   @override
@@ -152,6 +160,17 @@ class HomePageState extends State<HomePage> {
                               ),
                             );
                           },
+                        ),
+
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          '资产更新 ${_formatUpdateLabel(appState.assetDataUpdatedAt)}'
+                          ' · 行情更新 ${_formatUpdateLabel(appState.quoteDataUpdatedAt)}'
+                          '${appState.assetDataFromCache || appState.quoteDataFromCache ? ' · 离线缓存' : ''}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textTertiary,
+                          ),
                         ),
 
                         const SizedBox(height: Spacing.xl),

@@ -8,6 +8,7 @@ import webbrowser
 import time
 import secrets
 import json
+import hashlib
 from functools import wraps
 from collections import defaultdict
 from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
@@ -56,6 +57,7 @@ from core.auth import (
     hash_refresh_token,
 )
 import re
+from typing import Any, Dict
 from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(
@@ -77,6 +79,20 @@ _snapshot_inflight = set()
 _snapshot_last_run_ts = {}
 _SNAPSHOT_MIN_INTERVAL_SECONDS = 3.0
 _MARKET_SCOPE = ["a", "hk", "us", "fund"]
+_SYNC_BOOTSTRAP_DOMAINS = (
+    "portfolio",
+    "cash_assets",
+    "other_assets",
+    "liabilities",
+    "history",
+    "overview_all",
+    "rates",
+)
+_QUOTE_POLICY_DEFAULT = {
+    "interval_open_sec": 5,
+    "interval_closed_sec": 120,
+    "interval_us_extended_sec": 10,
+}
 _idempotency_lock = threading.Lock()
 _idempotency_records = {}
 _IDEMPOTENCY_WINDOW_SECONDS = 20.0
@@ -227,6 +243,52 @@ def _convert_amount(amount: float, from_curr: str, to_curr: str, rates: dict) ->
     to_rate = _rate_to_cny(to_curr, rates)
     cny_amount = amount * from_rate
     return cny_amount / to_rate if to_rate > 0 else cny_amount
+
+
+def _sync_rates_version(rates: Dict[str, Any]) -> str:
+    try:
+        normalized = {
+            str(k): float(v)
+            for k, v in sorted((rates or {}).items(), key=lambda item: str(item[0]))
+        }
+    except Exception:
+        normalized = {}
+    raw = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _normalize_sync_include(raw_include: Any) -> list[str]:
+    if not isinstance(raw_include, list):
+        return list(_SYNC_BOOTSTRAP_DOMAINS)
+    include: list[str] = []
+    for item in raw_include:
+        key = str(item or "").strip().lower()
+        if key in _SYNC_BOOTSTRAP_DOMAINS and key not in include:
+            include.append(key)
+    return include or list(_SYNC_BOOTSTRAP_DOMAINS)
+
+
+def _build_sync_domain_data(domain: str, user_id: str = None) -> Any:
+    if domain == "portfolio":
+        return db.get_portfolio(user_id=user_id)
+    if domain == "cash_assets":
+        return db.get_cash_assets(user_id=user_id)
+    if domain == "other_assets":
+        return db.get_other_assets(user_id=user_id)
+    if domain == "liabilities":
+        return db.get_liabilities(user_id=user_id)
+    if domain == "history":
+        return db.get_history(365, user_id=user_id)
+    if domain == "overview_all":
+        return {
+            "day": db.get_pnl_overview("day", user_id),
+            "month": db.get_pnl_overview("month", user_id),
+            "year": db.get_pnl_overview("year", user_id),
+            "all": db.get_pnl_overview("all", user_id),
+        }
+    if domain == "rates":
+        return get_forex_rates()
+    return None
 
 
 def _username_limit_key() -> str:
@@ -2035,6 +2097,56 @@ def api_market_status():
             "server_time_utc": now_utc.isoformat(),
             "markets": markets,
             "all_closed": all_markets_closed(_MARKET_SCOPE, now=now_utc),
+        }
+    )
+
+
+@app.route('/api/sync/bootstrap', methods=['POST'])
+@optional_auth
+def api_sync_bootstrap():
+    """
+    客户端增量同步引导接口。
+
+    请求体:
+    {
+      "client_versions": {"portfolio":"...", ...},
+      "include": ["portfolio", "cash_assets", ...]
+    }
+    """
+    body = request.get_json(silent=True) or {}
+    include = _normalize_sync_include(body.get("include"))
+    client_versions_raw = body.get("client_versions")
+    client_versions = client_versions_raw if isinstance(client_versions_raw, dict) else {}
+
+    user_id = g.user_id
+    now_utc = datetime.now(timezone.utc)
+    rates = get_forex_rates()
+
+    versions = db.get_sync_versions(user_id=user_id)
+    versions["rates"] = _sync_rates_version(rates)
+
+    changed: list[str] = []
+    data: Dict[str, Any] = {}
+    for domain in include:
+        client_v = str(client_versions.get(domain, "") or "")
+        server_v = str(versions.get(domain, "") or "")
+        if client_v == server_v:
+            continue
+        changed.append(domain)
+        if domain == "rates":
+            data[domain] = rates
+        else:
+            data[domain] = _build_sync_domain_data(domain, user_id=user_id)
+
+    markets = get_market_statuses(_MARKET_SCOPE, now=now_utc)
+    return jsonify(
+        {
+            "server_time": now_utc.isoformat(),
+            "versions": {k: versions[k] for k in _SYNC_BOOTSTRAP_DOMAINS},
+            "changed": changed,
+            "data": data,
+            "market_status": {k: bool((markets.get(k) or {}).get("open")) for k in _MARKET_SCOPE},
+            "quote_policy": dict(_QUOTE_POLICY_DEFAULT),
         }
     )
 

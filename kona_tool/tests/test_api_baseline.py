@@ -220,6 +220,52 @@ class ApiBaselineTests(unittest.TestCase):
                 self.assertEqual(body.get("all_closed"), True)
                 self.assertEqual(body.get("markets"), mocked_markets)
 
+    def test_sync_bootstrap_returns_changed_domains_and_versions(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO cash_assets (name, amount, curr, user_id)
+            VALUES ('测试现金', 1000, 'CNY', '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        fixed_rates = {'USD': 7.0, 'HKD': 0.9, 'CNY': 1.0}
+        with patch.object(app_module, 'get_forex_rates', return_value=fixed_rates):
+            first = self.client.post(
+                '/api/sync/bootstrap',
+                json={
+                    'include': ['cash_assets', 'rates'],
+                    'client_versions': {},
+                },
+            )
+            self.assertEqual(first.status_code, 200)
+            first_payload = first.get_json() or {}
+            self.assertEqual(set(first_payload.get('changed') or []), {'cash_assets', 'rates'})
+            self.assertIn('cash_assets', first_payload.get('data') or {})
+            self.assertIn('rates', first_payload.get('data') or {})
+            self.assertIn('quote_policy', first_payload)
+            versions = first_payload.get('versions') or {}
+            self.assertTrue(str(versions.get('cash_assets', '')).strip())
+            self.assertTrue(str(versions.get('rates', '')).strip())
+
+            second = self.client.post(
+                '/api/sync/bootstrap',
+                json={
+                    'include': ['cash_assets', 'rates'],
+                    'client_versions': {
+                        'cash_assets': versions.get('cash_assets'),
+                        'rates': versions.get('rates'),
+                    },
+                },
+            )
+            self.assertEqual(second.status_code, 200)
+            second_payload = second.get_json() or {}
+            self.assertEqual(second_payload.get('changed'), [])
+            self.assertEqual(second_payload.get('data'), {})
+
     def test_analysis_calendar_supports_year_month_query(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()

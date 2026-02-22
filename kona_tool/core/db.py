@@ -7,6 +7,7 @@ import logging
 import uuid
 import re
 import json
+import hashlib
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import datetime as dt
@@ -3232,6 +3233,83 @@ class DatabaseManager:
                     LIMIT ?
                 ''', (limit,))
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def _sync_version_from_parts(self, domain: str, *parts: str) -> str:
+        raw = f"{domain}|" + "|".join(str(p or "") for p in parts)
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+    def get_sync_versions(self, user_id: str = None) -> Dict[str, str]:
+        """
+        计算客户端增量同步版本号（按用户维度）。
+
+        版本规则：
+        - portfolio/cash_assets/other_assets/liabilities: max(updated_at)+count+user_id
+        - history: max(date)+count+user_id
+        - overview_all: max(daily_snapshots.updated_at)+count+user_id
+        """
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        uid = str(user_id or "")
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        def _table_version(table: str) -> str:
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(updated_at), '') AS max_updated, COUNT(*) AS cnt
+                FROM {table}
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            row = cursor.fetchone() or {}
+            max_updated = str((row["max_updated"] if isinstance(row, sqlite3.Row) else "") or "")
+            cnt = str((row["cnt"] if isinstance(row, sqlite3.Row) else 0) or 0)
+            return self._sync_version_from_parts(table, max_updated, cnt, uid)
+
+        try:
+            versions: Dict[str, str] = {
+                "portfolio": _table_version("portfolio"),
+                "cash_assets": _table_version("cash_assets"),
+                "other_assets": _table_version("other_assets"),
+                "liabilities": _table_version("liabilities"),
+            }
+
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(date), '') AS max_date, COUNT(*) AS cnt
+                FROM daily_snapshots
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            history_row = cursor.fetchone() or {}
+            max_date = str((history_row["max_date"] if isinstance(history_row, sqlite3.Row) else "") or "")
+            history_cnt = str((history_row["cnt"] if isinstance(history_row, sqlite3.Row) else 0) or 0)
+            versions["history"] = self._sync_version_from_parts("history", max_date, history_cnt, uid)
+
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(updated_at), '') AS max_updated, COUNT(*) AS cnt
+                FROM daily_snapshots
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            overview_row = cursor.fetchone() or {}
+            overview_updated = str((overview_row["max_updated"] if isinstance(overview_row, sqlite3.Row) else "") or "")
+            overview_cnt = str((overview_row["cnt"] if isinstance(overview_row, sqlite3.Row) else 0) or 0)
+            versions["overview_all"] = self._sync_version_from_parts(
+                "overview_all",
+                overview_updated,
+                overview_cnt,
+                uid,
+            )
+            return versions
         finally:
             conn.close()
 

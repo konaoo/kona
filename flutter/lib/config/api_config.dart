@@ -41,5 +41,6 @@ class ApiConfig {
   static const String rates = '/api/rates';
   static const String history = '/api/history';
   static const String marketStatus = '/api/market/status';
+  static const String syncBootstrap = '/api/sync/bootstrap';
   static const String search = '/api/search';
 }
