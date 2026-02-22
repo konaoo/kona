@@ -381,15 +381,25 @@ class AppState extends ChangeNotifier {
     'exchange_rates': 'cache_exchange_rates',
   };
 
-  String _cacheUserScope() {
-    final uid = (_userId ?? '').trim();
-    if (uid.isNotEmpty) return uid;
+  List<String> _cacheScopes({bool includeGuestForAnonymous = true}) {
+    final scopes = <String>[];
     final uname = (_username ?? '').trim().toLowerCase();
-    if (uname.isNotEmpty) return 'name:$uname';
-    return 'guest';
+    final uid = (_userId ?? '').trim();
+    if (uname.isNotEmpty) scopes.add('name:$uname');
+    if (uid.isNotEmpty && !scopes.contains(uid)) scopes.add(uid);
+    if (scopes.isEmpty && includeGuestForAnonymous) scopes.add('guest');
+    return scopes;
   }
 
-  String _cacheKey(String domain) => 'u:${_cacheUserScope()}:$domain';
+  String _cachePrimaryScope() {
+    final scopes = _cacheScopes();
+    return scopes.isEmpty ? 'guest' : scopes.first;
+  }
+
+  String _cacheKeyForScope(String scope, String domain) => 'u:$scope:$domain';
+
+  String _cacheKey(String domain) =>
+      _cacheKeyForScope(_cachePrimaryScope(), domain);
 
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
@@ -417,7 +427,7 @@ class AppState extends ChangeNotifier {
         raw.containsKey('data') && raw.containsKey('saved_at_ms');
     if (hasEnvelopeFields) return raw;
     return <String, dynamic>{
-      'user_id': _cacheUserScope(),
+      'user_id': _cachePrimaryScope(),
       'version': '',
       'saved_at_ms': 0,
       'stale_after_ms': 0,
@@ -431,7 +441,7 @@ class AppState extends ChangeNotifier {
     required Duration staleAfter,
   }) {
     return <String, dynamic>{
-      'user_id': _cacheUserScope(),
+      'user_id': _cachePrimaryScope(),
       'version': (version ?? '').trim(),
       'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
       'stale_after_ms': staleAfter.inMilliseconds,
@@ -440,8 +450,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> _loadDomainEnvelope(String domain) async {
-    final scoped = _normalizeEnvelope(await _cache.getJson(_cacheKey(domain)));
-    if (scoped != null) return scoped;
+    final scopes = _cacheScopes();
+    for (final scope in scopes) {
+      final scoped = _normalizeEnvelope(
+        await _cache.getJson(_cacheKeyForScope(scope, domain)),
+      );
+      if (scoped != null) return scoped;
+    }
     final legacyKey = _legacyCacheKeys[domain];
     if (legacyKey == null) return null;
     return _normalizeEnvelope(await _cache.getJson(legacyKey));
@@ -453,10 +468,14 @@ class AppState extends ChangeNotifier {
     String? version,
     required Duration staleAfter,
   }) async {
-    await _cache.setJson(
-      _cacheKey(domain),
-      _buildEnvelope(data: data, version: version, staleAfter: staleAfter),
+    final envelope = _buildEnvelope(
+      data: data,
+      version: version,
+      staleAfter: staleAfter,
     );
+    for (final scope in _cacheScopes()) {
+      await _cache.setJson(_cacheKeyForScope(scope, domain), envelope);
+    }
   }
 
   Future<void> _loadSyncVersionsFromCache() async {
@@ -1713,22 +1732,25 @@ class AppState extends ChangeNotifier {
       final marketStatus = await _loadMarketOpenStatusSafe();
       _marketOpenStatus = marketStatus;
       if (_portfolio.isEmpty) {
-        _prices = {};
-        _totalInvest = 0;
-        _totalAsset = _totalCash + _totalOther - _totalLiability;
         await _saveDomainEnvelope(
           'market_status',
           data: <String, dynamic>{'markets': marketStatus},
           staleAfter: _staticDataTtl,
         );
-        await _saveDomainEnvelope(
-          'prices',
-          data: <String, dynamic>{'items': <String, dynamic>{}},
-          staleAfter: _staticDataTtl,
-        );
-        _quoteDataFromCache = false;
-        _lastQuoteDataUpdatedAt = DateTime.now();
-        notifyListeners();
+        // 启动早期持仓尚未恢复时，避免把已有价格缓存清空写回。
+        if (_portfolioLoaded) {
+          _prices = {};
+          _totalInvest = 0;
+          _totalAsset = _totalCash + _totalOther - _totalLiability;
+          await _saveDomainEnvelope(
+            'prices',
+            data: <String, dynamic>{'items': <String, dynamic>{}},
+            staleAfter: _staticDataTtl,
+          );
+          _quoteDataFromCache = false;
+          _lastQuoteDataUpdatedAt = DateTime.now();
+          notifyListeners();
+        }
         return;
       }
 
