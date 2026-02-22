@@ -14,8 +14,10 @@ from pathlib import Path
 import config  # 添加导入
 try:
     from .market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
+    from .parser import parse_code
 except ImportError:  # 兼容被单文件动态加载的测试场景
     from core.market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
+    from core.parser import parse_code
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
@@ -3074,7 +3076,9 @@ class DatabaseManager:
                 (f'{date_str}%',) + user_param,
             )
             for row in cursor.fetchall():
-                code = str(row['code'] or '')
+                raw_code = str(row['code'] or '')
+                normalized = parse_code(raw_code, "").get("code") or raw_code
+                code = str(normalized or raw_code)
                 market = str(market_from_asset(code) or 'a').lower()
                 if market not in result:
                     market = 'a'

@@ -25,6 +25,7 @@ os.environ.setdefault("JWT_SECRET", "backfill_market_breakdown_temp_secret")
 
 from core.db import DatabaseManager
 from core.market_calendar import market_from_asset
+from core.parser import parse_code
 
 PRIMARY_MARKETS = ("a", "hk", "us", "fund")
 ALL_MARKETS = ("a", "hk", "us", "fund", "unallocated")
@@ -42,7 +43,9 @@ class Candidate:
 
 
 def _normalize_market_from_code(code: str) -> str:
-    market = str(market_from_asset(code or "") or "a").lower()
+    raw = str(code or "").strip()
+    normalized = parse_code(raw, "").get("code") or raw
+    market = str(market_from_asset(normalized) or "a").lower()
     return market if market in PRIMARY_MARKETS else "a"
 
 
