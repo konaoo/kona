@@ -176,6 +176,17 @@ kona_repo/
 - 恢复前自动生成 `pre_restore` 安全副本
 - 已修复恢复脚本跨分区 `Errno 18` 问题（临时文件改为目标目录内创建）
 
+### 3.13 收益日历分市场明细与回填（2026-02）
+
+- 新增分市场拆分存储表：`daily_snapshot_market_breakdowns`，支持 `a/hk/us/fund/unallocated`
+- 新增分市场查询接口：`GET /api/analysis/calendar/market_breakdown`
+- 快照链路支持写入 `source=exact` 分市场日收益，并保留 `unallocated` 残差
+- 历史回填链路支持 `source=estimated`，并在 `meta_json` 记录分配依据与置信度
+- 修复收益日历“快照写入时休市导致 day_pnl 被压 0”的问题，提供 `day_pnl` 回填脚本
+- 历史无可重放交易/仓位证据时，不再硬分到 A/HK/US/Fund，统一归入 `unallocated`
+- 详细设计、命令与验收步骤见：
+  - `/Users/kona/Desktop/kaka/kona_repo/docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md`
+
 ---
 
 ## 4. 前端说明（Flutter）

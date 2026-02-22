@@ -24,7 +24,7 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("JWT_SECRET", "backfill_market_breakdown_temp_secret")
 
 from core.db import DatabaseManager
-from core.market_calendar import market_from_asset
+from core.market_calendar import market_from_asset, is_trading_day
 from core.parser import parse_code
 
 PRIMARY_MARKETS = ("a", "hk", "us", "fund")
@@ -188,6 +188,18 @@ def _cost_exposure_by_market(position_state: Dict[str, Dict[str, float]]) -> Dic
     return exposures
 
 
+def _active_markets_on_date(date_str: str) -> List[str]:
+    active: List[str] = []
+    for market in PRIMARY_MARKETS:
+        try:
+            if bool(is_trading_day(market, date_str)):
+                active.append(market)
+        except Exception:
+            # Keep backfill robust when calendar dependency is unavailable.
+            active.append(market)
+    return active
+
+
 def _build_candidates_for_user(
     conn: sqlite3.Connection,
     uid: str,
@@ -231,12 +243,13 @@ def _build_candidates_for_user(
 
         floating_residual = day_total - realized_sum
         exposures = _cost_exposure_by_market(positions)
-        weight_sum = sum(max(float(exposures[m]), 0.0) for m in PRIMARY_MARKETS)
+        active_markets = _active_markets_on_date(date_str)
+        weight_sum = sum(max(float(exposures[m]), 0.0) for m in active_markets)
 
         alloc_by_market = {m: 0.0 for m in PRIMARY_MARKETS}
         if abs(floating_residual) > EPS:
-            if weight_sum > EPS:
-                for market in PRIMARY_MARKETS:
+            if active_markets and weight_sum > EPS:
+                for market in active_markets:
                     weight = max(float(exposures[market]), 0.0)
                     if weight > EPS:
                         alloc_by_market[market] = floating_residual * (weight / weight_sum)
@@ -271,6 +284,7 @@ def _build_candidates_for_user(
             "floating_residual": round(float(floating_residual), 6),
             "value": round(float(breakdown["unallocated"]), 6),
             "weight_sum": round(float(weight_sum), 6),
+            "active_markets": active_markets,
         }
 
         candidates.append(
