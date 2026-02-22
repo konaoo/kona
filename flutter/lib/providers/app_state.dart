@@ -92,6 +92,7 @@ class AppState extends ChangeNotifier {
   // 投资组合
   List<PortfolioItem> _portfolio = [];
   Map<String, PriceInfo> _prices = {};
+  Map<String, PriceInfo> _priceSnapshots = {};
   String _currentCategory = 'all';
   bool _portfolioLoaded = false;
 
@@ -251,16 +252,43 @@ class AppState extends ChangeNotifier {
   bool _hasActiveUsExtendedSession() {
     for (final item in _portfolio) {
       if (_normalizeMarketKey(item.marketType) != 'us') continue;
-      if (_isUsExtendedSessionActive(item, _prices[item.code])) {
+      if (_isUsExtendedSessionActive(item, resolvePriceInfo(item))) {
         return true;
       }
     }
     return false;
   }
 
+  bool _isValidPriceInfo(PriceInfo? info) {
+    return info != null && info.price > 0;
+  }
+
+  PriceInfo? _resolvePriceInfoByCode(
+    String code, {
+    PriceInfo? preferred,
+    Map<String, PriceInfo>? runtimeFallback,
+  }) {
+    if (_isValidPriceInfo(preferred)) return preferred;
+    final live = _prices[code];
+    if (_isValidPriceInfo(live)) return live;
+    final runtime = runtimeFallback?[code];
+    if (_isValidPriceInfo(runtime)) return runtime;
+    final snapshot = _priceSnapshots[code];
+    if (_isValidPriceInfo(snapshot)) return snapshot;
+    return null;
+  }
+
+  PriceInfo? resolvePriceInfoByCode(String code, {PriceInfo? preferred}) {
+    return _resolvePriceInfoByCode(code, preferred: preferred);
+  }
+
+  PriceInfo? resolvePriceInfo(PortfolioItem item, {PriceInfo? preferred}) {
+    return _resolvePriceInfoByCode(item.code, preferred: preferred);
+  }
+
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
-    if (isAssetMarketOpen(item)) return true;
-    return _isUsExtendedSessionActive(item, priceInfo ?? _prices[item.code]);
+    final resolved = resolvePriceInfo(item, preferred: priceInfo);
+    return resolved != null && resolved.yclose > 0;
   }
 
   /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。
@@ -297,9 +325,8 @@ class AppState extends ChangeNotifier {
   double get investTotalMV {
     double total = 0;
     for (var item in _portfolio) {
-      final priceInfo = _prices[item.code];
-      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+      final priceInfo = resolvePriceInfo(item);
+      final currentPrice = priceInfo?.price ?? item.price;
       final rate = _rateForCurrency(item.curr);
       total += currentPrice * item.qty * rate;
     }
@@ -310,9 +337,9 @@ class AppState extends ChangeNotifier {
   double get investDayPnl {
     double total = 0;
     for (var item in _portfolio) {
-      final priceInfo = _prices[item.code];
+      final priceInfo = resolvePriceInfo(item);
       if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
-      if (priceInfo != null && priceInfo.price > 0) {
+      if (priceInfo != null) {
         final rate = _rateForCurrency(item.curr);
         total += priceInfo.change * item.qty * rate;
       }
@@ -325,9 +352,9 @@ class AppState extends ChangeNotifier {
     double pnl = 0;
     double base = 0;
     for (var item in _portfolio) {
-      final priceInfo = _prices[item.code];
+      final priceInfo = resolvePriceInfo(item);
       if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
-      if (priceInfo != null && priceInfo.price > 0) {
+      if (priceInfo != null) {
         final rate = _rateForCurrency(item.curr);
         final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
         pnl += priceInfo.change * item.qty * rate;
@@ -344,9 +371,8 @@ class AppState extends ChangeNotifier {
   double get investHoldingPnl {
     double total = 0;
     for (var item in _portfolio) {
-      final priceInfo = _prices[item.code];
-      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-      final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+      final priceInfo = resolvePriceInfo(item);
+      final currentPrice = priceInfo?.price ?? item.price;
       final rate = _rateForCurrency(item.curr);
       final mv = currentPrice * item.qty * rate;
       final cost = item.price * item.qty * rate;
@@ -397,9 +423,6 @@ class AppState extends ChangeNotifier {
   }
 
   String _cacheKeyForScope(String scope, String domain) => 'u:$scope:$domain';
-
-  String _cacheKey(String domain) =>
-      _cacheKeyForScope(_cachePrimaryScope(), domain);
 
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
@@ -591,6 +614,27 @@ class AppState extends ChangeNotifier {
       );
     }
 
+    final snapshotEnvelope = await _loadDomainEnvelope('price_snapshots');
+    final cachedSnapshots = _asMap(snapshotEnvelope?['data']);
+    if (cachedSnapshots['items'] is Map) {
+      _priceSnapshots = {};
+      (cachedSnapshots['items'] as Map).forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          _priceSnapshots[key.toString()] = PriceInfo.fromJson(value);
+        }
+      });
+      hasQuoteCache = true;
+      quoteSavedAt = mergeLatest(
+        quoteSavedAt,
+        _envelopeSavedAt(snapshotEnvelope),
+      );
+    } else if (_prices.isNotEmpty) {
+      _priceSnapshots = Map<String, PriceInfo>.from(_prices);
+    }
+    if (_prices.isEmpty && _priceSnapshots.isNotEmpty) {
+      _prices = Map<String, PriceInfo>.from(_priceSnapshots);
+    }
+
     final marketStatusEnvelope = await _loadDomainEnvelope('market_status');
     final cachedMarketStatus = _asMap(marketStatusEnvelope?['data']);
     if (cachedMarketStatus.isNotEmpty) {
@@ -711,6 +755,23 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Map<String, dynamic> _serializePriceItems(Map<String, PriceInfo> source) {
+    return source.map(
+      (key, value) => MapEntry(key, {
+        'price': value.price,
+        'yclose': value.yclose,
+        'amt': value.change,
+        'chg': value.changePct,
+        'regular_price': value.regularPrice,
+        'premarket_price': value.premarketPrice,
+        'after_hours_price': value.afterHoursPrice,
+        'session': value.session,
+        'effective_session': value.effectiveSession,
+        'extended_active': value.extendedActive,
+      }),
+    );
+  }
+
   Future<void> saveHomeCache(
     List<dynamic> history, {
     Map<String, dynamic>? overview,
@@ -761,23 +822,13 @@ class AppState extends ChangeNotifier {
     );
     await _saveDomainEnvelope(
       'prices',
-      data: <String, dynamic>{
-        'items': _prices.map(
-          (key, value) => MapEntry(key, {
-            'price': value.price,
-            'yclose': value.yclose,
-            'amt': value.change,
-            'chg': value.changePct,
-            'regular_price': value.regularPrice,
-            'premarket_price': value.premarketPrice,
-            'after_hours_price': value.afterHoursPrice,
-            'session': value.session,
-            'effective_session': value.effectiveSession,
-            'extended_active': value.extendedActive,
-          }),
-        ),
-      },
+      data: <String, dynamic>{'items': _serializePriceItems(_prices)},
       staleAfter: _staticDataTtl,
+    );
+    await _saveDomainEnvelope(
+      'price_snapshots',
+      data: <String, dynamic>{'items': _serializePriceItems(_priceSnapshots)},
+      staleAfter: _syncVersionTtl,
     );
     if (overview != null && overview.isNotEmpty) {
       await _saveDomainEnvelope(
@@ -1187,6 +1238,7 @@ class AppState extends ChangeNotifier {
     _api.clearToken();
     _portfolio = [];
     _prices = {};
+    _priceSnapshots = {};
     _cashAssets = [];
     _otherAssets = [];
     _liabilities = [];
@@ -1354,6 +1406,7 @@ class AppState extends ChangeNotifier {
     _sessionBootState = SessionBootState.unauthenticated;
     _api.clearToken();
     _syncVersions.clear();
+    _priceSnapshots = {};
     _lastAssetDataUpdatedAt = null;
     _lastQuoteDataUpdatedAt = null;
     _assetDataFromCache = false;
@@ -1439,7 +1492,7 @@ class AppState extends ChangeNotifier {
     _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
     _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
     _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
-    _totalInvest = _portfolioCostMV;
+    _totalInvest = investTotalMV;
     _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
   }
@@ -1509,6 +1562,7 @@ class AppState extends ChangeNotifier {
       _portfolio = list.map((e) => PortfolioItem.fromJson(e)).toList();
       final validCodes = _portfolio.map((e) => e.code).toSet();
       _prices.removeWhere((code, _) => !validCodes.contains(code));
+      _priceSnapshots.removeWhere((code, _) => !validCodes.contains(code));
       _recalculateHomeTotals();
       await _saveDomainEnvelope(
         'portfolio',
@@ -1710,15 +1764,6 @@ class AppState extends ChangeNotifier {
     if (yearPnl != null) _yearChange = yearPnl;
   }
 
-  double get _portfolioCostMV {
-    double total = 0;
-    for (var item in _portfolio) {
-      final rate = _rateForCurrency(item.curr);
-      total += item.price * item.qty * rate;
-    }
-    return total;
-  }
-
   Future<void> _refreshPortfolioPricesInBackground({bool force = false}) async {
     final now = DateTime.now();
     if (_priceRefreshInFlight) return;
@@ -1740,12 +1785,18 @@ class AppState extends ChangeNotifier {
         // 启动早期持仓尚未恢复时，避免把已有价格缓存清空写回。
         if (_portfolioLoaded) {
           _prices = {};
+          _priceSnapshots = {};
           _totalInvest = 0;
           _totalAsset = _totalCash + _totalOther - _totalLiability;
           await _saveDomainEnvelope(
             'prices',
             data: <String, dynamic>{'items': <String, dynamic>{}},
             staleAfter: _staticDataTtl,
+          );
+          await _saveDomainEnvelope(
+            'price_snapshots',
+            data: <String, dynamic>{'items': <String, dynamic>{}},
+            staleAfter: _syncVersionTtl,
           );
           _quoteDataFromCache = false;
           _lastQuoteDataUpdatedAt = DateTime.now();
@@ -1755,10 +1806,7 @@ class AppState extends ChangeNotifier {
       }
 
       final codes = _portfolio.map((e) => e.code).toList();
-      final marketByCode = {
-        for (final item in _portfolio)
-          item.code: _normalizeMarketKey(item.marketType),
-      };
+      final previousPrices = Map<String, PriceInfo>.from(_prices);
       final priceApiCodes = codes.map((code) {
         if (code.startsWith('gb_')) {
           return code.substring(3);
@@ -1771,27 +1819,28 @@ class AppState extends ChangeNotifier {
       for (int i = 0; i < codes.length; i++) {
         final originalCode = codes[i];
         final apiCode = priceApiCodes[i];
+        PriceInfo? parsed;
         if (pricesData.containsKey(apiCode)) {
           try {
-            final parsed = PriceInfo.fromJson(pricesData[apiCode]);
-            final market = marketByCode[originalCode] ?? 'a';
-            final marketOpen = marketStatus[market] ?? false;
-            final effectiveSession = parsed.effectiveSession.toLowerCase();
-            final keepClosedMarketDayPnl =
-                market == 'us' &&
-                (parsed.extendedActive ||
-                    effectiveSession == 'pre' ||
-                    effectiveSession == 'post');
-            nextPrices[originalCode] = (marketOpen || keepClosedMarketDayPnl)
-                ? parsed
-                : parsed.withDayChangeZeroed();
+            parsed = PriceInfo.fromJson(pricesData[apiCode]);
           } catch (e) {
             debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
           }
         }
+        final resolved = _resolvePriceInfoByCode(
+          originalCode,
+          preferred: parsed,
+          runtimeFallback: previousPrices,
+        );
+        if (resolved != null) {
+          nextPrices[originalCode] = resolved;
+        }
       }
 
       _prices = nextPrices;
+      _priceSnapshots = Map<String, PriceInfo>.from(_priceSnapshots)
+        ..removeWhere((code, _) => !codes.contains(code))
+        ..addAll(nextPrices);
       _totalInvest = investTotalMV;
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
       await _saveDomainEnvelope(
@@ -1801,23 +1850,13 @@ class AppState extends ChangeNotifier {
       );
       await _saveDomainEnvelope(
         'prices',
-        data: <String, dynamic>{
-          'items': _prices.map(
-            (key, value) => MapEntry(key, {
-              'price': value.price,
-              'yclose': value.yclose,
-              'amt': value.change,
-              'chg': value.changePct,
-              'regular_price': value.regularPrice,
-              'premarket_price': value.premarketPrice,
-              'after_hours_price': value.afterHoursPrice,
-              'session': value.session,
-              'effective_session': value.effectiveSession,
-              'extended_active': value.extendedActive,
-            }),
-          ),
-        },
+        data: <String, dynamic>{'items': _serializePriceItems(_prices)},
         staleAfter: _staticDataTtl,
+      );
+      await _saveDomainEnvelope(
+        'price_snapshots',
+        data: <String, dynamic>{'items': _serializePriceItems(_priceSnapshots)},
+        staleAfter: _syncVersionTtl,
       );
       _quoteDataFromCache = false;
       _lastQuoteDataUpdatedAt = DateTime.now();

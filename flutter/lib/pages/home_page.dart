@@ -72,14 +72,6 @@ class HomePageState extends State<HomePage> {
     return navBarHeight + safeBottom + fabRegion;
   }
 
-  String _formatUpdateLabel(DateTime? ts) {
-    if (ts == null) return '--';
-    final local = ts.toLocal();
-    final hh = local.hour.toString().padLeft(2, '0');
-    final mm = local.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Consumer<AppState>(
@@ -160,17 +152,6 @@ class HomePageState extends State<HomePage> {
                               ),
                             );
                           },
-                        ),
-
-                        const SizedBox(height: Spacing.sm),
-                        Text(
-                          '资产更新 ${_formatUpdateLabel(appState.assetDataUpdatedAt)}'
-                          ' · 行情更新 ${_formatUpdateLabel(appState.quoteDataUpdatedAt)}'
-                          '${appState.assetDataFromCache || appState.quoteDataFromCache ? ' · 离线缓存' : ''}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textTertiary,
-                          ),
                         ),
 
                         const SizedBox(height: Spacing.xl),

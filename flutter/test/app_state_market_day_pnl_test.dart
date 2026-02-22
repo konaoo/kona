@@ -84,27 +84,28 @@ void main() {
     return state;
   }
 
-  test('全部市场休市时 investDayPnl 应为 0', () async {
+  test('全部市场休市时 investDayPnl 仍保留冻结值', () async {
     final state = await _buildStateWithCache(
       openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
       changeAmt: 1,
     );
-    expect(state.investDayPnl, 0);
-    expect(state.investDayPnlRate, 0);
+    // a: 1 * 100 * 1 = 100
+    // hk: 1 * 200 * 0.93 = 186
+    // us: 1 * 300 * 7.25 = 2175
+    // fund: 1 * 400 * 1 = 400
+    expect(state.investDayPnl, closeTo(2861, 1e-6));
+    expect(state.investDayPnlRate, greaterThan(0));
   });
 
-  test('仅开市市场计入当日盈亏（A/HK/US/Fund 全量覆盖）', () async {
+  test('开休市切换不影响冻结当日盈亏展示', () async {
     final state = await _buildStateWithCache(
       openStatus: const {'a': false, 'hk': true, 'us': true, 'fund': false},
       changeAmt: 1,
     );
-
-    // hk: 1 * 200 * 0.93 = 186
-    // us: 1 * 300 * 7.25 = 2175
-    expect(state.investDayPnl, closeTo(2361, 1e-6));
+    expect(state.investDayPnl, closeTo(2861, 1e-6));
   });
 
-  test('美股休市但盘前盘后活跃时，允许按扩展时段计算当日盈亏', () async {
+  test('美股扩展时段活跃时仍按冻结口径展示当日盈亏', () async {
     final state = await _buildStateWithCache(
       openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
       changeAmt: 1,
@@ -112,8 +113,7 @@ void main() {
       usSession: 'pre',
     );
 
-    // us: 1 * 300 * 7.25 = 2175
-    expect(state.investDayPnl, closeTo(2175, 1e-6));
+    expect(state.investDayPnl, closeTo(2861, 1e-6));
     expect(state.investDayPnlRate, greaterThan(0));
   });
 }

@@ -336,7 +336,10 @@ class InvestPageState extends State<InvestPage> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final item = appState.filteredPortfolio[index];
-                        final priceInfo = appState.prices[item.code];
+                        final priceInfo = appState.resolvePriceInfoByCode(
+                          item.code,
+                          preferred: appState.prices[item.code],
+                        );
                         return RepaintBoundary(
                           child: _buildPortfolioCard(
                             item,
