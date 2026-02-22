@@ -1010,6 +1010,33 @@ def save_snapshot():
         
     success = db.save_daily_snapshot(data, user_id)
     if success:
+        day_pnl_by_market = data.get("day_pnl_by_market")
+        if isinstance(day_pnl_by_market, dict):
+            snapshot_date = str(data.get("date") or "").strip() or datetime.now().strftime('%Y-%m-%d')
+            source = str(data.get("market_breakdown_source") or "exact")
+            confidence_raw = data.get("market_breakdown_confidence", 1.0)
+            try:
+                confidence = float(confidence_raw)
+            except Exception:
+                confidence = 1.0
+            meta_by_market = data.get("market_breakdown_meta")
+            if not isinstance(meta_by_market, dict):
+                meta_by_market = None
+            breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                date_str=snapshot_date,
+                day_pnl_by_market=day_pnl_by_market,
+                total_day_pnl=float(data.get("day_pnl", 0.0) or 0.0),
+                user_id=user_id,
+                source=source,
+                confidence=confidence,
+                meta_by_market=meta_by_market,
+            )
+            if not breakdown_ok:
+                logger.warning(
+                    "Failed to save market breakdown in /api/snapshot/save: user_id=%s date=%s",
+                    user_id,
+                    snapshot_date,
+                )
         return jsonify({"status": "ok"})
     else:
         return jsonify({"error": "Failed to save snapshot"}), 500
@@ -1489,7 +1516,19 @@ def _save_snapshot_for_user(user_id=None):
     """保存用户当日快照（更实时）"""
     try:
         stats = calculate_portfolio_stats(user_id)
-        db.save_daily_snapshot(stats, user_id)
+        saved = db.save_daily_snapshot(stats, user_id)
+        if saved:
+            snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime('%Y-%m-%d'))
+            breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                date_str=snapshot_date,
+                day_pnl_by_market=stats.get("day_pnl_by_market") or {},
+                total_day_pnl=float(stats.get("day_pnl", 0.0) or 0.0),
+                user_id=user_id,
+                source="exact",
+                confidence=1.0,
+            )
+            if not breakdown_ok:
+                logger.warning("Snapshot market breakdown save failed: user_id=%s date=%s", user_id, snapshot_date)
     except Exception as e:
         logger.warning(f"Snapshot save failed: {e}")
 
@@ -2101,6 +2140,56 @@ def analysis_calendar():
 
     user_id = g.user_id
     result = db.get_calendar_data(time_type, user_id, year=year, month=month)
+    if result.get('code') == 'INVALID_CALENDAR_PERIOD':
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route('/api/analysis/calendar/market_breakdown')
+@optional_auth
+def analysis_calendar_market_breakdown():
+    """
+    收益日历（按市场拆分）
+
+    参数:
+        time_type|type: day（首期仅支持 day）
+        year: 可选年份
+        month: 可选月份
+    """
+    time_type = request.args.get('time_type') or request.args.get('type', 'day')
+    if time_type != 'day':
+        return jsonify({"error": "Invalid calendar type", "code": "INVALID_CALENDAR_PERIOD"}), 400
+
+    def _parse_positive_int_arg(name):
+        raw = request.args.get(name)
+        if raw is None:
+            return None
+        raw = str(raw).strip()
+        if not raw:
+            return None
+        try:
+            val = int(raw)
+        except ValueError:
+            raise ValueError(name)
+        if val <= 0:
+            raise ValueError(name)
+        return val
+
+    try:
+        year = _parse_positive_int_arg('year')
+        month = _parse_positive_int_arg('month')
+        if month is not None and not 1 <= month <= 12:
+            return jsonify({"error": "Invalid month", "code": "INVALID_CALENDAR_PERIOD"}), 400
+    except ValueError:
+        return jsonify({"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}), 400
+
+    user_id = g.user_id
+    result = db.get_market_breakdown_calendar_data(
+        time_type='day',
+        user_id=user_id,
+        year=year,
+        month=month,
+    )
     if result.get('code') == 'INVALID_CALENDAR_PERIOD':
         return jsonify(result), 400
     return jsonify(result)

@@ -4,7 +4,7 @@
 """
 import logging
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
 from .db import db
@@ -58,7 +58,7 @@ def _market_trading_day_now(
         return str(status.get("reason") or "").lower() in {"off_hours", "open_session"}
 
 
-def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, float]:
+def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, Any]:
     """
     计算当前时刻的投资组合统计数据
     
@@ -88,6 +88,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     invest_mv = 0.0
     day_pnl = 0.0
     total_pnl = 0.0
+    day_pnl_by_market = {market: 0.0 for market in DEFAULT_MARKETS}
     now_utc = now_utc or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
         now_utc = now_utc.replace(tzinfo=timezone.utc)
@@ -121,6 +122,8 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         # 计算单项指标 (转换为CNY)
         item_mv = cur_price * qty * rate
         market = market_from_asset(asset)
+        if market not in day_pnl_by_market:
+            market = "a"
         market_trading_day = bool(market_trading_days.get(market))
         item_day_pnl = ((cur_price - yclose_ref) * qty * rate) if market_trading_day else 0.0
         item_float_pnl = (cur_price - cost) * qty * rate
@@ -130,6 +133,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         invest_mv += item_mv
         day_pnl += item_day_pnl
         total_pnl += item_total_pnl
+        day_pnl_by_market[market] += item_day_pnl
         
     # 4. 计算非投资资产 stats
     total_cash = sum(a['amount'] for a in cash_assets)
@@ -137,14 +141,17 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     total_liability = sum(abs(a['amount']) for a in liabilities)
     
     # 5. 获取今日已实现盈亏（卖出）
-    realized_pnl = db.get_today_realized_pnl(user_id=user_id)
     snapshot_date = now_utc.strftime("%Y-%m-%d")
+    realized_pnl_by_market = db.get_realized_pnl_by_date(snapshot_date, user_id=user_id)
+    realized_pnl = sum(float(v or 0.0) for v in realized_pnl_by_market.values())
     try:
         closed_on_snapshot_date = is_markets_closed_on_date(DEFAULT_MARKETS, snapshot_date)
     except Exception:
         closed_on_snapshot_date = all_markets_closed(DEFAULT_MARKETS, now=now_utc)
     if not closed_on_snapshot_date:
         day_pnl += realized_pnl
+        for market in DEFAULT_MARKETS:
+            day_pnl_by_market[market] += float(realized_pnl_by_market.get(market, 0.0) or 0.0)
     # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
     # adjustment 字段通常用于存储 "已实现盈亏 + 分红" 等历史调整。
     # 当我们减仓时，modify_asset/sell_asset 会更新 adjustment 吗？
@@ -162,7 +169,12 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         'total_liability': round(total_liability, 2),
         'total_asset': round(total_asset, 2),
         'total_pnl': round(total_pnl, 2),
-        'day_pnl': round(day_pnl, 2)
+        'day_pnl': round(day_pnl, 2),
+        'day_pnl_by_market': {
+            market: round(float(day_pnl_by_market.get(market, 0.0) or 0.0), 2)
+            for market in DEFAULT_MARKETS
+        },
+        'snapshot_date': snapshot_date,
     }
 
 def is_weekend() -> bool:
@@ -190,6 +202,17 @@ def take_snapshot(user_id: str = None) -> bool:
             success = db.save_daily_snapshot(stats, uid)
             success_any = success_any or success
             if success:
+                snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+                breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                    date_str=snapshot_date,
+                    day_pnl_by_market=stats.get("day_pnl_by_market") or {},
+                    total_day_pnl=float(stats.get("day_pnl", 0.0) or 0.0),
+                    user_id=uid,
+                    source="exact",
+                    confidence=1.0,
+                )
+                if not breakdown_ok:
+                    logger.warning("Market breakdown save failed: user=%s date=%s", uid, snapshot_date)
                 logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
             else:
                 logger.error(f"Failed to save snapshot to database: user={uid}")

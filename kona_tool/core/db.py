@@ -6,18 +6,20 @@ import sqlite3
 import logging
 import uuid
 import re
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import datetime as dt
 from pathlib import Path
 import config  # 添加导入
 try:
-    from .market_calendar import all_markets_closed, is_markets_closed_on_date
+    from .market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
 except ImportError:  # 兼容被单文件动态加载的测试场景
-    from core.market_calendar import all_markets_closed, is_markets_closed_on_date
+    from core.market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
+MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 
 
 def _is_weekend_date(date_str: str) -> bool:
@@ -297,6 +299,24 @@ class DatabaseManager:
             )
         ''')
 
+        # 每日分市场收益快照表（A/HK/US/Fund + unallocated）
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS daily_snapshot_market_breakdowns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                user_id TEXT NOT NULL DEFAULT '',
+                market TEXT NOT NULL,
+                day_pnl REAL NOT NULL,
+                source TEXT NOT NULL DEFAULT 'exact',
+                confidence REAL NOT NULL DEFAULT 1.0,
+                meta_json TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, user_id, market)
+            )
+            '''
+        )
+
         # Ensure user_id columns exist for older DBs
         def _ensure_column(table: str, column: str, col_def: str) -> None:
             cursor.execute(f'PRAGMA table_info({table})')
@@ -319,6 +339,11 @@ class DatabaseManager:
         _ensure_column('liabilities', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('liabilities', 'updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
         _ensure_column('daily_snapshots', 'user_id', "user_id TEXT DEFAULT ''")
+        _ensure_column('daily_snapshot_market_breakdowns', 'user_id', "user_id TEXT DEFAULT ''")
+        _ensure_column('daily_snapshot_market_breakdowns', 'source', "source TEXT NOT NULL DEFAULT 'exact'")
+        _ensure_column('daily_snapshot_market_breakdowns', 'confidence', "confidence REAL NOT NULL DEFAULT 1.0")
+        _ensure_column('daily_snapshot_market_breakdowns', 'meta_json', "meta_json TEXT")
+        _ensure_column('daily_snapshot_market_breakdowns', 'updated_at', "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         self._ensure_users_schema(cursor)
 
         # 创建索引以优化查询性能
@@ -335,6 +360,9 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
         cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_user_date ON daily_snapshot_market_breakdowns(user_id, date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_date ON daily_snapshot_market_breakdowns(date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_source ON daily_snapshot_market_breakdowns(source)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
@@ -3027,6 +3055,111 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_realized_pnl_by_date(self, date_str: str, user_id: str = None) -> Dict[str, float]:
+        """获取指定日期按市场聚合的已实现盈亏（减仓 pnl）。"""
+        result = {k: 0.0 for k in DEFAULT_MARKETS}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            cursor.execute(
+                '''
+                SELECT code, pnl
+                FROM transactions
+                WHERE type = '减仓' AND time LIKE ?
+                '''
+                + f" {user_condition}",
+                (f'{date_str}%',) + user_param,
+            )
+            for row in cursor.fetchall():
+                code = str(row['code'] or '')
+                market = str(market_from_asset(code) or 'a').lower()
+                if market not in result:
+                    market = 'a'
+                result[market] += float(row['pnl'] or 0.0)
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get realized pnl by date=%s: %s", date_str, e)
+            return result
+        finally:
+            conn.close()
+
+
+    def save_daily_snapshot_market_breakdown(
+        self,
+        date_str: str,
+        day_pnl_by_market: Dict[str, float],
+        total_day_pnl: float,
+        user_id: str = None,
+        source: str = 'exact',
+        confidence: float = 1.0,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        保存每日分市场收益快照（按 date + user_id + market upsert）。
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ''
+
+        try:
+            normalized = {k: 0.0 for k in MARKET_BREAKDOWN_MARKETS}
+            for market in ('a', 'hk', 'us', 'fund'):
+                normalized[market] = float((day_pnl_by_market or {}).get(market, 0.0) or 0.0)
+            explicit_unallocated = (day_pnl_by_market or {}).get('unallocated')
+            if explicit_unallocated is None:
+                allocated = sum(normalized[m] for m in ('a', 'hk', 'us', 'fund'))
+                normalized['unallocated'] = float(total_day_pnl or 0.0) - allocated
+            else:
+                normalized['unallocated'] = float(explicit_unallocated or 0.0)
+
+            market_meta = meta_by_market or {}
+            for market in MARKET_BREAKDOWN_MARKETS:
+                payload = market_meta.get(market)
+                meta_json = None
+                if payload is not None:
+                    try:
+                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+                    except Exception:
+                        meta_json = json.dumps({'raw': str(payload)}, ensure_ascii=False, separators=(',', ':'))
+                cursor.execute(
+                    '''
+                    INSERT INTO daily_snapshot_market_breakdowns
+                    (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(date, user_id, market) DO UPDATE SET
+                        day_pnl = excluded.day_pnl,
+                        source = excluded.source,
+                        confidence = excluded.confidence,
+                        meta_json = excluded.meta_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    ''',
+                    (
+                        str(date_str),
+                        uid,
+                        market,
+                        round(float(normalized[market]), 2),
+                        str(source or 'exact'),
+                        float(confidence),
+                        meta_json,
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to save market breakdown date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                e,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
 
     def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
         """保存每日资产快照（按 date + user_id upsert）"""
@@ -3624,6 +3757,203 @@ class DatabaseManager:
                 'title': '',
                 'period': {'time_type': time_type},
                 'selectable': {'day': {'years': [], 'months_by_year': {}}, 'month': {'years': []}},
+            }
+        finally:
+            conn.close()
+
+    def get_market_breakdown_calendar_data(
+        self,
+        time_type: str = 'day',
+        user_id: str = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        获取按市场拆分的收益日历数据（首期仅支持 day）。
+
+        返回:
+            {
+                time_type: "day",
+                year: 2026,
+                month: 2,
+                items: [
+                    {
+                        date: "2026-02-17",
+                        markets: {"a": ..., "hk": ..., "us": ..., "fund": ..., "unallocated": ...},
+                        total_pnl: 123.45,  # 当日收益（日口径）
+                        source: "exact|estimated|missing"
+                    }
+                ]
+            }
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        if time_type != 'day':
+            return {
+                'error': 'Invalid calendar type',
+                'code': 'INVALID_CALENDAR_PERIOD',
+                'time_type': 'day',
+                'year': int(year or 0),
+                'month': int(month or 0),
+                'items': [],
+            }
+
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            now = datetime.now()
+            cursor.execute(
+                f'''
+                SELECT date
+                FROM daily_snapshots
+                WHERE {user_condition}
+                ORDER BY date ASC
+                ''',
+                user_param,
+            )
+            all_dates = [str(r['date']) for r in cursor.fetchall() if r['date']]
+
+            if not all_dates:
+                return {
+                    'time_type': 'day',
+                    'year': int(year or now.year),
+                    'month': int(month or now.month),
+                    'items': [],
+                }
+
+            months_by_year: Dict[int, set] = {}
+            for date_str in all_dates:
+                parts = date_str.split('-')
+                if len(parts) != 3:
+                    continue
+                y = int(parts[0])
+                m = int(parts[1])
+                months_by_year.setdefault(y, set()).add(m)
+
+            selectable_years = sorted(months_by_year.keys())
+            latest_year = selectable_years[-1]
+            latest_month = max(months_by_year[latest_year])
+
+            target_year = year
+            target_month = month
+            if target_year is None and target_month is None:
+                if now.year in months_by_year and now.month in months_by_year[now.year]:
+                    target_year = now.year
+                    target_month = now.month
+                else:
+                    target_year = latest_year
+                    target_month = latest_month
+            else:
+                if target_year is None:
+                    target_year = now.year
+                if target_month is None:
+                    target_month = now.month
+
+            assert target_year is not None
+            assert target_month is not None
+
+            if (
+                target_year not in months_by_year
+                or target_month not in months_by_year[target_year]
+            ):
+                return {
+                    'error': 'Selected period has no snapshot data',
+                    'code': 'INVALID_CALENDAR_PERIOD',
+                    'time_type': 'day',
+                    'year': int(target_year),
+                    'month': int(target_month),
+                    'items': [],
+                }
+
+            month_start = f'{target_year:04d}-{target_month:02d}-01'
+            if target_month == 12:
+                next_month = dt.datetime(target_year + 1, 1, 1)
+            else:
+                next_month = dt.datetime(target_year, target_month + 1, 1)
+            month_end = (next_month - timedelta(days=1)).strftime('%Y-%m-%d')
+            if target_year == now.year and target_month == now.month:
+                month_end = min(month_end, now.strftime('%Y-%m-%d'))
+
+            cursor.execute(
+                f'''
+                SELECT date, day_pnl
+                FROM daily_snapshots
+                WHERE date >= ? AND date <= ? AND {user_condition}
+                ORDER BY date ASC
+                ''',
+                (month_start, month_end) + user_param,
+            )
+            snapshot_rows = cursor.fetchall()
+
+            cursor.execute(
+                f'''
+                SELECT date, market, day_pnl, source
+                FROM daily_snapshot_market_breakdowns
+                WHERE date >= ? AND date <= ? AND {user_condition}
+                ORDER BY date ASC
+                ''',
+                (month_start, month_end) + user_param,
+            )
+            breakdown_rows = cursor.fetchall()
+
+            by_date: Dict[str, Dict[str, Any]] = {}
+            for row in breakdown_rows:
+                d = str(row['date'])
+                data = by_date.setdefault(
+                    d,
+                    {
+                        'markets': {m: None for m in MARKET_BREAKDOWN_MARKETS},
+                        'sources': set(),
+                    },
+                )
+                market = str(row['market'] or '').lower()
+                if market not in data['markets']:
+                    continue
+                data['markets'][market] = round(float(row['day_pnl'] or 0.0), 2)
+                source = str(row['source'] or '').strip().lower() or 'estimated'
+                data['sources'].add(source)
+
+            items: List[Dict[str, Any]] = []
+            for row in snapshot_rows:
+                date_str = str(row['date'])
+                day_total = round(float(row['day_pnl'] or 0.0), 2)
+                breakdown = by_date.get(date_str)
+                if not breakdown:
+                    markets = {m: None for m in MARKET_BREAKDOWN_MARKETS}
+                    source = 'missing'
+                else:
+                    markets = {}
+                    for market in MARKET_BREAKDOWN_MARKETS:
+                        value = breakdown['markets'].get(market)
+                        markets[market] = (
+                            None if value is None else round(float(value), 2)
+                        )
+                    source_set = breakdown['sources']
+                    source = 'exact' if source_set == {'exact'} else 'estimated'
+                items.append(
+                    {
+                        'date': date_str,
+                        'markets': markets,
+                        'total_pnl': day_total,
+                        'source': source,
+                    }
+                )
+
+            return {
+                'time_type': 'day',
+                'year': int(target_year),
+                'month': int(target_month),
+                'items': items,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get market breakdown calendar data: {e}")
+            return {
+                'time_type': 'day',
+                'year': int(year or 0),
+                'month': int(month or 0),
+                'items': [],
             }
         finally:
             conn.close()
