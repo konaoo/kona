@@ -742,6 +742,51 @@ class ApiBaselineTests(unittest.TestCase):
                 stats = app_module.calculate_portfolio_stats(None)
         self.assertAlmostEqual(float(stats.get('total_pnl') or 0.0), 20.0, places=2)
 
+    def test_calculate_stats_keeps_day_pnl_on_trading_day_even_off_hours(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600000',
+            'name': '浦发银行',
+            'price': 10.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={'sh600000': (11.0, 10.0, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                with patch(
+                    'core.snapshot.get_market_statuses',
+                    return_value={'a': {'open': False, 'reason': 'off_hours'}},
+                ):
+                    with patch('core.snapshot.is_trading_day', create=True, return_value=True):
+                        with patch('core.snapshot.is_markets_closed_on_date', create=True, return_value=False):
+                            with patch.object(app_module.db, 'get_today_realized_pnl', return_value=0.0):
+                                stats = app_module.calculate_portfolio_stats(None)
+
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 2.0, places=2)
+
+    def test_calculate_stats_zero_day_pnl_on_non_trading_day(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600001',
+            'name': '测试非交易日',
+            'price': 10.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={'sh600001': (11.0, 10.0, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                with patch(
+                    'core.snapshot.get_market_statuses',
+                    return_value={'a': {'open': True, 'reason': 'open_session'}},
+                ):
+                    with patch('core.snapshot.is_trading_day', create=True, return_value=False):
+                        with patch('core.snapshot.is_markets_closed_on_date', create=True, return_value=True):
+                            with patch('core.snapshot.all_markets_closed', return_value=False):
+                                with patch.object(app_module.db, 'get_today_realized_pnl', return_value=5.0):
+                                    stats = app_module.calculate_portfolio_stats(None)
+
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
+
     def test_buy_with_cash_and_undo_restores_cash_and_portfolio(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={
             'name': '银行卡',

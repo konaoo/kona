@@ -1489,8 +1489,6 @@ def _save_snapshot_for_user(user_id=None):
     """保存用户当日快照（更实时）"""
     try:
         stats = calculate_portfolio_stats(user_id)
-        if all_markets_closed(_MARKET_SCOPE):
-            stats['day_pnl'] = 0.0
         db.save_daily_snapshot(stats, user_id)
     except Exception as e:
         logger.warning(f"Snapshot save failed: {e}")

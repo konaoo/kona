@@ -3444,11 +3444,16 @@ class DatabaseManager:
                             row['updated_at']
                         )
                     pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
-                    if is_market_closed or closed_at_snapshot:
+                    if is_market_closed:
                         pnl = 0.0
-                    elif (pnl == 0 or pnl == -0.0) and row['total_pnl'] is not None and prev_total is not None:
+                    elif (
+                        (pnl == 0 or pnl == -0.0)
+                        and (not closed_at_snapshot)
+                        and row['total_pnl'] is not None
+                        and prev_total is not None
+                    ):
                         pnl = float(row['total_pnl']) - prev_total
-                    if (not is_market_closed) and (not closed_at_snapshot) and row['total_pnl'] is not None:
+                    if (not is_market_closed) and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
                     total_pnl += pnl

@@ -105,6 +105,29 @@ class CalendarWeekendTests(unittest.TestCase):
         items = {i["label"]: i["pnl"] for i in data["items"]}
         self.assertEqual(items.get("11"), 0)
 
+    def test_day_view_keeps_nonzero_when_snapshot_written_at_closed_time(self):
+        _insert_snapshot("2026-02-10", 100, 10, updated_at="2026-02-10 10:00:00")
+        _insert_snapshot("2026-02-11", 108, 8, updated_at="2026-02-11 23:00:00")
+        _insert_snapshot("2026-02-12", 110, 2, updated_at="2026-02-12 10:00:00")
+
+        real_dt = datetime
+        with patch.object(db_module, "_is_market_closed_date", create=True) as mock_closed:
+            mock_closed.return_value = False
+            with patch.object(
+                db_module,
+                "_is_market_closed_at_snapshot_time",
+                create=True,
+            ) as mock_closed_at_snapshot:
+                mock_closed_at_snapshot.side_effect = (
+                    lambda ts: str(ts).startswith("2026-02-11")
+                )
+                with patch.object(db_module, "datetime") as mock_dt:
+                    mock_dt.now.return_value = real_dt(2026, 2, 12)
+                    data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("11"), 8)
+
     def test_day_view_ignores_closed_time_guard_when_snapshot_updated_cross_day(self):
         _insert_snapshot("2026-02-11", 108, 8, updated_at="2026-02-17 23:00:00")
 

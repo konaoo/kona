@@ -3,15 +3,28 @@
 负责在后台计算并保存每日资产快照
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
+from zoneinfo import ZoneInfo
 
 from .db import db
-from .market_calendar import all_markets_closed, get_market_statuses, market_from_asset
+from .market_calendar import (
+    all_markets_closed,
+    get_market_statuses,
+    is_markets_closed_on_date,
+    is_trading_day,
+    market_from_asset,
+)
 from .price import batch_get_prices, get_forex_rates
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
+MARKET_TIMEZONES = {
+    "a": "Asia/Shanghai",
+    "hk": "Asia/Hong_Kong",
+    "us": "America/New_York",
+    "fund": "Asia/Shanghai",
+}
 
 
 def is_market_closed() -> bool:
@@ -20,7 +33,32 @@ def is_market_closed() -> bool:
     """
     return all_markets_closed(DEFAULT_MARKETS)
 
-def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
+
+def _market_local_date(market: str, now_utc: datetime):
+    tz_name = MARKET_TIMEZONES.get(str(market or "").lower(), "UTC")
+    try:
+        return now_utc.astimezone(ZoneInfo(tz_name)).date()
+    except Exception:
+        return now_utc.date()
+
+
+def _market_trading_day_now(
+    market: str,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+) -> bool:
+    m = str(market or "a").lower()
+    local_date = _market_local_date(m, now_utc)
+    try:
+        return bool(is_trading_day(m, local_date))
+    except Exception:
+        status = market_statuses.get(m) or {}
+        if bool(status.get("open")):
+            return True
+        return str(status.get("reason") or "").lower() in {"off_hours", "open_session"}
+
+
+def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, float]:
     """
     计算当前时刻的投资组合统计数据
     
@@ -50,7 +88,14 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     invest_mv = 0.0
     day_pnl = 0.0
     total_pnl = 0.0
-    market_statuses = get_market_statuses(DEFAULT_MARKETS)
+    now_utc = now_utc or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    market_statuses = get_market_statuses(DEFAULT_MARKETS, now=now_utc)
+    market_trading_days = {
+        market: _market_trading_day_now(market, now_utc, market_statuses)
+        for market in DEFAULT_MARKETS
+    }
     
     for asset in portfolio:
         code = asset['code']
@@ -76,8 +121,8 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
         # 计算单项指标 (转换为CNY)
         item_mv = cur_price * qty * rate
         market = market_from_asset(asset)
-        market_open = bool((market_statuses.get(market) or {}).get("open"))
-        item_day_pnl = ((cur_price - yclose_ref) * qty * rate) if market_open else 0.0
+        market_trading_day = bool(market_trading_days.get(market))
+        item_day_pnl = ((cur_price - yclose_ref) * qty * rate) if market_trading_day else 0.0
         item_float_pnl = (cur_price - cost) * qty * rate
         item_total_pnl = item_float_pnl + (adj * rate)
         
@@ -93,7 +138,12 @@ def calculate_portfolio_stats(user_id: str = None) -> Dict[str, float]:
     
     # 5. 获取今日已实现盈亏（卖出）
     realized_pnl = db.get_today_realized_pnl(user_id=user_id)
-    if not all_markets_closed(DEFAULT_MARKETS):
+    snapshot_date = now_utc.strftime("%Y-%m-%d")
+    try:
+        closed_on_snapshot_date = is_markets_closed_on_date(DEFAULT_MARKETS, snapshot_date)
+    except Exception:
+        closed_on_snapshot_date = all_markets_closed(DEFAULT_MARKETS, now=now_utc)
+    if not closed_on_snapshot_date:
         day_pnl += realized_pnl
     # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
     # adjustment 字段通常用于存储 "已实现盈亏 + 分红" 等历史调整。
@@ -124,7 +174,7 @@ def take_snapshot(user_id: str = None) -> bool:
     """
     执行快照保存
 
-    注意：休市时 day_pnl 固定为 0
+    注意：day_pnl 基于交易日口径计算，非交易日自动为 0
     - 若 user_id 为空，默认对所有用户写快照
     """
     try:
@@ -137,9 +187,6 @@ def take_snapshot(user_id: str = None) -> bool:
         success_any = False
         for uid in user_ids:
             stats = calculate_portfolio_stats(uid)
-            if all_markets_closed(DEFAULT_MARKETS):
-                logger.info("All markets closed, setting day_pnl to 0")
-                stats['day_pnl'] = 0.0
             success = db.save_daily_snapshot(stats, uid)
             success_any = success_any or success
             if success:
