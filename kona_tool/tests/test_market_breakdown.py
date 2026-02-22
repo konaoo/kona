@@ -140,7 +140,7 @@ class MarketBreakdownTests(unittest.TestCase):
                 sys.executable,
                 str(script_path),
                 "--db-path",
-                os.environ["KONA_DATABASE_PATH"],
+                str(app_module.db.db_path),
                 "--start-date",
                 "2026-02-18",
                 "--end-date",

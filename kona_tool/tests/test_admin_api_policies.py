@@ -3,6 +3,7 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 KONA_TOOL = ROOT / "kona_tool"
@@ -91,9 +92,12 @@ class AdminApiPoliciesTests(unittest.TestCase):
         self.assertEqual(batch.get_json().get("updated_count"), 1)
 
         req_headers = {"X-Forwarded-For": "10.21.2.3"}
-        first = self.client.get("/api/news/latest", headers=req_headers)
-        self.assertEqual(first.status_code, 200)
-        second = self.client.get("/api/news/latest", headers=req_headers)
+        with patch.object(app_module.news_fetcher, "fetch_latest", return_value=[]), patch.object(
+            app_module.time, "time", return_value=1_700_000_000.0
+        ):
+            first = self.client.get("/api/news/latest", headers=req_headers)
+            self.assertEqual(first.status_code, 200)
+            second = self.client.get("/api/news/latest", headers=req_headers)
         self.assertEqual(second.status_code, 429)
         self.assertEqual(second.get_json().get("code"), "API_SCOPE_RATE_LIMITED")
 
