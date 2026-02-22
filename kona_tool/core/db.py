@@ -567,7 +567,7 @@ class DatabaseManager:
             cursor.execute(
                 '''
                 SELECT id, username, nickname, avatar, register_method, phone,
-                       user_number, created_at, last_login, legacy_needs_password_setup,
+                       user_number, is_admin, created_at, last_login, legacy_needs_password_setup,
                        must_change_password
                 FROM users
                 WHERE id = ?

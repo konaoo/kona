@@ -274,5 +274,6 @@ def admin_required(f):
 def get_user_profile(db, user_id: str) -> Optional[dict]:
     profile = db.get_user_profile(user_id)
     if profile:
+        profile["is_admin"] = bool(profile.get("is_admin"))
         profile["must_change_password"] = bool(profile.get("must_change_password"))
     return profile
