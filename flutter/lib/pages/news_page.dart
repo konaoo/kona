@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
-import '../providers/app_state.dart';
 
 /// 快讯页面
 class NewsPage extends StatefulWidget {
-  const NewsPage({super.key});
+  const NewsPage({super.key, this.newsLoader});
+
+  final Future<Map<String, dynamic>> Function({
+    required int page,
+    required int pageSize,
+  })?
+  newsLoader;
 
   @override
   State<NewsPage> createState() => _NewsPageState();
@@ -40,7 +44,8 @@ class _NewsPageState extends State<NewsPage> {
 
   void _onScroll() {
     if (!_hasMore || _loadingMore) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _loadNews();
     }
   }
@@ -48,6 +53,7 @@ class _NewsPageState extends State<NewsPage> {
   Future<void> _loadNews({bool reset = false}) async {
     if (_loadingMore && !reset) return;
     if (reset) {
+      if (!mounted) return;
       setState(() {
         _loading = true;
         _page = 1;
@@ -57,11 +63,19 @@ class _NewsPageState extends State<NewsPage> {
         _expandedKeys.clear();
       });
     } else {
+      if (!mounted) return;
       setState(() => _loadingMore = true);
     }
     try {
-      final data = await _api.getNews(page: _page, pageSize: _pageSize);
-      final items = (data['items'] as List?)?.map((e) => e as Map<String, dynamic>).toList() ?? [];
+      final loader = widget.newsLoader;
+      final data = loader != null
+          ? await loader(page: _page, pageSize: _pageSize)
+          : await _api.getNews(page: _page, pageSize: _pageSize);
+      final items =
+          (data['items'] as List?)
+              ?.map((e) => e as Map<String, dynamic>)
+              .toList() ??
+          [];
       final hasMore = data['has_more'] == true;
 
       for (final item in items) {
@@ -71,6 +85,7 @@ class _NewsPageState extends State<NewsPage> {
         }
       }
 
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
@@ -79,6 +94,7 @@ class _NewsPageState extends State<NewsPage> {
       });
     } catch (e) {
       debugPrint('加载快讯失败: $e');
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
@@ -88,8 +104,9 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<AppState>();
-    final filteredNews = _onlyImportant ? _news.where((e) => e['important'] == true).toList() : _news;
+    final filteredNews = _onlyImportant
+        ? _news.where((e) => e['important'] == true).toList()
+        : _news;
     return RefreshIndicator(
       onRefresh: () => _loadNews(reset: true),
       color: AppTheme.accent,
@@ -98,7 +115,12 @@ class _NewsPageState extends State<NewsPage> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(Spacing.xl, Spacing.lg, Spacing.xl, Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.xl,
+                Spacing.lg,
+                Spacing.xl,
+                Spacing.md,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -114,7 +136,10 @@ class _NewsPageState extends State<NewsPage> {
                     children: [
                       Text(
                         '只看重要',
-                        style: TextStyle(fontSize: FontSize.sm, color: AppTheme.textSecondary),
+                        style: TextStyle(
+                          fontSize: FontSize.sm,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Transform.scale(
@@ -122,7 +147,8 @@ class _NewsPageState extends State<NewsPage> {
                         child: Switch(
                           value: _onlyImportant,
                           activeColor: AppTheme.accent,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                           onChanged: (val) {
                             setState(() => _onlyImportant = val);
                           },
@@ -146,9 +172,16 @@ class _NewsPageState extends State<NewsPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.flash_on, size: 48, color: AppTheme.textTertiary),
+                    Icon(
+                      Icons.flash_on,
+                      size: 48,
+                      color: AppTheme.textTertiary,
+                    ),
                     const SizedBox(height: Spacing.md),
-                    Text('暂无快讯', style: TextStyle(color: AppTheme.textSecondary)),
+                    Text(
+                      '暂无快讯',
+                      style: TextStyle(color: AppTheme.textSecondary),
+                    ),
                   ],
                 ),
               ),
@@ -168,7 +201,10 @@ class _NewsPageState extends State<NewsPage> {
                   child: SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.accent,
+                    ),
                   ),
                 ),
               ),
@@ -205,7 +241,10 @@ class _NewsPageState extends State<NewsPage> {
               if (isImportant)
                 Container(
                   margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.accent,
                     borderRadius: BorderRadius.circular(4),
