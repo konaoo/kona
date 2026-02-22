@@ -160,25 +160,28 @@ def _get_calendar(market: str):
 def _is_trading_day_from_calendar(market: str, target_date: Any) -> bool:
     """
     主交易日来源：exchange_calendars。
-    若运行环境缺失依赖/初始化失败，安全降级为“休市”。
+    若运行环境缺失依赖/初始化失败，降级为“仅周末休市”。
     """
     d = _normalize_date(target_date)
+    fallback = d.weekday() < 5
     if xcals is None or pd is None:
         logger.warning(
-            "exchange_calendars unavailable, market=%s date=%s fallback closed",
+            "exchange_calendars unavailable, market=%s date=%s fallback weekday=%s",
             market,
             d,
+            fallback,
         )
-        return False
+        return fallback
 
     cal = _get_calendar(market)
     if cal is None:
         logger.warning(
-            "exchange_calendars init failed, market=%s date=%s fallback closed",
+            "exchange_calendars init failed, market=%s date=%s fallback weekday=%s",
             market,
             d,
+            fallback,
         )
-        return False
+        return fallback
 
     try:
         ts = pd.Timestamp(d.isoformat())
@@ -188,8 +191,8 @@ def _is_trading_day_from_calendar(market: str, target_date: Any) -> bool:
             return len(cal.sessions_in_range(ts, ts)) > 0
     except Exception as exc:
         logger.warning("Calendar session check failed for market=%s date=%s: %s", market, d, exc)
-        return False
-    return False
+        return fallback
+    return fallback
 
 
 def is_trading_day(market: str, target_date: Any) -> bool:

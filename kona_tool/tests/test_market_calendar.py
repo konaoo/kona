@@ -16,6 +16,10 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import core.market_calendar as market_calendar  # noqa: E402
 
+CALENDAR_DEPS_AVAILABLE = (
+    market_calendar.xcals is not None and market_calendar.pd is not None
+)
+
 
 class MarketCalendarTests(unittest.TestCase):
     def test_market_from_asset_prefers_asset_type(self):
@@ -137,12 +141,27 @@ class MarketCalendarTests(unittest.TestCase):
             )
             mocked.assert_called_once()
 
+    def test_trading_day_fallback_to_weekday_when_calendar_deps_missing(self):
+        with patch.object(market_calendar, "xcals", None), patch.object(
+            market_calendar, "pd", None
+        ):
+            self.assertTrue(market_calendar.is_trading_day("a", "2026-01-06"))
+            self.assertFalse(market_calendar.is_trading_day("a", "2026-01-10"))
+
+    @unittest.skipUnless(
+        CALENDAR_DEPS_AVAILABLE,
+        "exchange_calendars/pandas required for holiday matrix checks",
+    )
     def test_hk_half_day_afternoon_closed_by_calendar(self):
         # 2026-02-16 港股半日市，14:00 HKT(06:00 UTC) 应为休市。
         probe_utc = datetime(2026, 2, 16, 6, 0, 0, tzinfo=timezone.utc)
         status = market_calendar.get_market_status("hk", now=probe_utc)
         self.assertFalse(status["open"])
 
+    @unittest.skipUnless(
+        CALENDAR_DEPS_AVAILABLE,
+        "exchange_calendars/pandas required for holiday matrix checks",
+    )
     def test_trading_day_matrix_for_2026_02_16(self):
         # 该日期在交易日历中：A/Fund 休市，HK 交易日，US 休市（总统日）。
         self.assertFalse(market_calendar.is_trading_day("a", "2026-02-16"))
