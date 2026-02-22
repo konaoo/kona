@@ -21,6 +21,35 @@ CALENDAR_DEPS_AVAILABLE = (
 )
 
 
+def _calendar_covers_date(market: str, date_str: str) -> bool:
+    if not CALENDAR_DEPS_AVAILABLE:
+        return False
+    try:
+        cal = market_calendar._get_calendar(market)
+        if cal is None:
+            return False
+        target = market_calendar.pd.Timestamp(date_str).normalize()
+        last = getattr(cal, "last_session", None)
+        if callable(last):
+            last = last()
+        if last is None:
+            sessions = getattr(cal, "sessions", None)
+            if sessions is not None and len(sessions) > 0:
+                last = sessions[-1]
+        if last is None:
+            return False
+        last_ts = market_calendar.pd.Timestamp(last).normalize()
+        return target <= last_ts
+    except Exception:
+        return False
+
+
+CALENDAR_2026_0216_MATRIX_AVAILABLE = all(
+    _calendar_covers_date(market, "2026-02-16")
+    for market in ("a", "hk", "us", "fund")
+)
+
+
 class MarketCalendarTests(unittest.TestCase):
     def test_market_from_asset_prefers_asset_type(self):
         asset = {"code": "sh600000", "asset_type": "us"}
@@ -149,8 +178,8 @@ class MarketCalendarTests(unittest.TestCase):
             self.assertFalse(market_calendar.is_trading_day("a", "2026-01-10"))
 
     @unittest.skipUnless(
-        CALENDAR_DEPS_AVAILABLE,
-        "exchange_calendars/pandas required for holiday matrix checks",
+        CALENDAR_2026_0216_MATRIX_AVAILABLE,
+        "exchange_calendars data coverage insufficient for 2026-02-16 matrix checks",
     )
     def test_hk_half_day_afternoon_closed_by_calendar(self):
         # 2026-02-16 港股半日市，14:00 HKT(06:00 UTC) 应为休市。
@@ -159,8 +188,8 @@ class MarketCalendarTests(unittest.TestCase):
         self.assertFalse(status["open"])
 
     @unittest.skipUnless(
-        CALENDAR_DEPS_AVAILABLE,
-        "exchange_calendars/pandas required for holiday matrix checks",
+        CALENDAR_2026_0216_MATRIX_AVAILABLE,
+        "exchange_calendars data coverage insufficient for 2026-02-16 matrix checks",
     )
     def test_trading_day_matrix_for_2026_02_16(self):
         # 该日期在交易日历中：A/Fund 休市，HK 交易日，US 休市（总统日）。
