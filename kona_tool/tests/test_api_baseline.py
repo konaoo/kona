@@ -283,6 +283,12 @@ class ApiBaselineTests(unittest.TestCase):
     def test_analysis_overview_month_year_all_calculation(self):
         today = datetime.now().date()
         today_str = today.strftime('%Y-%m-%d')
+        anchor = today
+        while anchor.weekday() >= 5:
+            anchor = anchor - timedelta(days=1)
+        if anchor.month != today.month:
+            self.skipTest("weekend month boundary; no in-month business anchor")
+        anchor_str = anchor.strftime('%Y-%m-%d')
         month_start = today.replace(day=1)
         year_start = datetime(today.year, 1, 1).date()
         prev_month = month_start - timedelta(days=1)
@@ -322,6 +328,14 @@ class ApiBaselineTests(unittest.TestCase):
             """,
             (today_str, today_invest, today_pnl),
         )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, ?, 1, 0, 0, ?, 0, '')
+            """,
+            (anchor_str, today_invest, today_pnl),
+        )
         conn.commit()
         conn.close()
 
@@ -337,6 +351,11 @@ class ApiBaselineTests(unittest.TestCase):
 
     def test_analysis_overview_year_matches_calendar_month_total_with_future_row(self):
         today = datetime.now().date()
+        anchor = today
+        while anchor.weekday() >= 5:
+            anchor = anchor - timedelta(days=1)
+        if anchor.month != today.month:
+            self.skipTest("weekend month boundary; no in-month business anchor")
         future_same_month = today + timedelta(days=1)
         if future_same_month.month != today.month or future_same_month.year != today.year:
             self.skipTest("month boundary; no safe future date in current month")
@@ -359,7 +378,7 @@ class ApiBaselineTests(unittest.TestCase):
             (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
             VALUES (?, 1, 1000, 1, 0, 0, 21000, 0, '')
             """,
-            (today.strftime('%Y-%m-%d'),),
+            (anchor.strftime('%Y-%m-%d'),),
         )
         cursor.execute(
             """

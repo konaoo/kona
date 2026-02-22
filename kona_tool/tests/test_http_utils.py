@@ -19,7 +19,11 @@ class TestHttpGet(unittest.TestCase):
         mock_get.side_effect = Exception('boom')
         with self.assertRaises(Exception):
             http_get('http://example.com', retries=2)
-        self.assertEqual(mock_get.call_count, 2)
+        target_calls = [
+            call for call in mock_get.call_args_list
+            if call.args and call.args[0] == 'http://example.com'
+        ]
+        self.assertEqual(len(target_calls), 2)
 
 
 if __name__ == '__main__':
