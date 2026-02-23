@@ -9,10 +9,11 @@
             type="button"
             :class="{ active: importantOnly }"
             @click="toggleImportantOnly"
+            :aria-pressed="importantOnly ? 'true' : 'false'"
           >
-            <span class="important-toggle-thumb" aria-hidden="true"></span>
-            <span class="important-toggle-label">
-              {{ importantOnly ? '【重要】快讯' : '全部快讯' }}
+            <span class="important-toggle-text">只看重要</span>
+            <span class="important-toggle-switch" aria-hidden="true">
+              <span class="important-toggle-thumb"></span>
             </span>
           </button>
           <div class="live-status">
@@ -202,45 +203,57 @@ onUnmounted(() => {
 
 .important-toggle {
   height: 38px;
-  min-width: 132px;
-  padding: 0 10px 0 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.7);
-  color: var(--legacy-text-secondary);
-  font-size: 13px;
-  font-weight: 700;
+  border: 0;
+  background: transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  transition: all 0.2s ease;
+  gap: 10px;
+  padding: 0;
+  transition: opacity 0.2s ease;
 }
 
-.important-toggle.active {
-  color: #fff;
-  border-color: rgba(77, 125, 255, 0.85);
-  background: rgba(77, 125, 255, 0.18);
+.important-toggle:hover {
+  opacity: 0.92;
+}
+
+.important-toggle-text {
+  color: var(--legacy-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.important-toggle-switch {
+  position: relative;
+  width: 58px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid rgba(226, 232, 240, 0.92);
+  background: rgba(30, 41, 59, 0.92);
+  box-sizing: border-box;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .important-toggle-thumb {
-  width: 18px;
-  height: 18px;
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.55);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.25);
-  transition: transform 0.2s ease, background 0.2s ease;
+  background: #f8fafc;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+  transition: transform 0.2s ease;
+}
+
+.important-toggle.active .important-toggle-switch {
+  background: rgba(77, 125, 255, 0.35);
+  border-color: rgba(206, 226, 255, 0.95);
 }
 
 .important-toggle.active .important-toggle-thumb {
-  transform: translateX(2px);
-  background: #4d7dff;
-  box-shadow: 0 0 0 3px rgba(77, 125, 255, 0.2);
-}
-
-.important-toggle-label {
-  white-space: nowrap;
-  letter-spacing: 0.2px;
+  transform: translateX(24px);
 }
 
 .page-title {
