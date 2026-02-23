@@ -94,19 +94,10 @@
             {{ tab.label }}
           </button>
         </div>
-
-        <div class="rank-type-tabs">
-          <button class="rank-type-tab" :class="{ active: rankType === 'profit' }" @click="rankType = 'profit'">
-            盈利榜
-          </button>
-          <button class="rank-type-tab" :class="{ active: rankType === 'loss' }" @click="rankType = 'loss'">
-            亏损榜
-          </button>
-        </div>
       </div>
 
-      <div class="rank-list" v-if="displayRankItems.length">
-        <article class="rank-item" v-for="(item, idx) in displayRankItems" :key="`${rankType}-${item.code}`">
+      <div class="rank-list" v-if="visibleRankItems.length">
+        <article class="rank-item" v-for="(item, idx) in visibleRankItems" :key="`rank-${item.code}-${idx}`">
           <div class="rank-left">
             <span class="rank-badge" :class="rankBadgeClass(idx + 1)">{{ idx + 1 }}</span>
             <div class="rank-asset-meta">
@@ -115,11 +106,19 @@
             </div>
           </div>
 
-          <div class="rank-right" :class="valueClass(toNum(item.pnl))">
-            <div class="rank-pnl">{{ formatCny(toNum(item.pnl)) }}</div>
+          <div class="rank-right" :class="valueClass(rankPnlCny(item))">
+            <div class="rank-pnl">{{ formatCny(rankPnlCny(item)) }}</div>
             <div class="rank-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
           </div>
         </article>
+
+        <button
+          v-if="hasMoreRankItems"
+          class="rank-expand-btn"
+          @click="rankExpanded = !rankExpanded"
+        >
+          {{ rankExpanded ? '收起' : '查看更多' }}
+        </button>
       </div>
 
       <div class="rank-empty" v-else>
@@ -137,7 +136,6 @@ import { toNumber } from '../../shared/format'
 
 type CalendarType = 'day' | 'month' | 'year'
 type RankMarket = 'all' | 'a' | 'hk' | 'us' | 'fund'
-type RankType = 'profit' | 'loss'
 type PeriodKey = 'day' | 'month' | 'year' | 'all'
 
 type OverviewItem = {
@@ -176,6 +174,8 @@ type RankItem = {
   name?: string
   pnl?: number
   pnl_rate?: number
+  market?: RankMarket | string
+  curr?: string
 }
 
 const periods: Record<PeriodKey, { label: string }> = {
@@ -212,9 +212,11 @@ const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
   loss: [],
 })
 
+const rates = reactive<Record<string, number>>({})
+
 const calendarType = ref<CalendarType>('day')
-const rankType = ref<RankType>('profit')
 const rankMarket = ref<RankMarket>('all')
+const rankExpanded = ref(false)
 
 const selectedDayYear = ref<number | null>(null)
 const selectedDayMonth = ref<number | null>(null)
@@ -247,8 +249,15 @@ const dayMonthOptions = computed(() => {
 })
 
 const displayRankItems = computed(() => {
-  const list = rankType.value === 'profit' ? rank.gain : rank.loss
-  return Array.isArray(list) ? list.slice(0, 5) : []
+  const allItems = [...(rank.gain || []), ...(rank.loss || [])]
+  return allItems.sort((a, b) => toNum(b.pnl) - toNum(a.pnl))
+})
+
+const hasMoreRankItems = computed(() => displayRankItems.value.length > 5)
+
+const visibleRankItems = computed(() => {
+  if (rankExpanded.value) return displayRankItems.value
+  return displayRankItems.value.slice(0, 5)
 })
 
 const calendarSummaryLabel = computed(() => {
@@ -373,6 +382,27 @@ function formatDisplayCode(code: string): string {
   return value
 }
 
+function currencyForRankItem(item: RankItem): 'CNY' | 'HKD' | 'USD' {
+  const curr = String(item.curr || '').toUpperCase()
+  if (curr === 'HKD' || curr === 'USD' || curr === 'CNY') {
+    return curr
+  }
+  const market = String(item.market || '').toLowerCase()
+  if (market === 'hk') return 'HKD'
+  if (market === 'us') return 'USD'
+  return 'CNY'
+}
+
+function toCny(value: number, curr: 'CNY' | 'HKD' | 'USD'): number {
+  const rate = toNum(rates[curr], 1) || 1
+  return value * rate
+}
+
+function rankPnlCny(item: RankItem): number {
+  const pnl = toNum(item.pnl)
+  return toCny(pnl, currencyForRankItem(item))
+}
+
 function parseLabelKey(label: string | number | undefined): number | null {
   const text = String(label ?? '').trim()
   if (!text) return null
@@ -483,6 +513,18 @@ async function loadOverview() {
   }
 }
 
+async function loadRates() {
+  const payload = await api.get<Record<string, number>>('/api/rates')
+  const next: Record<string, number> = {
+    CNY: 1,
+    HKD: toNum(payload?.HKD, 1),
+    USD: toNum(payload?.USD, 1),
+  }
+  for (const [key, value] of Object.entries(next)) {
+    rates[key] = value
+  }
+}
+
 async function loadCalendar() {
   const requestId = ++calendarRequestId
 
@@ -520,10 +562,11 @@ async function loadRank() {
   )
   rank.gain = Array.isArray(payload?.gain) ? payload.gain : []
   rank.loss = Array.isArray(payload?.loss) ? payload.loss : []
+  rankExpanded.value = false
 }
 
 async function reload() {
-  await loadOverview()
+  await Promise.all([loadOverview(), loadRates()])
   await Promise.all([loadCalendar(), loadRank()])
 }
 
@@ -745,15 +788,13 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
-.market-tabs,
-.rank-type-tabs {
+.market-tabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.market-tab,
-.rank-type-tab {
+.market-tab {
   border: 1px solid var(--legacy-border);
   border-radius: 8px;
   padding: 8px 14px;
@@ -762,8 +803,7 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.market-tab.active,
-.rank-type-tab.active {
+.market-tab.active {
   color: var(--legacy-text-primary);
   border-color: rgba(59, 130, 246, 0.5);
   background: rgba(59, 130, 246, 0.18);
@@ -773,6 +813,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.rank-expand-btn {
+  align-self: center;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--legacy-text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rank-expand-btn:hover {
+  background: rgba(59, 130, 246, 0.24);
 }
 
 .rank-item {

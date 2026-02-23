@@ -2354,7 +2354,8 @@ def analysis_rank():
             'name': item['name'],
             'pnl': round(pnl, 2),
             'pnl_rate': round(pnl_rate, 2),
-            'market': item['market']
+            'market': item['market'],
+            'curr': item.get('curr', 'CNY'),
         })
     
     # 分类排序
