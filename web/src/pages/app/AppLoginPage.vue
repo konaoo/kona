@@ -1,73 +1,116 @@
 <template>
   <div class="auth-wrap page-wrap">
     <div class="auth-shell panel">
-      <aside class="auth-info">
-        <p class="kicker">GLOBAL ASSET CONSOLE</p>
-        <h1>欢迎回到咔咔记账</h1>
-        <p class="tip">一处登录，联动网页端投资、分析与资产管理工作台。</p>
-        <ul class="points">
-          <li>实时行情与收益口径同步</li>
-          <li>休市逻辑统一覆盖 A/HK/US/Fund</li>
-          <li>投资与分析数据同源展示</li>
-        </ul>
-      </aside>
-
       <section class="auth">
-        <div class="toggle" role="tablist" aria-label="登录注册切换">
-          <button class="btn" :class="{ primary: !isRegister }" type="button" @click="isRegister = false">登录</button>
-          <button class="btn" :class="{ primary: isRegister }" type="button" @click="isRegister = true">注册</button>
+        <div class="auth-topbar">
+          <button class="back-arrow-btn" type="button" aria-label="返回" @click="goBack">←</button>
         </div>
 
         <label>
           用户名
-          <input v-model.trim="username" class="input" placeholder="小写字母开头，4-24位" />
+          <input
+            v-model.trim="username"
+            class="input"
+            placeholder="小写字母开头，4-24位"
+            autocomplete="username"
+          />
         </label>
 
         <label>
           密码
-          <input v-model="password" class="input" type="password" placeholder="8-64位，包含字母和数字" />
+          <input
+            v-model="password"
+            class="input"
+            type="password"
+            placeholder="8-64位，包含字母和数字"
+            :autocomplete="isRegisterRoute ? 'new-password' : 'current-password'"
+          />
         </label>
 
-        <label v-if="isRegister">
+        <label v-if="isRegisterRoute">
           邀请码
           <input v-model.trim="inviteCode" class="input" placeholder="输入邀请码" />
+        </label>
+
+        <label v-else class="remember-row">
+          <input v-model="rememberMe" type="checkbox" class="remember-check" />
+          <span>记住我</span>
         </label>
 
         <div class="error" v-if="error">{{ error }}</div>
 
         <button class="btn primary submit-btn" :disabled="submitting" @click="submit">
-          {{ submitting ? '提交中...' : (isRegister ? '注册并登录' : '登录') }}
+          {{ submitting ? '提交中...' : (isRegisterRoute ? '注册并登录' : '登录') }}
         </button>
 
-        <RouterLink class="back-link" to="/">返回主页</RouterLink>
+        <RouterLink v-if="!isRegisterRoute" class="register-hint-link" to="/app/register">
+          还没有账户？立即注册
+        </RouterLink>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useKonaStore } from '../../shared/store'
 
+const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
+const REMEMBER_USERNAME_KEY = 'kona_web_remember_username'
+const REMEMBER_PASSWORD_KEY = 'kona_web_remember_password'
+
 const router = useRouter()
+const route = useRoute()
 const store = useKonaStore()
 
-const isRegister = ref(false)
 const submitting = ref(false)
 const username = ref('')
 const password = ref('')
 const inviteCode = ref('')
+const rememberMe = ref(false)
 const error = ref('')
+const isRegisterRoute = computed(() => route.path === '/app/register')
+
+function readRememberFields() {
+  if (typeof window === 'undefined') return
+  rememberMe.value = localStorage.getItem(REMEMBER_ENABLED_KEY) === '1'
+  if (!rememberMe.value) return
+  username.value = localStorage.getItem(REMEMBER_USERNAME_KEY) || ''
+  password.value = localStorage.getItem(REMEMBER_PASSWORD_KEY) || ''
+}
+
+function persistRememberFields() {
+  if (typeof window === 'undefined') return
+  if (rememberMe.value) {
+    localStorage.setItem(REMEMBER_ENABLED_KEY, '1')
+    localStorage.setItem(REMEMBER_USERNAME_KEY, username.value)
+    localStorage.setItem(REMEMBER_PASSWORD_KEY, password.value)
+    return
+  }
+  localStorage.setItem(REMEMBER_ENABLED_KEY, '0')
+  localStorage.removeItem(REMEMBER_USERNAME_KEY)
+  localStorage.removeItem(REMEMBER_PASSWORD_KEY)
+}
+
+function goBack() {
+  if (typeof window !== 'undefined' && window.history.length > 1) {
+    router.back()
+    return
+  }
+  void router.push('/')
+}
 
 async function submit() {
   error.value = ''
   submitting.value = true
   try {
-    if (isRegister.value) {
+    if (isRegisterRoute.value) {
       await store.register(username.value, password.value, inviteCode.value)
     } else {
       await store.login(username.value, password.value)
+      persistRememberFields()
     }
     await store.refreshAll()
     await router.push('/app/home')
@@ -77,6 +120,11 @@ async function submit() {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  if (isRegisterRoute.value) return
+  readRememberFields()
+})
 </script>
 
 <style scoped>
@@ -84,54 +132,12 @@ async function submit() {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  max-width: 1120px;
+  max-width: 640px;
 }
 
 .auth-shell {
-  width: min(980px, 100%);
+  width: min(460px, 100%);
   padding: 18px;
-  display: grid;
-  gap: 18px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.auth-info {
-  border-radius: 14px;
-  border: 1px solid rgba(96, 129, 181, 0.24);
-  background:
-    radial-gradient(460px 240px at 100% -16%, rgba(124, 162, 244, 0.3), rgba(124, 162, 244, 0)),
-    linear-gradient(150deg, rgba(23, 41, 71, 0.96), rgba(11, 22, 41, 0.9));
-  padding: clamp(20px, 3vw, 34px);
-}
-
-.kicker {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-h1 {
-  margin: 14px 0 0;
-  line-height: 1.1;
-  font-size: clamp(28px, 3.6vw, 42px);
-  letter-spacing: -0.02em;
-}
-
-.tip {
-  margin: 16px 0 0;
-  color: var(--text-soft);
-  line-height: 1.6;
-  max-width: 28ch;
-}
-
-.points {
-  margin: 22px 0 0;
-  padding-left: 18px;
-  color: var(--text-soft);
-  display: grid;
-  gap: 9px;
-  font-size: 14px;
 }
 
 .auth {
@@ -143,17 +149,27 @@ h1 {
   gap: 12px;
 }
 
-.toggle {
+.auth-topbar {
   display: flex;
-  gap: 8px;
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(89, 116, 165, 0.32);
-  background: rgba(8, 17, 31, 0.5);
+  align-items: center;
+  margin-bottom: 2px;
 }
 
-.toggle .btn {
-  flex: 1;
+.back-arrow-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(89, 116, 165, 0.36);
+  background: rgba(8, 17, 31, 0.5);
+  color: var(--text-soft);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.back-arrow-btn:hover {
+  border-color: rgba(126, 158, 214, 0.55);
+  color: #fff;
 }
 
 label {
@@ -179,27 +195,31 @@ label {
   margin-top: 4px;
 }
 
-.back-link {
+.register-hint-link {
   color: var(--muted);
   font-size: 13px;
   justify-self: center;
 }
 
-.back-link:hover {
+.register-hint-link:hover {
   color: var(--text-soft);
 }
 
-@media (max-width: 900px) {
-  .auth-wrap {
-    padding: 12px;
-  }
+.remember-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -2px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-soft);
+}
 
-  .auth-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .tip {
-    max-width: 100%;
-  }
+.remember-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #7ba8ff;
 }
 </style>

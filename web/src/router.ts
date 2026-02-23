@@ -21,6 +21,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/', component: PortalPage },
   { path: '/app', redirect: '/app/home' },
   { path: '/app/login', component: AppLoginPage },
+  { path: '/app/register', component: AppLoginPage },
   { path: '/app/home', component: AppHomePage, meta: { requiresAuth: true } },
   { path: '/app/invest', component: AppInvestPage, meta: { requiresAuth: true } },
   { path: '/app/analysis', component: AppAnalysisPage, meta: { requiresAuth: true } },
@@ -49,7 +50,7 @@ router.beforeEach(async (to) => {
   const store = useKonaStore()
   await store.bootstrap()
 
-  if (to.path === '/app/login' && store.isAuthenticated.value) {
+  if ((to.path === '/app/login' || to.path === '/app/register') && store.isAuthenticated.value) {
     return '/app/home'
   }
   if (to.path === '/admin/login' && store.isAuthenticated.value && store.isAdmin.value) {
