@@ -5,7 +5,7 @@ import AppHomePage from './pages/app/AppHomePage.vue'
 import AppInvestPage from './pages/app/AppInvestPage.vue'
 import AppAnalysisPage from './pages/app/AppAnalysisPage.vue'
 import AppNewsPage from './pages/app/AppNewsPage.vue'
-import AppProfilePage from './pages/app/AppProfilePage.vue'
+import AppMePage from './pages/app/AppMePage.vue'
 import AppAssetDetailPage from './pages/app/AppAssetDetailPage.vue'
 import AdminLoginPage from './pages/admin/AdminLoginPage.vue'
 import AdminOverviewPage from './pages/admin/AdminOverviewPage.vue'
@@ -25,7 +25,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/app/invest', component: AppInvestPage, meta: { requiresAuth: true } },
   { path: '/app/analysis', component: AppAnalysisPage, meta: { requiresAuth: true } },
   { path: '/app/news', component: AppNewsPage, meta: { requiresAuth: true } },
-  { path: '/app/profile', component: AppProfilePage, meta: { requiresAuth: true } },
+  { path: '/app/me', component: AppMePage, meta: { requiresAuth: true } },
+  { path: '/app/profile', redirect: '/app/me' },
   { path: '/app/asset/:code', component: AppAssetDetailPage, meta: { requiresAuth: true } },
 
   { path: '/admin', redirect: '/admin/overview' },

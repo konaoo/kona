@@ -47,6 +47,6 @@ const nav = [
   { path: '/app/invest', label: '我的投资', shortLabel: '投资', icon: '💼' },
   { path: '/app/analysis', label: '资产分析', shortLabel: '分析', icon: '📊' },
   { path: '/app/news', label: '市场分析', shortLabel: '快讯', icon: '⚡' },
-  { path: '/app/profile', label: '设置', shortLabel: '设置', icon: '⚙️' },
+  { path: '/app/me', label: '设置', shortLabel: '设置', icon: '⚙️' },
 ]
 </script>
