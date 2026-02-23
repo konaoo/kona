@@ -286,9 +286,16 @@ class AppState extends ChangeNotifier {
     return _resolvePriceInfoByCode(item.code, preferred: preferred);
   }
 
-  bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+  bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     return resolved != null && resolved.yclose > 0;
+  }
+
+  bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    final resolved = resolvePriceInfo(item, preferred: priceInfo);
+    if (resolved == null || resolved.yclose <= 0) return false;
+    if (isAssetMarketOpen(item)) return true;
+    return _isUsExtendedSessionActive(item, resolved);
   }
 
   /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。

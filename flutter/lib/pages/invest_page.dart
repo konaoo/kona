@@ -468,7 +468,7 @@ class InvestPageState extends State<InvestPage> {
     final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
     final rate = appState.getCurrencyRate(item.curr);
-    final dayPnlEnabled = appState.isAssetDayPnlEnabled(
+    final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(
       item,
       priceInfo: priceInfo,
     );

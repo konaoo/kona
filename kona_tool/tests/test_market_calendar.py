@@ -177,6 +177,50 @@ class MarketCalendarTests(unittest.TestCase):
             self.assertTrue(market_calendar.is_trading_day("a", "2026-01-06"))
             self.assertFalse(market_calendar.is_trading_day("a", "2026-01-10"))
 
+    def test_market_status_mixed_open_day_respects_force_closed_overrides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            override_path = Path(tmp) / "market_holidays.json"
+            override_path.write_text(
+                json.dumps(
+                    {
+                        "force_closed": {
+                            "a": ["2026-02-23"],
+                            "fund": ["2026-02-23"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(
+                market_calendar.config,
+                "MARKET_HOLIDAY_OVERRIDES_PATH",
+                override_path,
+            ), patch.object(market_calendar, "xcals", None), patch.object(
+                market_calendar, "pd", None
+            ):
+                # 2026-02-23 10:00 CST / 10:00 HKT, 应为混合开市日：
+                # A/Fund 休市，HK 交易时段内开市。
+                probe_mixed_open = datetime(2026, 2, 23, 2, 0, 0, tzinfo=timezone.utc)
+                a_status = market_calendar.get_market_status("a", now=probe_mixed_open)
+                fund_status = market_calendar.get_market_status("fund", now=probe_mixed_open)
+                hk_status = market_calendar.get_market_status("hk", now=probe_mixed_open)
+
+                self.assertFalse(a_status["open"])
+                self.assertEqual(a_status["reason"], "override")
+                self.assertFalse(fund_status["open"])
+                self.assertEqual(fund_status["reason"], "override")
+                self.assertTrue(hk_status["open"])
+                self.assertEqual(hk_status["reason"], "open_session")
+
+                # 春节后首个交易日 2026-02-24 10:00 CST，A/Fund 应恢复开市。
+                probe_reopen = datetime(2026, 2, 24, 2, 0, 0, tzinfo=timezone.utc)
+                self.assertTrue(
+                    market_calendar.get_market_status("a", now=probe_reopen)["open"]
+                )
+                self.assertTrue(
+                    market_calendar.get_market_status("fund", now=probe_reopen)["open"]
+                )
+
     @unittest.skipUnless(
         CALENDAR_2026_0216_MATRIX_AVAILABLE,
         "exchange_calendars data coverage insufficient for 2026-02-16 matrix checks",
