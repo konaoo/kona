@@ -29,6 +29,17 @@
         </label>
 
         <label v-if="isRegisterRoute">
+          确认密码
+          <input
+            v-model="confirmPassword"
+            class="input"
+            type="password"
+            placeholder="请再次输入密码"
+            autocomplete="new-password"
+          />
+        </label>
+
+        <label v-if="isRegisterRoute">
           邀请码
           <input v-model.trim="inviteCode" class="input" placeholder="输入邀请码" />
         </label>
@@ -62,6 +73,17 @@ import { useKonaStore } from '../../shared/store'
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
 const REMEMBER_USERNAME_KEY = 'kona_web_remember_username'
 const REMEMBER_PASSWORD_KEY = 'kona_web_remember_password'
+const USERNAME_PATTERN = /^[a-z][a-z0-9_]{3,23}$/
+const RESERVED_USERNAMES = new Set([
+  'admin',
+  'administrator',
+  'root',
+  'system',
+  'support',
+  'service',
+  'security',
+  'owner',
+])
 
 const router = useRouter()
 const route = useRoute()
@@ -70,6 +92,7 @@ const store = useKonaStore()
 const submitting = ref(false)
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const inviteCode = ref('')
 const rememberMe = ref(false)
 const error = ref('')
@@ -104,11 +127,72 @@ function goBack() {
   void router.push('/')
 }
 
+function isValidUsername(value: string): boolean {
+  const normalized = (value || '').trim().toLowerCase()
+  return USERNAME_PATTERN.test(normalized) && !RESERVED_USERNAMES.has(normalized)
+}
+
+function isValidPassword(value: string): boolean {
+  const text = String(value || '')
+  if (text.length < 8 || text.length > 64) return false
+  if (!/[A-Za-z]/.test(text)) return false
+  if (!/\d/.test(text)) return false
+  return true
+}
+
+function normalizeErrorText(raw: unknown): string {
+  return String(raw || '').trim().toLowerCase()
+}
+
+function mapRegisterError(err: unknown): string {
+  const status = Number((err as { status?: unknown })?.status || 0)
+  const message = normalizeErrorText((err as { message?: unknown })?.message)
+
+  if (status === 409 || message.includes('username already exists')) {
+    return '该用户名已被占用，请更换后重试'
+  }
+  if (message.includes('missing invite code')) {
+    return '请填写邀请码'
+  }
+  if (message.includes('invite code invalid') || message.includes('already used')) {
+    return '邀请码无效或已被使用，请核对后重试'
+  }
+  if (
+    message.includes('password') ||
+    message.includes('weak') ||
+    message.includes('letters') ||
+    message.includes('numbers') ||
+    message.includes('8-64')
+  ) {
+    return '密码需为 8-64 位，且同时包含字母和数字'
+  }
+  if (message.includes('invalid username')) {
+    return '用户名需以小写字母开头，仅支持小写字母、数字和下划线，长度 4-24 位'
+  }
+  return '注册失败，请稍后重试'
+}
+
 async function submit() {
   error.value = ''
   submitting.value = true
   try {
     if (isRegisterRoute.value) {
+      if (!isValidUsername(username.value)) {
+        error.value = '用户名需以小写字母开头，仅支持小写字母、数字和下划线，长度 4-24 位'
+        return
+      }
+      if (!isValidPassword(password.value)) {
+        error.value = '密码需为 8-64 位，且同时包含字母和数字'
+        return
+      }
+      if (confirmPassword.value !== password.value) {
+        error.value = '两次输入的密码不一致，请重新输入'
+        return
+      }
+      if (!String(inviteCode.value || '').trim()) {
+        error.value = '请填写邀请码'
+        return
+      }
       await store.register(username.value, password.value, inviteCode.value)
     } else {
       await store.login(username.value, password.value)
@@ -116,7 +200,11 @@ async function submit() {
     }
     await router.push('/app/home')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '请求失败'
+    if (isRegisterRoute.value) {
+      error.value = mapRegisterError(e)
+    } else {
+      error.value = e instanceof Error ? e.message : '请求失败'
+    }
   } finally {
     submitting.value = false
   }
