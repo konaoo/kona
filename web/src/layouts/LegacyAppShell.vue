@@ -22,12 +22,20 @@
         <button class="legacy-profile-btn" type="button" @click="goMe">
           <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="legacy-profile-avatar" />
           <span v-else class="legacy-profile-avatar legacy-profile-fallback">{{ userInitial }}</span>
-          <span class="legacy-profile-meta">
-            <span class="legacy-profile-name">{{ displayName }}</span>
-            <span class="legacy-profile-hint">个人中心</span>
-          </span>
+          <span class="legacy-profile-name">{{ displayName }}</span>
         </button>
-        <button class="legacy-logout-btn" type="button" @click="logout">退出登录</button>
+        <button
+          class="legacy-logout-icon-btn"
+          type="button"
+          aria-label="退出登录"
+          title="退出登录"
+          @click="logout"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-7.5A2.25 2.25 0 0 0 3.75 5.25v13.5A2.25 2.25 0 0 0 6 21h7.5a2.25 2.25 0 0 0 2.25-2.25V15" />
+            <path d="M18 12H9m0 0 3-3m-3 3 3 3" />
+          </svg>
+        </button>
       </div>
     </aside>
 
@@ -108,12 +116,13 @@ async function logout() {
   padding-top: 12px;
   border-top: 1px solid rgba(148, 163, 184, 0.18);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
 .legacy-profile-btn {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: 0;
   background: transparent;
   display: flex;
@@ -142,42 +151,42 @@ async function logout() {
   color: #fff;
 }
 
-.legacy-profile-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-}
-
 .legacy-profile-name {
   color: var(--legacy-text-primary);
   font-size: 14px;
   font-weight: 700;
-  max-width: 140px;
+  max-width: 120px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.legacy-profile-hint {
-  color: var(--legacy-text-secondary);
-  font-size: 12px;
-}
-
-.legacy-logout-btn {
-  width: 100%;
+.legacy-logout-icon-btn {
+  width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 9px;
   border: 1px solid rgba(248, 113, 113, 0.32);
   background: rgba(127, 29, 29, 0.18);
   color: #fda4af;
-  font-size: 13px;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   cursor: pointer;
 }
 
-.legacy-logout-btn:hover {
+.legacy-logout-icon-btn:hover {
   background: rgba(127, 29, 29, 0.28);
+}
+
+.legacy-logout-icon-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @media (max-width: 768px) {

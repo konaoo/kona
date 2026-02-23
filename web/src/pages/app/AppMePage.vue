@@ -1,10 +1,6 @@
 <template>
   <LegacyAppShell>
     <div class="me-container">
-      <section class="legacy-section me-header">
-        <h1 class="page-title">个人中心</h1>
-      </section>
-
       <section class="legacy-section me-card">
         <h2 class="card-title">👤 账号资料</h2>
         <p class="card-desc">可修改昵称与头像。</p>
@@ -321,15 +317,6 @@ async function logout() {
 <style scoped>
 .me-container {
   max-width: 960px;
-}
-
-.me-header {
-  margin-bottom: 20px;
-}
-
-.page-title {
-  font-size: 30px;
-  margin: 0;
 }
 
 .me-card {
