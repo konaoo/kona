@@ -172,6 +172,28 @@ function mapRegisterError(err: unknown): string {
   return '注册失败，请稍后重试'
 }
 
+function mapLoginError(err: unknown): string {
+  const status = Number((err as { status?: unknown })?.status || 0)
+  const message = normalizeErrorText((err as { message?: unknown })?.message)
+
+  if (message.includes('missing username or password')) {
+    return '请输入用户名和密码'
+  }
+  if (status === 401 || message.includes('invalid username or password')) {
+    return '用户名或密码错误'
+  }
+  if (status === 403 || message.includes('user is disabled')) {
+    return '当前账号已被禁用，请联系管理员'
+  }
+  if (message.includes('password not set')) {
+    return '当前账号尚未设置密码，请联系管理员处理'
+  }
+  if (status >= 500) {
+    return '登录失败，请稍后重试'
+  }
+  return '登录失败，请检查后重试'
+}
+
 async function submit() {
   error.value = ''
   submitting.value = true
@@ -195,6 +217,10 @@ async function submit() {
       }
       await store.register(username.value, password.value, inviteCode.value)
     } else {
+      if (!String(username.value || '').trim() || !String(password.value || '').trim()) {
+        error.value = '请输入用户名和密码'
+        return
+      }
       await store.login(username.value, password.value)
       persistRememberFields()
     }
@@ -203,7 +229,7 @@ async function submit() {
     if (isRegisterRoute.value) {
       error.value = mapRegisterError(e)
     } else {
-      error.value = e instanceof Error ? e.message : '请求失败'
+      error.value = mapLoginError(e)
     }
   } finally {
     submitting.value = false
