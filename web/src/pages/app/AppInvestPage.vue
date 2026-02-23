@@ -715,9 +715,9 @@ onBeforeUnmount(() => {
 }
 
 .price-line {
-  font-size: var(--inv-fs-sub);
-  font-weight: 500;
-  line-height: var(--inv-lh-sub);
+  font-size: calc(15px * var(--legacy-density-font-scale));
+  font-weight: 600;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -726,7 +726,7 @@ onBeforeUnmount(() => {
 }
 
 .price-line.current {
-  color: #dbeafe;
+  color: var(--legacy-text-primary);
   font-weight: 600;
 }
 
@@ -759,11 +759,27 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 
+.table-legacy th.th-price,
+.table-legacy td.td-price {
+  text-align: right;
+}
+
 .table-legacy th.th-day-pnl,
 .table-legacy th.th-total-pnl,
 .table-legacy td.td-day-pnl,
 .table-legacy td.td-total-pnl {
   text-align: right;
+}
+
+.td-price .price-cell {
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: calc(3px * var(--legacy-density-space-scale));
+}
+
+.td-price .price-line.cost,
+.td-price .price-line.current {
+  font-weight: 600;
 }
 
 .td-day-pnl .pnl-cell,
