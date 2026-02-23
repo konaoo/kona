@@ -211,7 +211,7 @@ type HomeCachePayload = {
 const HOME_CACHE_DOMAIN = 'home'
 const HOME_CACHE_KEY = 'assets'
 const HOME_CACHE_TTL_MS = 1000 * 60 * 60 * 12
-const STATIC_REFRESH_INTERVAL_MS = 60_000
+const STATIC_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const store = useKonaStore()
 const rows = computed(() => store.rows.value)
@@ -362,14 +362,14 @@ function persistHomeCache() {
   )
 }
 
-function restoreHomeCache() {
+function restoreHomeCache(): boolean {
   const cached = readPageCache<HomeCachePayload>(
     HOME_CACHE_DOMAIN,
     HOME_CACHE_KEY,
     cacheUserId(),
     HOME_CACHE_TTL_MS,
   )
-  if (!cached) return
+  if (!cached) return false
   cashAssets.value = Array.isArray(cached.cashAssets) ? cached.cashAssets : []
   otherAssets.value = Array.isArray(cached.otherAssets) ? cached.otherAssets : []
   liabilities.value = Array.isArray(cached.liabilities) ? cached.liabilities : []
@@ -386,6 +386,7 @@ function restoreHomeCache() {
     store.state.marketStatus = cached.marketStatus as typeof store.state.marketStatus
   }
   store.state.allClosed = Boolean(cached.allClosed)
+  return true
 }
 
 async function loadLists() {
@@ -400,12 +401,13 @@ async function loadLists() {
   persistHomeCache()
 }
 
-async function refresh() {
+async function refresh(mode: 'light' | 'force' = 'light') {
   if (refreshInflight) {
     return refreshInflight
   }
   refreshInflight = (async () => {
-    await Promise.all([store.refreshAll(), loadLists()])
+    const refreshStore = mode === 'force' ? store.refreshAll() : store.refreshStaticOnly()
+    await Promise.all([refreshStore, loadLists()])
     persistHomeCache()
   })()
   try {
@@ -463,7 +465,7 @@ async function submitModal() {
   const route = modalMode.value === 'add' ? map[modalType.value].add : map[modalType.value].update
   await api.post(route, payload)
   closeModal()
-  await refresh()
+  await refresh('light')
 }
 
 async function removeAsset(type: AssetType, id: number) {
@@ -475,7 +477,7 @@ async function removeAsset(type: AssetType, id: number) {
     liability: '/api/liabilities/delete',
   } as const
   await api.post(map[type], { id })
-  await refresh()
+  await refresh('light')
 }
 
 function startStaticRefresh() {
@@ -483,13 +485,13 @@ function startStaticRefresh() {
     window.clearInterval(staticRefreshTimer)
   }
   staticRefreshTimer = window.setInterval(() => {
-    void refresh()
+    void refresh('light')
   }, STATIC_REFRESH_INTERVAL_MS)
 }
 
 onMounted(async () => {
-  restoreHomeCache()
-  void refresh()
+  const restored = restoreHomeCache()
+  void refresh(restored ? 'light' : 'force')
   store.startAutoRefresh()
   startStaticRefresh()
 })

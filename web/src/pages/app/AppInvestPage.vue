@@ -165,11 +165,27 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
+import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../shared/store'
 
 type TabKey = 'all' | 'a' | 'fund' | 'us' | 'hk'
 type ModalType = 'add' | 'buy' | 'sell' | 'edit'
 type ActionMenuState = { openCode: string | null }
+type IndexCard = { id: string; name: string; price: number; chg: number }
+type InvestCachePayload = {
+  indexCards: IndexCard[]
+  currentCategory: TabKey
+  portfolio: unknown[]
+  quotes: Record<string, unknown>
+  rates: Record<string, number>
+  marketStatus: Record<string, unknown>
+  allClosed: boolean
+}
+
+const INVEST_CACHE_DOMAIN = 'invest'
+const INVEST_CACHE_KEY = 'page'
+const INVEST_CACHE_TTL_MS = 15 * 60_000
+const INVEST_PAGE_REFRESH_INTERVAL_MS = 60_000
 
 const store = useKonaStore()
 const rows = computed(() => store.rows.value)
@@ -208,6 +224,60 @@ const form = reactive({
   curr: 'CNY',
   adjustment: 0,
 })
+let refreshInflight: Promise<void> | null = null
+let staticRefreshTimer: number | null = null
+
+function cacheUserId(): string {
+  return String(store.state.user?.id || 'guest')
+}
+
+function persistInvestCache() {
+  writePageCache<InvestCachePayload>(
+    INVEST_CACHE_DOMAIN,
+    INVEST_CACHE_KEY,
+    cacheUserId(),
+    {
+      indexCards: indexCards.value,
+      currentCategory: currentCategory.value,
+      portfolio: store.state.portfolio as unknown[],
+      quotes: store.state.quotes as Record<string, unknown>,
+      rates: store.state.rates,
+      marketStatus: store.state.marketStatus as Record<string, unknown>,
+      allClosed: Boolean(store.state.allClosed),
+    },
+    INVEST_CACHE_TTL_MS,
+  )
+}
+
+function restoreInvestCache(): boolean {
+  const cached = readPageCache<InvestCachePayload>(
+    INVEST_CACHE_DOMAIN,
+    INVEST_CACHE_KEY,
+    cacheUserId(),
+    INVEST_CACHE_TTL_MS,
+  )
+  if (!cached) return false
+  if (Array.isArray(cached.indexCards) && cached.indexCards.length) {
+    indexCards.value = cached.indexCards
+  }
+  if (['all', 'a', 'fund', 'us', 'hk'].includes(String(cached.currentCategory))) {
+    currentCategory.value = cached.currentCategory
+  }
+  if (Array.isArray(cached.portfolio)) {
+    store.state.portfolio = cached.portfolio as typeof store.state.portfolio
+  }
+  if (cached.quotes && typeof cached.quotes === 'object') {
+    store.state.quotes = cached.quotes as typeof store.state.quotes
+  }
+  if (cached.rates && typeof cached.rates === 'object') {
+    store.state.rates = cached.rates
+  }
+  if (cached.marketStatus && typeof cached.marketStatus === 'object') {
+    store.state.marketStatus = cached.marketStatus as typeof store.state.marketStatus
+  }
+  store.state.allClosed = Boolean(cached.allClosed)
+  return true
+}
 
 function rateToCny(curr?: string): number {
   const code = String(curr || 'CNY').toUpperCase()
@@ -432,14 +502,14 @@ async function submitModal() {
     await api.post('/api/portfolio/update', { code: modal.code, field: 'adjustment', val: form.adjustment })
   }
   closeModal()
-  await refresh()
+  await refresh('force')
 }
 
 async function remove(code: string) {
   closeActionMenu()
   if (!confirm(`确认删除 ${code} ？`)) return
   await api.post('/api/portfolio/delete', { code })
-  await refresh()
+  await refresh('force')
 }
 
 async function loadIndexes() {
@@ -460,21 +530,48 @@ async function loadIndexes() {
   }
 }
 
-async function refresh() {
-  await Promise.all([store.refreshAll(), loadIndexes()])
+async function refresh(mode: 'light' | 'force' = 'light') {
+  if (refreshInflight) {
+    return refreshInflight
+  }
+  refreshInflight = (async () => {
+    const refreshStore = mode === 'force' ? store.refreshAll() : store.refreshStaticOnly()
+    await Promise.all([refreshStore, loadIndexes()])
+    persistInvestCache()
+  })()
+  try {
+    await refreshInflight
+  } finally {
+    refreshInflight = null
+  }
 }
 
 function handleDocumentClick() {
   closeActionMenu()
 }
 
+function startStaticRefresh() {
+  if (staticRefreshTimer) {
+    window.clearInterval(staticRefreshTimer)
+  }
+  staticRefreshTimer = window.setInterval(() => {
+    void refresh('light')
+  }, INVEST_PAGE_REFRESH_INTERVAL_MS)
+}
+
 onMounted(async () => {
   document.addEventListener('click', handleDocumentClick)
-  await refresh()
+  const restored = restoreInvestCache()
+  void refresh(restored ? 'light' : 'force')
   store.startAutoRefresh()
+  startStaticRefresh()
 })
 
 onBeforeUnmount(() => {
+  if (staticRefreshTimer) {
+    window.clearInterval(staticRefreshTimer)
+    staticRefreshTimer = null
+  }
   store.stopAutoRefresh()
   document.removeEventListener('click', handleDocumentClick)
 })

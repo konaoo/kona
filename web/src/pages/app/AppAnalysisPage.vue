@@ -3,7 +3,7 @@
     <section class="legacy-section">
       <div class="section-header">
         <h2 class="section-title">收益概览</h2>
-        <button class="legacy-btn-primary" @click="reload">刷新</button>
+        <button class="legacy-btn-primary" @click="onManualRefresh">刷新</button>
       </div>
       <div class="milestone-grid">
         <article class="milestone-card" v-for="item in overviewCards" :key="item.key">
@@ -133,6 +133,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
+import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../shared/store'
 
 type CalendarType = 'day' | 'month' | 'year'
@@ -179,6 +180,38 @@ type RankItem = {
   curr?: string
 }
 
+type AnalysisCachePayload = {
+  overview: Record<PeriodKey, OverviewItem>
+  calendarState: {
+    title: string
+    items: CalendarItem[]
+    totalPnl: number
+    totalRate: number
+  }
+  rank: {
+    gain: RankItem[]
+    loss: RankItem[]
+  }
+  rates: Record<string, number>
+  calendarType: CalendarType
+  rankMarket: RankMarket
+  selectedDayYear: number | null
+  selectedDayMonth: number | null
+  selectedMonthYear: number | null
+  selectableDayYears: number[]
+  selectableDayMonthsByYear: Record<string, number[]>
+  selectableMonthYears: number[]
+  storePortfolio: unknown[]
+  storeQuotes: Record<string, unknown>
+  storeRates: Record<string, number>
+  storeMarketStatus: Record<string, unknown>
+  storeAllClosed: boolean
+}
+
+const ANALYSIS_CACHE_DOMAIN = 'analysis'
+const ANALYSIS_CACHE_KEY = 'page'
+const ANALYSIS_CACHE_TTL_MS = 5 * 60_000
+
 const periods: Record<PeriodKey, { label: string }> = {
   day: { label: '今日' },
   month: { label: '本月' },
@@ -216,6 +249,7 @@ const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
 const rates = reactive<Record<string, number>>({})
 const store = useKonaStore()
 const realtimeDayReady = ref(false)
+let reloadInflight: Promise<void> | null = null
 
 const calendarType = ref<CalendarType>('day')
 const rankMarket = ref<RankMarket>('all')
@@ -231,6 +265,109 @@ const selectableMonthYears = ref<number[]>([])
 
 const toNum = toNumber
 let calendarRequestId = 0
+
+function cacheUserId(): string {
+  return String(store.state.user?.id || 'guest')
+}
+
+function persistAnalysisCache() {
+  writePageCache<AnalysisCachePayload>(
+    ANALYSIS_CACHE_DOMAIN,
+    ANALYSIS_CACHE_KEY,
+    cacheUserId(),
+    {
+      overview: {
+        day: overview.day || {},
+        month: overview.month || {},
+        year: overview.year || {},
+        all: overview.all || {},
+      },
+      calendarState: {
+        title: calendarState.title,
+        items: calendarState.items,
+        totalPnl: calendarState.totalPnl,
+        totalRate: calendarState.totalRate,
+      },
+      rank: {
+        gain: rank.gain,
+        loss: rank.loss,
+      },
+      rates: {
+        CNY: toNum(rates.CNY, 1),
+        HKD: toNum(rates.HKD, 1),
+        USD: toNum(rates.USD, 1),
+      },
+      calendarType: calendarType.value,
+      rankMarket: rankMarket.value,
+      selectedDayYear: selectedDayYear.value,
+      selectedDayMonth: selectedDayMonth.value,
+      selectedMonthYear: selectedMonthYear.value,
+      selectableDayYears: selectableDayYears.value,
+      selectableDayMonthsByYear: selectableDayMonthsByYear.value,
+      selectableMonthYears: selectableMonthYears.value,
+      storePortfolio: store.state.portfolio as unknown[],
+      storeQuotes: store.state.quotes as Record<string, unknown>,
+      storeRates: store.state.rates,
+      storeMarketStatus: store.state.marketStatus as Record<string, unknown>,
+      storeAllClosed: Boolean(store.state.allClosed),
+    },
+    ANALYSIS_CACHE_TTL_MS,
+  )
+}
+
+function restoreAnalysisCache(): boolean {
+  const cached = readPageCache<AnalysisCachePayload>(
+    ANALYSIS_CACHE_DOMAIN,
+    ANALYSIS_CACHE_KEY,
+    cacheUserId(),
+    ANALYSIS_CACHE_TTL_MS,
+  )
+  if (!cached) return false
+
+  for (const key of Object.keys(periods) as PeriodKey[]) {
+    overview[key] = cached.overview?.[key] || {}
+  }
+  calendarState.title = String(cached.calendarState?.title || '')
+  calendarState.items = Array.isArray(cached.calendarState?.items) ? cached.calendarState.items : []
+  calendarState.totalPnl = toNum(cached.calendarState?.totalPnl)
+  calendarState.totalRate = toNum(cached.calendarState?.totalRate)
+  rank.gain = Array.isArray(cached.rank?.gain) ? cached.rank.gain : []
+  rank.loss = Array.isArray(cached.rank?.loss) ? cached.rank.loss : []
+
+  if (cached.rates && typeof cached.rates === 'object') {
+    rates.CNY = toNum(cached.rates.CNY, 1)
+    rates.HKD = toNum(cached.rates.HKD, 1)
+    rates.USD = toNum(cached.rates.USD, 1)
+  }
+
+  if (cached.calendarType === 'day' || cached.calendarType === 'month' || cached.calendarType === 'year') {
+    calendarType.value = cached.calendarType
+  }
+  if (cached.rankMarket === 'all' || cached.rankMarket === 'a' || cached.rankMarket === 'hk' || cached.rankMarket === 'us' || cached.rankMarket === 'fund') {
+    rankMarket.value = cached.rankMarket
+  }
+  selectedDayYear.value = cached.selectedDayYear ?? null
+  selectedDayMonth.value = cached.selectedDayMonth ?? null
+  selectedMonthYear.value = cached.selectedMonthYear ?? null
+  selectableDayYears.value = Array.isArray(cached.selectableDayYears) ? cached.selectableDayYears : []
+  selectableDayMonthsByYear.value = cached.selectableDayMonthsByYear || {}
+  selectableMonthYears.value = Array.isArray(cached.selectableMonthYears) ? cached.selectableMonthYears : []
+
+  if (Array.isArray(cached.storePortfolio)) {
+    store.state.portfolio = cached.storePortfolio as typeof store.state.portfolio
+  }
+  if (cached.storeQuotes && typeof cached.storeQuotes === 'object') {
+    store.state.quotes = cached.storeQuotes as typeof store.state.quotes
+  }
+  if (cached.storeRates && typeof cached.storeRates === 'object') {
+    store.state.rates = cached.storeRates
+  }
+  if (cached.storeMarketStatus && typeof cached.storeMarketStatus === 'object') {
+    store.state.marketStatus = cached.storeMarketStatus as typeof store.state.marketStatus
+  }
+  store.state.allClosed = Boolean(cached.storeAllClosed)
+  return true
+}
 
 function rateToCnyForCurr(curr: unknown): number {
   const code = String(curr || 'CNY').toUpperCase()
@@ -548,6 +685,15 @@ async function loadOverview() {
 }
 
 async function loadRates() {
+  const storeRates = store.state.rates || {}
+  const hkdFromStore = toNum(storeRates.HKD, 0)
+  const usdFromStore = toNum(storeRates.USD, 0)
+  if (hkdFromStore > 0 || usdFromStore > 0) {
+    rates.CNY = 1
+    rates.HKD = toNum(storeRates.HKD, 1)
+    rates.USD = toNum(storeRates.USD, 1)
+    return
+  }
   const payload = await api.get<Record<string, number>>('/api/rates')
   const next: Record<string, number> = {
     CNY: 1,
@@ -588,6 +734,7 @@ async function loadCalendar() {
   calendarState.items = Array.isArray(payload.items) ? payload.items : []
   calendarState.totalPnl = toNum(payload.total_pnl)
   calendarState.totalRate = toNum(payload.total_rate)
+  persistAnalysisCache()
 }
 
 async function loadRank() {
@@ -597,17 +744,37 @@ async function loadRank() {
   rank.gain = Array.isArray(payload?.gain) ? payload.gain : []
   rank.loss = Array.isArray(payload?.loss) ? payload.loss : []
   rankExpanded.value = false
+  persistAnalysisCache()
 }
 
-async function reload() {
-  try {
-    await store.refreshAll()
-    realtimeDayReady.value = true
-  } catch {
-    realtimeDayReady.value = false
+async function reload(mode: 'light' | 'force' = 'light', includeAnalysis = true) {
+  if (reloadInflight) {
+    return reloadInflight
   }
-  await Promise.all([loadOverview(), loadRates()])
-  await Promise.all([loadCalendar(), loadRank()])
+  reloadInflight = (async () => {
+    try {
+      if (mode === 'force') await store.refreshAll()
+      else await store.refreshStaticOnly()
+      realtimeDayReady.value = store.rows.value.length > 0
+    } catch {
+      realtimeDayReady.value = false
+    }
+
+    if (includeAnalysis) {
+      await Promise.all([loadOverview(), loadRates()])
+      await Promise.all([loadCalendar(), loadRank()])
+    }
+    persistAnalysisCache()
+  })()
+  try {
+    await reloadInflight
+  } finally {
+    reloadInflight = null
+  }
+}
+
+function onManualRefresh() {
+  void reload('force', true)
 }
 
 function onCalendarTypeChange(nextType: CalendarType) {
@@ -644,7 +811,9 @@ function onRankMarketChange(market: RankMarket) {
 }
 
 onMounted(() => {
-  void reload()
+  const restored = restoreAnalysisCache()
+  realtimeDayReady.value = store.rows.value.length > 0
+  void reload(restored ? 'light' : 'force', !restored)
 })
 </script>
 
