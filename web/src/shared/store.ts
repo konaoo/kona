@@ -217,13 +217,30 @@ function normalizeSession(raw: unknown): string {
   return 'closed'
 }
 
+function firstPositiveNumber(...values: unknown[]): number {
+  for (const value of values) {
+    const n = Number(value)
+    if (Number.isFinite(n) && n > 0) {
+      return n
+    }
+  }
+  return 0
+}
+
 const rows = computed(() => {
   return state.portfolio.map((item) => {
     const quote = state.quotes[item.code] || {}
     const qty = toNumber(item.qty)
     const costPrice = toNumber(item.price)
-    const currentPrice = toNumber(quote.price, costPrice)
     const yclose = toNumber(quote.yclose)
+    const currentPrice = firstPositiveNumber(
+      quote.price,
+      quote.regular_price,
+      quote.premarket_price,
+      quote.after_hours_price,
+      yclose,
+      costPrice,
+    )
     const adjustment = toNumber(item.adjustment)
     const market = inferMarket(item)
     const marketStatus = state.marketStatus[market]
