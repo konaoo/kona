@@ -94,9 +94,9 @@
               </td>
               <td class="holding-cell td-holding">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
               <td class="td-day-pnl">
-                <div class="pnl-cell" :class="valueClass(toNumber(row.dayPnl))">
-                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnl, rowCurrency(row)) }}</span>
-                  <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRate) }}</span>
+                <div class="pnl-cell" :class="valueClass(toNumber(row.dayPnlDisplay))">
+                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnlDisplay, rowCurrency(row)) }}</span>
+                  <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRateDisplay) }}</span>
                   <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
                 </div>
               </td>
@@ -291,7 +291,7 @@ function showClosedHint(row: Record<string, unknown>): boolean {
     marketOpen === 0 ||
     marketOpen === '0' ||
     String(marketOpen ?? '').toLowerCase() === 'false'
-  return isClosed && toNumber(row.dayPnl) === 0
+  return isClosed
 }
 
 const filteredRows = computed(() => {
@@ -317,7 +317,7 @@ const investStats = computed(() => {
     const rowCost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     mv += rowMv
     cost += rowCost
-    dayPnl += toNumber(row.dayPnl) * rate
+    dayPnl += toNumber(row.dayPnlAggregate) * rate
     floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     totalPnl += toNumber(row.totalPnl) * rate
   }
@@ -442,9 +442,11 @@ function handleDocumentClick() {
 onMounted(async () => {
   document.addEventListener('click', handleDocumentClick)
   await refresh()
+  store.startAutoRefresh()
 })
 
 onBeforeUnmount(() => {
+  store.stopAutoRefresh()
   document.removeEventListener('click', handleDocumentClick)
 })
 </script>

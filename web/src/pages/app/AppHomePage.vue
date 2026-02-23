@@ -187,7 +187,7 @@
 
 <script setup lang="ts">
 import html2canvas from 'html2canvas'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
@@ -265,7 +265,7 @@ const investTotal = computed(() => {
     const rowCost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     mv += rowMv
     cost += rowCost
-    dayPnl += toNumber(row.dayPnl) * rate
+    dayPnl += toNumber(row.dayPnlAggregate) * rate
     floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     totalPnl += toNumber(row.totalPnl) * rate
   }
@@ -297,7 +297,7 @@ const marketCards = computed(() => {
     const cost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     stats.mv += mv
     stats.cost += cost
-    stats.dayPnl += toNumber(row.dayPnl) * rate
+    stats.dayPnl += toNumber(row.dayPnlAggregate) * rate
     stats.floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     stats.totalPnl += toNumber(row.totalPnl) * rate
   }
@@ -399,7 +399,14 @@ async function removeAsset(type: AssetType, id: number) {
   await refresh()
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  await refresh()
+  store.startAutoRefresh()
+})
+
+onBeforeUnmount(() => {
+  store.stopAutoRefresh()
+})
 </script>
 
 <style scoped>
