@@ -654,7 +654,7 @@ onBeforeUnmount(() => {
   color: var(--legacy-text-secondary);
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   text-align: center;
-  border-bottom: 1px solid var(--legacy-border);
+  border-bottom: none;
   background: var(--legacy-bg-tertiary);
 }
 
@@ -663,12 +663,12 @@ onBeforeUnmount(() => {
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   line-height: var(--inv-lh-main);
   text-align: center;
-  border-bottom: 1px solid var(--legacy-border);
+  border-bottom: none;
 }
 
 .table-legacy th + th,
 .table-legacy td + td {
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: none;
 }
 
 .name-code-cell {
