@@ -3,7 +3,7 @@
     <aside class="legacy-sidebar">
       <div class="legacy-logo">
         <span>⚡</span>
-        <span>Antigravity</span>
+        <span>咔咔记账</span>
       </div>
       <RouterLink
         v-for="item in nav"

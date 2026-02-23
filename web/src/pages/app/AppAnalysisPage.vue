@@ -6,108 +6,179 @@
         <button class="legacy-btn-primary" @click="reload">刷新</button>
       </div>
       <div class="milestone-grid">
-        <article class="milestone-card" v-for="(period, key) in periods" :key="key">
-          <div class="milestone-title">{{ period.label }}</div>
-          <div class="milestone-main" :class="valueClass(toNum(overview[key]?.pnl))">
-            {{ formatCny(toNum(overview[key]?.pnl)) }}
+        <article class="milestone-card" v-for="item in overviewCards" :key="item.key">
+          <div class="milestone-title">{{ item.label }}</div>
+          <div class="milestone-main" :class="valueClass(item.pnl)">
+            {{ formatCny(item.pnl) }}
           </div>
-          <div class="milestone-rate" :class="valueClass(toNum(overview[key]?.pnl_rate))">
-            {{ formatPct(toNum(overview[key]?.pnl_rate)) }}
+          <div class="milestone-rate" :class="valueClass(item.rate)">
+            {{ formatPct(item.rate) }}
           </div>
         </article>
       </div>
     </section>
 
     <section class="legacy-section">
-      <div class="section-header">
+      <div class="section-header calendar-section-header">
         <h2 class="section-title">收益日历</h2>
         <div class="calendar-header-controls">
-          <div class="view-tabs">
-            <button class="view-tab" :class="{ active: calendarType === 'day' }" @click="calendarType = 'day'">日</button>
-            <button class="view-tab" :class="{ active: calendarType === 'month' }" @click="calendarType = 'month'">月</button>
-            <button class="view-tab" :class="{ active: calendarType === 'year' }" @click="calendarType = 'year'">年</button>
+          <div class="calendar-period-picker" v-if="calendarType !== 'year'">
+            <template v-if="calendarType === 'day'">
+              <select class="period-select" v-model.number="selectedDayYear" @change="onDayYearChange">
+                <option v-for="year in selectableDayYears" :key="`day-year-${year}`" :value="year">
+                  {{ year }}年
+                </option>
+              </select>
+              <select class="period-select" v-model.number="selectedDayMonth" @change="onDayMonthChange">
+                <option v-for="month in dayMonthOptions" :key="`day-month-${month}`" :value="month">
+                  {{ month }}月
+                </option>
+              </select>
+            </template>
+            <template v-else>
+              <select class="period-select" v-model.number="selectedMonthYear" @change="onMonthYearChange">
+                <option v-for="year in selectableMonthYears" :key="`month-year-${year}`" :value="year">
+                  {{ year }}年
+                </option>
+              </select>
+            </template>
           </div>
-          <button class="legacy-btn-primary" @click="loadCalendar">查询</button>
+
+          <div class="view-tabs">
+            <button class="view-tab" :class="{ active: calendarType === 'day' }" @click="onCalendarTypeChange('day')">日</button>
+            <button class="view-tab" :class="{ active: calendarType === 'month' }" @click="onCalendarTypeChange('month')">月</button>
+            <button class="view-tab" :class="{ active: calendarType === 'year' }" @click="onCalendarTypeChange('year')">年</button>
+          </div>
         </div>
       </div>
-      <div class="calendar-title">{{ calendar.title || '收益日历' }}</div>
-      <table class="rank-table">
-        <thead>
-          <tr>
-            <th>标签</th>
-            <th>收益</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="rank-row" v-for="item in calendar.items || []" :key="item.label">
-            <td>{{ item.label }}</td>
-            <td :class="valueClass(toNum(item.pnl))">{{ formatCny(toNum(item.pnl)) }}</td>
-          </tr>
-        </tbody>
-      </table>
+
+      <div class="calendar-title">{{ calendarState.title || '收益日历' }}</div>
+
+      <div class="calendar-grid-shell">
+        <div class="calendar-grid" :style="{ gridTemplateColumns: `repeat(${calendarColumns}, minmax(0, 1fr))` }">
+          <article
+            class="calendar-cell"
+            v-for="cell in calendarGrid"
+            :key="`calendar-${calendarType}-${cell.key}`"
+            :class="calendarCellClass(cell.pnl)"
+          >
+            <div class="calendar-cell-label">{{ formatCalendarCellLabel(cell.key) }}</div>
+            <div class="calendar-cell-value" v-if="cell.pnl !== null">{{ formatCalendarCellPnl(cell.pnl) }}</div>
+            <div class="calendar-cell-value" v-else>-</div>
+          </article>
+        </div>
+      </div>
+
+      <div class="calendar-summary">
+        <span>{{ calendarSummaryLabel }}</span>
+        <span :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
+        <span :class="valueClass(calendarState.totalRate)">({{ formatPct(calendarState.totalRate) }})</span>
+      </div>
     </section>
 
     <section class="legacy-section">
-      <div class="section-header">
+      <div class="section-header rank-section-header">
         <h2 class="section-title">盈亏排行</h2>
         <button class="legacy-btn-primary" @click="loadRank">刷新排行</button>
       </div>
-      <div class="market-tabs">
-        <button
-          v-for="tab in marketTabs"
-          :key="tab.key"
-          class="market-tab"
-          :class="{ active: rankMarket === tab.key }"
-          @click="rankMarket = tab.key"
-        >
-          {{ tab.label }}
-        </button>
+
+      <div class="rank-controls">
+        <div class="market-tabs">
+          <button
+            v-for="tab in marketTabs"
+            :key="tab.key"
+            class="market-tab"
+            :class="{ active: rankMarket === tab.key }"
+            @click="onRankMarketChange(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <div class="rank-type-tabs">
+          <button class="rank-type-tab" :class="{ active: rankType === 'profit' }" @click="rankType = 'profit'">
+            盈利榜
+          </button>
+          <button class="rank-type-tab" :class="{ active: rankType === 'loss' }" @click="rankType = 'loss'">
+            亏损榜
+          </button>
+        </div>
       </div>
-      <div class="rank-grid">
-        <article class="rank-card">
-          <div class="rank-title">盈利榜</div>
-          <table class="rank-table">
-            <tbody>
-              <tr class="rank-row" v-for="item in rank.gain || []" :key="`g-${item.code}`">
-                <td>
-                  <div class="asset-name-col">
-                    <span class="asset-name-main">{{ item.name || item.code }}</span>
-                    <span class="asset-code-sub">{{ item.code }}</span>
-                  </div>
-                </td>
-                <td class="up">{{ formatCny(toNum(item.pnl)) }}</td>
-              </tr>
-            </tbody>
-          </table>
+
+      <div class="rank-list" v-if="displayRankItems.length">
+        <article class="rank-item" v-for="(item, idx) in displayRankItems" :key="`${rankType}-${item.code}`">
+          <div class="rank-left">
+            <span class="rank-badge" :class="rankBadgeClass(idx + 1)">{{ idx + 1 }}</span>
+            <div class="rank-asset-meta">
+              <span class="rank-asset-name">{{ item.name || item.code }}</span>
+              <span class="rank-asset-code">{{ formatDisplayCode(item.code) }}</span>
+            </div>
+          </div>
+
+          <div class="rank-right" :class="valueClass(toNum(item.pnl))">
+            <div class="rank-pnl">{{ formatCny(toNum(item.pnl)) }}</div>
+            <div class="rank-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
+          </div>
         </article>
-        <article class="rank-card">
-          <div class="rank-title">亏损榜</div>
-          <table class="rank-table">
-            <tbody>
-              <tr class="rank-row" v-for="item in rank.loss || []" :key="`l-${item.code}`">
-                <td>
-                  <div class="asset-name-col">
-                    <span class="asset-name-main">{{ item.name || item.code }}</span>
-                    <span class="asset-code-sub">{{ item.code }}</span>
-                  </div>
-                </td>
-                <td class="down">{{ formatCny(toNum(item.pnl)) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </article>
+      </div>
+
+      <div class="rank-empty" v-else>
+        暂无数据
       </div>
     </section>
   </LegacyAppShell>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 
-const periods: Record<string, { label: string }> = {
+type CalendarType = 'day' | 'month' | 'year'
+type RankMarket = 'all' | 'a' | 'hk' | 'us' | 'fund'
+type RankType = 'profit' | 'loss'
+type PeriodKey = 'day' | 'month' | 'year' | 'all'
+
+type OverviewItem = {
+  pnl?: number
+  pnl_rate?: number
+}
+
+type CalendarItem = {
+  label?: string | number
+  pnl?: number | null
+}
+
+type CalendarPayload = {
+  title?: string
+  items?: CalendarItem[]
+  total_pnl?: number
+  total_rate?: number
+  period?: {
+    time_type?: CalendarType
+    year?: number
+    month?: number
+  }
+  selectable?: {
+    day?: {
+      years?: number[]
+      months_by_year?: Record<string, number[]>
+    }
+    month?: {
+      years?: number[]
+    }
+  }
+}
+
+type RankItem = {
+  code: string
+  name?: string
+  pnl?: number
+  pnl_rate?: number
+}
+
+const periods: Record<PeriodKey, { label: string }> = {
   day: { label: '今日' },
   month: { label: '本月' },
   year: { label: '今年' },
@@ -122,48 +193,376 @@ const marketTabs = [
   { key: 'fund', label: '基金' },
 ] as const
 
-const overview = reactive<Record<string, { pnl?: number; pnl_rate?: number }>>({})
-const calendar = reactive<Record<string, any>>({ items: [] })
-const rank = reactive<Record<string, any>>({ gain: [], loss: [] })
+const overview = reactive<Record<PeriodKey, OverviewItem>>({
+  day: {},
+  month: {},
+  year: {},
+  all: {},
+})
 
-const calendarType = ref<'day' | 'month' | 'year'>('day')
-const rankMarket = ref<'all' | 'a' | 'hk' | 'us' | 'fund'>('all')
+const calendarState = reactive({
+  title: '',
+  items: [] as CalendarItem[],
+  totalPnl: 0,
+  totalRate: 0,
+})
+
+const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
+  gain: [],
+  loss: [],
+})
+
+const calendarType = ref<CalendarType>('day')
+const rankType = ref<RankType>('profit')
+const rankMarket = ref<RankMarket>('all')
+
+const selectedDayYear = ref<number | null>(null)
+const selectedDayMonth = ref<number | null>(null)
+const selectedMonthYear = ref<number | null>(null)
+
+const selectableDayYears = ref<number[]>([])
+const selectableDayMonthsByYear = ref<Record<string, number[]>>({})
+const selectableMonthYears = ref<number[]>([])
 
 const toNum = toNumber
+let calendarRequestId = 0
+
+const overviewCards = computed(() => {
+  return (Object.keys(periods) as PeriodKey[]).map((key) => ({
+    key,
+    label: periods[key].label,
+    pnl: toNum(overview[key]?.pnl),
+    rate: toNum(overview[key]?.pnl_rate),
+  }))
+})
+
+const calendarColumns = computed(() => {
+  if (calendarType.value === 'day') return 6
+  if (calendarType.value === 'month') return 4
+  return 5
+})
+
+const dayMonthOptions = computed(() => {
+  return getDayMonths(selectedDayYear.value)
+})
+
+const displayRankItems = computed(() => {
+  const list = rankType.value === 'profit' ? rank.gain : rank.loss
+  return Array.isArray(list) ? list.slice(0, 5) : []
+})
+
+const calendarSummaryLabel = computed(() => {
+  if (calendarType.value === 'day') return '当月累计'
+  if (calendarType.value === 'month') return '当年累计'
+  return '历史累计'
+})
+
+const calendarGrid = computed(() => {
+  const now = new Date()
+  const grid: Array<{ key: number; pnl: number | null }> = []
+
+  if (calendarType.value === 'day') {
+    const year = selectedDayYear.value ?? now.getFullYear()
+    const month = selectedDayMonth.value ?? now.getMonth() + 1
+    const daysInMonth = new Date(year, month, 0).getDate()
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      grid.push({ key: day, pnl: null })
+    }
+  } else if (calendarType.value === 'month') {
+    for (let month = 1; month <= 12; month += 1) {
+      grid.push({ key: month, pnl: null })
+    }
+  } else {
+    const thisYear = now.getFullYear()
+    for (let i = 0; i < 5; i += 1) {
+      grid.push({ key: thisYear - 4 + i, pnl: null })
+    }
+  }
+
+  const map = new Map<number, number>()
+  for (const item of calendarState.items) {
+    const key = parseLabelKey(item?.label)
+    if (key === null) continue
+    const pnl = Number(item?.pnl)
+    if (!Number.isFinite(pnl)) continue
+    map.set(key, pnl)
+  }
+
+  if (calendarType.value === 'day') {
+    const nowYear = now.getFullYear()
+    const nowMonth = now.getMonth() + 1
+    if (selectedDayYear.value === nowYear && selectedDayMonth.value === nowMonth) {
+      const today = now.getDate()
+      map.set(today, toNum(overview.day?.pnl))
+    }
+  }
+
+  return grid.map((item) => ({
+    ...item,
+    pnl: map.has(item.key) ? Number(map.get(item.key)) : null,
+  }))
+})
+
+function valueClass(value: number): 'up' | 'down' | 'flat' {
+  if (value > 0) return 'up'
+  if (value < 0) return 'down'
+  return 'flat'
+}
 
 function formatCny(value: number): string {
-  const sign = value > 0 ? '+' : ''
-  return `${sign}¥ ${Math.round(value).toLocaleString('zh-CN')}`
+  const rounded = Math.round(toNum(value))
+  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : ''
+  const absValue = Math.abs(rounded)
+  return `${sign}¥ ${absValue.toLocaleString('zh-CN')}`
 }
 
 function formatPct(value: number): string {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+  const val = toNum(value)
+  return `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`
 }
 
-function valueClass(value: number): 'up' | 'down' {
-  return value >= 0 ? 'up' : 'down'
+function formatCalendarCellLabel(key: number): string {
+  if (calendarType.value === 'day') return String(key)
+  if (calendarType.value === 'month') return `${key}月`
+  return `${key}年`
+}
+
+function formatCalendarCellPnl(value: number): string {
+  const val = toNum(value)
+  const abs = Math.abs(val)
+  const sign = val > 0 ? '+' : val < 0 ? '-' : ''
+
+  if (abs >= 100000000) {
+    return `${sign}${(abs / 100000000).toFixed(1)}亿`
+  }
+  if (abs >= 10000) {
+    return `${sign}${(abs / 10000).toFixed(1)}万`
+  }
+  return `${sign}${Math.round(abs).toLocaleString('zh-CN')}`
+}
+
+function calendarCellClass(pnl: number | null): 'up' | 'down' | 'flat' | 'empty' {
+  if (pnl === null) return 'empty'
+  if (pnl > 0) return 'up'
+  if (pnl < 0) return 'down'
+  return 'flat'
+}
+
+function rankBadgeClass(rankIndex: number): 'top1' | 'top2' | 'top3' | 'normal' {
+  if (rankIndex === 1) return 'top1'
+  if (rankIndex === 2) return 'top2'
+  if (rankIndex === 3) return 'top3'
+  return 'normal'
+}
+
+function formatDisplayCode(code: string): string {
+  if (!code) return '-'
+  const customMap: Record<string, string> = { ft_LU1116320737: 'BLK' }
+  if (customMap[code]) return customMap[code]
+
+  let value = String(code)
+  const lower = value.toLowerCase()
+  if (lower.startsWith('gb_')) value = value.slice(3).toUpperCase()
+  else if (lower.startsWith('f_')) value = value.slice(2)
+  else if (lower.startsWith('ft_')) value = value.slice(3)
+  else if (lower.startsWith('sh') || lower.startsWith('sz') || lower.startsWith('bj')) value = value.slice(2)
+
+  if (value.toUpperCase().endsWith('.HK')) {
+    value = value.slice(0, -3)
+  }
+  return value
+}
+
+function parseLabelKey(label: string | number | undefined): number | null {
+  const text = String(label ?? '').trim()
+  if (!text) return null
+  const matches = text.match(/\d+/g)
+  if (!matches || matches.length === 0) return null
+  const parsed = Number(matches[matches.length - 1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeYearList(values: unknown[]): number[] {
+  return values
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b)
+}
+
+function normalizeMonthList(values: unknown[]): number[] {
+  return values
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v >= 1 && v <= 12)
+    .sort((a, b) => a - b)
+}
+
+function getDayMonths(year: number | null): number[] {
+  if (!year) return []
+  return selectableDayMonthsByYear.value[String(year)] || []
+}
+
+function lastOrNull(values: number[]): number | null {
+  return values.length ? (values[values.length - 1] ?? null) : null
+}
+
+function ensureDaySelection() {
+  const years = selectableDayYears.value
+  if (!years.length) {
+    selectedDayYear.value = null
+    selectedDayMonth.value = null
+    return
+  }
+
+  if (!selectedDayYear.value || !years.includes(selectedDayYear.value)) {
+    selectedDayYear.value = lastOrNull(years)
+  }
+
+  const months = getDayMonths(selectedDayYear.value)
+  if (!months.length) {
+    selectedDayMonth.value = null
+    return
+  }
+
+  if (!selectedDayMonth.value || !months.includes(selectedDayMonth.value)) {
+    selectedDayMonth.value = lastOrNull(months)
+  }
+}
+
+function ensureMonthSelection() {
+  const years = selectableMonthYears.value
+  if (!years.length) {
+    selectedMonthYear.value = null
+    return
+  }
+  if (!selectedMonthYear.value || !years.includes(selectedMonthYear.value)) {
+    selectedMonthYear.value = lastOrNull(years)
+  }
+}
+
+function applySelectable(payload: CalendarPayload) {
+  const daySelectable = payload.selectable?.day
+  const monthSelectable = payload.selectable?.month
+
+  const years = normalizeYearList(Array.isArray(daySelectable?.years) ? daySelectable?.years : [])
+  const monthsByYearRaw = daySelectable?.months_by_year || {}
+  const monthsByYear: Record<string, number[]> = {}
+  for (const year of years) {
+    const key = String(year)
+    const months = normalizeMonthList(Array.isArray(monthsByYearRaw[key]) ? monthsByYearRaw[key] : [])
+    monthsByYear[key] = months
+  }
+
+  selectableDayYears.value = years
+  selectableDayMonthsByYear.value = monthsByYear
+
+  const monthYears = normalizeYearList(Array.isArray(monthSelectable?.years) ? monthSelectable?.years : years)
+  selectableMonthYears.value = monthYears
+}
+
+function applyPeriod(payload: CalendarPayload) {
+  const period = payload.period || {}
+  const periodType = String(period.time_type || calendarType.value)
+
+  if (periodType === 'day') {
+    const year = Number(period.year)
+    const month = Number(period.month)
+    if (Number.isFinite(year) && year > 0) selectedDayYear.value = year
+    if (Number.isFinite(month) && month >= 1 && month <= 12) selectedDayMonth.value = month
+  }
+
+  if (periodType === 'month') {
+    const year = Number(period.year)
+    if (Number.isFinite(year) && year > 0) selectedMonthYear.value = year
+  }
 }
 
 async function loadOverview() {
-  const payload = await api.get<Record<string, { pnl?: number; pnl_rate?: number }>>('/api/analysis/overview?period=all')
-  Object.assign(overview, payload)
+  const payload = await api.get<Record<string, OverviewItem>>('/api/analysis/overview?period=all')
+  for (const key of Object.keys(periods) as PeriodKey[]) {
+    overview[key] = payload?.[key] || {}
+  }
 }
 
 async function loadCalendar() {
-  const payload = await api.get<Record<string, any>>(`/api/analysis/calendar?type=${calendarType.value}`)
-  Object.assign(calendar, payload)
+  const requestId = ++calendarRequestId
+
+  const params = new URLSearchParams({ type: calendarType.value })
+  if (calendarType.value === 'day') {
+    ensureDaySelection()
+    if (selectedDayYear.value && selectedDayMonth.value) {
+      params.set('year', String(selectedDayYear.value))
+      params.set('month', String(selectedDayMonth.value))
+    }
+  } else if (calendarType.value === 'month') {
+    ensureMonthSelection()
+    if (selectedMonthYear.value) {
+      params.set('year', String(selectedMonthYear.value))
+    }
+  }
+
+  const payload = await api.get<CalendarPayload>(`/api/analysis/calendar?${params.toString()}`)
+  if (requestId !== calendarRequestId) return
+
+  applySelectable(payload)
+  applyPeriod(payload)
+  if (calendarType.value === 'day') ensureDaySelection()
+  if (calendarType.value === 'month') ensureMonthSelection()
+
+  calendarState.title = String(payload.title || '')
+  calendarState.items = Array.isArray(payload.items) ? payload.items : []
+  calendarState.totalPnl = toNum(payload.total_pnl)
+  calendarState.totalRate = toNum(payload.total_rate)
 }
 
 async function loadRank() {
-  const payload = await api.get<Record<string, any>>(`/api/analysis/rank?type=all&market=${rankMarket.value}`)
-  Object.assign(rank, payload)
+  const payload = await api.get<{ gain?: RankItem[]; loss?: RankItem[] }>(
+    `/api/analysis/rank?type=all&market=${rankMarket.value}`,
+  )
+  rank.gain = Array.isArray(payload?.gain) ? payload.gain : []
+  rank.loss = Array.isArray(payload?.loss) ? payload.loss : []
 }
 
 async function reload() {
-  await Promise.all([loadOverview(), loadCalendar(), loadRank()])
+  await loadOverview()
+  await Promise.all([loadCalendar(), loadRank()])
 }
 
-onMounted(reload)
+function onCalendarTypeChange(nextType: CalendarType) {
+  if (calendarType.value === nextType) return
+  calendarType.value = nextType
+  if (nextType === 'day') {
+    ensureDaySelection()
+  } else if (nextType === 'month') {
+    ensureMonthSelection()
+  }
+  void loadCalendar()
+}
+
+function onDayYearChange() {
+  const months = getDayMonths(selectedDayYear.value)
+  if (!months.includes(Number(selectedDayMonth.value))) {
+    selectedDayMonth.value = lastOrNull(months)
+  }
+  void loadCalendar()
+}
+
+function onDayMonthChange() {
+  void loadCalendar()
+}
+
+function onMonthYearChange() {
+  void loadCalendar()
+}
+
+function onRankMarketChange(market: RankMarket) {
+  if (rankMarket.value === market) return
+  rankMarket.value = market
+  void loadRank()
+}
+
+onMounted(() => {
+  void reload()
+})
 </script>
 
 <style scoped>
@@ -210,10 +609,32 @@ onMounted(reload)
   font-size: 13px;
 }
 
+.calendar-section-header {
+  align-items: flex-start;
+}
+
 .calendar-header-controls {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.calendar-period-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.period-select {
+  min-width: 96px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--legacy-border);
+  background: var(--legacy-bg-tertiary);
+  color: var(--legacy-text-primary);
+  padding: 0 10px;
 }
 
 .view-tabs {
@@ -241,16 +662,98 @@ onMounted(reload)
 .calendar-title {
   margin-bottom: 12px;
   color: var(--legacy-text-secondary);
+  font-size: 14px;
 }
 
-.market-tabs {
+.calendar-grid-shell {
+  border: 1px solid var(--legacy-border);
+  background: var(--legacy-bg-tertiary);
+  border-radius: var(--legacy-radius-sm);
+  padding: 12px;
+}
+
+.calendar-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-cell {
+  min-height: 82px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 6px;
+  text-align: center;
+  background: var(--legacy-bg-secondary);
+}
+
+.calendar-cell-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.calendar-cell-value {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.calendar-cell.up {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--legacy-red);
+}
+
+.calendar-cell.down {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--legacy-green);
+}
+
+.calendar-cell.flat {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--legacy-text-secondary);
+}
+
+.calendar-cell.empty {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--legacy-text-secondary);
+}
+
+.calendar-summary {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--legacy-border);
+  font-size: 14px;
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--legacy-text-secondary);
+}
+
+.rank-section-header {
   margin-bottom: 12px;
+}
+
+.rank-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.market-tabs,
+.rank-type-tabs {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.market-tab {
+.market-tab,
+.rank-type-tab {
   border: 1px solid var(--legacy-border);
   border-radius: 8px;
   padding: 8px 14px;
@@ -259,64 +762,123 @@ onMounted(reload)
   cursor: pointer;
 }
 
-.market-tab.active {
+.market-tab.active,
+.rank-type-tab.active {
   color: var(--legacy-text-primary);
   border-color: rgba(59, 130, 246, 0.5);
   background: rgba(59, 130, 246, 0.18);
 }
 
-.rank-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.rank-card {
+.rank-item {
   border: 1px solid var(--legacy-border);
   border-radius: var(--legacy-radius-sm);
   background: var(--legacy-bg-tertiary);
-  padding: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
-.rank-title {
-  font-size: 16px;
+.rank-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rank-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
   font-weight: 700;
-  margin-bottom: 8px;
+  color: #fff;
 }
 
-.rank-table {
-  width: 100%;
-  border-collapse: collapse;
+.rank-badge.top1 {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
 }
 
-.rank-table th,
-.rank-table td {
-  text-align: left;
-  padding: 10px;
-  border-bottom: 1px solid var(--legacy-border);
+.rank-badge.top2 {
+  background: linear-gradient(135deg, #06b6d4, #3b82f6);
 }
 
-.rank-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+.rank-badge.top3 {
+  background: linear-gradient(135deg, #22c55e, #14b8a6);
 }
 
-.asset-name-col {
+.rank-badge.normal {
+  color: var(--legacy-text-secondary);
+  border: 1px solid var(--legacy-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.rank-asset-meta {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
-.asset-name-main {
+.rank-asset-name {
+  font-size: 16px;
   font-weight: 600;
+  color: var(--legacy-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.asset-code-sub {
+.rank-asset-code {
   font-size: 12px;
   color: var(--legacy-text-secondary);
 }
 
-.up { color: var(--legacy-red); }
-.down { color: var(--legacy-green); }
+.rank-right {
+  text-align: right;
+}
+
+.rank-pnl {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.rank-rate {
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rank-empty {
+  border: 1px dashed var(--legacy-border);
+  border-radius: var(--legacy-radius-sm);
+  padding: 26px;
+  text-align: center;
+  color: var(--legacy-text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.up {
+  color: var(--legacy-red);
+}
+
+.down {
+  color: var(--legacy-green);
+}
+
+.flat {
+  color: var(--legacy-text-secondary);
+}
 
 @media (max-width: 1200px) {
   .milestone-grid {
@@ -325,20 +887,49 @@ onMounted(reload)
 }
 
 @media (max-width: 900px) {
-  .rank-grid {
-    grid-template-columns: 1fr;
-  }
-
   .section-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 10px;
+  }
+
+  .calendar-header-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .calendar-cell {
+    min-height: 72px;
+  }
+
+  .rank-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rank-right {
+    width: 100%;
+    text-align: left;
   }
 }
 
 @media (max-width: 600px) {
   .milestone-grid {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-header-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .calendar-period-picker {
+    width: 100%;
+  }
+
+  .period-select {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>
