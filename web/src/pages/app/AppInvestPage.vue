@@ -316,13 +316,11 @@ function validatePositiveIntegerQty(qty: number): boolean {
 }
 
 function showClosedHint(row: Record<string, unknown>): boolean {
-  const marketOpen = row.marketOpen
-  const isClosed =
-    marketOpen === false ||
-    marketOpen === 0 ||
-    marketOpen === '0' ||
-    String(marketOpen ?? '').toLowerCase() === 'false'
-  return isClosed
+  const marketTradingDay = row.marketTradingDay
+  if (marketTradingDay === true || marketTradingDay === 1 || marketTradingDay === '1') return false
+  if (String(marketTradingDay ?? '').toLowerCase() === 'true') return false
+  // 仅在“非交易日”提示休市；交易日中的午休/收盘后不显示该提示，避免误导。
+  return marketTradingDay === false || marketTradingDay === 0 || marketTradingDay === '0'
 }
 
 const filteredRows = computed(() => {
@@ -663,12 +661,16 @@ onBeforeUnmount(() => {
   padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
   line-height: var(--inv-lh-main);
   text-align: center;
-  border-bottom: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .table-legacy th + th,
 .table-legacy td + td {
   border-left: none;
+}
+
+.table-legacy tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .name-code-cell {

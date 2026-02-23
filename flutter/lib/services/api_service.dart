@@ -795,6 +795,22 @@ class ApiService {
     }
   }
 
+  /// 获取市场详细状态（含 open/reason/trading_day）。
+  /// 失败时返回空映射，交由上层按保守策略降级。
+  Future<Map<String, dynamic>> getMarketStatuses() async {
+    try {
+      final data = await _get(ApiConfig.marketStatus);
+      final map = _toMap(data);
+      final markets = map['markets'];
+      if (markets is Map<String, dynamic>) return markets;
+      if (markets is Map) return Map<String, dynamic>.from(markets);
+      return const <String, dynamic>{};
+    } catch (e) {
+      debugPrint('获取市场详细状态失败: $e');
+      return const <String, dynamic>{};
+    }
+  }
+
   /// 增量同步引导：按版本比较返回变更域。
   Future<Map<String, dynamic>> getSyncBootstrap({
     List<String>? include,

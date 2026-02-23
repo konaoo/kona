@@ -2145,6 +2145,7 @@ def api_sync_bootstrap():
             "versions": {k: versions[k] for k in _SYNC_BOOTSTRAP_DOMAINS},
             "changed": changed,
             "data": data,
+            "market_statuses": markets,
             "market_status": {k: bool((markets.get(k) or {}).get("open")) for k in _MARKET_SCOPE},
             "quote_policy": dict(_QUOTE_POLICY_DEFAULT),
         }

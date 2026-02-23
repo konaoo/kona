@@ -14,6 +14,7 @@ void main() {
   Future<AppState> _buildStateWithCache({
     required Map<String, bool> openStatus,
     required double changeAmt,
+    Map<String, bool>? tradingDayStatus,
     bool usExtendedActive = false,
     String usSession = 'regular',
   }) async {
@@ -71,10 +72,26 @@ void main() {
       }),
       'cache_market_status': jsonEncode({
         'markets': {
-          'a': {'open': openStatus['a'] == true},
-          'hk': {'open': openStatus['hk'] == true},
-          'us': {'open': openStatus['us'] == true},
-          'fund': {'open': openStatus['fund'] == true},
+          'a': {
+            'open': openStatus['a'] == true,
+            if (tradingDayStatus != null)
+              'trading_day': tradingDayStatus['a'] == true,
+          },
+          'hk': {
+            'open': openStatus['hk'] == true,
+            if (tradingDayStatus != null)
+              'trading_day': tradingDayStatus['hk'] == true,
+          },
+          'us': {
+            'open': openStatus['us'] == true,
+            if (tradingDayStatus != null)
+              'trading_day': tradingDayStatus['us'] == true,
+          },
+          'fund': {
+            'open': openStatus['fund'] == true,
+            if (tradingDayStatus != null)
+              'trading_day': tradingDayStatus['fund'] == true,
+          },
         },
       }),
     });
@@ -127,5 +144,26 @@ void main() {
     expect(aPrice, isNotNull);
     expect(state.isAssetDayPnlDisplayEnabled(aItem, priceInfo: aPrice), isTrue);
     expect(state.isAssetDayPnlEnabled(aItem, priceInfo: aPrice), isFalse);
+  });
+
+  test('交易日午休/盘后（open=false, trading_day=true）仍计入当日汇总', () async {
+    final state = await _buildStateWithCache(
+      openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
+      tradingDayStatus: const {
+        'a': false,
+        'hk': true,
+        'us': false,
+        'fund': false,
+      },
+      changeAmt: 1,
+    );
+
+    // hk: 1 * 200 * 0.93 = 186
+    expect(state.investDayPnl, closeTo(186, 1e-6));
+    final hkItem = state.portfolio.firstWhere((e) => e.code == 'hk00700');
+    final hkPrice = state.resolvePriceInfoByCode(hkItem.code);
+    expect(state.isAssetMarketOpen(hkItem), isFalse);
+    expect(state.isAssetTradingDay(hkItem), isTrue);
+    expect(state.isAssetDayPnlEnabled(hkItem, priceInfo: hkPrice), isTrue);
   });
 }

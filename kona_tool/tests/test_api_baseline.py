@@ -247,6 +247,11 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertIn('cash_assets', first_payload.get('data') or {})
             self.assertIn('rates', first_payload.get('data') or {})
             self.assertIn('quote_policy', first_payload)
+            self.assertIn('market_status', first_payload)
+            self.assertIn('market_statuses', first_payload)
+            detailed = first_payload.get('market_statuses') or {}
+            self.assertIn('hk', detailed)
+            self.assertIn('trading_day', detailed.get('hk') or {})
             versions = first_payload.get('versions') or {}
             self.assertTrue(str(versions.get('cash_assets', '')).strip())
             self.assertTrue(str(versions.get('rates', '')).strip())

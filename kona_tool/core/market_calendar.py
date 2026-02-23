@@ -260,6 +260,7 @@ def get_market_status(market: str, now: Optional[datetime] = None) -> Dict[str, 
         if not trading_day:
             return {
                 "open": False,
+                "trading_day": False,
                 "reason": "override" if state == "force_closed" else "holiday_or_weekend",
             }
 
@@ -269,10 +270,12 @@ def get_market_status(market: str, now: Optional[datetime] = None) -> Dict[str, 
         if open_now:
             return {
                 "open": True,
+                "trading_day": True,
                 "reason": "override" if state == "force_open" else "open_session",
             }
         return {
             "open": False,
+            "trading_day": True,
             "reason": "override" if state == "force_open" else "off_hours",
         }
     except Exception as exc:
@@ -282,7 +285,7 @@ def get_market_status(market: str, now: Optional[datetime] = None) -> Dict[str, 
             now,
             exc,
         )
-        return {"open": False, "reason": "holiday_or_weekend"}
+        return {"open": False, "trading_day": False, "reason": "holiday_or_weekend"}
 
 
 def is_market_open_now(market: str, now: Optional[datetime] = None) -> bool:

@@ -35,6 +35,7 @@ type PortfolioItem = {
 type MarketStatus = {
   open: boolean
   reason: string
+  trading_day: boolean
 }
 
 type Quote = {
@@ -56,6 +57,7 @@ type BootstrapPayload = {
   versions?: Partial<Record<string, string>>
   changed?: string[]
   data?: Record<string, unknown>
+  market_statuses?: Partial<Record<MarketCode, Partial<MarketStatus>>>
   market_status?: Partial<Record<MarketCode, boolean>>
   quote_policy?: Partial<QuotePolicy>
 }
@@ -127,12 +129,43 @@ function inferReason(open: boolean): string {
   return open ? 'open_session' : 'off_hours'
 }
 
-function applyMarketStatusBooleans(raw?: Partial<Record<MarketCode, boolean>>) {
-  if (!raw) return
+function inferTradingDayFromReason(reason: string, open: boolean): boolean {
+  if (open) return true
+  const key = String(reason || '').toLowerCase()
+  if (key === 'holiday_or_weekend') return false
+  if (key === 'off_hours' || key === 'open_session') return true
+  // "override" 在闭市时更接近“非交易日”语义（例如节假日强制休市）。
+  if (key === 'override') return false
+  return true
+}
+
+function normalizeMarketStatus(
+  detail: Partial<MarketStatus> | undefined,
+  openFallback: boolean,
+): MarketStatus {
+  const hasDetail = !!detail && Object.keys(detail).length > 0
+  const open = typeof detail?.open === 'boolean' ? detail.open : openFallback
+  const reason = String(detail?.reason || inferReason(open)).trim().toLowerCase() || inferReason(open)
+  const tradingDay = typeof detail?.trading_day === 'boolean'
+    ? detail.trading_day
+    : hasDetail
+      ? inferTradingDayFromReason(reason, open)
+      : open
+  return {
+    open,
+    reason,
+    trading_day: tradingDay,
+  }
+}
+
+function applyMarketStatuses(
+  details?: Partial<Record<MarketCode, Partial<MarketStatus>>>,
+  booleans?: Partial<Record<MarketCode, boolean>>,
+) {
+  if (!details && !booleans) return
   const next = {} as Record<MarketCode, MarketStatus>
   for (const m of MARKET_CODES) {
-    const open = Boolean(raw[m])
-    next[m] = { open, reason: inferReason(open) }
+    next[m] = normalizeMarketStatus(details?.[m], Boolean(booleans?.[m]))
   }
   state.marketStatus = next
   state.allClosed = MARKET_CODES.every((m) => !next[m]?.open)
@@ -193,13 +226,15 @@ const rows = computed(() => {
     const yclose = toNumber(quote.yclose)
     const adjustment = toNumber(item.adjustment)
     const market = inferMarket(item)
-    const open = Boolean(state.marketStatus[market]?.open)
+    const marketStatus = state.marketStatus[market]
+    const open = Boolean(marketStatus?.open)
+    const marketTradingDay = Boolean(marketStatus?.trading_day)
     const effectiveSession = normalizeSession(quote.effective_session ?? quote.session)
     const usExtendedActive =
       market === 'us' &&
       (Boolean(quote.extended_active) || effectiveSession === 'pre' || effectiveSession === 'post')
     const dayPnlDisplayEnabled = currentPrice > 0 && yclose > 0
-    const dayPnlAggregateEnabled = dayPnlDisplayEnabled && (open || usExtendedActive)
+    const dayPnlAggregateEnabled = dayPnlDisplayEnabled && (marketTradingDay || usExtendedActive)
 
     const value = currentPrice * qty
     const cost = costPrice * qty
@@ -228,6 +263,8 @@ const rows = computed(() => {
       totalPnlRate,
       session: effectiveSession,
       marketOpen: open,
+      marketTradingDay,
+      marketStatusReason: marketStatus?.reason || '',
       usExtendedActive,
       dayPnlDisplayEnabled,
       dayPnlAggregateEnabled,
@@ -313,8 +350,11 @@ async function logout() {
 }
 
 async function loadMarketStatus() {
-  const payload = await api.get<{ markets?: Record<MarketCode, MarketStatus>; all_closed?: boolean }>('/api/market/status', false)
-  state.marketStatus = payload.markets || ({} as Record<MarketCode, MarketStatus>)
+  const payload = await api.get<{ markets?: Partial<Record<MarketCode, Partial<MarketStatus>>>; all_closed?: boolean }>(
+    '/api/market/status',
+    false,
+  )
+  applyMarketStatuses(payload.markets)
   state.allClosed = Boolean(payload.all_closed)
 }
 
@@ -356,7 +396,7 @@ async function loadBootstrap(include: SyncDomain[] = ['portfolio', 'rates']): Pr
   )
 
   applyBootstrapVersions(payload.versions)
-  applyMarketStatusBooleans(payload.market_status)
+  applyMarketStatuses(payload.market_statuses, payload.market_status)
   applyQuotePolicy(payload.quote_policy)
 
   const changed = new Set(

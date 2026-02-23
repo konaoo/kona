@@ -20,6 +20,13 @@ typedef LoginHandler =
       required String password,
     });
 
+class _ParsedMarketStatus {
+  final Map<String, bool> open;
+  final Map<String, bool> tradingDay;
+
+  const _ParsedMarketStatus({required this.open, required this.tradingDay});
+}
+
 /// 应用状态管理
 class AppState extends ChangeNotifier {
   static const Duration _staticDataTtl = Duration(minutes: 5);
@@ -110,6 +117,12 @@ class AppState extends ChangeNotifier {
     'us': false,
     'fund': false,
   };
+  Map<String, bool> _marketTradingDayStatus = const {
+    'a': false,
+    'hk': false,
+    'us': false,
+    'fund': false,
+  };
 
   // 历史数据
   double _monthChange = 0;
@@ -176,6 +189,8 @@ class AppState extends ChangeNotifier {
   Map<String, double> get exchangeRates => _exchangeRates;
   Map<String, bool> get marketOpenStatus =>
       Map<String, bool>.from(_marketOpenStatus);
+  Map<String, bool> get marketTradingDayStatus =>
+      Map<String, bool>.from(_marketTradingDayStatus);
   bool get amountHidden => _amountHidden;
   ThemeMode get themeMode => _themeMode;
   bool get isLightTheme => _themeMode == ThemeMode.light;
@@ -236,8 +251,16 @@ class AppState extends ChangeNotifier {
     return _marketOpenStatus[_normalizeMarketKey(market)] ?? false;
   }
 
+  bool isMarketTradingDay(String? market) {
+    return _marketTradingDayStatus[_normalizeMarketKey(market)] ?? false;
+  }
+
   bool isAssetMarketOpen(PortfolioItem item) {
     return isMarketOpen(item.marketType);
+  }
+
+  bool isAssetTradingDay(PortfolioItem item) {
+    return isMarketTradingDay(item.marketType);
   }
 
   bool _isUsExtendedSessionActive(PortfolioItem item, PriceInfo? priceInfo) {
@@ -294,7 +317,7 @@ class AppState extends ChangeNotifier {
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     if (resolved == null || resolved.yclose <= 0) return false;
-    if (isAssetMarketOpen(item)) return true;
+    if (isAssetTradingDay(item)) return true;
     return _isUsExtendedSessionActive(item, resolved);
   }
 
@@ -645,7 +668,9 @@ class AppState extends ChangeNotifier {
     final marketStatusEnvelope = await _loadDomainEnvelope('market_status');
     final cachedMarketStatus = _asMap(marketStatusEnvelope?['data']);
     if (cachedMarketStatus.isNotEmpty) {
-      _marketOpenStatus = _parseMarketOpenStatus(cachedMarketStatus);
+      final parsedStatus = _parseMarketStatus(cachedMarketStatus);
+      _marketOpenStatus = parsedStatus.open;
+      _marketTradingDayStatus = parsedStatus.tradingDay;
       hasQuoteCache = true;
       quoteSavedAt = mergeLatest(
         quoteSavedAt,
@@ -897,6 +922,12 @@ class AppState extends ChangeNotifier {
     'us': false,
     'fund': false,
   };
+  static const Map<String, bool> _fallbackMarketTradingDayStatus = {
+    'a': false,
+    'hk': false,
+    'us': false,
+    'fund': false,
+  };
 
   bool _asBool(dynamic value) {
     if (value is bool) return value;
@@ -908,38 +939,119 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  Map<String, bool> _parseMarketOpenStatus(Map<String, dynamic> payload) {
-    final markets = payload['markets'];
-    if (markets is! Map) {
-      return Map<String, bool>.from(_fallbackMarketOpenStatus);
+  bool _hasMarketStatusPayload(dynamic raw) {
+    final map = _asMap(raw);
+    if (map.isEmpty) return false;
+    final markets = map['markets'];
+    if (markets is Map && markets.isNotEmpty) return true;
+    return map.containsKey('a') ||
+        map.containsKey('hk') ||
+        map.containsKey('us') ||
+        map.containsKey('fund');
+  }
+
+  bool _inferTradingDay({required bool open, required String reason}) {
+    if (open) return true;
+    switch (reason.trim().toLowerCase()) {
+      case 'holiday_or_weekend':
+        return false;
+      case 'off_hours':
+      case 'open_session':
+        return true;
+      case 'override':
+        return false;
+      default:
+        return open;
+    }
+  }
+
+  _ParsedMarketStatus _parseMarketStatus(
+    dynamic payload, {
+    Map<String, bool>? openFallback,
+  }) {
+    final root = _asMap(payload);
+    final dynamic marketsRaw = root['markets'] ?? payload;
+    final markets = marketsRaw is Map
+        ? Map<String, dynamic>.from(marketsRaw)
+        : <String, dynamic>{};
+
+    bool parseOpenNode(String key) {
+      if (markets.isNotEmpty && markets.containsKey(key)) {
+        final node = markets[key];
+        if (node is Map) {
+          return _asBool(node['open']);
+        }
+        return _asBool(node);
+      }
+      return openFallback?[key] ?? _fallbackMarketOpenStatus[key]!;
     }
 
-    bool readOpen(String key) {
-      final node = markets[key];
-      if (node is Map) return _asBool(node['open']);
-      return _asBool(node);
+    bool parseTradingDayNode(String key, bool open) {
+      if (markets.isNotEmpty && markets.containsKey(key)) {
+        final node = markets[key];
+        if (node is Map) {
+          if (node.containsKey('trading_day')) {
+            return _asBool(node['trading_day']);
+          }
+          final reason = '${node['reason'] ?? ''}';
+          if (reason.trim().isNotEmpty) {
+            return _inferTradingDay(open: open, reason: reason);
+          }
+          return open;
+        }
+        return _asBool(node);
+      }
+      return open;
     }
 
-    return {
-      'a': readOpen('a'),
-      'hk': readOpen('hk'),
-      'us': readOpen('us'),
-      'fund': readOpen('fund'),
+    final open = {
+      'a': parseOpenNode('a'),
+      'hk': parseOpenNode('hk'),
+      'us': parseOpenNode('us'),
+      'fund': parseOpenNode('fund'),
+    };
+    final tradingDay = {
+      'a': parseTradingDayNode('a', open['a'] ?? false),
+      'hk': parseTradingDayNode('hk', open['hk'] ?? false),
+      'us': parseTradingDayNode('us', open['us'] ?? false),
+      'fund': parseTradingDayNode('fund', open['fund'] ?? false),
+    };
+    return _ParsedMarketStatus(open: open, tradingDay: tradingDay);
+  }
+
+  Map<String, dynamic> _serializeMarketStatusForCache() {
+    return <String, dynamic>{
+      'markets': {
+        'a': {
+          'open': _marketOpenStatus['a'] ?? false,
+          'trading_day': _marketTradingDayStatus['a'] ?? false,
+        },
+        'hk': {
+          'open': _marketOpenStatus['hk'] ?? false,
+          'trading_day': _marketTradingDayStatus['hk'] ?? false,
+        },
+        'us': {
+          'open': _marketOpenStatus['us'] ?? false,
+          'trading_day': _marketTradingDayStatus['us'] ?? false,
+        },
+        'fund': {
+          'open': _marketOpenStatus['fund'] ?? false,
+          'trading_day': _marketTradingDayStatus['fund'] ?? false,
+        },
+      },
     };
   }
 
-  Future<Map<String, bool>> _loadMarketOpenStatusSafe() async {
+  Future<_ParsedMarketStatus> _loadMarketStatusSafe() async {
     try {
-      final status = await _api.getMarketOpenStatus();
-      return {
-        'a': _asBool(status['a']),
-        'hk': _asBool(status['hk']),
-        'us': _asBool(status['us']),
-        'fund': _asBool(status['fund']),
-      };
+      final markets = await _api.getMarketStatuses();
+      return _parseMarketStatus(markets);
     } catch (e) {
       debugPrint('读取市场状态失败，按全休市降级: $e');
-      return Map<String, bool>.from(_fallbackMarketOpenStatus);
+      return _ParsedMarketStatus(
+        open: Map<String, bool>.from(_fallbackMarketOpenStatus),
+        tradingDay: Map<String, bool>.from(_fallbackMarketTradingDayStatus),
+      );
     }
   }
 
@@ -1414,6 +1526,10 @@ class AppState extends ChangeNotifier {
     _api.clearToken();
     _syncVersions.clear();
     _priceSnapshots = {};
+    _marketOpenStatus = Map<String, bool>.from(_fallbackMarketOpenStatus);
+    _marketTradingDayStatus = Map<String, bool>.from(
+      _fallbackMarketTradingDayStatus,
+    );
     _lastAssetDataUpdatedAt = null;
     _lastQuoteDataUpdatedAt = null;
     _assetDataFromCache = false;
@@ -1484,15 +1600,30 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void _applySyncMarketStatus(dynamic rawStatus) {
-    final status = _asMap(rawStatus);
-    if (status.isEmpty) return;
-    _marketOpenStatus = {
+  Map<String, bool> _parseMarketOpenFallback(dynamic raw) {
+    final status = _asMap(raw);
+    if (status.isEmpty) {
+      return Map<String, bool>.from(_fallbackMarketOpenStatus);
+    }
+    return {
       'a': _asBool(status['a']),
       'hk': _asBool(status['hk']),
       'us': _asBool(status['us']),
       'fund': _asBool(status['fund']),
     };
+  }
+
+  void _applySyncMarketStatus(dynamic rawStatuses, {dynamic rawOpenFallback}) {
+    if (!_hasMarketStatusPayload(rawStatuses) &&
+        !_hasMarketStatusPayload(rawOpenFallback)) {
+      return;
+    }
+    final parsed = _parseMarketStatus(
+      rawStatuses,
+      openFallback: _parseMarketOpenFallback(rawOpenFallback),
+    );
+    _marketOpenStatus = parsed.open;
+    _marketTradingDayStatus = parsed.tradingDay;
   }
 
   void _recalculateHomeTotals() {
@@ -1698,7 +1829,10 @@ class AppState extends ChangeNotifier {
             : Map<String, String>.from(_syncVersions),
       );
       _applyQuotePolicy(response['quote_policy']);
-      _applySyncMarketStatus(response['market_status']);
+      _applySyncMarketStatus(
+        response['market_statuses'],
+        rawOpenFallback: response['market_status'],
+      );
 
       final versions = _asMap(response['versions']);
       if (versions.isNotEmpty) {
@@ -1728,7 +1862,7 @@ class AppState extends ChangeNotifier {
 
       await _saveDomainEnvelope(
         'market_status',
-        data: <String, dynamic>{'markets': _marketOpenStatus},
+        data: _serializeMarketStatusForCache(),
         staleAfter: _staticDataTtl,
       );
 
@@ -1781,12 +1915,13 @@ class AppState extends ChangeNotifier {
     }
     _priceRefreshInFlight = true;
     try {
-      final marketStatus = await _loadMarketOpenStatusSafe();
-      _marketOpenStatus = marketStatus;
+      final marketStatus = await _loadMarketStatusSafe();
+      _marketOpenStatus = marketStatus.open;
+      _marketTradingDayStatus = marketStatus.tradingDay;
       if (_portfolio.isEmpty) {
         await _saveDomainEnvelope(
           'market_status',
-          data: <String, dynamic>{'markets': marketStatus},
+          data: _serializeMarketStatusForCache(),
           staleAfter: _staticDataTtl,
         );
         // 启动早期持仓尚未恢复时，避免把已有价格缓存清空写回。
@@ -1852,7 +1987,7 @@ class AppState extends ChangeNotifier {
       _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
       await _saveDomainEnvelope(
         'market_status',
-        data: <String, dynamic>{'markets': marketStatus},
+        data: _serializeMarketStatusForCache(),
         staleAfter: _staticDataTtl,
       );
       await _saveDomainEnvelope(
