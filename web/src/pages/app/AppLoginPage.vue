@@ -1,6 +1,7 @@
 <template>
   <div class="auth-wrap page-wrap">
     <div class="auth-shell panel">
+      <div class="auth-brand">咔咔记账</div>
       <section class="auth">
         <div class="auth-topbar">
           <button class="back-arrow-btn" type="button" aria-label="返回" @click="goBack">←</button>
@@ -43,9 +44,10 @@
           {{ submitting ? '提交中...' : (isRegisterRoute ? '注册并登录' : '登录') }}
         </button>
 
-        <RouterLink v-if="!isRegisterRoute" class="register-hint-link" to="/app/register">
-          还没有账户？立即注册
-        </RouterLink>
+        <p v-if="!isRegisterRoute" class="register-hint">
+          <span>还没有账户？</span>
+          <RouterLink class="register-hint-link" to="/app/register">立即注册</RouterLink>
+        </p>
       </section>
     </div>
   </div>
@@ -112,7 +114,6 @@ async function submit() {
       await store.login(username.value, password.value)
       persistRememberFields()
     }
-    await store.refreshAll()
     await router.push('/app/home')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '请求失败'
@@ -140,6 +141,16 @@ onMounted(() => {
   padding: 18px;
 }
 
+.auth-brand {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(226, 235, 255, 0.9);
+}
+
 .auth {
   border-radius: 14px;
   border: 1px solid rgba(98, 130, 182, 0.24);
@@ -156,20 +167,22 @@ onMounted(() => {
 }
 
 .back-arrow-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
-  border: 1px solid rgba(89, 116, 165, 0.36);
-  background: rgba(8, 17, 31, 0.5);
-  color: var(--text-soft);
-  font-size: 20px;
+  border: 1px solid rgba(89, 116, 165, 0.22);
+  background: rgba(8, 17, 31, 0.22);
+  color: rgba(177, 195, 224, 0.78);
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  opacity: 0.86;
 }
 
 .back-arrow-btn:hover {
-  border-color: rgba(126, 158, 214, 0.55);
-  color: #fff;
+  border-color: rgba(126, 158, 214, 0.34);
+  color: rgba(233, 241, 255, 0.94);
+  opacity: 1;
 }
 
 label {
@@ -195,14 +208,21 @@ label {
   margin-top: 4px;
 }
 
-.register-hint-link {
+.register-hint {
+  margin: 10px 0 0;
   color: var(--muted);
   font-size: 13px;
   justify-self: center;
 }
 
+.register-hint-link {
+  margin-left: 4px;
+  color: rgba(210, 224, 250, 0.95);
+  font-weight: 600;
+}
+
 .register-hint-link:hover {
-  color: var(--text-soft);
+  color: #fff;
 }
 
 .remember-row {
