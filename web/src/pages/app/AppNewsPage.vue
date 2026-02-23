@@ -10,7 +10,10 @@
             :class="{ active: importantOnly }"
             @click="toggleImportantOnly"
           >
-            {{ importantOnly ? '只看重要' : '全部快讯' }}
+            <span class="important-toggle-thumb" aria-hidden="true"></span>
+            <span class="important-toggle-label">
+              {{ importantOnly ? '【重要】快讯' : '全部快讯' }}
+            </span>
           </button>
           <div class="live-status">
             <span class="live-dot"></span>
@@ -59,12 +62,11 @@ type NewsCachePayload = {
 const CACHE_DOMAIN = 'news'
 const CACHE_KEY = 'timeline'
 const CACHE_TTL_MS = 1000 * 60 * 20
-const IMPORTANT_ONLY_STORAGE_KEY = 'web_news_important_only_v1'
 
 const store = useKonaStore()
 const items = ref<NewsItem[]>([])
 const lastId = ref('')
-const importantOnly = ref(readImportantOnly())
+const importantOnly = ref(false)
 const visibleItems = computed(() =>
   importantOnly.value ? items.value.filter((item) => item.important) : items.value,
 )
@@ -72,11 +74,6 @@ let timer: number | null = null
 
 function cacheUserId(): string {
   return String(store.state.user?.id || 'guest')
-}
-
-function readImportantOnly(): boolean {
-  if (typeof window === 'undefined') return false
-  return localStorage.getItem(IMPORTANT_ONLY_STORAGE_KEY) === '1'
 }
 
 function persistCache() {
@@ -112,9 +109,6 @@ function restoreCache() {
 
 function toggleImportantOnly() {
   importantOnly.value = !importantOnly.value
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(IMPORTANT_ONLY_STORAGE_KEY, importantOnly.value ? '1' : '0')
-  }
 }
 
 function normalizeNews(raw: Record<string, unknown>): NewsItem {
@@ -207,15 +201,19 @@ onUnmounted(() => {
 }
 
 .important-toggle {
-  height: 36px;
-  padding: 0 14px;
+  height: 38px;
+  min-width: 132px;
+  padding: 0 10px 0 8px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(15, 23, 42, 0.7);
   color: var(--legacy-text-secondary);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   transition: all 0.2s ease;
 }
 
@@ -223,6 +221,26 @@ onUnmounted(() => {
   color: #fff;
   border-color: rgba(77, 125, 255, 0.85);
   background: rgba(77, 125, 255, 0.18);
+}
+
+.important-toggle-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.25);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.important-toggle.active .important-toggle-thumb {
+  transform: translateX(2px);
+  background: #4d7dff;
+  box-shadow: 0 0 0 3px rgba(77, 125, 255, 0.2);
+}
+
+.important-toggle-label {
+  white-space: nowrap;
+  letter-spacing: 0.2px;
 }
 
 .page-title {
