@@ -88,11 +88,11 @@
               <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty) }}</td>
               <td class="td-price">
                 <div class="price-cell">
-                  <span class="price-line cost">成本 {{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
-                  <span class="price-line current">现价 {{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
+                  <span class="price-line cost">{{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
+                  <span class="price-line current">{{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
                 </div>
               </td>
-              <td class="holding-cell td-holding">{{ formatMoney(toNumber(row.value), rowCurrency(row)) }}</td>
+              <td class="holding-cell td-holding">{{ formatMoneyInt(toNumber(row.value), rowCurrency(row)) }}</td>
               <td class="td-day-pnl">
                 <div class="pnl-cell" :class="valueClass(toNumber(row.dayPnlDisplay))">
                   <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnlDisplay, rowCurrency(row)) }}</span>
@@ -102,7 +102,7 @@
               </td>
               <td class="td-total-pnl">
                 <div class="pnl-cell" :class="valueClass(toNumber(row.totalPnl))">
-                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.totalPnl, rowCurrency(row)) }}</span>
+                  <span class="table-pnl-amount">{{ formatSignedMoneyIntOrDash(row.totalPnl, rowCurrency(row)) }}</span>
                   <span class="table-pnl-rate">{{ formatPctOrDash(row.totalPnlRate) }}</span>
                 </div>
               </td>
@@ -163,7 +163,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
-import { money, marketDisplayCurrency, toNumber } from '../../shared/format'
+import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
 import { useKonaStore } from '../../shared/store'
 
@@ -215,18 +215,50 @@ function rateToCny(curr?: string): number {
 }
 
 function formatMoney(value: unknown, curr: string): string {
-  return money(toNumber(value), curr)
+  const n = toNumber(value)
+  return `${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function formatMoneyInt(value: unknown, curr: string): string {
+  const n = Math.round(toNumber(value))
+  return `${currencySymbol(curr)}${Math.abs(n).toLocaleString('zh-CN')}`
 }
 
 function formatSignedMoney(value: number, curr: string): string {
   const sign = value >= 0 ? '+' : '-'
-  return `${sign}${money(Math.abs(toNumber(value)), curr)}`
+  const n = Math.abs(toNumber(value))
+  return `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function formatSignedMoneyInt(value: number, curr: string): string {
+  const sign = value >= 0 ? '+' : '-'
+  const n = Math.abs(Math.round(toNumber(value)))
+  return `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN')}`
 }
 
 function formatSignedMoneyOrDash(value: unknown, curr: string): string {
   const n = Number(value)
   if (!Number.isFinite(n)) return '--'
   return formatSignedMoney(n, curr)
+}
+
+function formatSignedMoneyIntOrDash(value: unknown, curr: string): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '--'
+  return formatSignedMoneyInt(n, curr)
+}
+
+function currencySymbol(curr: string): string {
+  const code = String(curr || 'CNY').toUpperCase()
+  if (code === 'USD') return '$'
+  if (code === 'HKD') return 'HK$'
+  return '¥'
 }
 
 function formatCny(value: number): string {
@@ -275,9 +307,8 @@ function rowCurrency(row: Record<string, unknown>): 'CNY' | 'HKD' | 'USD' {
 }
 
 function formatHoldingQty(qty: unknown): string {
-  const n = toNumber(qty)
-  if (Number.isInteger(n)) return n.toLocaleString('zh-CN')
-  return n.toFixed(3)
+  const n = Math.abs(Math.round(toNumber(qty)))
+  return n.toLocaleString('zh-CN')
 }
 
 function validatePositiveIntegerQty(qty: number): boolean {
