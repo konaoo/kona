@@ -2,7 +2,13 @@
   <LegacyAppShell>
     <section class="legacy-section news-container">
       <div class="news-header">
-        <h1 class="page-title">市场快讯</h1>
+        <div class="news-title-group">
+          <h1 class="page-title">市场快讯</h1>
+          <div class="live-status">
+            <span class="live-dot"></span>
+            LIVE
+          </div>
+        </div>
         <div class="news-header-actions">
           <button
             class="important-toggle"
@@ -16,10 +22,6 @@
               <span class="important-toggle-thumb"></span>
             </span>
           </button>
-          <div class="live-status">
-            <span class="live-dot"></span>
-            LIVE
-          </div>
         </div>
       </div>
 
@@ -31,8 +33,13 @@
           :class="{ show: item.show, important: item.important }"
         >
           <div class="news-dot"></div>
-          <div class="news-time">{{ item.time }}</div>
-          <div class="news-content">{{ item.content }}</div>
+          <div class="news-card">
+            <div class="news-meta">
+              <span v-if="item.important" class="news-important-tag">重要</span>
+              <div class="news-time">{{ item.time }}</div>
+            </div>
+            <div class="news-content">{{ item.content }}</div>
+          </div>
         </article>
         <div v-if="!visibleItems.length" class="empty-state">暂无快讯</div>
       </div>
@@ -195,6 +202,12 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--legacy-border);
 }
 
+.news-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .news-header-actions {
   display: flex;
   align-items: center;
@@ -331,19 +344,43 @@ onUnmounted(() => {
 .news-time {
   font-size: 14px;
   color: var(--legacy-text-secondary);
-  margin-bottom: 6px;
   font-weight: 600;
 }
 
-.news-content {
+.news-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.news-important-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  color: #cfe1ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.news-card {
   background: var(--legacy-bg-tertiary);
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--legacy-border);
+}
+
+.news-content {
   line-height: 1.6;
 }
 
-.news-item:hover .news-content {
+.news-item:hover .news-card {
   background: var(--legacy-bg-secondary);
   border-color: rgba(59, 130, 246, 0.4);
 }
