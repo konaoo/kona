@@ -133,6 +133,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
+import { useKonaStore } from '../../shared/store'
 
 type CalendarType = 'day' | 'month' | 'year'
 type RankMarket = 'all' | 'a' | 'hk' | 'us' | 'fund'
@@ -213,6 +214,8 @@ const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
 })
 
 const rates = reactive<Record<string, number>>({})
+const store = useKonaStore()
+const realtimeDayReady = ref(false)
 
 const calendarType = ref<CalendarType>('day')
 const rankMarket = ref<RankMarket>('all')
@@ -229,12 +232,43 @@ const selectableMonthYears = ref<number[]>([])
 const toNum = toNumber
 let calendarRequestId = 0
 
+function rateToCnyForCurr(curr: unknown): number {
+  const code = String(curr || 'CNY').toUpperCase()
+  if (code === 'CNY') return 1
+  const rate = toNum(store.state.rates[code] ?? rates[code], 0)
+  return rate > 0 ? rate : 1
+}
+
+const realtimeDayOverview = computed(() => {
+  let pnl = 0
+  let base = 0
+  for (const row of store.rows.value) {
+    const rate = rateToCnyForCurr((row as Record<string, unknown>).curr)
+    const rowValue = toNum((row as Record<string, unknown>).value)
+    const rowDayPnl = toNum((row as Record<string, unknown>).dayPnlAggregate)
+    pnl += rowDayPnl * rate
+    base += (rowValue - rowDayPnl) * rate
+  }
+  return {
+    pnl,
+    rate: base > 0 ? (pnl / base) * 100 : 0,
+  }
+})
+
+const dayOverviewPnl = computed(() =>
+  realtimeDayReady.value ? realtimeDayOverview.value.pnl : toNum(overview.day?.pnl),
+)
+
+const dayOverviewRate = computed(() =>
+  realtimeDayReady.value ? realtimeDayOverview.value.rate : toNum(overview.day?.pnl_rate),
+)
+
 const overviewCards = computed(() => {
   return (Object.keys(periods) as PeriodKey[]).map((key) => ({
     key,
     label: periods[key].label,
-    pnl: toNum(overview[key]?.pnl),
-    rate: toNum(overview[key]?.pnl_rate),
+    pnl: key === 'day' ? dayOverviewPnl.value : toNum(overview[key]?.pnl),
+    rate: key === 'day' ? dayOverviewRate.value : toNum(overview[key]?.pnl_rate),
   }))
 })
 
@@ -302,7 +336,7 @@ const calendarGrid = computed(() => {
     const nowMonth = now.getMonth() + 1
     if (selectedDayYear.value === nowYear && selectedDayMonth.value === nowMonth) {
       const today = now.getDate()
-      map.set(today, toNum(overview.day?.pnl))
+      map.set(today, dayOverviewPnl.value)
     }
   }
 
@@ -566,6 +600,12 @@ async function loadRank() {
 }
 
 async function reload() {
+  try {
+    await store.refreshAll()
+    realtimeDayReady.value = true
+  } catch {
+    realtimeDayReady.value = false
+  }
   await Promise.all([loadOverview(), loadRates()])
   await Promise.all([loadCalendar(), loadRank()])
 }

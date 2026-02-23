@@ -103,6 +103,7 @@ onUnmounted(() => {
 <style scoped>
 .news-container {
   max-width: 860px;
+  margin-inline: auto;
 }
 
 .news-header {

@@ -6,6 +6,36 @@
       </section>
 
       <section class="legacy-section settings-card">
+        <h2 class="card-title">👤 账号资料</h2>
+        <p class="card-desc">仅可修改昵称和头像。</p>
+        <div class="profile-top">
+          <button class="avatar-picker" type="button" @click="pickAvatarFile">
+            <img v-if="avatarPreview" :src="avatarPreview" alt="头像预览" class="avatar-image" />
+            <span v-else class="avatar-fallback">{{ avatarFallback }}</span>
+            <span class="avatar-mask">点击上传</span>
+          </button>
+          <input ref="avatarFileInput" type="file" accept="image/*" class="hidden-input" @change="onAvatarFileChange" />
+
+          <div class="profile-fields">
+            <label>
+              昵称
+              <input v-model.trim="nickname" class="field" />
+            </label>
+            <div class="avatar-meta">支持 JPG/PNG/WebP，大小不超过 1MB</div>
+            <div class="action-group">
+              <button class="btn" type="button" @click="pickAvatarFile">上传头像</button>
+              <button class="btn" type="button" @click="clearAvatar">清除头像</button>
+            </div>
+          </div>
+        </div>
+        <div class="action-group top-gap">
+          <button class="btn btn-primary" @click="saveProfile">保存资料</button>
+          <button class="btn btn-danger" @click="logout">退出登录</button>
+        </div>
+        <p v-if="message" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
+      </section>
+
+      <section class="legacy-section settings-card">
         <h2 class="card-title">💾 数据管理</h2>
         <p class="card-desc">
           您的数据存储在本地数据库中。建议定期备份，以防数据丢失。恢复数据将覆盖当前记录，请谨慎操作。
@@ -43,30 +73,6 @@
         </div>
         <p class="card-desc">如需更新或回退版本，请使用 git 操作代码仓库。</p>
       </section>
-
-      <section class="legacy-section settings-card">
-        <h2 class="card-title">👤 账号资料</h2>
-        <p class="card-desc">修改昵称、手机号与头像信息。</p>
-        <div class="profile-grid">
-          <label>
-            昵称
-            <input v-model.trim="nickname" class="field" />
-          </label>
-          <label>
-            手机
-            <input v-model.trim="phone" class="field" />
-          </label>
-        </div>
-        <label class="avatar-field">
-          头像(base64 可选)
-          <textarea v-model="avatar" class="field" rows="3" />
-        </label>
-        <div class="action-group top-gap">
-          <button class="btn btn-primary" @click="saveProfile">保存资料</button>
-          <button class="btn btn-danger" @click="logout">退出登录</button>
-        </div>
-        <p v-if="message" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
-      </section>
     </div>
   </LegacyAppShell>
 </template>
@@ -83,14 +89,25 @@ const store = useKonaStore()
 const user = computed(() => store.state.user as Record<string, unknown> | null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const avatarFileInput = ref<HTMLInputElement | null>(null)
 const systemInfo = reactive<Record<string, any>>({})
 const apiHealth = reactive<Record<string, any>>({})
 
 const nickname = ref('')
-const phone = ref('')
 const avatar = ref('')
 const message = ref('')
 const ok = ref(true)
+
+const avatarPreview = computed(() => {
+  const value = String(avatar.value || '').trim()
+  if (!value) return ''
+  return value
+})
+
+const avatarFallback = computed(() => {
+  const base = String(nickname.value || user.value?.nickname || user.value?.username || 'U').trim()
+  return base ? base[0]!.toUpperCase() : 'U'
+})
 
 const apiStatusList = computed(() => [
   {
@@ -171,16 +188,65 @@ async function loadSystemInfo() {
   Object.assign(systemInfo, await api.get('/api/settings/info'))
 }
 
+function pickAvatarFile() {
+  avatarFileInput.value?.click()
+}
+
+function onAvatarFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    message.value = '仅支持图片文件（JPG/PNG/WebP）'
+    ok.value = false
+    input.value = ''
+    return
+  }
+
+  if (file.size > 1024 * 1024) {
+    message.value = '图片过大，请选择 1MB 以内的文件'
+    ok.value = false
+    input.value = ''
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    const dataUrl = String(reader.result || '')
+    if (!dataUrl.startsWith('data:image/')) {
+      message.value = '图片读取失败，请重试'
+      ok.value = false
+      return
+    }
+    avatar.value = dataUrl
+    message.value = '头像已更新，点击“保存资料”生效'
+    ok.value = true
+  }
+  reader.onerror = () => {
+    message.value = '图片读取失败，请重试'
+    ok.value = false
+  }
+  reader.readAsDataURL(file)
+  input.value = ''
+}
+
+function clearAvatar() {
+  avatar.value = ''
+  if (avatarFileInput.value) avatarFileInput.value.value = ''
+  message.value = '头像已清除，点击“保存资料”生效'
+  ok.value = true
+}
+
 async function saveProfile() {
   try {
-    const payload = await api.post<{ user?: Record<string, unknown> }>('/api/auth/profile', {
+    const payload = await api.post<Record<string, unknown>>('/api/auth/profile', {
       nickname: nickname.value,
-      phone: phone.value,
       avatar: avatar.value,
     })
-    if (payload.user) {
-      store.state.user = payload.user as any
-    }
+    store.state.user = payload as any
+    nickname.value = String(payload.nickname || nickname.value || '')
+    avatar.value = String(payload.avatar || '')
     message.value = '保存成功'
     ok.value = true
   } catch (e) {
@@ -196,7 +262,6 @@ async function logout() {
 
 onMounted(async () => {
   nickname.value = String(user.value?.nickname || '')
-  phone.value = String(user.value?.phone || '')
   avatar.value = String(user.value?.avatar || '')
   await Promise.all([loadSystemInfo(), checkApiStatus()])
 })
@@ -327,10 +392,65 @@ onMounted(async () => {
   color: #8ab4ff;
 }
 
-.profile-grid {
+.profile-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.avatar-picker {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 16px;
+  border: 1px solid var(--legacy-border);
+  background: var(--legacy-bg-tertiary);
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-fallback {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--legacy-text-primary);
+}
+
+.avatar-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #dbeafe;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.75);
+}
+
+.profile-fields {
+  min-width: 260px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+}
+
+.avatar-meta {
+  font-size: 12px;
+  color: var(--legacy-text-secondary);
 }
 
 label {
@@ -338,10 +458,6 @@ label {
   gap: 6px;
   color: var(--legacy-text-secondary);
   font-size: 13px;
-}
-
-.avatar-field {
-  margin-top: 10px;
 }
 
 .field {
@@ -365,8 +481,9 @@ label {
 }
 
 @media (max-width: 900px) {
-  .profile-grid {
-    grid-template-columns: 1fr;
+  .profile-top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

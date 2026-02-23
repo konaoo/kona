@@ -734,7 +734,7 @@ onBeforeUnmount(() => {
   font-size: var(--inv-fs-main);
   font-weight: 700;
   white-space: nowrap;
-  text-align: center;
+  text-align: right;
 }
 
 .table-pnl-amount,
@@ -761,6 +761,11 @@ onBeforeUnmount(() => {
 
 .table-legacy th.th-price,
 .table-legacy td.td-price {
+  text-align: right;
+}
+
+.table-legacy th.th-holding,
+.table-legacy td.td-holding {
   text-align: right;
 }
 
