@@ -192,10 +192,26 @@ import { RouterLink } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
+import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../shared/store'
 
 type AssetType = 'cash' | 'other' | 'liability'
 type SimpleAsset = { id: number; name: string; amount: number; curr?: string }
+type HomeCachePayload = {
+  cashAssets: SimpleAsset[]
+  otherAssets: SimpleAsset[]
+  liabilities: SimpleAsset[]
+  portfolio: unknown[]
+  quotes: Record<string, unknown>
+  rates: Record<string, number>
+  marketStatus: Record<string, unknown>
+  allClosed: boolean
+}
+
+const HOME_CACHE_DOMAIN = 'home'
+const HOME_CACHE_KEY = 'assets'
+const HOME_CACHE_TTL_MS = 1000 * 60 * 60 * 12
+const STATIC_REFRESH_INTERVAL_MS = 60_000
 
 const store = useKonaStore()
 const rows = computed(() => store.rows.value)
@@ -205,6 +221,8 @@ const cashAssets = ref<SimpleAsset[]>([])
 const otherAssets = ref<SimpleAsset[]>([])
 const liabilities = ref<SimpleAsset[]>([])
 const isPrivacyMode = ref(localStorage.getItem('privacy_mode') === 'true')
+let staticRefreshTimer: number | null = null
+let refreshInflight: Promise<void> | null = null
 
 const modalVisible = ref(false)
 const modalType = ref<AssetType>('cash')
@@ -321,6 +339,55 @@ const otherTotal = computed(() => otherAssets.value.reduce((sum, item) => sum + 
 const liabilityTotal = computed(() => liabilities.value.reduce((sum, item) => sum + toCny(item.amount, item.curr), 0))
 const totalAssets = computed(() => investTotal.value.mv + cashTotal.value + otherTotal.value - liabilityTotal.value)
 
+function cacheUserId(): string {
+  return String(store.state.user?.id || 'guest')
+}
+
+function persistHomeCache() {
+  writePageCache<HomeCachePayload>(
+    HOME_CACHE_DOMAIN,
+    HOME_CACHE_KEY,
+    cacheUserId(),
+    {
+      cashAssets: cashAssets.value,
+      otherAssets: otherAssets.value,
+      liabilities: liabilities.value,
+      portfolio: store.state.portfolio as unknown[],
+      quotes: store.state.quotes as Record<string, unknown>,
+      rates: store.state.rates,
+      marketStatus: store.state.marketStatus as Record<string, unknown>,
+      allClosed: Boolean(store.state.allClosed),
+    },
+    HOME_CACHE_TTL_MS,
+  )
+}
+
+function restoreHomeCache() {
+  const cached = readPageCache<HomeCachePayload>(
+    HOME_CACHE_DOMAIN,
+    HOME_CACHE_KEY,
+    cacheUserId(),
+    HOME_CACHE_TTL_MS,
+  )
+  if (!cached) return
+  cashAssets.value = Array.isArray(cached.cashAssets) ? cached.cashAssets : []
+  otherAssets.value = Array.isArray(cached.otherAssets) ? cached.otherAssets : []
+  liabilities.value = Array.isArray(cached.liabilities) ? cached.liabilities : []
+  if (Array.isArray(cached.portfolio)) {
+    store.state.portfolio = cached.portfolio as typeof store.state.portfolio
+  }
+  if (cached.quotes && typeof cached.quotes === 'object') {
+    store.state.quotes = cached.quotes as typeof store.state.quotes
+  }
+  if (cached.rates && typeof cached.rates === 'object') {
+    store.state.rates = cached.rates
+  }
+  if (cached.marketStatus && typeof cached.marketStatus === 'object') {
+    store.state.marketStatus = cached.marketStatus as typeof store.state.marketStatus
+  }
+  store.state.allClosed = Boolean(cached.allClosed)
+}
+
 async function loadLists() {
   const [cash, other, debt] = await Promise.all([
     api.get<SimpleAsset[]>('/api/cash_assets'),
@@ -330,10 +397,22 @@ async function loadLists() {
   cashAssets.value = Array.isArray(cash) ? cash : []
   otherAssets.value = Array.isArray(other) ? other : []
   liabilities.value = Array.isArray(debt) ? debt : []
+  persistHomeCache()
 }
 
 async function refresh() {
-  await Promise.all([store.refreshAll(), loadLists()])
+  if (refreshInflight) {
+    return refreshInflight
+  }
+  refreshInflight = (async () => {
+    await Promise.all([store.refreshAll(), loadLists()])
+    persistHomeCache()
+  })()
+  try {
+    await refreshInflight
+  } finally {
+    refreshInflight = null
+  }
 }
 
 function togglePrivacy() {
@@ -399,12 +478,27 @@ async function removeAsset(type: AssetType, id: number) {
   await refresh()
 }
 
+function startStaticRefresh() {
+  if (staticRefreshTimer) {
+    window.clearInterval(staticRefreshTimer)
+  }
+  staticRefreshTimer = window.setInterval(() => {
+    void refresh()
+  }, STATIC_REFRESH_INTERVAL_MS)
+}
+
 onMounted(async () => {
-  await refresh()
+  restoreHomeCache()
+  void refresh()
   store.startAutoRefresh()
+  startStaticRefresh()
 })
 
 onBeforeUnmount(() => {
+  if (staticRefreshTimer) {
+    window.clearInterval(staticRefreshTimer)
+    staticRefreshTimer = null
+  }
   store.stopAutoRefresh()
 })
 </script>

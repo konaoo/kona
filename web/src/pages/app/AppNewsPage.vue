@@ -3,15 +3,25 @@
     <section class="legacy-section news-container">
       <div class="news-header">
         <h1 class="page-title">市场快讯</h1>
-        <div class="live-status">
-          <span class="live-dot"></span>
-          LIVE
+        <div class="news-header-actions">
+          <button
+            class="important-toggle"
+            type="button"
+            :class="{ active: importantOnly }"
+            @click="toggleImportantOnly"
+          >
+            {{ importantOnly ? '只看重要' : '全部快讯' }}
+          </button>
+          <div class="live-status">
+            <span class="live-dot"></span>
+            LIVE
+          </div>
         </div>
       </div>
 
       <div class="news-timeline">
         <article
-          v-for="item in items"
+          v-for="item in visibleItems"
           :key="item.id"
           class="news-item"
           :class="{ show: item.show, important: item.important }"
@@ -20,16 +30,18 @@
           <div class="news-time">{{ item.time }}</div>
           <div class="news-content">{{ item.content }}</div>
         </article>
-        <div v-if="loading" class="loading">正在接入全球市场数据...</div>
+        <div v-if="!visibleItems.length" class="empty-state">暂无快讯</div>
       </div>
     </section>
   </LegacyAppShell>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
+import { readPageCache, writePageCache } from '../../shared/pageCache'
+import { useKonaStore } from '../../shared/store'
 
 type NewsItem = {
   id: string
@@ -39,10 +51,71 @@ type NewsItem = {
   show: boolean
 }
 
+type NewsCachePayload = {
+  items: NewsItem[]
+  lastId: string
+}
+
+const CACHE_DOMAIN = 'news'
+const CACHE_KEY = 'timeline'
+const CACHE_TTL_MS = 1000 * 60 * 20
+const IMPORTANT_ONLY_STORAGE_KEY = 'web_news_important_only_v1'
+
+const store = useKonaStore()
 const items = ref<NewsItem[]>([])
-const loading = ref(true)
 const lastId = ref('')
+const importantOnly = ref(readImportantOnly())
+const visibleItems = computed(() =>
+  importantOnly.value ? items.value.filter((item) => item.important) : items.value,
+)
 let timer: number | null = null
+
+function cacheUserId(): string {
+  return String(store.state.user?.id || 'guest')
+}
+
+function readImportantOnly(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(IMPORTANT_ONLY_STORAGE_KEY) === '1'
+}
+
+function persistCache() {
+  writePageCache<NewsCachePayload>(
+    CACHE_DOMAIN,
+    CACHE_KEY,
+    cacheUserId(),
+    {
+      items: items.value.map((item) => ({
+        ...item,
+        show: true,
+      })),
+      lastId: lastId.value,
+    },
+    CACHE_TTL_MS,
+  )
+}
+
+function restoreCache() {
+  const cached = readPageCache<NewsCachePayload>(
+    CACHE_DOMAIN,
+    CACHE_KEY,
+    cacheUserId(),
+    CACHE_TTL_MS,
+  )
+  if (!cached?.items?.length) return
+  items.value = cached.items.map((item) => ({
+    ...item,
+    show: true,
+  }))
+  lastId.value = String(cached.lastId || cached.items[0]?.id || '')
+}
+
+function toggleImportantOnly() {
+  importantOnly.value = !importantOnly.value
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(IMPORTANT_ONLY_STORAGE_KEY, importantOnly.value ? '1' : '0')
+  }
+}
 
 function normalizeNews(raw: Record<string, unknown>): NewsItem {
   return {
@@ -58,12 +131,12 @@ async function fetchNews() {
   try {
     const payload = await api.get<{ items?: Record<string, unknown>[] }>('/api/news/latest?page=1&page_size=80')
     const list = (payload.items || []).map(normalizeNews)
-    loading.value = false
 
     if (!list.length) return
     if (!lastId.value) {
       items.value = [...list].reverse().map((item) => ({ ...item, show: true })).reverse()
       lastId.value = list[0]?.id || ''
+      persistCache()
       return
     }
 
@@ -85,12 +158,14 @@ async function fetchNews() {
     if (items.value.length > 100) {
       items.value = items.value.slice(0, 100)
     }
+    persistCache()
   } catch {
-    loading.value = false
+    // keep showing cached timeline
   }
 }
 
 onMounted(async () => {
+  restoreCache()
   await fetchNews()
   timer = window.setInterval(fetchNews, 10000)
 })
@@ -104,15 +179,50 @@ onUnmounted(() => {
 .news-container {
   max-width: 860px;
   margin-inline: auto;
+  zoom: 0.9;
+}
+
+@supports not (zoom: 0.9) {
+  .news-container {
+    transform: scale(0.9);
+    transform-origin: top center;
+    width: calc(100% / 0.9);
+  }
 }
 
 .news-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 24px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--legacy-border);
+}
+
+.news-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.important-toggle {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--legacy-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.important-toggle.active {
+  color: #fff;
+  border-color: rgba(77, 125, 255, 0.85);
+  background: rgba(77, 125, 255, 0.18);
 }
 
 .page-title {
@@ -207,7 +317,7 @@ onUnmounted(() => {
   border-color: rgba(59, 130, 246, 0.4);
 }
 
-.loading {
+.empty-state {
   padding: 24px 0 10px;
   color: var(--legacy-text-secondary);
 }
