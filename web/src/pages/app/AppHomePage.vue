@@ -189,6 +189,7 @@ import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
+import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../shared/store'
 import { useWebTheme } from '../../shared/webTheme'
 
@@ -212,13 +213,13 @@ const STATIC_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const store = useKonaStore()
 const { theme, toggleTheme } = useWebTheme()
+const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
 const rows = computed(() => store.rows.value)
 const rates = computed(() => store.state.rates)
 
 const cashAssets = ref<SimpleAsset[]>([])
 const otherAssets = ref<SimpleAsset[]>([])
 const liabilities = ref<SimpleAsset[]>([])
-const isPrivacyMode = ref(localStorage.getItem('privacy_mode') === 'true')
 let staticRefreshTimer: number | null = null
 let refreshInflight: Promise<void> | null = null
 
@@ -266,7 +267,7 @@ function valueClass(value: number): 'up' | 'down' {
 }
 
 function masked(text: string): string {
-  return isPrivacyMode.value ? '****' : text
+  return maskValue(text)
 }
 
 const investTotal = computed(() => {
@@ -413,11 +414,6 @@ async function refresh(mode: 'light' | 'force' = 'light') {
   } finally {
     refreshInflight = null
   }
-}
-
-function togglePrivacy() {
-  isPrivacyMode.value = !isPrivacyMode.value
-  localStorage.setItem('privacy_mode', String(isPrivacyMode.value))
 }
 
 async function saveAsImage() {

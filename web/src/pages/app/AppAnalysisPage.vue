@@ -1,5 +1,22 @@
 <template>
   <LegacyAppShell>
+    <div id="capture-area-analysis" class="analysis-page">
+    <div class="home-action-row" aria-label="分析页工具栏">
+      <button
+        class="home-action-btn"
+        type="button"
+        :title="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+        :aria-label="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+        @click="togglePrivacy"
+      >{{ isPrivacyMode ? '🙈' : '👁️' }}</button>
+      <button
+        class="home-action-btn"
+        type="button"
+        title="保存截图"
+        aria-label="保存截图"
+        @click="saveAsImage"
+      >📸</button>
+    </div>
     <section class="legacy-section">
       <div class="section-header">
         <h2 class="section-title">收益概览</h2>
@@ -125,16 +142,20 @@
         暂无数据
       </div>
     </section>
+    </div>
   </LegacyAppShell>
 </template>
 
 <script setup lang="ts">
+import html2canvas from 'html2canvas'
 import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
+import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../shared/store'
+import { useWebTheme } from '../../shared/webTheme'
 
 type CalendarType = 'day' | 'month' | 'year'
 type RankMarket = 'all' | 'a' | 'hk' | 'us' | 'fund'
@@ -248,6 +269,8 @@ const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
 
 const rates = reactive<Record<string, number>>({})
 const store = useKonaStore()
+const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
+const { theme } = useWebTheme()
 const realtimeDayReady = ref(false)
 let reloadInflight: Promise<void> | null = null
 
@@ -489,11 +512,15 @@ function valueClass(value: number): 'up' | 'down' | 'flat' {
   return 'flat'
 }
 
+function maskAmount(text: string): string {
+  return maskValue(text)
+}
+
 function formatCny(value: number): string {
   const rounded = Math.round(toNum(value))
   const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : ''
   const absValue = Math.abs(rounded)
-  return `${sign}¥ ${absValue.toLocaleString('zh-CN')}`
+  return maskAmount(`${sign}¥ ${absValue.toLocaleString('zh-CN')}`)
 }
 
 function formatPct(value: number): string {
@@ -508,6 +535,7 @@ function formatCalendarCellLabel(key: number): string {
 }
 
 function formatCalendarCellPnl(value: number): string {
+  if (isPrivacyMode.value) return '***'
   const val = toNum(value)
   const abs = Math.abs(val)
   const sign = val > 0 ? '+' : val < 0 ? '-' : ''
@@ -810,6 +838,20 @@ function onRankMarketChange(market: RankMarket) {
   void loadRank()
 }
 
+async function saveAsImage() {
+  const target = document.getElementById('capture-area-analysis')
+  if (!target) return
+  const canvas = await html2canvas(target, {
+    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
+    scale: 2,
+    useCORS: true,
+  })
+  const link = document.createElement('a')
+  link.download = `kaka-analysis-${Date.now()}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
+
 onMounted(() => {
   const restored = restoreAnalysisCache()
   realtimeDayReady.value = store.rows.value.length > 0
@@ -825,6 +867,35 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.home-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(12px * var(--legacy-density-space-scale));
+  margin-bottom: calc(14px * var(--legacy-density-space-scale));
+}
+
+.home-action-btn {
+  width: calc(46px * var(--legacy-density-card-minh));
+  height: calc(46px * var(--legacy-density-card-minh));
+  border-radius: 999px;
+  border: 1px solid var(--legacy-action-btn-border);
+  background: var(--legacy-action-btn-bg);
+  color: var(--legacy-text-primary);
+  box-shadow: var(--legacy-shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(20px * var(--legacy-density-font-scale));
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-action-btn:hover {
+  transform: translateY(-1px);
+  background: var(--legacy-action-btn-hover-bg);
+  box-shadow: var(--legacy-shadow-hover);
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;

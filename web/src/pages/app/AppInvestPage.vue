@@ -1,6 +1,22 @@
 <template>
   <LegacyAppShell>
-    <div class="kk-invest" :class="{ 'kk-light-v1': theme === 'light' }">
+    <div id="capture-area-invest" class="kk-invest" :class="{ 'kk-light-v1': theme === 'light' }">
+    <div class="home-action-row" aria-label="投资页工具栏">
+      <button
+        class="home-action-btn"
+        type="button"
+        :title="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+        :aria-label="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+        @click="togglePrivacy"
+      >{{ isPrivacyMode ? '🙈' : '👁️' }}</button>
+      <button
+        class="home-action-btn"
+        type="button"
+        title="保存截图"
+        aria-label="保存截图"
+        @click="saveAsImage"
+      >📸</button>
+    </div>
     <section class="legacy-section">
       <div class="index-grid">
         <article v-for="idx in indexCards" :key="idx.id" class="idx-card">
@@ -8,7 +24,7 @@
             <div class="idx-name">{{ idx.name }}</div>
           </div>
           <div class="idx-content">
-            <div class="idx-value">{{ idx.price ? idx.price.toFixed(2) : '--' }}</div>
+            <div class="idx-value">{{ formatIndexPrice(idx.price) }}</div>
             <div class="idx-change" :class="idx.chg >= 0 ? 'up' : 'down'">{{ formatPct(idx.chg || 0) }}</div>
           </div>
         </article>
@@ -163,11 +179,13 @@
 </template>
 
 <script setup lang="ts">
+import html2canvas from 'html2canvas'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
+import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../shared/store'
 import { useWebTheme } from '../../shared/webTheme'
 
@@ -192,6 +210,7 @@ const INVEST_PAGE_REFRESH_INTERVAL_MS = 60_000
 
 const store = useKonaStore()
 const { theme } = useWebTheme()
+const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
 const rows = computed(() => store.rows.value)
 const rates = computed(() => store.state.rates)
 
@@ -288,32 +307,40 @@ function rateToCny(curr?: string): number {
   return toNumber(rates.value[code], 1) || 1
 }
 
+function maskAmount(text: string): string {
+  return maskValue(text)
+}
+
 function formatMoney(value: unknown, curr: string): string {
   const n = toNumber(value)
-  return `${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
+  const text = `${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
+  return maskAmount(text)
 }
 
 function formatMoneyInt(value: unknown, curr: string): string {
   const n = Math.round(toNumber(value))
-  return `${currencySymbol(curr)}${Math.abs(n).toLocaleString('zh-CN')}`
+  const text = `${currencySymbol(curr)}${Math.abs(n).toLocaleString('zh-CN')}`
+  return maskAmount(text)
 }
 
 function formatSignedMoney(value: number, curr: string): string {
   const sign = value >= 0 ? '+' : '-'
   const n = Math.abs(toNumber(value))
-  return `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
+  const text = `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
+  return maskAmount(text)
 }
 
 function formatSignedMoneyInt(value: number, curr: string): string {
   const sign = value >= 0 ? '+' : '-'
   const n = Math.abs(Math.round(toNumber(value)))
-  return `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN')}`
+  const text = `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN')}`
+  return maskAmount(text)
 }
 
 function formatSignedMoneyOrDash(value: unknown, curr: string): string {
@@ -336,16 +363,21 @@ function currencySymbol(curr: string): string {
 }
 
 function formatCny(value: number): string {
-  return `¥ ${Math.round(value).toLocaleString('zh-CN')}`
+  return maskAmount(`¥ ${Math.round(value).toLocaleString('zh-CN')}`)
 }
 
 function formatSignedCny(value: number): string {
   const sign = value >= 0 ? '+' : '-'
-  return `${sign}¥ ${Math.abs(Math.round(value)).toLocaleString('zh-CN')}`
+  return maskAmount(`${sign}¥ ${Math.abs(Math.round(value)).toLocaleString('zh-CN')}`)
 }
 
 function formatPct(value: number): string {
   return `${value >= 0 ? '+' : ''}${toNumber(value).toFixed(2)}%`
+}
+
+function formatIndexPrice(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '--'
+  return maskAmount(value.toFixed(2))
 }
 
 function formatPctOrDash(value: unknown): string {
@@ -554,6 +586,20 @@ function handleDocumentClick() {
   closeActionMenu()
 }
 
+async function saveAsImage() {
+  const target = document.getElementById('capture-area-invest')
+  if (!target) return
+  const canvas = await html2canvas(target, {
+    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
+    scale: 2,
+    useCORS: true,
+  })
+  const link = document.createElement('a')
+  link.download = `kaka-invest-${Date.now()}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
+
 function startStaticRefresh() {
   if (staticRefreshTimer) {
     window.clearInterval(staticRefreshTimer)
@@ -585,6 +631,35 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.home-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(12px * var(--legacy-density-space-scale));
+  margin-bottom: calc(14px * var(--legacy-density-space-scale));
+}
+
+.home-action-btn {
+  width: calc(46px * var(--legacy-density-card-minh));
+  height: calc(46px * var(--legacy-density-card-minh));
+  border-radius: 999px;
+  border: 1px solid var(--legacy-action-btn-border);
+  background: var(--legacy-action-btn-bg);
+  color: var(--legacy-text-primary);
+  box-shadow: var(--legacy-shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(20px * var(--legacy-density-font-scale));
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-action-btn:hover {
+  transform: translateY(-1px);
+  background: var(--legacy-action-btn-hover-bg);
+  box-shadow: var(--legacy-shadow-hover);
+}
+
 .index-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
