@@ -1,5 +1,6 @@
 <template>
   <LegacyAppShell>
+    <div class="kk-invest" :class="{ 'kk-light-v1': theme === 'light' }">
     <section class="legacy-section">
       <div class="index-grid">
         <article v-for="idx in indexCards" :key="idx.id" class="idx-card">
@@ -157,6 +158,7 @@
         </form>
       </div>
     </div>
+    </div>
   </LegacyAppShell>
 </template>
 
@@ -167,6 +169,7 @@ import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../shared/store'
+import { useWebTheme } from '../../shared/webTheme'
 
 type TabKey = 'all' | 'a' | 'fund' | 'us' | 'hk'
 type ModalType = 'add' | 'buy' | 'sell' | 'edit'
@@ -188,6 +191,7 @@ const INVEST_CACHE_TTL_MS = 15 * 60_000
 const INVEST_PAGE_REFRESH_INTERVAL_MS = 60_000
 
 const store = useKonaStore()
+const { theme } = useWebTheme()
 const rows = computed(() => store.rows.value)
 const rates = computed(() => store.state.rates)
 
@@ -1071,6 +1075,257 @@ onBeforeUnmount(() => {
   .table-legacy {
     min-width: 1040px;
   }
+}
+
+/* 浅色主题：投资页 1:1 风格覆盖（仅本页） */
+.kk-invest.kk-light-v1 {
+  color: #0f172a;
+}
+
+.kk-invest.kk-light-v1 .legacy-section {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.14);
+  border-radius: 26px;
+  padding: 18px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  position: relative;
+  overflow: hidden;
+}
+
+.kk-invest.kk-light-v1 .legacy-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at 40% 10%, #000 0%, transparent 60%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.kk-invest.kk-light-v1 .legacy-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.kk-invest.kk-light-v1 .index-grid {
+  gap: 12px;
+}
+
+.kk-invest.kk-light-v1 .idx-card {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.kk-invest.kk-light-v1 .idx-name,
+.kk-invest.kk-light-v1 .total-mv-label,
+.kk-invest.kk-light-v1 .pnl-label,
+.kk-invest.kk-light-v1 .table-legacy th,
+.kk-invest.kk-light-v1 .name-secondary,
+.kk-invest.kk-light-v1 .pnl-hint,
+.kk-invest.kk-light-v1 .input-label,
+.kk-invest.kk-light-v1 .empty {
+  color: rgba(15, 23, 42, 0.55);
+  font-weight: 900;
+}
+
+.kk-invest.kk-light-v1 .idx-value {
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.kk-invest.kk-light-v1 .up {
+  color: rgba(255, 77, 141, 0.95);
+}
+
+.kk-invest.kk-light-v1 .down {
+  color: rgba(99, 102, 241, 0.95);
+}
+
+.kk-invest.kk-light-v1 .assets-header {
+  gap: 22px;
+}
+
+.kk-invest.kk-light-v1 .main-mv {
+  font-weight: 900;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.kk-invest.kk-light-v1 .pnl-stats {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kk-invest.kk-light-v1 .pnl-stat-item {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 12px 14px;
+  min-width: 160px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.kk-invest.kk-light-v1 .pnl-value {
+  font-weight: 900;
+}
+
+.kk-invest.kk-light-v1 .pnl-rate {
+  font-weight: 900;
+}
+
+.kk-invest.kk-light-v1 .table-header {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.kk-invest.kk-light-v1 .table-header h2 {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.kk-invest.kk-light-v1 .legacy-btn-primary {
+  border: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
+  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.22);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.kk-invest.kk-light-v1 .legacy-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 55px rgba(99, 102, 241, 0.28);
+}
+
+.kk-invest.kk-light-v1 .category-tabs {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 4px;
+}
+
+.kk-invest.kk-light-v1 .tab-item {
+  color: rgba(15, 23, 42, 0.55);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.kk-invest.kk-light-v1 .tab-item.active {
+  color: rgba(15, 23, 42, 0.92);
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.kk-invest.kk-light-v1 .table-legacy th {
+  background: rgba(255, 255, 255, 0.45);
+  border-bottom: none;
+}
+
+.kk-invest.kk-light-v1 .table-legacy td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.kk-invest.kk-light-v1 .name-primary,
+.kk-invest.kk-light-v1 .qty-cell,
+.kk-invest.kk-light-v1 .holding-cell,
+.kk-invest.kk-light-v1 .price-line.current,
+.kk-invest.kk-light-v1 .table-pnl-amount {
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.kk-invest.kk-light-v1 .price-line.cost,
+.kk-invest.kk-light-v1 .table-pnl-rate {
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.kk-invest.kk-light-v1 .action-trigger {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  color: rgba(15, 23, 42, 0.75);
+}
+
+.kk-invest.kk-light-v1 .action-trigger:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.kk-invest.kk-light-v1 .action-dropdown {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+}
+
+.kk-invest.kk-light-v1 .menu-item {
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.kk-invest.kk-light-v1 .menu-item:hover {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.kk-invest.kk-light-v1 .menu-item.danger {
+  color: rgba(239, 68, 68, 0.95);
+}
+
+.kk-invest.kk-light-v1 .menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.kk-invest.kk-light-v1 .overlay {
+  background: rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.kk-invest.kk-light-v1 .modal {
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.kk-invest.kk-light-v1 .modal-header h3,
+.kk-invest.kk-light-v1 .close-btn {
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.kk-invest.kk-light-v1 .close-btn {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.kk-invest.kk-light-v1 .modal-input {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.kk-invest.kk-light-v1 .modal-input:focus {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.14);
+}
+
+.kk-invest.kk-light-v1 .btn-primary.full {
+  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
+  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.22);
 }
 
 </style>
