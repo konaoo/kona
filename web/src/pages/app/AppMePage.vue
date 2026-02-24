@@ -377,9 +377,9 @@ async function logout() {
   bottom: 0;
   padding: 4px 0;
   font-size: 12px;
-  color: #dbeafe;
+  color: var(--legacy-text-primary);
   text-align: center;
-  background: rgba(15, 23, 42, 0.75);
+  background: var(--legacy-surface-strong);
 }
 
 .profile-fields {
@@ -407,8 +407,8 @@ label {
   border: 1px solid var(--legacy-border);
   border-radius: 10px;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  background: var(--legacy-input-bg);
+  color: var(--legacy-input-text);
 }
 
 .avatar-meta {
@@ -442,8 +442,8 @@ label {
 }
 
 .btn-danger {
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ff9ea0;
+  border-color: var(--legacy-danger-border);
+  color: var(--legacy-danger-text);
 }
 
 .hidden-input {
@@ -455,11 +455,11 @@ label {
 }
 
 .result-msg.ok {
-  color: #10b981;
+  color: var(--legacy-status-ok-text);
 }
 
 .result-msg.error {
-  color: #ef4444;
+  color: var(--legacy-status-error-text);
 }
 
 @media (max-width: 900px) {

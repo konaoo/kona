@@ -1,5 +1,5 @@
 <template>
-  <div class="legacy-shell legacy-page">
+  <div class="legacy-shell legacy-page" :data-theme="theme">
     <aside class="legacy-sidebar">
       <div class="legacy-logo">
         <span>⚡</span>
@@ -66,6 +66,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { useKonaStore } from '../shared/store'
+import { useWebTheme } from '../shared/webTheme'
 
 const nav = [
   { path: '/app/home', label: '我的资产', shortLabel: '资产', icon: '💰' },
@@ -78,6 +79,7 @@ const mobileNav = [...nav, { path: '/app/me', label: '设置', shortLabel: '设�
 
 const router = useRouter()
 const store = useKonaStore()
+const { theme } = useWebTheme()
 
 const displayName = computed(() => {
   const user = store.state.user || {}
@@ -114,7 +116,7 @@ async function logout() {
 .legacy-sidebar-profile {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  border-top: 1px solid var(--legacy-border-soft);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -138,8 +140,8 @@ async function logout() {
   height: 38px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--legacy-border-soft);
+  background: var(--legacy-surface-strong);
 }
 
 .legacy-profile-fallback {
@@ -148,7 +150,7 @@ async function logout() {
   justify-content: center;
   font-size: 15px;
   font-weight: 700;
-  color: #fff;
+  color: var(--legacy-text-primary);
 }
 
 .legacy-profile-name {
@@ -165,9 +167,9 @@ async function logout() {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  border: 1px solid rgba(248, 113, 113, 0.32);
-  background: rgba(127, 29, 29, 0.18);
-  color: #fda4af;
+  border: 1px solid var(--legacy-danger-border);
+  background: var(--legacy-danger-bg);
+  color: var(--legacy-danger-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -176,7 +178,7 @@ async function logout() {
 }
 
 .legacy-logout-icon-btn:hover {
-  background: rgba(127, 29, 29, 0.28);
+  background: var(--legacy-danger-bg-hover);
 }
 
 .legacy-logout-icon-btn svg {

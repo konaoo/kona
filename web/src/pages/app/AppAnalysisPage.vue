@@ -891,7 +891,7 @@ onMounted(() => {
 
 .view-tabs {
   display: flex;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--legacy-version-bg);
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--legacy-border);
@@ -953,22 +953,22 @@ onMounted(() => {
 }
 
 .calendar-cell.up {
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--legacy-up-soft-bg);
   color: var(--legacy-red);
 }
 
 .calendar-cell.down {
-  background: rgba(16, 185, 129, 0.15);
+  background: var(--legacy-down-soft-bg);
   color: var(--legacy-green);
 }
 
 .calendar-cell.flat {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--legacy-bg-tertiary);
   color: var(--legacy-text-secondary);
 }
 
 .calendar-cell.empty {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--legacy-bg-secondary);
   color: var(--legacy-text-secondary);
 }
 
@@ -976,7 +976,7 @@ onMounted(() => {
   margin-top: 12px;
   padding: 10px 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--legacy-bg-secondary);
   border: 1px solid var(--legacy-border);
   font-size: 14px;
   display: flex;
@@ -1085,7 +1085,7 @@ onMounted(() => {
 .rank-badge.normal {
   color: var(--legacy-text-secondary);
   border: 1px solid var(--legacy-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--legacy-bg-secondary);
 }
 
 .rank-asset-meta {
@@ -1130,7 +1130,7 @@ onMounted(() => {
   padding: 26px;
   text-align: center;
   color: var(--legacy-text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--legacy-bg-secondary);
 }
 
 .up {

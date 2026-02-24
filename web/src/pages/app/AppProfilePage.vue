@@ -322,8 +322,8 @@ onMounted(async () => {
 }
 
 .btn-danger {
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #ff9ea0;
+  border-color: var(--legacy-danger-border);
+  color: var(--legacy-danger-text);
 }
 
 .hidden-input {
@@ -366,22 +366,22 @@ onMounted(async () => {
   font-size: 12px;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #334155;
-  color: #94a3b8;
+  background: var(--legacy-status-neutral-bg);
+  color: var(--legacy-status-neutral-text);
 }
 
 .api-status.ok {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  background: var(--legacy-status-ok-bg);
+  color: var(--legacy-status-ok-text);
 }
 
 .api-status.error {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: var(--legacy-status-error-bg);
+  color: var(--legacy-status-error-text);
 }
 
 .version-info {
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--legacy-version-bg);
   padding: 14px;
   border-radius: 10px;
   font-family: monospace;
@@ -389,7 +389,7 @@ onMounted(async () => {
 }
 
 .commit-hash {
-  color: #8ab4ff;
+  color: var(--legacy-version-commit);
 }
 
 .profile-top {
@@ -435,9 +435,9 @@ onMounted(async () => {
   bottom: 0;
   padding: 4px 0;
   font-size: 12px;
-  color: #dbeafe;
+  color: var(--legacy-text-primary);
   text-align: center;
-  background: rgba(15, 23, 42, 0.75);
+  background: var(--legacy-surface-strong);
 }
 
 .profile-fields {
@@ -464,8 +464,8 @@ label {
   border: 1px solid var(--legacy-border);
   border-radius: 10px;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  background: var(--legacy-input-bg);
+  color: var(--legacy-input-text);
 }
 
 .result-msg {
@@ -473,11 +473,11 @@ label {
 }
 
 .result-msg.ok {
-  color: #10b981;
+  color: var(--legacy-status-ok-text);
 }
 
 .result-msg.error {
-  color: #ef4444;
+  color: var(--legacy-status-error-text);
 }
 
 @media (max-width: 900px) {

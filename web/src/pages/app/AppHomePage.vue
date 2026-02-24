@@ -1,11 +1,30 @@
 <template>
   <LegacyAppShell>
-    <template #fab>
-      <button class="legacy-fab-btn" @click="togglePrivacy">{{ isPrivacyMode ? '🙈' : '👁️' }}</button>
-      <button class="legacy-fab-btn" @click="saveAsImage">📸</button>
-    </template>
-
     <div id="capture-area">
+      <div class="home-action-row" aria-label="首页工具栏">
+        <button
+          class="home-action-btn"
+          type="button"
+          :title="theme === 'dark' ? '切换浅色主题' : '切换深色主题'"
+          :aria-label="theme === 'dark' ? '切换浅色主题' : '切换深色主题'"
+          @click="toggleTheme"
+        >{{ theme === 'dark' ? '🌙' : '☀️' }}</button>
+        <button
+          class="home-action-btn"
+          type="button"
+          :title="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+          :aria-label="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
+          @click="togglePrivacy"
+        >{{ isPrivacyMode ? '🙈' : '👁️' }}</button>
+        <button
+          class="home-action-btn"
+          type="button"
+          title="保存截图"
+          aria-label="保存截图"
+          @click="saveAsImage"
+        >📸</button>
+      </div>
+
       <section class="legacy-section">
         <div class="assets-header">
           <div class="total-assets-section">
@@ -194,6 +213,7 @@ import { api } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../shared/store'
+import { useWebTheme } from '../../shared/webTheme'
 
 type AssetType = 'cash' | 'other' | 'liability'
 type SimpleAsset = { id: number; name: string; amount: number; curr?: string }
@@ -214,6 +234,7 @@ const HOME_CACHE_TTL_MS = 1000 * 60 * 60 * 12
 const STATIC_REFRESH_INTERVAL_MS = 5 * 60_000
 
 const store = useKonaStore()
+const { theme, toggleTheme } = useWebTheme()
 const rows = computed(() => store.rows.value)
 const rates = computed(() => store.state.rates)
 
@@ -425,7 +446,11 @@ function togglePrivacy() {
 async function saveAsImage() {
   const target = document.getElementById('capture-area')
   if (!target) return
-  const canvas = await html2canvas(target, { backgroundColor: '#0a0e27', scale: 2, useCORS: true })
+  const canvas = await html2canvas(target, {
+    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
+    scale: 2,
+    useCORS: true,
+  })
   const link = document.createElement('a')
   link.download = `kaka-assets-${Date.now()}.png`
   link.href = canvas.toDataURL('image/png')
@@ -506,6 +531,35 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.home-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(12px * var(--legacy-density-space-scale));
+  margin-bottom: calc(14px * var(--legacy-density-space-scale));
+}
+
+.home-action-btn {
+  width: calc(46px * var(--legacy-density-card-minh));
+  height: calc(46px * var(--legacy-density-card-minh));
+  border-radius: 999px;
+  border: 1px solid var(--legacy-action-btn-border);
+  background: var(--legacy-action-btn-bg);
+  color: var(--legacy-text-primary);
+  box-shadow: var(--legacy-shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(20px * var(--legacy-density-font-scale));
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-action-btn:hover {
+  transform: translateY(-1px);
+  background: var(--legacy-action-btn-hover-bg);
+  box-shadow: var(--legacy-shadow-hover);
+}
+
 .assets-header {
   display: flex;
   justify-content: space-between;
@@ -718,8 +772,8 @@ onBeforeUnmount(() => {
 }
 
 .asset-card-item:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--legacy-card-hover-bg);
+  border-color: var(--legacy-card-hover-border);
 }
 
 .asset-card-item-header {
@@ -761,17 +815,24 @@ onBeforeUnmount(() => {
 
 .action-btn {
   height: calc(24px * var(--legacy-density-space-scale));
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--legacy-action-btn-border);
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--legacy-action-btn-bg);
   color: var(--legacy-text-secondary);
   font-size: calc(11px * var(--legacy-density-font-scale));
   padding: 0 calc(6px * var(--legacy-density-space-scale));
   cursor: pointer;
 }
 
-.action-btn:hover { color: #fff; }
-.action-btn.danger:hover { color: #ff9c9d; }
+.action-btn:hover {
+  color: var(--legacy-text-primary);
+  background: var(--legacy-action-btn-hover-bg);
+}
+
+.action-btn.danger:hover {
+  color: var(--legacy-action-danger-text);
+  background: var(--legacy-action-danger-hover-bg);
+}
 
 .empty-state {
   padding: calc(20px * var(--legacy-density-space-scale));
@@ -781,7 +842,7 @@ onBeforeUnmount(() => {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--legacy-overlay-bg);
   backdrop-filter: blur(10px);
   z-index: 6000;
 }
@@ -791,7 +852,7 @@ onBeforeUnmount(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #1e293b;
+  background: var(--legacy-modal-bg);
   border-radius: 20px;
   padding: calc(24px * var(--legacy-density-space-scale));
   width: min(420px, 92vw);
@@ -812,7 +873,7 @@ onBeforeUnmount(() => {
   border: 0;
   cursor: pointer;
   background: var(--legacy-bg-tertiary);
-  color: #fff;
+  color: var(--legacy-text-primary);
   font-size: calc(20px * var(--legacy-density-font-scale));
 }
 
@@ -825,10 +886,10 @@ onBeforeUnmount(() => {
 }
 .modal-input {
   width: 100%;
-  background: #0f172a;
+  background: var(--legacy-input-bg);
   border: 1px solid var(--legacy-border);
   border-radius: 12px;
-  color: #fff;
+  color: var(--legacy-input-text);
   padding: calc(10px * var(--legacy-density-space-scale));
 }
 .btn-primary.full {
