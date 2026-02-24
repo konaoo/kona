@@ -1,73 +1,105 @@
 <template>
-  <div class="auth-wrap page-wrap">
-    <div class="auth-shell panel">
-      <div class="auth-brand">咔咔记账</div>
-      <section class="auth">
-        <div class="auth-topbar">
-          <button class="back-arrow-btn" type="button" aria-label="返回" @click="goBack">←</button>
-        </div>
-
-        <label>
-          用户名
-          <input
-            v-model.trim="username"
-            class="input"
-            placeholder="小写字母开头，4-24位"
-            autocomplete="username"
-          />
-        </label>
-
-        <label>
-          密码
-          <input
-            v-model="password"
-            class="input"
-            type="password"
-            placeholder="8-64位，包含字母和数字"
-            :autocomplete="isRegisterRoute ? 'new-password' : 'current-password'"
-          />
-        </label>
-
-        <label v-if="isRegisterRoute">
-          确认密码
-          <input
-            v-model="confirmPassword"
-            class="input"
-            type="password"
-            placeholder="请再次输入密码"
-            autocomplete="new-password"
-          />
-        </label>
-
-        <label v-if="isRegisterRoute">
-          邀请码
-          <input v-model.trim="inviteCode" class="input" placeholder="输入邀请码" />
-        </label>
-
-        <label v-else class="remember-row">
-          <input v-model="rememberMe" type="checkbox" class="remember-check" />
-          <span>记住我</span>
-        </label>
-
-        <div class="error" v-if="error">{{ error }}</div>
-
-        <button class="btn primary submit-btn" :disabled="submitting" @click="submit">
-          {{ submitting ? '提交中...' : (isRegisterRoute ? '注册并登录' : '登录') }}
-        </button>
-
-        <p v-if="!isRegisterRoute" class="register-hint">
-          <span>还没有账户？</span>
-          <RouterLink class="register-hint-link" to="/app/register">立即注册</RouterLink>
-        </p>
-      </section>
+  <section class="auth-page">
+    <div class="bg" aria-hidden="true">
+      <span class="blob b1"></span>
+      <span class="blob b2"></span>
+      <span class="blob b3"></span>
+      <span class="grid"></span>
+      <span class="sparkle s1"></span>
+      <span class="sparkle s2"></span>
+      <span class="sparkle s3"></span>
     </div>
-  </div>
+
+    <div class="container">
+      <header class="topbar">
+        <div class="brand">
+          <img class="brand-logo" src="/assets/kaka-logo.png" alt="logo" />
+          <div class="brand-text">
+            <div class="brand-name">咔咔记账</div>
+            <div class="brand-sub">GLOBAL ASSET DESK</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="center">
+        <div class="card">
+          <div class="card-head">
+            <h1 class="card-title">{{ isRegisterRoute ? '注册' : '登录' }}</h1>
+            <p class="card-sub">{{ isRegisterRoute ? '创建账号' : '欢迎回来' }}</p>
+          </div>
+
+          <form class="form" @submit.prevent="submit">
+            <label class="field">
+              <span class="label">用户名</span>
+              <input
+                v-model.trim="username"
+                class="input"
+                type="text"
+                placeholder="请输入用户名"
+                autocomplete="username"
+              />
+            </label>
+
+            <label class="field">
+              <span class="label">密码</span>
+              <input
+                v-model="password"
+                class="input"
+                type="password"
+                placeholder="请输入密码"
+                :autocomplete="isRegisterRoute ? 'new-password' : 'current-password'"
+              />
+            </label>
+
+            <label v-if="isRegisterRoute" class="field">
+              <span class="label">确认密码</span>
+              <input
+                v-model="confirmPassword"
+                class="input"
+                type="password"
+                placeholder="请再次输入密码"
+                autocomplete="new-password"
+              />
+            </label>
+
+            <label v-if="isRegisterRoute" class="field">
+              <span class="label">邀请码</span>
+              <input v-model.trim="inviteCode" class="input" type="text" placeholder="输入邀请码" />
+            </label>
+
+            <div v-else class="row">
+              <label class="check">
+                <input v-model="rememberMe" type="checkbox" />
+                <span>记住我</span>
+              </label>
+            </div>
+
+            <div class="error" v-if="error">{{ error }}</div>
+
+            <button class="auth-btn primary" :disabled="submitting" type="submit">
+              {{ submitting ? '提交中...' : (isRegisterRoute ? '注册并登录' : '登录') }}
+            </button>
+
+            <div v-if="!isRegisterRoute" class="foot">
+              <span class="foot-text">还没有账户？</span>
+              <RouterLink class="foot-link" to="/app/register">立即注册</RouterLink>
+            </div>
+
+            <div v-else class="foot">
+              <span class="foot-text">已有账户？</span>
+              <RouterLink class="foot-link" to="/app/login">立即登录</RouterLink>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+  </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
-import { useRoute } from 'vue-router'
+import { RouterLink } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useKonaStore } from '../../shared/store'
 
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
@@ -117,14 +149,6 @@ function persistRememberFields() {
   localStorage.setItem(REMEMBER_ENABLED_KEY, '0')
   localStorage.removeItem(REMEMBER_USERNAME_KEY)
   localStorage.removeItem(REMEMBER_PASSWORD_KEY)
-}
-
-function goBack() {
-  if (typeof window !== 'undefined' && window.history.length > 1) {
-    router.back()
-    return
-  }
-  void router.push('/')
 }
 
 function isValidUsername(value: string): boolean {
@@ -226,11 +250,7 @@ async function submit() {
     }
     await router.push('/app/home')
   } catch (e) {
-    if (isRegisterRoute.value) {
-      error.value = mapRegisterError(e)
-    } else {
-      error.value = mapLoginError(e)
-    }
+    error.value = isRegisterRoute.value ? mapRegisterError(e) : mapLoginError(e)
   } finally {
     submitting.value = false
   }
@@ -243,117 +263,353 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auth-wrap {
+.auth-page {
+  position: relative;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  max-width: 640px;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 600px at 18% 18%, rgba(255, 120, 80, 0.2), transparent 60%),
+    radial-gradient(860px 640px at 82% 22%, rgba(255, 60, 160, 0.16), transparent 58%),
+    radial-gradient(860px 620px at 70% 92%, rgba(99, 102, 241, 0.18), transparent 55%),
+    linear-gradient(135deg, #fff7f1 0%, #f2f7ff 55%, #f6f2ff 100%);
 }
 
-.auth-shell {
-  width: min(460px, 100%);
-  padding: 18px;
+.bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-.auth-brand {
-  margin: 0 0 10px;
-  text-align: center;
-  font-size: 22px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: rgba(226, 235, 255, 0.9);
+.blob {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(44px);
+  opacity: 0.9;
+  animation: float 11s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
-.auth {
-  border-radius: 14px;
-  border: 1px solid rgba(98, 130, 182, 0.24);
-  background: linear-gradient(150deg, rgba(16, 27, 47, 0.93), rgba(11, 20, 37, 0.93));
-  padding: clamp(20px, 3vw, 30px);
-  display: grid;
+.b1 {
+  width: 520px;
+  height: 520px;
+  left: -170px;
+  top: -170px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 90, 120, 0.7), rgba(255, 180, 80, 0.22));
+}
+
+.b2 {
+  width: 560px;
+  height: 560px;
+  right: -200px;
+  top: 40px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 70, 170, 0.55), rgba(99, 102, 241, 0.2));
+  animation-delay: -3s;
+}
+
+.b3 {
+  width: 560px;
+  height: 560px;
+  right: 90px;
+  bottom: -260px;
+  background: radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.55), rgba(56, 189, 248, 0.2));
+  animation-delay: -6s;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at 40% 25%, #000 0%, transparent 58%);
+  opacity: 0.55;
+}
+
+.sparkle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff4d8d, #6366f1);
+  box-shadow: 0 12px 26px rgba(99, 102, 241, 0.22);
+  opacity: 0.85;
+}
+
+.s1 {
+  left: 18%;
+  top: 24%;
+  transform: rotate(18deg);
+}
+
+.s2 {
+  left: 68%;
+  top: 18%;
+  transform: rotate(-10deg);
+}
+
+.s3 {
+  left: 78%;
+  top: 66%;
+  transform: rotate(22deg);
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(18px);
+  }
+}
+
+.container {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 28px 34px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 6px 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.auth-topbar {
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+  object-fit: contain;
+  display: block;
+}
+
+.brand-text {
+  line-height: 1.05;
+}
+
+.brand-name {
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: #0f172a;
+}
+
+.brand-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.5);
+  font-weight: 800;
+  letter-spacing: 1.6px;
+}
+
+.center {
+  min-height: calc(100vh - 88px);
+  display: grid;
+  place-items: center;
+  padding: 10px 6px 26px;
+}
+
+.card {
+  width: min(520px, 92vw);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 22px;
+  position: relative;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  pointer-events: none;
+}
+
+.card-head {
+  padding: 6px 8px 14px;
+  text-align: center;
+}
+
+.card-title {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -0.2px;
+  color: #0f172a;
+}
+
+.card-sub {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.form {
+  padding: 10px 10px 6px;
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  outline: none;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.88);
+  transition: box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease;
+}
+
+.input:focus {
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.14), 0 12px 26px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
+}
+
+.row {
   display: flex;
   align-items: center;
-  margin-bottom: 2px;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 2px;
 }
 
-.back-arrow-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgba(89, 116, 165, 0.22);
-  background: rgba(8, 17, 31, 0.22);
-  color: rgba(177, 195, 224, 0.78);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.86;
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.7);
 }
 
-.back-arrow-btn:hover {
-  border-color: rgba(126, 158, 214, 0.34);
-  color: rgba(233, 241, 255, 0.94);
-  opacity: 1;
-}
-
-label {
-  display: grid;
-  gap: 6px;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  text-transform: uppercase;
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #ff4d8d;
 }
 
 .error {
-  color: var(--danger);
-  font-size: 13px;
-  line-height: 1.4;
-  border: 1px solid rgba(173, 73, 99, 0.4);
-  background: rgba(81, 27, 42, 0.45);
-  border-radius: 12px;
-  padding: 10px 12px;
+  color: #ff5d84;
+  font-size: 14px;
+  line-height: 1.45;
+  border: 1px solid rgba(173, 73, 99, 0.45);
+  background: rgba(81, 27, 42, 0.26);
+  border-radius: 16px;
+  padding: 12px 14px;
 }
 
-.submit-btn {
+.auth-btn {
+  border: none;
+  cursor: pointer;
+  font-weight: 950;
+  letter-spacing: 0.2px;
+  border-radius: 18px;
+  padding: 14px 18px;
+  transition: transform 220ms ease, box-shadow 220ms ease;
+  user-select: none;
+}
+
+.auth-btn.primary {
+  color: #fff;
+  background: linear-gradient(135deg, #ff4d8d, #6366f1);
+  box-shadow: 0 18px 46px rgba(99, 102, 241, 0.26);
   margin-top: 4px;
 }
 
-.register-hint {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  justify-self: center;
+.auth-btn.primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 64px rgba(99, 102, 241, 0.32);
 }
 
-.register-hint-link {
-  margin-left: 4px;
-  color: rgba(210, 224, 250, 0.95);
-  font-weight: 600;
+.auth-btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
-.register-hint-link:hover {
-  color: #fff;
+.foot {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-bottom: 6px;
 }
 
-.remember-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: -2px;
-  font-size: 13px;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text-soft);
+.foot-text,
+.foot-link {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
 }
 
-.remember-check {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: #7ba8ff;
+.foot-text {
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.foot-link {
+  color: rgba(255, 77, 141, 0.95);
+  text-decoration: none;
+}
+
+.foot-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 520px) {
+  .container {
+    padding: 18px 16px 22px;
+  }
+
+  .center {
+    min-height: calc(100vh - 78px);
+  }
+
+  .card {
+    padding: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob {
+    animation: none;
+  }
+
+  .auth-btn,
+  .input {
+    transition: none;
+  }
 }
 </style>
