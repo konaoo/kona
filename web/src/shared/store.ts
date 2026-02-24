@@ -64,10 +64,25 @@ type BootstrapPayload = {
 
 const MARKET_CODES: MarketCode[] = ['a', 'hk', 'us', 'fund']
 const SYNC_VERSION_STORAGE_KEY = 'web_sync_versions_v1'
+const STORE_CACHE_STORAGE_KEY = 'web_store_cache_v1'
+const STORE_CACHE_STATIC_TTL_MS = 5 * 60_000
+const STORE_CACHE_QUOTES_TTL_MS = 60_000
 const DEFAULT_QUOTE_POLICY: QuotePolicy = {
   interval_open_sec: 5,
   interval_closed_sec: 120,
   interval_us_extended_sec: 10,
+}
+
+type StoreCachePayload = {
+  userId: string
+  savedAt: number
+  quotesSavedAt?: number
+  portfolio: PortfolioItem[]
+  quotes: Record<string, Quote>
+  rates: Record<string, number>
+  marketStatus: Record<MarketCode, MarketStatus>
+  allClosed: boolean
+  quotePolicy: QuotePolicy
 }
 
 function readSyncVersions(): Partial<Record<SyncDomain, string>> {
@@ -91,12 +106,40 @@ function persistSyncVersions(versions: Partial<Record<SyncDomain, string>>) {
   }
 }
 
+function normalizeUserId(user: User | null | undefined): string {
+  const id = String(user?.id || '').trim()
+  return id || 'guest'
+}
+
+function readStoreCacheRaw(): StoreCachePayload | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORE_CACHE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoreCachePayload
+    if (!parsed || typeof parsed !== 'object') return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function clearStoreCache() {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(STORE_CACHE_STORAGE_KEY)
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const initialUser = readStoredUser<User>() || null
 const state = reactive({
   bootstrapped: false,
   loading: false,
   token: readAccessToken(),
   refreshToken: readRefreshToken(),
-  user: readStoredUser<User>() || null,
+  user: initialUser,
   authError: '',
   portfolio: [] as PortfolioItem[],
   quotes: {} as Record<string, Quote>,
@@ -109,8 +152,82 @@ const state = reactive({
 
 let refreshAllInflight: Promise<void> | null = null
 let quotesInflight: Promise<void> | null = null
+const bootstrapInflight = new Map<string, Promise<Set<SyncDomain>>>()
 let autoRefreshConsumers = 0
 let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+function activeUserId(): string {
+  return normalizeUserId(state.user)
+}
+
+function hydrateStoreCache() {
+  const cached = readStoreCacheRaw()
+  if (!cached) return
+  if (cached.userId !== activeUserId()) {
+    clearStoreCache()
+    return
+  }
+
+  const now = Date.now()
+  const staticAge = now - Number(cached.savedAt || 0)
+  if (!Number.isFinite(staticAge) || staticAge > STORE_CACHE_STATIC_TTL_MS) return
+
+  state.portfolio = Array.isArray(cached.portfolio) ? cached.portfolio : []
+  state.rates = cached.rates && typeof cached.rates === 'object' ? cached.rates : {}
+  state.marketStatus = cached.marketStatus && typeof cached.marketStatus === 'object'
+    ? cached.marketStatus
+    : {} as Record<MarketCode, MarketStatus>
+  state.allClosed = Boolean(cached.allClosed)
+  if (cached.quotePolicy && typeof cached.quotePolicy === 'object') {
+    state.quotePolicy = {
+      interval_open_sec: normalizeInterval(
+        cached.quotePolicy.interval_open_sec,
+        DEFAULT_QUOTE_POLICY.interval_open_sec,
+      ),
+      interval_closed_sec: normalizeInterval(
+        cached.quotePolicy.interval_closed_sec,
+        DEFAULT_QUOTE_POLICY.interval_closed_sec,
+      ),
+      interval_us_extended_sec: normalizeInterval(
+        cached.quotePolicy.interval_us_extended_sec,
+        DEFAULT_QUOTE_POLICY.interval_us_extended_sec,
+      ),
+    }
+  }
+
+  const quotesAge = now - Number(cached.quotesSavedAt || 0)
+  if (Number.isFinite(quotesAge) && quotesAge <= STORE_CACHE_QUOTES_TTL_MS) {
+    state.quotes = cached.quotes && typeof cached.quotes === 'object' ? cached.quotes : {}
+  }
+}
+
+function persistStoreCache(mode: 'static' | 'full' = 'full') {
+  if (typeof window === 'undefined') return
+  const prev = readStoreCacheRaw()
+  const now = Date.now()
+  const nextQuotes =
+    mode === 'full'
+      ? state.quotes
+      : (Object.keys(state.quotes || {}).length ? state.quotes : (prev?.quotes || {}))
+  const payload: StoreCachePayload = {
+    userId: activeUserId(),
+    savedAt: now,
+    quotesSavedAt: mode === 'full' ? now : Number(prev?.quotesSavedAt || 0),
+    portfolio: state.portfolio,
+    quotes: nextQuotes,
+    rates: state.rates,
+    marketStatus: state.marketStatus,
+    allClosed: state.allClosed,
+    quotePolicy: state.quotePolicy,
+  }
+  try {
+    localStorage.setItem(STORE_CACHE_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+hydrateStoreCache()
 
 function inferMarket(item: PortfolioItem): MarketCode {
   const kind = String(item.asset_type || '').toLowerCase()
@@ -317,9 +434,16 @@ async function bootstrap() {
 
 function clearAuthState() {
   clearAuth()
+  clearStoreCache()
   state.token = ''
   state.refreshToken = ''
   state.user = null
+  state.portfolio = []
+  state.quotes = {}
+  state.marketStatus = {} as Record<MarketCode, MarketStatus>
+  state.allClosed = false
+  state.rates = {}
+  state.quotePolicy = { ...DEFAULT_QUOTE_POLICY }
 }
 
 async function login(username: string, password: string) {
@@ -399,46 +523,65 @@ async function loadQuotes() {
   }
 }
 
+function bootstrapIncludeKey(include: SyncDomain[]): string {
+  return [...new Set(include)].sort().join(',')
+}
+
 async function loadBootstrap(include: SyncDomain[] = ['portfolio', 'rates']): Promise<Set<SyncDomain>> {
-  const payload = await api.post<BootstrapPayload>(
-    '/api/sync/bootstrap',
-    {
-      include,
-      client_versions: {
-        portfolio: state.syncVersions.portfolio || '',
-        rates: state.syncVersions.rates || '',
+  const includeKey = bootstrapIncludeKey(include)
+  const inflight = bootstrapInflight.get(includeKey)
+  if (inflight) {
+    return inflight
+  }
+
+  const request = (async () => {
+    const payload = await api.post<BootstrapPayload>(
+      '/api/sync/bootstrap',
+      {
+        include,
+        client_versions: {
+          portfolio: state.syncVersions.portfolio || '',
+          rates: state.syncVersions.rates || '',
+        },
       },
-    },
-    true,
-  )
+      true,
+    )
 
-  applyBootstrapVersions(payload.versions)
-  applyMarketStatuses(payload.market_statuses, payload.market_status)
-  applyQuotePolicy(payload.quote_policy)
+    applyBootstrapVersions(payload.versions)
+    applyMarketStatuses(payload.market_statuses, payload.market_status)
+    applyQuotePolicy(payload.quote_policy)
 
-  const changed = new Set(
-    (payload.changed || [])
-      .map((x) => String(x))
-      .filter((x): x is SyncDomain => x === 'portfolio' || x === 'rates'),
-  )
+    const changed = new Set(
+      (payload.changed || [])
+        .map((x) => String(x))
+        .filter((x): x is SyncDomain => x === 'portfolio' || x === 'rates'),
+    )
 
-  const data = payload.data || {}
-  if (Object.prototype.hasOwnProperty.call(data, 'portfolio')) {
-    const portfolio = data.portfolio
-    state.portfolio = Array.isArray(portfolio) ? (portfolio as PortfolioItem[]) : []
-  }
-  if (Object.prototype.hasOwnProperty.call(data, 'rates')) {
-    const rates = data.rates as Record<string, unknown>
-    const nextRates: Record<string, number> = {}
-    if (rates && typeof rates === 'object') {
-      for (const [k, v] of Object.entries(rates)) {
-        nextRates[k] = toNumber(v, 1)
-      }
+    const data = payload.data || {}
+    if (Object.prototype.hasOwnProperty.call(data, 'portfolio')) {
+      const portfolio = data.portfolio
+      state.portfolio = Array.isArray(portfolio) ? (portfolio as PortfolioItem[]) : []
     }
-    state.rates = nextRates
-  }
+    if (Object.prototype.hasOwnProperty.call(data, 'rates')) {
+      const rates = data.rates as Record<string, unknown>
+      const nextRates: Record<string, number> = {}
+      if (rates && typeof rates === 'object') {
+        for (const [k, v] of Object.entries(rates)) {
+          nextRates[k] = toNumber(v, 1)
+        }
+      }
+      state.rates = nextRates
+    }
 
-  return changed
+    return changed
+  })()
+
+  bootstrapInflight.set(includeKey, request)
+  try {
+    return await request
+  } finally {
+    bootstrapInflight.delete(includeKey)
+  }
 }
 
 async function loadRates() {
@@ -499,13 +642,14 @@ async function refreshQuotesOnly() {
   }
 
   await loadQuotes()
+  persistStoreCache('full')
   scheduleAutoRefresh()
 }
 
 function startAutoRefresh() {
   autoRefreshConsumers += 1
   if (autoRefreshConsumers === 1) {
-    scheduleAutoRefresh(0)
+    scheduleAutoRefresh(800)
   }
 }
 
@@ -535,6 +679,7 @@ async function refreshAll() {
         await Promise.all([loadMarketStatus(), loadPortfolio(), loadRates()])
       }
       await loadQuotes()
+      persistStoreCache('full')
     } finally {
       state.loading = false
     }
@@ -580,6 +725,7 @@ async function refreshStaticOnly() {
   } catch {
     await Promise.all([loadPortfolio(), loadRates(), loadMarketStatus()])
   }
+  persistStoreCache('static')
 }
 
 async function refreshAllForce() {

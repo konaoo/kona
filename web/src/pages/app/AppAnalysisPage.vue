@@ -813,7 +813,14 @@ function onRankMarketChange(market: RankMarket) {
 onMounted(() => {
   const restored = restoreAnalysisCache()
   realtimeDayReady.value = store.rows.value.length > 0
-  void reload(restored ? 'light' : 'force', !restored)
+  if (restored) {
+    void reload('light', false)
+    window.setTimeout(() => {
+      void reload('light', true)
+    }, 1200)
+    return
+  }
+  void reload('light', true)
 })
 </script>
 

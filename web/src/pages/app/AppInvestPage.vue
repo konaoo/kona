@@ -566,9 +566,12 @@ function startStaticRefresh() {
 onMounted(async () => {
   document.addEventListener('click', handleDocumentClick)
   const restored = restoreInvestCache()
-  void refresh(restored ? 'light' : 'force')
-  store.startAutoRefresh()
-  startStaticRefresh()
+  try {
+    await refresh(restored ? 'light' : 'force')
+  } finally {
+    store.startAutoRefresh()
+    startStaticRefresh()
+  }
 })
 
 onBeforeUnmount(() => {

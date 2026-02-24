@@ -516,9 +516,12 @@ function startStaticRefresh() {
 
 onMounted(async () => {
   const restored = restoreHomeCache()
-  void refresh(restored ? 'light' : 'force')
-  store.startAutoRefresh()
-  startStaticRefresh()
+  try {
+    await refresh(restored ? 'light' : 'force')
+  } finally {
+    store.startAutoRefresh()
+    startStaticRefresh()
+  }
 })
 
 onBeforeUnmount(() => {
