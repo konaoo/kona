@@ -1,38 +1,71 @@
 <template>
   <div class="portal">
-    <section class="hero-shell" aria-label="咔咔记账首页主视觉">
-      <div class="hero-content">
-        <div class="hero-copy">
-          <p class="hero-kicker">GLOBAL ASSET DESK</p>
-          <h1>咔咔记账</h1>
-          <h2>一站式管理全球市场资产</h2>
-          <div class="hero-actions">
-            <RouterLink class="btn primary" to="/app/login">进入网页端</RouterLink>
-            <a
-              class="btn"
-              :class="{ disabled: !apkUrl }"
-              :href="apkUrl || undefined"
-              :target="apkUrl ? '_blank' : undefined"
-              :rel="apkUrl ? 'noreferrer' : undefined"
-              :aria-disabled="!apkUrl"
-              :tabindex="apkUrl ? 0 : -1"
-              @click="onApkClick"
-              @keydown.enter="onApkClick"
-              @keydown.space.prevent="onApkClick"
-            >{{ apkUrl ? '下载 APK' : 'APK 暂未提供' }}</a>
-          </div>
-        </div>
+    <section class="hero" aria-label="咔咔记账首页主视觉">
+      <div class="bg" aria-hidden="true">
+        <span class="blob b1"></span>
+        <span class="blob b2"></span>
+        <span class="blob b3"></span>
+        <span class="grid"></span>
+        <span class="sparkle s1"></span>
+        <span class="sparkle s2"></span>
+        <span class="sparkle s3"></span>
+      </div>
 
-        <div class="hero-visual" aria-hidden="true">
-          <div class="glow glow-1"></div>
-          <div class="glow glow-2"></div>
-          <div class="trail trail-1"></div>
-          <div class="trail trail-2"></div>
-          <div class="trail trail-3"></div>
-          <div class="spark spark-1">✦</div>
-          <div class="spark spark-2">✶</div>
-          <div class="spark spark-3">✦</div>
-        </div>
+      <div class="container">
+        <header class="topbar">
+          <div class="brand">
+            <img class="brand-logo" alt="咔咔记账 logo" src="/assets/kaka-logo.png" />
+            <div class="brand-text">
+              <div class="brand-name">咔咔记账</div>
+              <div class="brand-sub">GLOBAL ASSET DESK</div>
+            </div>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="left">
+            <p class="eyebrow">GLOBAL ASSET DESK</p>
+            <h1 class="title">咔咔记账</h1>
+            <p class="subtitle">一站式管理全球市场资产</p>
+
+            <div class="actions">
+              <RouterLink class="btn primary" to="/app/login">进入网页版</RouterLink>
+              <a
+                class="btn ghost"
+                :class="{ disabled: !apkUrl }"
+                :href="apkUrl || undefined"
+                :target="apkUrl ? '_blank' : undefined"
+                :rel="apkUrl ? 'noreferrer' : undefined"
+                :aria-disabled="!apkUrl"
+                :tabindex="apkUrl ? 0 : -1"
+                @click="onApkClick"
+                @keydown.enter="onApkClick"
+                @keydown.space.prevent="onApkClick"
+              >{{ apkUrl ? '下载 APK' : 'APK 暂未提供' }}</a>
+            </div>
+          </section>
+
+          <section class="right" aria-label="product visual">
+            <div class="phone">
+              <div class="phone-top">
+                <span class="cam"></span>
+              </div>
+
+              <div class="screen">
+                <div class="screen-glow" aria-hidden="true"></div>
+
+                <div class="app-mark">
+                  <img class="app-logo" alt="咔咔记账 logo" src="/assets/kaka-logo.png" />
+                  <div class="app-caption">GLOBAL ASSET DESK</div>
+                </div>
+
+                <div class="float f1" aria-hidden="true"></div>
+                <div class="float f2" aria-hidden="true"></div>
+                <div class="float f3" aria-hidden="true"></div>
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
     </section>
   </div>
@@ -47,7 +80,7 @@ const apkUrl = ref('')
 
 onMounted(async () => {
   try {
-    const payload = await api.get<{ portal_title?: string; apk_download_url?: string }>('/api/web/config', false)
+    const payload = await api.get<{ apk_download_url?: string }>('/api/web/config', false)
     if (payload.apk_download_url) apkUrl.value = payload.apk_download_url
   } catch {
     // keep fallback config
@@ -65,418 +98,421 @@ function onApkClick(event: Event) {
 .portal {
   min-height: 100vh;
   width: 100%;
-  background:
-    radial-gradient(1200px 560px at 112% 22%, rgba(192, 156, 255, 0.14), rgba(192, 156, 255, 0)),
-    radial-gradient(900px 540px at -8% 96%, rgba(255, 190, 154, 0.16), rgba(255, 190, 154, 0)),
-    linear-gradient(180deg, #f5f4fa 0%, #f3f1fa 100%);
 }
 
-.hero-shell {
+.hero {
   position: relative;
-  overflow: hidden;
   min-height: 100vh;
-  padding: 62px clamp(24px, 6vw, 86px) 48px;
-  border-radius: 0;
-  border: 0;
+  overflow: hidden;
   background:
-    radial-gradient(840px 420px at 94% 18%, rgba(181, 136, 255, 0.34), rgba(181, 136, 255, 0)),
-    radial-gradient(640px 300px at 8% 91%, rgba(255, 184, 130, 0.26), rgba(255, 184, 130, 0)),
-    linear-gradient(115deg, #fbfafd 0%, #f8f6ff 44%, #f5eeff 100%);
+    radial-gradient(900px 600px at 18% 18%, rgba(255, 120, 80, 0.2), transparent 60%),
+    radial-gradient(860px 640px at 82% 22%, rgba(255, 60, 160, 0.16), transparent 58%),
+    radial-gradient(860px 620px at 70% 92%, rgba(99, 102, 241, 0.18), transparent 55%),
+    linear-gradient(135deg, #fff7f1 0%, #f2f7ff 55%, #f6f2ff 100%);
 }
 
-.hero-content {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1.03fr 0.97fr;
-  gap: clamp(16px, 2.8vw, 30px);
-  margin-top: 14px;
-  align-items: center;
+.bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-.hero-copy {
-  max-width: 650px;
-}
-
-.hero-kicker {
-  color: #6b7893;
-  letter-spacing: 2.6px;
-  font-size: 11px;
-  font-weight: 650;
-  margin: 0;
-  font-family: 'SF Pro Text', 'Avenir Next', 'Segoe UI', sans-serif;
-  text-transform: uppercase;
-}
-
-h1 {
-  margin: 16px 0 0;
-  font-size: clamp(58px, 7.2vw, 92px);
-  line-height: 0.94;
-  color: #112f64;
-  letter-spacing: -2.2px;
-  font-weight: 790;
-  font-family:
-    'SF Pro Display',
-    'PingFang SC',
-    'Hiragino Sans GB',
-    'Noto Sans SC',
-    'Microsoft YaHei',
-    sans-serif;
-  text-wrap: balance;
-}
-
-h2 {
-  margin: 16px 0 0;
-  font-size: clamp(24px, 2.8vw, 38px);
-  line-height: 1.14;
-  color: #193f7f;
-  font-weight: 670;
-  letter-spacing: -0.5px;
-  text-wrap: balance;
-  font-family:
-    'SF Pro Display',
-    'PingFang SC',
-    'Hiragino Sans GB',
-    'Noto Sans SC',
-    'Microsoft YaHei',
-    sans-serif;
-}
-
-.hero-actions {
-  margin-top: clamp(30px, 4vw, 44px);
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.hero-actions .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 164px;
-  height: 54px;
-  padding: 0 28px;
+.blob {
+  position: absolute;
   border-radius: 999px;
-  border: 1px solid rgba(22, 57, 109, 0.2);
-  color: #1d3f76;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  font-family: 'SF Pro Text', 'Avenir Next', 'PingFang SC', sans-serif;
-  font-size: 18px;
-  font-weight: 660;
-  line-height: 1;
-  letter-spacing: 0.1px;
-  transition:
-    transform 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease,
-    border-color 180ms ease;
+  filter: blur(44px);
+  opacity: 0.9;
+  animation: float 11s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
-.hero-actions .btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(20, 51, 100, 0.15);
+.b1 {
+  width: 520px;
+  height: 520px;
+  left: -170px;
+  top: -170px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 90, 120, 0.7), rgba(255, 180, 80, 0.22));
 }
 
-.hero-actions .btn.primary {
-  border-color: rgba(17, 45, 93, 0.2);
-  color: #ffffff;
-  background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 42%),
-    linear-gradient(93deg, #113267 0%, #1a4e96 52%, #1d5cac 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 8px 16px rgba(16, 47, 99, 0.14);
+.b2 {
+  width: 560px;
+  height: 560px;
+  right: -200px;
+  top: 40px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 70, 170, 0.55), rgba(99, 102, 241, 0.2));
+  animation-delay: -3s;
 }
 
-.hero-actions .btn.primary:hover {
-  background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 42%),
-    linear-gradient(93deg, #0f2d5d 0%, #18498d 52%, #1b55a0 100%);
+.b3 {
+  width: 560px;
+  height: 560px;
+  right: 90px;
+  bottom: -260px;
+  background: radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.55), rgba(56, 189, 248, 0.2));
+  animation-delay: -6s;
 }
 
-.hero-actions .btn:active {
-  transform: translateY(0);
-}
-
-.hero-actions .btn:focus-visible {
-  outline: 2px solid rgba(24, 79, 158, 0.42);
-  outline-offset: 2px;
-}
-
-.hero-actions .btn.disabled {
-  opacity: 1;
-  color: #8d9ebc;
-  border-color: rgba(141, 158, 188, 0.28);
-  background: rgba(255, 255, 255, 0.52);
-  font-weight: 620;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.hero-visual {
-  position: relative;
-  min-height: 500px;
-}
-
-.glow {
+.grid {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(0.4px);
-  pointer-events: none;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at 30% 30%, #000 0%, transparent 55%);
+  opacity: 0.55;
 }
 
-.glow-1 {
-  width: 470px;
-  height: 304px;
-  top: -8px;
-  right: -84px;
-  background: radial-gradient(ellipse at center, rgba(240, 227, 255, 0.62), rgba(240, 227, 255, 0));
-}
-
-.glow-2 {
-  width: 350px;
-  height: 230px;
-  top: 240px;
-  right: -16px;
-  background: radial-gradient(ellipse at center, rgba(246, 237, 255, 0.68), rgba(246, 237, 255, 0));
-}
-
-.trail {
+.sparkle {
   position: absolute;
-  border-radius: 50%;
-  border: 1.6px solid rgba(255, 255, 255, 0.8);
-  pointer-events: none;
-  animation: drift 13s ease-in-out infinite;
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff4d8d, #6366f1);
+  box-shadow: 0 12px 26px rgba(99, 102, 241, 0.22);
+  opacity: 0.85;
 }
 
-.trail-1 {
-  width: 460px;
-  height: 250px;
-  top: 12px;
-  right: -46px;
+.s1 {
+  left: 14%;
+  top: 22%;
   transform: rotate(18deg);
 }
 
-.trail-2 {
-  width: 404px;
-  height: 236px;
-  top: 150px;
-  right: -24px;
-  transform: rotate(-8deg);
-  border-style: dashed;
-  border-color: rgba(255, 255, 255, 0.66);
-  animation-delay: 1s;
+.s2 {
+  left: 62%;
+  top: 14%;
+  transform: rotate(-10deg);
 }
 
-.trail-3 {
-  width: 310px;
-  height: 188px;
-  top: 292px;
-  right: 26px;
-  transform: rotate(10deg);
-  border-color: rgba(255, 255, 255, 0.54);
-  animation-delay: 2.2s;
+.s3 {
+  left: 78%;
+  top: 70%;
+  transform: rotate(22deg);
 }
 
-.spark {
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(18px);
+  }
+}
+
+.container {
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 28px 34px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 6px 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+}
+
+.brand-text {
+  line-height: 1.05;
+}
+
+.brand-name {
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  color: #0f172a;
+}
+
+.brand-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.5);
+  font-weight: 800;
+  letter-spacing: 1.6px;
+}
+
+.content {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 34px;
+  align-items: center;
+  padding: 26px 6px 0;
+}
+
+.eyebrow {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: rgba(15, 23, 42, 0.45);
+}
+
+.title {
+  margin: 0;
+  font-size: 72px;
+  font-weight: 950;
+  letter-spacing: -1.2px;
+  line-height: 1.05;
+  color: #0f172a;
+}
+
+.subtitle {
+  margin: 18px 0 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: rgba(15, 23, 42, 0.68);
+}
+
+.actions {
+  margin-top: 34px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  border-radius: 18px;
+  padding: 14px 22px;
+  transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease;
+  user-select: none;
+}
+
+.btn.primary {
+  color: #fff;
+  background: linear-gradient(135deg, #ff4d8d, #6366f1);
+  box-shadow: 0 18px 46px rgba(99, 102, 241, 0.26);
+}
+
+.btn.primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 64px rgba(99, 102, 241, 0.32);
+}
+
+.btn.ghost {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+}
+
+.btn.ghost:hover {
+  transform: translateY(-2px);
+}
+
+.btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+}
+
+.right {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.phone {
+  width: 380px;
+  border-radius: 36px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.18);
+  padding: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transform: translateZ(0);
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.phone:hover {
+  transform: translateY(-4px) rotate(-0.2deg);
+  box-shadow: 0 34px 90px rgba(15, 23, 42, 0.2);
+}
+
+.phone-top {
+  height: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.cam {
+  width: 74px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.screen {
+  position: relative;
+  height: 460px;
+  border-radius: 28px;
+  overflow: hidden;
+  background:
+    radial-gradient(520px 320px at 30% 20%, rgba(255, 90, 150, 0.24), transparent 60%),
+    radial-gradient(520px 320px at 70% 25%, rgba(99, 102, 241, 0.22), transparent 58%),
+    radial-gradient(520px 320px at 50% 85%, rgba(56, 189, 248, 0.18), transparent 60%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.screen-glow {
   position: absolute;
-  color: rgba(166, 108, 211, 0.56);
-  font-size: 23px;
-  animation: twinkle 4.9s ease-in-out infinite;
+  inset: -40px;
+  background:
+    radial-gradient(380px 280px at 25% 25%, rgba(255, 77, 141, 0.28), transparent 60%),
+    radial-gradient(380px 280px at 75% 30%, rgba(99, 102, 241, 0.26), transparent 60%);
+  filter: blur(22px);
+  opacity: 0.9;
 }
 
-.spark-1 {
-  top: 64px;
-  right: 276px;
+.app-mark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 2;
 }
 
-.spark-2 {
-  top: 204px;
-  right: 74px;
-  color: rgba(250, 173, 126, 0.74);
-  animation-delay: 1.6s;
+.app-logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.14);
 }
 
-.spark-3 {
-  top: 344px;
-  right: 244px;
-  color: rgba(176, 133, 225, 0.6);
-  animation-delay: 2.7s;
+.app-caption {
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 3px;
+  color: rgba(15, 23, 42, 0.48);
 }
 
-@keyframes drift {
+.float {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 3;
+  animation: bob 6.8s ease-in-out infinite;
+}
+
+.f1 {
+  width: 56px;
+  height: 56px;
+  left: 22px;
+  top: 88px;
+}
+
+.f2 {
+  width: 72px;
+  height: 72px;
+  right: 28px;
+  top: 140px;
+  animation-delay: -2.3s;
+}
+
+.f3 {
+  width: 64px;
+  height: 64px;
+  right: 60px;
+  bottom: 86px;
+  animation-delay: -3.8s;
+}
+
+@keyframes bob {
   0%,
   100% {
-    transform: translateY(0) rotate(10deg);
+    transform: translateY(0);
   }
+
   50% {
-    transform: translateY(-8px) rotate(13deg);
+    transform: translateY(14px);
   }
 }
 
-@keyframes twinkle {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: scale(0.95);
-  }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.04);
-  }
-}
-
-@media (max-width: 1023px) {
-  .hero-shell {
-    min-height: 100vh;
-    padding: 40px 20px 28px;
-  }
-
-  .hero-content {
-    grid-template-columns: 1fr 0.9fr;
-    gap: 16px;
-    margin-top: 8px;
-  }
-
-  .hero-visual {
-    min-height: 420px;
-  }
-
-  h1 {
-    font-size: clamp(50px, 7vw, 76px);
-  }
-
-  h2 {
-    font-size: clamp(22px, 3.7vw, 32px);
-  }
-
-  .trail-1 {
-    width: 352px;
-    height: 208px;
-    right: -18px;
-  }
-
-  .trail-2 {
-    width: 290px;
-    height: 182px;
-    top: 112px;
-    right: -8px;
-  }
-
-  .trail-3 {
-    width: 246px;
-    height: 154px;
-    top: 218px;
-    right: 10px;
-  }
-
-  .spark-1 {
-    right: 202px;
-  }
-
-  .spark-2 {
-    right: 46px;
-  }
-
-  .spark-3 {
-    right: 168px;
-  }
-}
-
-@media (max-width: 767px) {
-  .portal {
-    min-height: 100vh;
-  }
-
-  .hero-shell {
-    min-height: 100vh;
-    padding: 24px 16px 20px;
-  }
-
-  .hero-content {
+@media (max-width: 980px) {
+  .content {
     grid-template-columns: 1fr;
-    margin-top: 0;
+    gap: 22px;
   }
 
-  h1 {
-    letter-spacing: -1.8px;
+  .right {
+    justify-content: flex-start;
   }
 
-  h2 {
-    margin-top: 12px;
+  .title {
+    font-size: 62px;
   }
 
-  .hero-actions {
-    margin-top: 26px;
-    gap: 10px;
+  .phone {
+    width: min(420px, 100%);
+  }
+}
+
+@media (max-width: 520px) {
+  .container {
+    padding: 18px 16px 22px;
   }
 
-  .hero-actions .btn {
-    flex: 1;
-    min-width: 132px;
-    text-align: center;
-    height: 50px;
-    font-size: 16px;
-    padding: 0 18px;
+  .title {
+    font-size: 50px;
   }
 
-  .hero-visual {
-    min-height: 260px;
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .glow-1 {
-    width: 230px;
-    height: 154px;
-    top: 8px;
-    right: 0;
+  .btn {
+    width: 100%;
   }
 
-  .glow-2 {
-    width: 190px;
-    height: 128px;
-    top: 136px;
-    right: 20px;
+  .screen {
+    height: 420px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .float {
+    animation: none;
   }
 
-  .trail-1 {
-    width: 220px;
-    height: 140px;
-    top: 14px;
-    right: 8px;
-  }
-
-  .trail-2 {
-    width: 188px;
-    height: 118px;
-    top: 88px;
-    right: 18px;
-  }
-
-  .trail-3 {
-    width: 156px;
-    height: 94px;
-    top: 144px;
-    right: 24px;
-  }
-
-  .spark-1 {
-    top: 26px;
-    right: 152px;
-    font-size: 18px;
-  }
-
-  .spark-2 {
-    top: 118px;
-    right: 46px;
-    font-size: 17px;
-  }
-
-  .spark-3 {
-    top: 170px;
-    right: 122px;
-    font-size: 17px;
+  .phone,
+  .btn {
+    transition: none;
   }
 }
 </style>
