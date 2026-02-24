@@ -1086,33 +1086,10 @@ onBeforeUnmount(() => {
 }
 
 .kk-invest.kk-light-v1 .legacy-section {
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.14);
-  border-radius: 26px;
-  padding: 18px;
-  margin-bottom: 16px;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  position: relative;
-  overflow: hidden;
-}
-
-.kk-invest.kk-light-v1 .legacy-section::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
-  background-size: 18px 18px;
-  mask-image: radial-gradient(circle at 40% 10%, #000 0%, transparent 60%);
-  opacity: 0.55;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.kk-invest.kk-light-v1 .legacy-section > * {
-  position: relative;
-  z-index: 1;
+  background: var(--legacy-bg-secondary);
+  border: 1px solid var(--legacy-border);
+  box-shadow: var(--legacy-shadow);
+  border-radius: var(--legacy-radius);
 }
 
 .kk-invest.kk-light-v1 .index-grid {
@@ -1120,13 +1097,11 @@ onBeforeUnmount(() => {
 }
 
 .kk-invest.kk-light-v1 .idx-card {
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: var(--legacy-bg-tertiary);
+  border: 1px solid var(--legacy-border);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--legacy-shadow);
 }
 
 .kk-invest.kk-light-v1 .idx-name,
@@ -1146,11 +1121,11 @@ onBeforeUnmount(() => {
 }
 
 .kk-invest.kk-light-v1 .up {
-  color: rgba(255, 77, 141, 0.95);
+  color: #ef4444;
 }
 
 .kk-invest.kk-light-v1 .down {
-  color: rgba(99, 102, 241, 0.95);
+  color: #10b981;
 }
 
 .kk-invest.kk-light-v1 .assets-header {
@@ -1171,14 +1146,12 @@ onBeforeUnmount(() => {
 }
 
 .kk-invest.kk-light-v1 .pnl-stat-item {
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: var(--legacy-bg-tertiary);
+  border: 1px solid var(--legacy-border);
   border-radius: 18px;
   padding: 12px 14px;
   min-width: 160px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--legacy-shadow);
 }
 
 .kk-invest.kk-light-v1 .pnl-value {
@@ -1232,9 +1205,9 @@ onBeforeUnmount(() => {
 }
 
 .kk-invest.kk-light-v1 .tab-item.active {
-  color: rgba(15, 23, 42, 0.92);
-  background: rgba(99, 102, 241, 0.16);
-  border: 1px solid rgba(99, 102, 241, 0.22);
+  color: var(--legacy-text-primary);
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.24);
 }
 
 .kk-invest.kk-light-v1 .table-legacy th {
@@ -1259,20 +1232,29 @@ onBeforeUnmount(() => {
   color: rgba(15, 23, 42, 0.55);
 }
 
+.kk-invest.kk-light-v1 .td-day-pnl .pnl-cell,
+.kk-invest.kk-light-v1 .td-total-pnl .pnl-cell {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
 .kk-invest.kk-light-v1 .action-trigger {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.8);
-  color: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--legacy-action-btn-border);
+  background: var(--legacy-action-btn-bg);
+  color: var(--legacy-text-primary);
 }
 
 .kk-invest.kk-light-v1 .action-trigger:hover {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--legacy-action-btn-hover-bg);
 }
 
 .kk-invest.kk-light-v1 .action-dropdown {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  background: var(--legacy-dropdown-bg);
+  border: 1px solid var(--legacy-border);
+  box-shadow: var(--legacy-dropdown-shadow);
 }
 
 .kk-invest.kk-light-v1 .menu-item {
