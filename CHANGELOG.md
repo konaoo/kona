@@ -8,6 +8,63 @@
 
 ---
 
+## v1.0.8 - Web 门户/认证改版、主题体系与投资分析隐私工具统一
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Web | Docs
+
+### Summary
+- Web 门户首页整体替换为新视觉（品牌、主标题、双按钮与产品展示区），并保持 APK 动态下载配置可用。
+- 登录/注册页改为同风格单卡布局，完善返回交互、记住我、注册链接与中文错误提示。
+- `/app/*` 新增深浅主题切换体系（默认深色），主题状态本地持久化并跨页面保持一致。
+- 首页顶部操作区统一为图标按钮，视觉回退并还原到你确认的 1:1 版本。
+- 投资页浅色主题完成统一收敛，去除当日/累计盈亏胶囊感，表格风格与浅色体系一致。
+- `home/invest/analysis` 引入缓存优先 + 后台刷新（SWR）与请求去重，显著降低 F5 重复请求。
+- 投资页与分析页新增顶部工具行（隐藏金额 + 拍照），并与首页共用隐私状态，支持“隐藏金额保留百分比”。
+
+### Added
+- 新增共享隐私模块：`web/src/shared/privacyMode.ts`（`privacy_mode` 持久化、跨标签同步、统一掩码函数）。
+- 新增全局 store 持久化缓存结构：`web_store_cache_v1`（`portfolio/quotes/rates/marketStatus/quotePolicy` 等）。
+- `/app/invest` 与 `/app/analysis` 新增页面级截图能力（仅截主内容区域，不含侧边栏）。
+- 首页新增主题按钮 + 隐私按钮 + 截图按钮的固定工具行。
+
+### Changed
+- 门户页：改为新 Hero 结构与风格，Logo 资源从仓库静态资源引用。
+- 认证页：拆分路由（`/app/login` + `/app/register`），移除顶部胶囊切换。
+- 登录流程：去除登录成功后的阻塞式全量刷新，先进入业务页再后台刷新。
+- 自动刷新策略：`startAutoRefresh` 不再 0ms 立即触发，避免首屏阶段与手动刷新并发打接口。
+- 首页投资模块：移除右上角三张“今日/持仓/累计盈亏”统计小卡。
+- 投资页浅色模式：整体卡片、表头、行 hover、数值层级按统一视觉规则重排。
+
+### Fixed
+- 修复 `/app/home` 在浅色主题下多轮样式尝试导致的页面错位/空白问题，并最终回退到确认版本。
+- 修复 F5 后首页/投资页首屏重复触发 bootstrap 与静态请求的问题。
+- 修复登录错误文案出现英文 raw message 的问题（如 `Invalid username or password`）。
+- 修复注册场景缺少确认密码与邀请码必填中文提示的问题。
+- 修复投资页与分析页缺少统一隐私工具入口的问题。
+
+### Ops / Deployment
+- 全部改动按 Web 直推规则发布到 `main`，无需后端迁移。
+- 推送波次覆盖提交：`bc1a0a8` → `681ecbf`（含中间回退提交）。
+
+### Data / Migration
+- None（无数据库迁移）
+
+### Verification
+- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`（通过）
+- 页面验收路径：
+  - `/` 门户视觉与按钮
+  - `/app/login`、`/app/register` 登录注册链路
+  - `/app/home` 主题切换与顶部工具按钮
+  - `/app/invest` 浅色风格与隐私/截图按钮
+  - `/app/analysis` 隐私/截图按钮与金额掩码
+
+### Notes
+- 本版本为当天 Web 多轮迭代的收敛版本，文档按“上线波次”合并记录，不按单 commit 拆分。
+- 关联文档：`docs/README_WEB_CHANGELOG_TIMELINE.md`
+
+---
+
 ## v1.0.7 - Web 登录注册体验与中文错误提示完善
 - 发布状态：Released
 - 发布类型：Patch
