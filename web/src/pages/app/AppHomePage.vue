@@ -59,29 +59,6 @@
             <div class="invest-total-label">持有总市值 (CNY)</div>
             <div class="invest-total-value">{{ masked(formatCny(investTotal.mv)) }}</div>
           </div>
-          <div class="pnl-stats">
-            <article class="pnl-stat-item">
-              <div class="pnl-label">今日盈亏</div>
-              <div class="pnl-value" :class="valueClass(investTotal.dayPnl)">
-                {{ masked(formatSignedCny(investTotal.dayPnl)) }}
-              </div>
-              <div class="pnl-rate" :class="valueClass(investTotal.dayRate)">{{ formatPct(investTotal.dayRate) }}</div>
-            </article>
-            <article class="pnl-stat-item">
-              <div class="pnl-label">持仓盈亏</div>
-              <div class="pnl-value" :class="valueClass(investTotal.floatPnl)">
-                {{ masked(formatSignedCny(investTotal.floatPnl)) }}
-              </div>
-              <div class="pnl-rate" :class="valueClass(investTotal.floatRate)">{{ formatPct(investTotal.floatRate) }}</div>
-            </article>
-            <article class="pnl-stat-item">
-              <div class="pnl-label">累计盈亏</div>
-              <div class="pnl-value" :class="valueClass(investTotal.totalPnl)">
-                {{ masked(formatSignedCny(investTotal.totalPnl)) }}
-              </div>
-              <div class="pnl-rate" :class="valueClass(investTotal.totalRate)">{{ formatPct(investTotal.totalRate) }}</div>
-            </article>
-          </div>
         </div>
 
         <div class="category-grid">
@@ -677,35 +654,6 @@ onBeforeUnmount(() => {
 .invest-total-value.other { color: var(--legacy-orange); }
 .invest-total-value.liability { color: var(--legacy-red); }
 
-.pnl-stats {
-  display: flex;
-  gap: calc(10px * var(--legacy-density-space-scale));
-}
-
-.pnl-stat-item {
-  background: var(--legacy-bg-tertiary);
-  border: 2px solid var(--legacy-border);
-  border-radius: var(--legacy-radius-sm);
-  padding: calc(12px * var(--legacy-density-space-scale)) calc(14px * var(--legacy-density-space-scale));
-  min-width: calc(148px * var(--legacy-density-card-minh));
-}
-
-.pnl-label {
-  font-size: calc(11px * var(--legacy-density-font-scale));
-  color: var(--legacy-text-secondary);
-  margin-bottom: calc(6px * var(--legacy-density-space-scale));
-}
-
-.pnl-value {
-  font-size: calc(16px * var(--legacy-density-font-scale));
-  font-weight: 700;
-}
-
-.pnl-rate {
-  margin-top: calc(3px * var(--legacy-density-space-scale));
-  font-size: calc(12px * var(--legacy-density-font-scale));
-}
-
 .up { color: var(--legacy-red); }
 .down { color: var(--legacy-green); }
 
@@ -922,8 +870,7 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
 
-  .asset-breakdown,
-  .pnl-stats {
+  .asset-breakdown {
     flex-wrap: wrap;
     width: 100%;
   }
@@ -1161,43 +1108,6 @@ onBeforeUnmount(() => {
 
 .kk-light-v1 .invest-total-value.liability {
   color: rgba(239, 68, 68, 0.95);
-}
-
-.kk-light-v1 .pnl-stats {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.kk-light-v1 .pnl-stat-item {
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 18px;
-  padding: 12px 14px;
-  min-width: 160px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-.kk-light-v1 .pnl-label {
-  font-size: 11px;
-  font-weight: 900;
-  color: rgba(15, 23, 42, 0.55);
-  margin-bottom: 6px;
-}
-
-.kk-light-v1 .pnl-value {
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-}
-
-.kk-light-v1 .pnl-rate {
-  margin-top: 4px;
-  font-size: 12px;
-  font-weight: 900;
-  color: rgba(15, 23, 42, 0.55);
 }
 
 /* 1:1 视觉稿颜色 */
