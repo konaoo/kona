@@ -1,6 +1,6 @@
 <template>
   <LegacyAppShell>
-    <div id="capture-area">
+    <div id="capture-area" class="kk-assets" :class="{ 'kk-light-v1': theme === 'light' }">
       <div class="home-action-row" aria-label="首页工具栏">
         <button
           class="home-action-btn"
@@ -938,6 +938,433 @@ onBeforeUnmount(() => {
   .row-actions {
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+/* 浅色主题 1:1 视觉稿（仅首页） */
+.kk-light-v1 {
+  color: #0f172a;
+}
+
+.kk-light-v1 .home-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.kk-light-v1 .home-action-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.kk-light-v1 .home-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.kk-light-v1 .legacy-section {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.14);
+  border-radius: 26px;
+  padding: 18px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  position: relative;
+  overflow: hidden;
+}
+
+.kk-light-v1 .legacy-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at 40% 10%, #000 0%, transparent 60%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.kk-light-v1 .legacy-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.kk-light-v1 .assets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.kk-light-v1 .total-mv-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  color: rgba(15, 23, 42, 0.55);
+  margin-bottom: 10px;
+}
+
+.kk-light-v1 .main-mv {
+  font-size: clamp(38px, 4vw, 56px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1.05;
+  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.kk-light-v1 .asset-breakdown {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kk-light-v1 .asset-card {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 12px 14px;
+  min-width: 168px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.kk-light-v1 .asset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.14);
+  border-color: rgba(99, 102, 241, 0.22);
+}
+
+.kk-light-v1 .asset-card-label {
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.55);
+  margin-bottom: 8px;
+}
+
+.kk-light-v1 .asset-card-value {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.kk-light-v1 .asset-card-value.cash {
+  color: rgba(16, 185, 129, 0.95);
+}
+
+.kk-light-v1 .asset-card-value.invest {
+  color: rgba(99, 102, 241, 0.95);
+}
+
+.kk-light-v1 .asset-card-value.other {
+  color: rgba(255, 77, 141, 0.95);
+}
+
+.kk-light-v1 .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.kk-light-v1 .section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.kk-light-v1 .goto-link {
+  color: rgba(15, 23, 42, 0.55);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.kk-light-v1 .goto-link:hover {
+  text-decoration: underline;
+}
+
+.kk-light-v1 .section-add-btn {
+  border: 0;
+  cursor: pointer;
+  height: 34px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
+  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.22);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.kk-light-v1 .section-add-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 55px rgba(99, 102, 241, 0.28);
+}
+
+.kk-light-v1 .invest-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.kk-light-v1 .invest-total-label {
+  color: rgba(15, 23, 42, 0.55);
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+}
+
+.kk-light-v1 .invest-total-value {
+  font-size: clamp(26px, 2.6vw, 40px);
+  font-weight: 900;
+  letter-spacing: -0.6px;
+}
+
+.kk-light-v1 .invest-total-value.cash {
+  color: rgba(16, 185, 129, 0.95);
+}
+
+.kk-light-v1 .invest-total-value.other {
+  color: rgba(255, 77, 141, 0.95);
+}
+
+.kk-light-v1 .invest-total-value.liability {
+  color: rgba(239, 68, 68, 0.95);
+}
+
+.kk-light-v1 .pnl-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kk-light-v1 .pnl-stat-item {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 12px 14px;
+  min-width: 160px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.kk-light-v1 .pnl-label {
+  font-size: 11px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.55);
+  margin-bottom: 6px;
+}
+
+.kk-light-v1 .pnl-value {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.kk-light-v1 .pnl-rate {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.55);
+}
+
+/* 1:1 视觉稿颜色 */
+.kk-light-v1 .up {
+  color: rgba(255, 77, 141, 0.95);
+  font-weight: 900;
+}
+
+.kk-light-v1 .down {
+  color: rgba(99, 102, 241, 0.95);
+  font-weight: 900;
+}
+
+.kk-light-v1 .category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kk-light-v1 .category-card {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.kk-light-v1 .category-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.14);
+  border-color: rgba(99, 102, 241, 0.22);
+}
+
+.kk-light-v1 .category-header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.kk-light-v1 .category-name {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.kk-light-v1 .category-mv {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+  margin-bottom: 6px;
+}
+
+.kk-light-v1 .category-mv.a {
+  color: rgba(99, 102, 241, 0.95);
+}
+
+.kk-light-v1 .category-mv.us {
+  color: rgba(168, 85, 247, 0.95);
+}
+
+.kk-light-v1 .category-mv.hk {
+  color: rgba(255, 77, 141, 0.95);
+}
+
+.kk-light-v1 .category-mv.fund {
+  color: rgba(16, 185, 129, 0.95);
+}
+
+.kk-light-v1 .category-pnl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.kk-light-v1 .category-pnl-label {
+  color: rgba(15, 23, 42, 0.55);
+}
+
+.kk-light-v1 .asset-card-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.kk-light-v1 .asset-card-item {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  padding: 12px;
+  min-height: 96px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.kk-light-v1 .asset-card-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.14);
+  border-color: rgba(99, 102, 241, 0.22);
+}
+
+.kk-light-v1 .asset-card-item-name {
+  color: rgba(15, 23, 42, 0.55);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.kk-light-v1 .asset-card-item-value {
+  margin-top: 12px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.kk-light-v1 .asset-card-item-value.cash {
+  color: rgba(16, 185, 129, 0.95);
+}
+
+.kk-light-v1 .asset-card-item-value.other {
+  color: rgba(255, 77, 141, 0.95);
+}
+
+.kk-light-v1 .asset-card-item-value.liability {
+  color: rgba(239, 68, 68, 0.95);
+}
+
+.kk-light-v1 .action-btn {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.kk-light-v1 .action-btn:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+@media (max-width: 1200px) {
+  .kk-light-v1 .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .kk-light-v1 .assets-header,
+  .kk-light-v1 .invest-header {
+    flex-direction: column;
+  }
+
+  .kk-light-v1 .main-mv {
+    font-size: 44px;
+  }
+}
+
+@media (max-width: 520px) {
+  .kk-light-v1 .asset-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kk-light-v1 .category-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
