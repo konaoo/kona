@@ -631,10 +631,10 @@ function scheduleAutoRefresh(delayMs?: number) {
 async function refreshQuotesOnly() {
   try {
     const changed = await loadBootstrap(['portfolio', 'rates'])
-    if (changed.has('portfolio') && !state.portfolio.length) {
+    if (!state.portfolio.length && !changed.has('portfolio')) {
       await loadPortfolio()
     }
-    if (changed.has('rates') && !Object.keys(state.rates).length) {
+    if (!Object.keys(state.rates).length && !changed.has('rates')) {
       await loadRates()
     }
   } catch {
@@ -716,10 +716,10 @@ function markRatesDirty() {
 async function refreshStaticOnly() {
   try {
     const changed = await loadBootstrap(['portfolio', 'rates'])
-    if (changed.has('portfolio') && !state.portfolio.length) {
+    if (!state.portfolio.length && !changed.has('portfolio')) {
       await loadPortfolio()
     }
-    if (changed.has('rates') && !Object.keys(state.rates).length) {
+    if (!Object.keys(state.rates).length && !changed.has('rates')) {
       await loadRates()
     }
   } catch {
