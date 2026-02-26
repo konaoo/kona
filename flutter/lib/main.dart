@@ -82,7 +82,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
       case SessionBootState.initializing:
         return const StartupSplashPage();
       case SessionBootState.authenticated:
-        return MainApp(onLogout: _onLogout);
+        // B1/B2: 包裹 AppLockOverlay
+        return AppLockOverlay(child: MainApp(onLogout: _onLogout));
       case SessionBootState.unauthenticated:
         return LoginPage(onLoginSuccess: _onLoginSuccess);
     }
@@ -144,6 +145,214 @@ class StartupSplashPage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// B1: AppLockOverlay - 全屏锁屏遮罩
+// ─────────────────────────────────────────────
+class AppLockOverlay extends StatefulWidget {
+  final Widget child;
+
+  const AppLockOverlay({super.key, required this.child});
+
+  @override
+  State<AppLockOverlay> createState() => _AppLockOverlayState();
+}
+
+class _AppLockOverlayState extends State<AppLockOverlay>
+    with WidgetsBindingObserver {
+  bool _unlocking = false;
+  bool _cancelled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // B2: 回到前台时触发锁定（离开超过 60s）
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 由 _MainAppState 处理数据刷新；这里检查是否需要锁屏
+      final appState = context.read<AppState>();
+      if (appState.biometricEnabled && appState.isLoggedIn) {
+        appState.lockApp();
+      }
+    }
+  }
+
+  Future<void> _tryUnlock() async {
+    if (_unlocking) return;
+    setState(() {
+      _unlocking = true;
+      _cancelled = false;
+    });
+    final ok = await context.read<AppState>().tryBiometricLogin();
+    if (!mounted) return;
+    if (ok) {
+      context.read<AppState>().unlockApp();
+    } else {
+      setState(() {
+        _unlocking = false;
+        _cancelled = true;
+      });
+    }
+  }
+
+  // B4: 取消后可重试
+  void _retryUnlock() {
+    setState(() {
+      _unlocking = false;
+      _cancelled = false;
+    });
+    _tryUnlock();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // B4: isAppLocked 决定是否显示遮罩
+    if (!appState.isAppLocked) {
+      return widget.child;
+    }
+
+    return Stack(
+      children: [
+        widget.child,
+        // 遮罩层
+        Material(
+          color: Colors.transparent,
+          child: Container(
+            color: isDark
+                ? Colors.black.withOpacity(0.88)
+                : Colors.white.withOpacity(0.92),
+            child: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 图标
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.accent.withOpacity(0.12),
+                          border: Border.all(
+                            color: AppTheme.accent.withOpacity(0.35),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.lock_outline_rounded,
+                          size: 36,
+                          color: AppTheme.accentLight,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        '应用已锁定',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '请通过生物识别解锁应用',
+                        style: TextStyle(
+                          fontSize: FontSize.base,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      if (_unlocking)
+                        Column(
+                          children: [
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: AppTheme.accent,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '正在验证身份…',
+                              style: TextStyle(
+                                fontSize: FontSize.base,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        // 解锁按钮
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            key: const Key('app_lock_biometric_button'),
+                            onPressed: _tryUnlock,
+                            icon: const Icon(Icons.fingerprint_rounded),
+                            label: const Text('生物识别解锁'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: Colors.white,
+                              textStyle: TextStyle(
+                                fontSize: FontSize.lg,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_cancelled) ...[
+                          const SizedBox(height: 16),
+                          Text(
+                            '验证失败，请重试',
+                            style: TextStyle(
+                              color: AppTheme.danger,
+                              fontSize: FontSize.base,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            key: const Key('app_lock_retry_button'),
+                            onPressed: _retryUnlock,
+                            child: Text(
+                              '重新验证',
+                              style: TextStyle(color: AppTheme.accentLight),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

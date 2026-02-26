@@ -88,6 +88,8 @@ class AppState extends ChangeNotifier {
   bool _biometricEnabled = false;
   String? _authErrorMessage;
   AuthLogoutMode _logoutMode = AuthLogoutMode.normal;
+  // C1: App 锁屏状态
+  bool _isAppLocked = false;
 
   // 资产数据
   double _totalAsset = 0;
@@ -170,6 +172,8 @@ class AppState extends ChangeNotifier {
   bool get biometricEnabled => _biometricEnabled;
   String? get authErrorMessage => _authErrorMessage;
   AuthLogoutMode get logoutMode => _logoutMode;
+  // C1: getter
+  bool get isAppLocked => _isAppLocked;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -916,6 +920,19 @@ class AppState extends ChangeNotifier {
     _authErrorMessage = null;
   }
 
+  // C2: App 锁屏控制
+  void lockApp() {
+    if (_isAppLocked) return;
+    _isAppLocked = true;
+    notifyListeners();
+  }
+
+  void unlockApp() {
+    if (!_isAppLocked) return;
+    _isAppLocked = false;
+    notifyListeners();
+  }
+
   static const Map<String, bool> _fallbackMarketOpenStatus = {
     'a': false,
     'hk': false,
@@ -1429,6 +1446,9 @@ class AppState extends ChangeNotifier {
       _token = null;
       _api.clearToken();
       _sessionBootState = SessionBootState.unauthenticated;
+      // C3: 冷启动 biometricReady → 自动锁定，登录页会显示生物识别按钮，
+      //     同时通知 AppLockOverlay 显示锁屏层（main.dart 监听）。
+      _isAppLocked = true;
       _isSessionChecking = false;
       notifyListeners();
       return;
