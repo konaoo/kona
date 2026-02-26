@@ -6,6 +6,7 @@ import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/asset_action_result.dart';
 import '../models/portfolio.dart';
+import '../models/asset.dart';
 import 'top_toast.dart';
 
 class InvestTradeDialog extends StatefulWidget {
@@ -98,23 +99,23 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   Widget _marketBadge(String typeName) {
-    String label = 'A';
+    String label = 'A股';
     Color color = AppTheme.accent;
     switch (typeName) {
       case '美股':
-        label = 'US';
+        label = '美股';
         color = AppTheme.danger;
         break;
       case '港股':
-        label = 'HK';
+        label = '港股';
         color = AppTheme.success;
         break;
       case '基金':
-        label = 'F';
+        label = '基金';
         color = const Color(0xFFF59E0B);
         break;
       default:
-        label = 'A';
+        label = 'A股';
         color = AppTheme.accent;
     }
     return Container(
@@ -137,6 +138,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   void _onQueryChanged(String value) {
     if (value.trim().isEmpty) {
+      _debounce?.cancel();
       setState(() {
         _selected = null;
         _results = [];
@@ -152,7 +154,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _errorText = null;
     _debounce?.cancel();
     _debounce = Timer(
-      const Duration(milliseconds: 300),
+      const Duration(milliseconds: 800),
       () => _search(value.trim()),
     );
   }
@@ -162,6 +164,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final appState = context.read<AppState>();
     final results = await appState.searchStocks(query);
     if (!mounted) return;
+    
+    // 放弃过期的结果（如用户已清空或改变了搜索词）
+    if (_queryController.text.trim() != query) {
+      return;
+    }
+    
     setState(() {
       _results = results;
       _searching = false;
@@ -178,6 +186,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final cashOptions = appState.cashAssets
         .where((asset) => (asset.id ?? 0) > 0)
         .toList();
+    if (_currentActionMode() != 'sell') {
+      cashOptions.insert(0, Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'));
+    }
     if (cashOptions.isEmpty) {
       _selectedCashAssetId = null;
       return;
@@ -249,7 +260,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
     late final Future<AssetActionResult> actionFuture;
     final needsCashSource = _requiresCashSource(mode);
-    if (needsCashSource && (_selectedCashAssetId == null || _selectedCashAssetId! <= 0)) {
+    if (needsCashSource && (_selectedCashAssetId == null || (_selectedCashAssetId! <= 0 && _selectedCashAssetId != -999))) {
       setState(() {
         _saving = false;
         _errorText = '请选择资金来源账户';
@@ -623,6 +634,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         .where((asset) => (asset.id ?? 0) > 0)
         .toList();
     final actionMode = _currentActionMode();
+    if (actionMode != 'sell') {
+      cashOptions.insert(0, Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'));
+    }
     if (_selectedCashAssetId != null &&
         cashOptions.every((asset) => asset.id != _selectedCashAssetId)) {
       _selectedCashAssetId = null;
@@ -805,7 +819,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       return DropdownMenuItem<int>(
                         value: asset.id,
                         child: Text(
-                          '${asset.name} · ${asset.curr} ${_formatInputNumber(asset.amount)}',
+                          asset.id == -999 ? asset.name : '${asset.name} · ${asset.curr} ${_formatInputNumber(asset.amount)}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       );

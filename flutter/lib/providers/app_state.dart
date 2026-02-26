@@ -2612,6 +2612,13 @@ class AppState extends ChangeNotifier {
     if (price <= 0 || qty <= 0) {
       return const AssetActionResult.failure('请输入有效价格和数量');
     }
+    if (cashAssetId == -999) {
+      if (_portfolioIndexByCode(code) >= 0) {
+        return buyInvestment(code: code, price: price, qty: qty, awaitRefresh: awaitRefresh);
+      } else {
+        return addInvestment(code: code, name: name, price: price, qty: qty, curr: curr, assetType: assetType, awaitRefresh: awaitRefresh);
+      }
+    }
     if (cashAssetId <= 0) {
       return const AssetActionResult.failure('请选择资金来源账户');
     }
@@ -2721,6 +2728,9 @@ class AppState extends ChangeNotifier {
     required int cashAssetId,
     bool awaitRefresh = true,
   }) async {
+    if (cashAssetId == -999) {
+      return sellInvestment(code: code, price: price, qty: qty, awaitRefresh: awaitRefresh);
+    }
     final index = _portfolioIndexByCode(code);
     if (index < 0) return const AssetActionResult.failure('未找到该持仓');
     if (qty <= 0 || price <= 0) {

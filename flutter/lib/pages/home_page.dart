@@ -154,28 +154,7 @@ class HomePageState extends State<HomePage> {
                           },
                         ),
 
-                        const SizedBox(height: Spacing.xl),
 
-                        // 资产里程碑（三列）
-                        Row(
-                          children: [
-                            _buildMilestone(
-                              '本月收益',
-                              appState.monthChange,
-                              appState,
-                            ),
-                            _buildMilestone(
-                              '今年收益',
-                              appState.yearChange,
-                              appState,
-                            ),
-                            _buildMilestone(
-                              '历史峰值',
-                              appState.historyPeak,
-                              appState,
-                            ),
-                          ],
-                        ),
                       ],
                     ),
                   ),
@@ -232,46 +211,5 @@ class HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildMilestone(String label, double value, AppState appState) {
-    final color = value >= 0 ? AppTheme.success : AppTheme.danger;
-    final isHistoryPeak = label == '历史峰值';
-    final hasData =
-        isHistoryPeak ||
-        (label == '本月收益' || label == '今年收益'
-            ? appState.overviewMilestonesReady
-            : true);
-    final displayText = hasData
-        ? appState.formatAmount(value, prefix: '')
-        : '--';
-    final displayColor = hasData
-        ? (isHistoryPeak ? AppTheme.textPrimary : color)
-        : AppTheme.textTertiary;
 
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: AppTheme.textTertiary),
-          ),
-          const SizedBox(height: 4),
-          SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.center,
-              child: Text(
-                displayText,
-                style: TextStyle(
-                  fontSize: FontSize.lg,
-                  fontWeight: FontWeight.w600,
-                  color: displayColor,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

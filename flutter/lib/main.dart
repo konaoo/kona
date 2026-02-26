@@ -178,15 +178,11 @@ class _AppLockOverlayState extends State<AppLockOverlay>
     super.dispose();
   }
 
-  // B2: 回到前台时触发锁定（离开超过 60s）
+  // B2: 回到前台时触发锁定逻辑已应要求移除
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // 由 _MainAppState 处理数据刷新；这里检查是否需要锁屏
-      final appState = context.read<AppState>();
-      if (appState.biometricEnabled && appState.isLoggedIn) {
-        appState.lockApp();
-      }
+      // 由 _MainAppState 处理数据刷新；此处不再强制执行 appState.lockApp()
     }
   }
 
@@ -370,6 +366,7 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   int _currentIndex = 0;
   Timer? _priceTimer;
+  Timer? _syncTimer;
   DateTime? _lastResumeAt;
   DateTime? _lastPausedAt;
   bool _fabVisible = true;
@@ -382,11 +379,13 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startPriceTimer();
+    _startSyncTimer();
   }
 
   @override
   void dispose() {
     _stopPriceTimer();
+    _stopSyncTimer();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -400,6 +399,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           now.difference(_lastResumeAt!) > const Duration(seconds: 15);
       _lastResumeAt = now;
       _startPriceTimer(immediate: shouldImmediate);
+      _startSyncTimer(immediate: false); // Resume triggers manual check below, timer starts for future
 
       final pausedAt = _lastPausedAt;
       if (pausedAt != null) {
@@ -417,6 +417,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         state == AppLifecycleState.inactive) {
       _lastPausedAt = DateTime.now();
       _stopPriceTimer();
+      _stopSyncTimer();
     }
   }
 
@@ -452,7 +453,43 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _priceTimer = null;
   }
 
+  Future<void> _runDataSync() async {
+    if (!mounted) return;
+    // 静默增量刷新核心业务数据（不强制拉行情以免和 priceTimer 冲突）
+    await context.read<AppState>().refreshByVersion(force: false, refreshQuotes: false);
+  }
+
+  void _scheduleNextSyncTimer() {
+    if (!mounted) return;
+    // 每 2 分钟执行一次前台静默同步
+    const intervalSeconds = 120;
+    _syncTimer = Timer(const Duration(seconds: intervalSeconds), () {
+      if (!mounted) return;
+      unawaited(() async {
+        await _runDataSync();
+        _scheduleNextSyncTimer();
+      }());
+    });
+  }
+
+  void _startSyncTimer({bool immediate = false}) {
+    _syncTimer?.cancel();
+    if (immediate) {
+      unawaited(_runDataSync());
+    }
+    _scheduleNextSyncTimer();
+  }
+
+  void _stopSyncTimer() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+  }
+
   void _switchTab(int index) {
+    if (_currentIndex != index) {
+      // 切换 Tab 时触发一次静默增量刷新（SWR）
+      unawaited(_runDataSync());
+    }
     setState(() {
       _currentIndex = index;
       _fabVisible = true;

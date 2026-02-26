@@ -365,10 +365,33 @@ def search_stocks(query: str) -> list:
                 logger.error(f"Search task failed: {e}")
                 
     final_results = []
+    query_lower = query.lower()
+    
     for item in results:
         asset_type = infer_asset_type(item.get('code', ''), item.get('name', ''))
         item['asset_type'] = asset_type
         item['type_name'] = asset_type_label(asset_type)
         final_results.append(item)
 
+    # 排序逻辑：完全匹配代码的优先，然后是名字前置匹配，然后默认顺序
+    def _sort_key(item):
+        code = (item.get('code') or '').lower()
+        name = (item.get('name') or '').lower()
+        # 清除代码前缀后缀来进行更准确的比较
+        clean_code = code.replace('gb_', '').replace('.hk', '').replace('f_', '').replace('ft_', '')
+        
+        # 优先级：
+        # 1. 代码完全匹配 (包括去前缀后的)
+        if query_lower == code or query_lower == clean_code:
+            return 0
+        # 2. 名字前置匹配
+        if name.startswith(query_lower):
+            return 1
+        # 3. 代码包含
+        if query_lower in code or query_lower in clean_code:
+            return 2
+        # 4. 其他
+        return 3
+
+    final_results.sort(key=_sort_key)
     return final_results[:15]
