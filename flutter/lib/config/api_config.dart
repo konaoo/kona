@@ -14,7 +14,7 @@ class ApiConfig {
   static const String inviteValidate = '/api/auth/invite/validate';
 
   /// 邀请码申请入口（可替换为你的问卷/表单链接）
-  static const String inviteAcquireUrl = 'https://github.com/konaoo/kona';
+  static const String inviteAcquireUrl = 'https://xhslink.com/m/1yML4q97wdK';
   static const String changePassword = '/api/auth/password/change';
   static const String bootstrapCredentials = '/api/auth/bootstrap_credentials';
   static const String profileMe = '/api/auth/me';

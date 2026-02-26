@@ -904,7 +904,7 @@ class _LoginPageState extends State<LoginPage>
 
                                      // 生物识别文字链接
                                      if (showBiometric) ...[
-                                       const SizedBox(height: Spacing.lg),
+                                       const SizedBox(height: Spacing.xl), // 从 lg 加大到 xl
                                        GestureDetector(
                                          key: const Key('biometric_text_button'),
                                          onTap: _submitting
@@ -918,14 +918,14 @@ class _LoginPageState extends State<LoginPage>
                                                children: [
                                                  Icon(
                                                    Icons.fingerprint_rounded,
-                                                   size: 22,
+                                                   size: 26, // 图标进一步加大
                                                    color: AppTheme.textSecondary,
                                                  ),
                                                  const SizedBox(width: 8),
                                                  Text(
                                                    '使用 Face ID / 指纹登录',
                                                    style: TextStyle(
-                                                     fontSize: FontSize.lg,
+                                                     fontSize: 18, // 进一步明确字号增大
                                                      color:
                                                          AppTheme.textSecondary,
                                                    ),
@@ -935,10 +935,10 @@ class _LoginPageState extends State<LoginPage>
                                            ),
                                          ),
                                        ),
-                                       const SizedBox(height: Spacing.sm),
+                                       const SizedBox(height: Spacing.md), // 底部间距从 sm 加大到 md
                                      ],
 
-                                     const SizedBox(height: Spacing.lg),
+                                     const SizedBox(height: Spacing.xl),
                                     Row(
                                       children: [
                                         Expanded(

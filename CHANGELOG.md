@@ -8,6 +8,43 @@
 
 ---
 
+## v1.0.9 - App 锁屏与登录体验再优化
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Docs
+
+### Summary
+- App 端实现了基于本地生物识别的锁屏保护（冷启动与后台唤醒）。
+- 端侧登录页视觉重构：新增独立动画、密码明暗文切换、错误反馈动效。
+- 登录页新增“记住用户名”可选能力。
+- 修复并优化了生物识别按钮及其周边元素的视觉间距。
+- 修改了邀请码获取引导外部跳转链接为小红书地址。
+
+### Added
+- `AppState` 配置新增了 `isAppLocked` 全局锁屏控制变量。
+- 登录界面的入场、震动报错与成功提示打钩三大辅助动画体系。
+
+### Changed
+- 调整了指纹登录的大图标渲染尺寸（26px）及关联上下文间距。
+- `api_config.dart` 中的 `inviteAcquireUrl` 改为小红书外链。
+
+### Fixed
+- 修复了旧版 iOS 模拟器因为 UI 空间过窄导致的生物识别不明显问题。
+
+### Ops / Deployment
+- 本次改动直接推送到 `main`。
+
+### Data / Migration
+- None
+
+### Verification
+- iOS 模拟器/真机冷启与登录页相关行为验证完毕。
+
+### Notes
+- 核心修改文件涵盖 `main.dart`（全局监听）、`login_page.dart` 和 `api_config.dart`。
+
+---
+
 ## v1.0.8 - Web 门户/认证改版、主题体系与投资分析隐私工具统一
 - 发布状态：Released
 - 发布类型：Patch
