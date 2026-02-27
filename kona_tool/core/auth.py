@@ -206,15 +206,20 @@ def optional_auth(f):
         token = _extract_bearer_token()
         if token:
             valid, payload = verify_token(token)
-            if valid and payload:
-                user_id = payload.get("user_id")
-                if user_id:
-                    from core.db import db as global_db
+            if not valid or not payload:
+                return jsonify({"error": "Invalid or expired token"}), 401
+            user_id = payload.get("user_id")
+            if not user_id:
+                return jsonify({"error": "Invalid token payload"}), 401
+            from core.db import db as global_db
 
-                    user = global_db.get_user_by_id(user_id)
-                    if user and str(user.get("status") or "active").lower() == "active":
-                        g.user_id = user.get("id")
-                        g.username = user.get("username")
+            user = global_db.get_user_by_id(user_id)
+            if not user:
+                return jsonify({"error": "User not found"}), 401
+            if str(user.get("status") or "active").lower() != "active":
+                return jsonify({"error": "User is disabled"}), 403
+            g.user_id = user.get("id")
+            g.username = user.get("username")
         return f(*args, **kwargs)
 
     return decorated

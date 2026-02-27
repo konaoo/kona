@@ -1,6 +1,7 @@
 import { clearAuth, persistAuth, readAccessToken, readRefreshToken } from './auth'
 
 export type ApiError = Error & { status?: number; payload?: unknown }
+let refreshInflight: Promise<boolean> | null = null
 
 async function parseJson(resp: Response): Promise<unknown> {
   const text = await resp.text()
@@ -13,29 +14,39 @@ async function parseJson(resp: Response): Promise<unknown> {
 }
 
 async function refreshTokenIfNeeded(): Promise<boolean> {
-  const refreshToken = readRefreshToken()
-  if (!refreshToken) return false
-
-  const resp = await fetch('/api/auth/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  })
-
-  if (!resp.ok) {
-    clearAuth()
-    return false
+  if (refreshInflight) {
+    return refreshInflight
   }
+  refreshInflight = (async () => {
+    const refreshToken = readRefreshToken()
+    if (!refreshToken) return false
 
-  const payload = (await parseJson(resp)) as Record<string, unknown>
-  const nextAccess = String(payload.access_token || '')
-  const nextRefresh = String(payload.refresh_token || '')
-  if (!nextAccess || !nextRefresh) {
-    clearAuth()
-    return false
+    const resp = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+
+    if (!resp.ok) {
+      clearAuth()
+      return false
+    }
+
+    const payload = (await parseJson(resp)) as Record<string, unknown>
+    const nextAccess = String(payload.access_token || '')
+    const nextRefresh = String(payload.refresh_token || '')
+    if (!nextAccess || !nextRefresh) {
+      clearAuth()
+      return false
+    }
+    persistAuth(nextAccess, nextRefresh, payload.user)
+    return true
+  })()
+  try {
+    return await refreshInflight
+  } finally {
+    refreshInflight = null
   }
-  persistAuth(nextAccess, nextRefresh, payload.user)
-  return true
 }
 
 export async function apiRequest<T>(

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../models/asset_action_result.dart';
+import 'secure_storage_service.dart';
 import '../utils/network_error_stub.dart'
     if (dart.library.io) '../utils/network_error_io.dart';
 
@@ -16,6 +17,8 @@ class ApiService {
 
   String? _token;
   final http.Client _client = http.Client();
+  final SecureStorageService _secureStorage = SecureStorageService();
+  Future<bool>? _refreshInFlight;
 
   /// 设置认证 token
   void setToken(String token) {
@@ -34,6 +37,69 @@ class ApiService {
       headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
+  }
+
+  Future<void> _clearAuthTokensFromStorage() async {
+    try {
+      await _secureStorage.clearToken();
+      await _secureStorage.clearRefreshToken();
+    } catch (_) {}
+    _token = null;
+  }
+
+  Future<bool> _refreshAccessToken() async {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _refreshAccessTokenInternal();
+    _refreshInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_refreshInFlight, future)) {
+        _refreshInFlight = null;
+      }
+    }
+  }
+
+  Future<bool> _refreshAccessTokenInternal() async {
+    final refreshToken = await _secureStorage.getRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return false;
+    }
+    try {
+      final response = await _client
+          .post(
+            buildApiUri(ApiConfig.refresh),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(const Duration(seconds: ApiConfig.timeout));
+      if (response.statusCode != 200) {
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await _clearAuthTokensFromStorage();
+        }
+        return false;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        await _clearAuthTokensFromStorage();
+        return false;
+      }
+      final accessToken = decoded['access_token']?.toString() ?? '';
+      final nextRefreshToken = decoded['refresh_token']?.toString() ?? '';
+      if (accessToken.isEmpty || nextRefreshToken.isEmpty) {
+        await _clearAuthTokensFromStorage();
+        return false;
+      }
+      _token = accessToken;
+      await _secureStorage.setToken(accessToken);
+      await _secureStorage.setRefreshToken(nextRefreshToken);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Uri buildApiUri(
@@ -95,6 +161,7 @@ class ApiService {
   /// 通用 GET 请求
   Future<dynamic> _get(String endpoint) async {
     Object? lastError;
+    var retriedAfterRefresh = false;
     for (int attempt = 0; attempt < 3; attempt++) {
       try {
         final response = await _client
@@ -104,6 +171,14 @@ class ApiService {
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
         } else if (response.statusCode == 401) {
+          if (!retriedAfterRefresh && endpoint != ApiConfig.refresh) {
+            final refreshed = await _refreshAccessToken();
+            if (refreshed) {
+              retriedAfterRefresh = true;
+              attempt -= 1;
+              continue;
+            }
+          }
           throw ApiException('未登录或登录已过期', statusCode: 401);
         } else {
           throw ApiException(
@@ -133,6 +208,7 @@ class ApiService {
   }) async {
     Object? lastError;
     final maxAttempts = retryOnTransient ? 2 : 1;
+    var retriedAfterRefresh = false;
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         final response = await _client
@@ -146,6 +222,17 @@ class ApiService {
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
         } else if (response.statusCode == 401) {
+          if (!retriedAfterRefresh &&
+              endpoint != ApiConfig.refresh &&
+              endpoint != ApiConfig.login &&
+              endpoint != ApiConfig.register) {
+            final refreshed = await _refreshAccessToken();
+            if (refreshed) {
+              retriedAfterRefresh = true;
+              attempt -= 1;
+              continue;
+            }
+          }
           throw ApiException('未登录或登录已过期', statusCode: 401);
         } else {
           throw ApiException(

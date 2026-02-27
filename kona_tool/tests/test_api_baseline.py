@@ -189,6 +189,25 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json().get('error'), 'Missing code')
 
+    def test_optional_auth_rejects_invalid_bearer_token(self):
+        resp = self.client.get(
+            '/api/portfolio?type=all',
+            headers={'Authorization': 'Bearer invalid.token.payload'},
+        )
+        self.assertEqual(resp.status_code, 401)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get('error'), 'Invalid or expired token')
+
+    def test_optional_auth_rejects_invalid_bearer_token_on_bootstrap(self):
+        resp = self.client.post(
+            '/api/sync/bootstrap',
+            json={'include': ['portfolio']},
+            headers={'Authorization': 'Bearer invalid.token.payload'},
+        )
+        self.assertEqual(resp.status_code, 401)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get('error'), 'Invalid or expired token')
+
     def test_prices_batch_missing_codes(self):
         resp = self.client.post('/api/prices/batch', json={})
         self.assertEqual(resp.status_code, 400)
