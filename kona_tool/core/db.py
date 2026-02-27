@@ -3406,7 +3406,7 @@ class DatabaseManager:
                 month_start = today.strftime('%Y-%m-01')
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    SELECT date, total_pnl, day_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
@@ -3447,7 +3447,7 @@ class DatabaseManager:
                 year_start = today.strftime('%Y-01-01')
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    SELECT date, total_pnl, day_pnl, total_invest FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
