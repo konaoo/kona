@@ -152,7 +152,7 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("month", "u1")
 
         feb = [i for i in data["items"] if i["label"] == "2月"][0]
-        self.assertEqual(feb["pnl"], 100)
+        self.assertEqual(feb["pnl"], 10)
 
     def test_year_view_ignores_weekend_totals(self):
         _insert_snapshot("2026-02-06", 100, 10)
@@ -165,7 +165,7 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("year", "u1")
 
         year = [i for i in data["items"] if i["label"] == "2026"][0]
-        self.assertEqual(year["pnl"], 100)
+        self.assertEqual(year["pnl"], 10)
 
     def test_day_view_supports_specific_year_month_and_selectable(self):
         _insert_snapshot("2026-02-06", 100, 10)

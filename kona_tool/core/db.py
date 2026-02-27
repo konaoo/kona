@@ -3836,8 +3836,9 @@ class DatabaseManager:
                         current_total = year_last.get(y, prev_total)
                         pnl = current_total - prev_total
                         items.append({'label': str(y), 'pnl': pnl})
-                        total_pnl += pnl
                         prev_total = current_total
+                    
+                    total_pnl = current_total if 'current_total' in locals() else prev_total
 
                 title = '总累计'
             else:
