@@ -924,12 +924,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget _buildRankSection(AppState appState) {
     final rankItems = _buildRankItems(appState);
     final rankList = _rankType == 'profit'
-        ? rankItems.where((x) => x.pnl > 0).toList()
-        : rankItems.where((x) => x.pnl < 0).toList();
+        ? rankItems.where((x) => x.pnlCny > 0).toList()
+        : rankItems.where((x) => x.pnlCny < 0).toList();
     if (_rankType == 'profit') {
-      rankList.sort((a, b) => b.pnl.compareTo(a.pnl));
+      rankList.sort((a, b) => b.pnlCny.compareTo(a.pnlCny));
     } else {
-      rankList.sort((a, b) => a.pnl.compareTo(b.pnl));
+      rankList.sort((a, b) => a.pnlCny.compareTo(b.pnlCny));
     }
 
     return Column(
@@ -1032,16 +1032,18 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final priceInfo = appState.prices[item.code];
       final hasValidPrice = priceInfo != null && priceInfo.price > 0;
       final currentPrice = hasValidPrice ? priceInfo.price : item.price;
-      final rate = appState.getCurrencyRate(item.curr);
-      final mv = currentPrice * item.qty * rate;
-      final cost = item.price * item.qty * rate;
-      final pnl = mv - cost + item.adjustment * rate;
+      final mv = currentPrice * item.qty;
+      final cost = item.price * item.qty;
+      final pnl = mv - cost + item.adjustment;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
+      final rate = appState.getCurrencyRate(item.curr);
+      final pnlCny = pnl * rate;
       items.add(
         _RankItem(
           code: item.code,
           name: item.name,
           pnl: pnl,
+          pnlCny: pnlCny,
           pnlRate: pnlRate,
           currencySymbol: item.currencySymbol,
         ),
@@ -1255,12 +1257,12 @@ class AnalysisRankAllPage extends StatelessWidget {
     final appState = context.watch<AppState>();
     final items = _buildRankItems(appState);
     final list = rankType == 'profit'
-        ? items.where((x) => x.pnl > 0).toList()
-        : items.where((x) => x.pnl < 0).toList();
+        ? items.where((x) => x.pnlCny > 0).toList()
+        : items.where((x) => x.pnlCny < 0).toList();
     if (rankType == 'profit') {
-      list.sort((a, b) => b.pnl.compareTo(a.pnl));
+      list.sort((a, b) => b.pnlCny.compareTo(a.pnlCny));
     } else {
-      list.sort((a, b) => a.pnl.compareTo(b.pnl));
+      list.sort((a, b) => a.pnlCny.compareTo(b.pnlCny));
     }
 
     return Scaffold(
@@ -1354,16 +1356,18 @@ class AnalysisRankAllPage extends StatelessWidget {
       final priceInfo = appState.prices[item.code];
       final hasValidPrice = priceInfo != null && priceInfo.price > 0;
       final currentPrice = hasValidPrice ? priceInfo.price : item.price;
-      final rate = appState.getCurrencyRate(item.curr);
-      final mv = currentPrice * item.qty * rate;
-      final cost = item.price * item.qty * rate;
-      final pnl = mv - cost + item.adjustment * rate;
+      final mv = currentPrice * item.qty;
+      final cost = item.price * item.qty;
+      final pnl = mv - cost + item.adjustment;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
+      final rate = appState.getCurrencyRate(item.curr);
+      final pnlCny = pnl * rate;
       items.add(
         _RankItem(
           code: item.code,
           name: item.name,
           pnl: pnl,
+          pnlCny: pnlCny,
           pnlRate: pnlRate,
           currencySymbol: item.currencySymbol,
         ),
@@ -1454,7 +1458,8 @@ class AnalysisRankAllPage extends StatelessWidget {
 class _RankItem {
   final String code;
   final String name;
-  final double pnl;
+  final double pnl;      // 原始币种盈亏（用于显示）
+  final double pnlCny;   // 换算成人民币的盈亏（用于跨币种排序）
   final double pnlRate;
   final String currencySymbol;
 
@@ -1462,6 +1467,7 @@ class _RankItem {
     required this.code,
     required this.name,
     required this.pnl,
+    required this.pnlCny,
     required this.pnlRate,
     required this.currencySymbol,
   });
