@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config/api_config.dart';
 import '../config/theme.dart';
 import 'app_settings_page.dart';
 import '../providers/app_state.dart';
@@ -12,8 +14,13 @@ import '../providers/app_state.dart';
 /// 我的页面
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
+  final Future<bool> Function(Uri uri)? externalUrlOpener;
 
-  const ProfilePage({super.key, required this.onLogout});
+  const ProfilePage({
+    super.key,
+    required this.onLogout,
+    this.externalUrlOpener,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -22,6 +29,29 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   bool _profileLoaded = false;
+
+  Future<bool> _openExternalUrl(Uri uri) {
+    if (widget.externalUrlOpener != null) {
+      return widget.externalUrlOpener!(uri);
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openFeedback() async {
+    final uri = Uri.tryParse(ApiConfig.feedbackUrl);
+    if (uri == null || !uri.hasScheme) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('反馈链接配置无效')));
+      return;
+    }
+    final ok = await _openExternalUrl(uri);
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('无法打开反馈链接')));
+  }
 
   @override
   void initState() {
@@ -49,8 +79,9 @@ class _ProfilePageState extends State<ProfilePage> {
       final base64Str = base64Encode(bytes);
       final ok = await appState.updateProfile(avatar: base64Str);
       if (!ok && mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('头像保存失败，请稍后重试')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('头像保存失败，请稍后重试')));
       }
     } catch (e) {
       debugPrint('选择头像失败: $e');
@@ -60,8 +91,9 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _removeAvatar(AppState appState) async {
     final ok = await appState.updateProfile(avatar: '');
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('头像移除失败，请稍后重试')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('头像移除失败，请稍后重试')));
     }
   }
 
@@ -99,16 +131,18 @@ class _ProfilePageState extends State<ProfilePage> {
     if (newName == null) return;
     final ok = await appState.updateProfile(nickname: newName);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('昵称保存失败，请稍后重试')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('昵称保存失败，请稍后重试')));
     }
   }
 
   Widget _buildAvatar(AppState appState) {
-    final fallback = (appState.nickname?.isNotEmpty == true
-            ? appState.nickname!.substring(0, 1)
-            : (appState.username?.substring(0, 1).toUpperCase() ?? 'U'))
-        .toUpperCase();
+    final fallback =
+        (appState.nickname?.isNotEmpty == true
+                ? appState.nickname!.substring(0, 1)
+                : (appState.username?.substring(0, 1).toUpperCase() ?? 'U'))
+            .toUpperCase();
 
     Uint8List? avatarBytes;
     if (appState.avatar != null && appState.avatar!.isNotEmpty) {
@@ -151,7 +185,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: AppTheme.bgElevated,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.camera_alt, size: 12, color: AppTheme.textSecondary),
+              child: Icon(
+                Icons.camera_alt,
+                size: 12,
+                color: AppTheme.textSecondary,
+              ),
             ),
           ),
         ],
@@ -217,6 +255,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 );
               }),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(Icons.feedback_outlined, '问题反馈', _openFeedback),
             ],
           ),
         );
@@ -240,10 +280,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: AppTheme.textPrimary,
-                  ),
+                  style: TextStyle(fontSize: 15, color: AppTheme.textPrimary),
                 ),
               ),
               Icon(Icons.chevron_right, size: 20, color: AppTheme.textTertiary),

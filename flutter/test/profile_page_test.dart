@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tool/config/api_config.dart';
 import 'package:tool/pages/profile_page.dart';
 import 'package:tool/providers/app_state.dart';
 
@@ -26,11 +27,20 @@ void main() {
       nickname: 'kona',
     );
 
+    Uri? openedUri;
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
         child: MaterialApp(
-          home: Scaffold(body: ProfilePage(onLogout: () {})),
+          home: Scaffold(
+            body: ProfilePage(
+              onLogout: () {},
+              externalUrlOpener: (uri) async {
+                openedUri = uri;
+                return true;
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -38,8 +48,13 @@ void main() {
 
     expect(find.text('kona'), findsOneWidget);
     expect(find.text('系统设置'), findsOneWidget);
+    expect(find.text('问题反馈'), findsOneWidget);
     expect(find.text('修改密码'), findsNothing);
     expect(find.text('生物识别登录'), findsNothing);
     expect(find.text('退出登录'), findsNothing);
+
+    await tester.tap(find.text('问题反馈'));
+    await tester.pumpAndSettle();
+    expect(openedUri?.toString(), ApiConfig.feedbackUrl);
   });
 }

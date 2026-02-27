@@ -1,51 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 
-typedef ExternalUrlOpener = Future<bool> Function(Uri uri);
-
 class AppSettingsPage extends StatefulWidget {
   final VoidCallback onLogout;
-  final ExternalUrlOpener? externalUrlOpener;
 
-  const AppSettingsPage({
-    super.key,
-    required this.onLogout,
-    this.externalUrlOpener,
-  });
+  const AppSettingsPage({super.key, required this.onLogout});
 
   @override
   State<AppSettingsPage> createState() => _AppSettingsPageState();
 }
 
 class _AppSettingsPageState extends State<AppSettingsPage> {
-  Future<bool> _openExternalUrl(Uri uri) {
-    if (widget.externalUrlOpener != null) {
-      return widget.externalUrlOpener!(uri);
-    }
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  Future<void> _openFeedback() async {
-    final uri = Uri.tryParse(ApiConfig.feedbackUrl);
-    if (uri == null || !uri.hasScheme) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('反馈链接配置无效')));
-      return;
-    }
-    final ok = await _openExternalUrl(uri);
-    if (!mounted || ok) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('无法打开反馈链接')));
-  }
-
   Future<void> _changePassword(AppState appState) async {
     final oldCtrl = TextEditingController();
     final newCtrl = TextEditingController();
@@ -110,9 +78,9 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       newPassword: newPassword,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '密码修改成功' : '密码修改失败，请检查原密码')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(ok ? '密码修改成功' : '密码修改失败，请检查原密码')));
   }
 
   void _showAboutDialog() {
@@ -258,9 +226,9 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
             onChanged: (v) async {
               final ok = await appState.setBiometricEnabled(v);
               if (!ok && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('当前设备不可用生物识别')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('当前设备不可用生物识别')));
               }
             },
             activeThumbColor: AppTheme.accent,
@@ -287,12 +255,6 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 icon: Icons.lock_reset,
                 title: '修改密码',
                 onTap: () => _changePassword(appState),
-              ),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(
-                icon: Icons.feedback_outlined,
-                title: '问题反馈',
-                onTap: _openFeedback,
               ),
               const SizedBox(height: Spacing.sm),
               _buildSettingItem(
@@ -324,7 +286,10 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   ),
                   child: Text(
                     '退出登录',
-                    style: TextStyle(fontSize: FontSize.lg, color: AppTheme.danger),
+                    style: TextStyle(
+                      fontSize: FontSize.lg,
+                      color: AppTheme.danger,
+                    ),
                   ),
                 ),
               ),
