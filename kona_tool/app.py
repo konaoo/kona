@@ -918,12 +918,29 @@ def get_system_info():
 @app.route('/api/web/config')
 def get_web_config():
     """公开 Web 门户配置（无需鉴权）。"""
+    apk_download_url = config.WEB_APK_DOWNLOAD_URL
+    if not apk_download_url and config.WEB_APK_LOCAL_PATH.exists():
+        apk_download_url = "/download/apk"
     return jsonify(
         {
             "portal_title": config.WEB_PORTAL_TITLE,
-            "apk_download_url": config.WEB_APK_DOWNLOAD_URL,
+            "apk_download_url": apk_download_url,
             "app_version": APP_VERSION,
         }
+    )
+
+
+@app.route('/download/apk')
+def download_apk():
+    """下载 Android APK 安装包。"""
+    apk_path = config.WEB_APK_LOCAL_PATH
+    if not apk_path.exists() or not apk_path.is_file():
+        return jsonify({"error": "APK not found"}), 404
+    return send_file(
+        apk_path,
+        as_attachment=True,
+        download_name=apk_path.name,
+        mimetype='application/vnd.android.package-archive',
     )
 
 

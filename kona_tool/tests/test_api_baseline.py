@@ -51,6 +51,47 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIn('portal_title', data)
         self.assertIn('apk_download_url', data)
 
+    def test_web_config_fallbacks_to_local_apk_route(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            apk_path = Path(tmp) / "kaka-latest-release.apk"
+            apk_path.write_bytes(b"apk")
+            with patch.object(app_module.config, "WEB_APK_DOWNLOAD_URL", ""), patch.object(
+                app_module.config,
+                "WEB_APK_LOCAL_PATH",
+                apk_path,
+            ):
+                resp = self.client.get('/api/web/config')
+                self.assertEqual(resp.status_code, 200)
+                data = resp.get_json() or {}
+                self.assertEqual(data.get("apk_download_url"), "/download/apk")
+
+    def test_download_apk_not_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_path = Path(tmp) / "not_exists.apk"
+            with patch.object(app_module.config, "WEB_APK_LOCAL_PATH", missing_path):
+                resp = self.client.get('/download/apk')
+                self.assertEqual(resp.status_code, 404)
+                data = resp.get_json() or {}
+                self.assertEqual(data.get("error"), "APK not found")
+
+    def test_download_apk_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            apk_path = Path(tmp) / "kaka-latest-release.apk"
+            apk_path.write_bytes(b"apk-binary")
+            with patch.object(app_module.config, "WEB_APK_LOCAL_PATH", apk_path):
+                resp = self.client.get('/download/apk')
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(
+                    resp.headers.get("Content-Type"),
+                    "application/vnd.android.package-archive",
+                )
+                self.assertIn(
+                    "attachment; filename=kaka-latest-release.apk",
+                    resp.headers.get("Content-Disposition", ""),
+                )
+                self.assertEqual(resp.data, b"apk-binary")
+                resp.close()
+
     def test_web_portal_entry_served_from_root_route(self):
         with tempfile.TemporaryDirectory() as tmp:
             web_dir = Path(tmp)

@@ -57,3 +57,6 @@ kona_tool/config.py.backup
 
 # worktrees
 .worktrees/
+
+# local APK artifacts (do not track binaries)
+kona_tool/static/downloads/*.apk

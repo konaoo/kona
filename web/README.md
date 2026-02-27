@@ -149,6 +149,24 @@ web/
   - `portal_title`
   - `apk_download_url`
 - 当 APK 链接为空时按钮置灰并显示“APK 暂未提供”。
+- 后端默认回退逻辑：
+  - 若未设置 `WEB_APK_DOWNLOAD_URL` 且本地存在 `kona_tool/static/downloads/kaka-latest-release.apk`，
+    门户自动使用 `/download/apk` 作为下载链接。
+
+APK 发布最小流程（与你当前结构一致）：
+
+```bash
+mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/downloads
+cp /Users/kona/Desktop/kaka/apk_exports/kaka-latest-release.apk \
+  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/downloads/kaka-latest-release.apk
+```
+
+验证：
+
+```bash
+curl -I http://127.0.0.1:52345/download/apk
+curl http://127.0.0.1:52345/api/web/config
+```
 
 ### 6.2 管理端（`/admin/*`）
 

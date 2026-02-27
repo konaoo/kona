@@ -31,6 +31,8 @@ WEB_APK_DOWNLOAD_URL = os.getenv(
     "WEB_APK_DOWNLOAD_URL",
     "",
 ).strip()
+WEB_APK_FILENAME = os.getenv("WEB_APK_FILENAME", "kaka-latest-release.apk").strip() or "kaka-latest-release.apk"
+WEB_APK_LOCAL_PATH = BASE_DIR / "static" / "downloads" / WEB_APK_FILENAME
 WEB_PORTAL_TITLE = os.getenv("WEB_PORTAL_TITLE", "Kona Portfolio").strip() or "Kona Portfolio"
 WEB_ENABLE_LEGACY_REDIRECT = os.getenv("WEB_ENABLE_LEGACY_REDIRECT", "true").lower() != "false"
 
