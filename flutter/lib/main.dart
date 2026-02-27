@@ -379,7 +379,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startPriceTimer();
-    _startSyncTimer();
+    _startSyncTimer(immediate: true);
   }
 
   @override

@@ -8,7 +8,36 @@
 
 ---
 
-## v1.0.11 - 修复当日入金稀释收益率问题
+## v1.0.12 - 启动即时同步与排行汇率修正
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter
+
+### Summary
+- 修复 App 冷启动后数据不自动更新、需要手动下拉刷新的问题。
+- 修复盈亏排行榜未做跨币种汇率换算的问题。
+
+### Changed
+- `main.dart` 中 `_startSyncTimer` 改为 `immediate: true`，App 启动后立即执行一次后台增量同步。
+- `analysis_page.dart` 中两处 `_buildRankItems` 加入 `getCurrencyRate` 汇率换算，排行榜统一归一化为人民币比较。
+
+### Fixed
+- 修复冷启动后 120 秒内数据不同步的问题（SWR 模式生效延迟）。
+- 修复跨币种持仓在盈亏排行中未按统一币种比较的问题。
+
+### Ops / Deployment
+- 本次改动直接推送到 `main`。
+
+### Data / Migration
+- None
+
+### Verification
+- 冷启动 App 后无需手动操作，2-3 秒后数据自动更新。
+
+### Notes
+- None
+
+---
 - 发布状态：Released
 - 发布类型：Patch
 - 范围：Backend

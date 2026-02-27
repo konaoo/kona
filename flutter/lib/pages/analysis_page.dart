@@ -1032,9 +1032,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final priceInfo = appState.prices[item.code];
       final hasValidPrice = priceInfo != null && priceInfo.price > 0;
       final currentPrice = hasValidPrice ? priceInfo.price : item.price;
-      final mv = currentPrice * item.qty;
-      final cost = item.price * item.qty;
-      final pnl = mv - cost + item.adjustment;
+      final rate = appState.getCurrencyRate(item.curr);
+      final mv = currentPrice * item.qty * rate;
+      final cost = item.price * item.qty * rate;
+      final pnl = mv - cost + item.adjustment * rate;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
       items.add(
         _RankItem(
@@ -1353,9 +1354,10 @@ class AnalysisRankAllPage extends StatelessWidget {
       final priceInfo = appState.prices[item.code];
       final hasValidPrice = priceInfo != null && priceInfo.price > 0;
       final currentPrice = hasValidPrice ? priceInfo.price : item.price;
-      final mv = currentPrice * item.qty;
-      final cost = item.price * item.qty;
-      final pnl = mv - cost + item.adjustment;
+      final rate = appState.getCurrencyRate(item.curr);
+      final mv = currentPrice * item.qty * rate;
+      final cost = item.price * item.qty * rate;
+      final pnl = mv - cost + item.adjustment * rate;
       final pnlRate = cost > 0 ? (pnl / cost * 100) : 0.0;
       items.add(
         _RankItem(
