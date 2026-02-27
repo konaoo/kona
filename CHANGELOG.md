@@ -8,6 +8,51 @@
 
 ---
 
+## v1.0.15 - 跨端会话稳定性与门户下载体验修复
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Web | Backend | Docs
+
+### Summary
+- 修复同账号跨端使用时的会话稳定性问题：避免 token 过期后 App 出现“空数据假象”与 Web 端误登出。
+- 完成门户 APK 下载链路落地：支持固定下载路由与本地 APK 回退。
+- 优化门户首屏体验：修复强刷时先黑屏再渲染的问题；浏览器标题统一为产品名。
+
+### Added
+- 后端新增 `/download/apk` 固定下载路由。
+- 新增后端鉴权回归测试：无效 Bearer token 访问 `optional_auth` 资源时返回 `401`。
+
+### Changed
+- `optional_auth` 策略调整：当请求携带失效/非法 token 时返回 `401`，不再静默降级为游客态。
+- Flutter `ApiService` 新增 401 自动刷新会话与单次重放机制，并加入 refresh 并发锁。
+- Web `refreshTokenIfNeeded` 新增并发互斥，避免并发刷新导致本地登录态被清空。
+- 门户首屏增加预置背景（portal boot），减少强刷闪黑。
+
+### Fixed
+- 修复 App 在 access token 失效时偶发返回空资产列表的问题（根因：后端游客态回退）。
+- 修复 Web 在并发请求触发 refresh 时可能被动退出登录的问题。
+- 修复门户 APK 按钮“暂无提供”与下载链路不一致问题。
+- 修复门户浏览器标签页标题仍显示 `web` 的问题。
+
+### Ops / Deployment
+- 本版本已推送 `main`，并完成线上 AWS 同步（后端服务重启 + Web 静态资源更新 + APK 文件上传）。
+
+### Data / Migration
+- None
+
+### Verification
+- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && ./.venv/bin/python -m unittest tests.test_api_baseline -v`
+- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter test test/auth_persistence_test.dart test/profile_page_test.dart test/app_settings_page_test.dart`
+- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`
+- 线上接口验证：
+  - `GET /api/portfolio` + invalid bearer token 返回 `401`
+  - `GET /download/apk` 返回 `200`
+
+### Notes
+- 保持“允许多端同时在线”策略：Web 与 App 不互踢，仅失效 token 会触发各端本地续期或重新登录。
+
+---
+
 ## v1.0.14 - Flutter 个人中心与投资交互体验优化
 - 发布状态：Released
 - 发布类型：Patch
