@@ -3659,8 +3659,33 @@ class DatabaseManager:
                     ''',
                     (month_start, month_end) + user_param,
                 )
+                rows = cursor.fetchall()
+                
+                # 使用首尾差值计算当月总盈亏，对齐 get_pnl_overview 逻辑
+                business_rows = [r for r in rows if not _is_weekend_date(str(r['date']))]
+                true_total_pnl = 0.0
+                if business_rows:
+                    first_day = business_rows[0]
+                    last_day = business_rows[-1]
+                    cursor.execute(
+                        f'''
+                        SELECT date, total_pnl, total_invest FROM daily_snapshots
+                        WHERE date < ? AND {user_condition}
+                        ORDER BY date DESC
+                        LIMIT 1
+                        ''',
+                        (month_start,) + user_param,
+                    )
+                    prev_month_snap = cursor.fetchone()
+                    if prev_month_snap:
+                        base_total = float(prev_month_snap['total_pnl'] or 0)
+                    else:
+                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
+                    true_total_pnl = float(last_day['total_pnl'] or 0) - base_total
+                total_pnl = true_total_pnl
+
                 prev_total = None
-                for row in cursor.fetchall():
+                for row in rows:
                     date_str = row['date']
                     day = int(str(date_str).split('-')[2])
                     is_market_closed = _is_market_closed_date(date_str)
@@ -3682,7 +3707,6 @@ class DatabaseManager:
                     if (not is_market_closed) and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
                     items.append({'label': str(day), 'pnl': pnl})
-                    total_pnl += pnl
 
                 title = f'{target_year}年{target_month}月累计'
 
