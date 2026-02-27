@@ -8,6 +8,45 @@
 
 ---
 
+## v1.0.14 - Flutter 个人中心与投资交互体验优化
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Docs
+
+### Summary
+- 个人中心与系统设置入口重构完成：`问题反馈` 从系统设置迁移到我的页面一级入口。
+- 投资页交互体验优化：修复底部大面积留空，收敛尾部安全间距。
+- 下拉刷新体验统一：保留顶部小动画，去除中部大 Loading，刷新时保持已有内容不闪白。
+
+### Added
+- Flutter 新增 `AppSettingsPage` 页面与设置项结构（主题、生物识别、改密、检查更新占位、关于我们、退出登录）。
+- 个人中心新增 `问题反馈` 入口并支持外部浏览器拉起。
+- 新增/更新 Widget 测试覆盖设置页与个人中心关键行为。
+
+### Changed
+- 投资页“添加资产/买入”账户选择弹窗改为更清晰的排版与字号层级，适配账户较多场景。
+- 投资页底部内容预留高度收缩，减少滚动到底后的空白区域。
+- 个人中心顶部名称规则保持“仅显示一行主标题（昵称优先，昵称为空回退用户名）”。
+
+### Fixed
+- 修复系统设置与我的页面反馈入口层级不一致的问题。
+- 修复下拉刷新时“顶部+中部双 Loading”导致的打断体验问题。
+
+### Ops / Deployment
+- Flutter 改动已安装到 Android 真机验收，并同步推送到 `main`。
+
+### Data / Migration
+- None
+
+### Verification
+- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter test test/profile_page_test.dart test/app_settings_page_test.dart`
+- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter run -d 3B15B400J3F00000 --no-resident`
+
+### Notes
+- 同步更新 Flutter 模块 README 与版本号，便于后续发布管理。
+
+---
+
 ## v1.0.13 - 后端行情预取缓存（秒回优化）
 - 发布状态：Released
 - 发布类型：Minor
