@@ -33,6 +33,8 @@ class AppState extends ChangeNotifier {
   static const Duration _historyDataTtl = Duration(minutes: 10);
   static const Duration _ratesDataTtl = Duration(minutes: 10);
   static const Duration _syncVersionTtl = Duration(days: 365);
+  static const Duration _userProfileTtl = Duration(days: 30);
+  static const String _userProfileDomain = 'user_profile';
   static const List<String> _syncBootstrapDomains = <String>[
     'portfolio',
     'cash_assets',
@@ -457,6 +459,120 @@ class AppState extends ChangeNotifier {
   }
 
   String _cacheKeyForScope(String scope, String domain) => 'u:$scope:$domain';
+
+  List<String> _profileScopes({
+    String? usernameHint,
+    String? userIdHint,
+    bool includeCurrent = true,
+  }) {
+    final scopes = <String>[];
+
+    void addScope(String value) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || scopes.contains(trimmed)) return;
+      scopes.add(trimmed);
+    }
+
+    final hintUsername = (usernameHint ?? '').trim().toLowerCase();
+    if (hintUsername.isNotEmpty) addScope('name:$hintUsername');
+    final hintUserId = (userIdHint ?? '').trim();
+    if (hintUserId.isNotEmpty) addScope(hintUserId);
+
+    if (includeCurrent) {
+      for (final scope in _cacheScopes(includeGuestForAnonymous: false)) {
+        addScope(scope);
+      }
+    }
+
+    return scopes;
+  }
+
+  String? _nullableTrimmedString(dynamic value) {
+    if (value == null) return null;
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+    return raw;
+  }
+
+  Future<void> _persistUserProfileCache() async {
+    final username = _nullableTrimmedString(_username)?.toLowerCase();
+    final userId = _nullableTrimmedString(_userId);
+    final scopes = _profileScopes(
+      usernameHint: username,
+      userIdHint: userId,
+      includeCurrent: true,
+    );
+    if (scopes.isEmpty) return;
+
+    final data = <String, dynamic>{
+      'username': username ?? '',
+      'user_id': userId ?? '',
+      'user_number': _userNumber,
+      'nickname': _nickname ?? '',
+      'avatar': _avatar ?? '',
+      'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
+    };
+    final envelope = _buildEnvelope(
+      data: data,
+      staleAfter: _userProfileTtl,
+    );
+
+    for (final scope in scopes) {
+      await _cache.setJson(_cacheKeyForScope(scope, _userProfileDomain), envelope);
+    }
+  }
+
+  Future<void> _restoreUserProfileCache({
+    String? usernameHint,
+    String? userIdHint,
+  }) async {
+    final scopes = _profileScopes(
+      usernameHint: usernameHint,
+      userIdHint: userIdHint,
+      includeCurrent: true,
+    );
+    for (final scope in scopes) {
+      final envelope = _normalizeEnvelope(
+        await _cache.getJson(_cacheKeyForScope(scope, _userProfileDomain)),
+      );
+      final data = _asMap(envelope?['data']);
+      if (data.isEmpty) continue;
+
+      final cachedUsername = _nullableTrimmedString(data['username']);
+      final cachedUserId = _nullableTrimmedString(data['user_id']);
+      final cachedNickname = _nullableTrimmedString(data['nickname']);
+      final cachedAvatar = _nullableTrimmedString(data['avatar']);
+      final userNumberRaw = data['user_number'];
+      final cachedUserNumber = userNumberRaw is num
+          ? userNumberRaw.toInt()
+          : int.tryParse('${userNumberRaw ?? ''}');
+
+      if ((_username ?? '').trim().isEmpty && cachedUsername != null) {
+        _username = cachedUsername;
+      }
+      if ((_userId ?? '').trim().isEmpty && cachedUserId != null) {
+        _userId = cachedUserId;
+      }
+      _nickname = cachedNickname;
+      _avatar = cachedAvatar;
+      _userNumber = cachedUserNumber;
+      return;
+    }
+  }
+
+  Future<void> _clearUserProfileCache({
+    String? usernameHint,
+    String? userIdHint,
+  }) async {
+    final scopes = _profileScopes(
+      usernameHint: usernameHint,
+      userIdHint: userIdHint,
+      includeCurrent: true,
+    );
+    for (final scope in scopes) {
+      await _cache.remove(_cacheKeyForScope(scope, _userProfileDomain));
+    }
+  }
 
   Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
@@ -893,12 +1009,16 @@ class AppState extends ChangeNotifier {
     _isLoggedIn = true;
     _token = accessToken;
     _refreshToken = refreshToken;
-    _username = user['username']?.toString();
+    _username = user['username']?.toString() ?? _username;
     _userId = user['id']?.toString() ?? user['user_id']?.toString();
     final userNumberRaw = user['user_number'];
     _userNumber = userNumberRaw is num ? userNumberRaw.toInt() : null;
-    _nickname = user['nickname']?.toString();
-    _avatar = user['avatar']?.toString();
+    _nickname = user.containsKey('nickname')
+        ? user['nickname']?.toString()
+        : _nickname;
+    _avatar = user.containsKey('avatar')
+        ? user['avatar']?.toString()
+        : _avatar;
     _api.setToken(accessToken);
     _sessionBootState = SessionBootState.authenticated;
     _logoutMode = AuthLogoutMode.normal;
@@ -911,6 +1031,7 @@ class AppState extends ChangeNotifier {
         await _secureStorage.setUsername(_username!);
       }
       await _secureStorage.clearLogoutMode();
+      await _persistUserProfileCache();
     } catch (e) {
       debugPrint('登录态写入本地存储失败，已保留内存登录态: $e');
     }
@@ -1289,8 +1410,9 @@ class AppState extends ChangeNotifier {
     final profile = await _api.getProfile();
     if (profile != null) {
       _username = profile['username']?.toString() ?? _username;
-      _nickname = profile['nickname'];
-      _avatar = profile['avatar'];
+      _nickname = profile['nickname']?.toString();
+      _avatar = profile['avatar']?.toString();
+      await _persistUserProfileCache();
       notifyListeners();
       return true;
     }
@@ -1302,8 +1424,9 @@ class AppState extends ChangeNotifier {
     final result = await _api.updateProfile(nickname: nickname, avatar: avatar);
     if (result != null) {
       _username = result['username']?.toString() ?? _username;
-      _nickname = result['nickname'];
-      _avatar = result['avatar'];
+      _nickname = result['nickname']?.toString();
+      _avatar = result['avatar']?.toString();
+      await _persistUserProfileCache();
       notifyListeners();
       return true;
     }
@@ -1335,12 +1458,15 @@ class AppState extends ChangeNotifier {
     await _secureStorage.setRefreshToken(refreshToken);
     await _secureStorage.setUsername(username);
     await _secureStorage.clearLogoutMode();
+    await _persistUserProfileCache();
     notifyListeners();
   }
 
   /// 退出登录
   void logout() {
     final currentRefreshToken = _refreshToken;
+    final currentUsername = _username;
+    final currentUserId = _userId;
     final preserveBiometricSession =
         _biometricEnabled &&
         currentRefreshToken != null &&
@@ -1393,6 +1519,10 @@ class AppState extends ChangeNotifier {
       unawaited(() async {
         await _secureStorage.clearAllAuth();
         await _secureStorage.setLogoutMode('normal');
+        await _clearUserProfileCache(
+          usernameHint: currentUsername,
+          userIdHint: currentUserId,
+        );
       }());
     }
     notifyListeners();
@@ -1440,6 +1570,7 @@ class AppState extends ChangeNotifier {
     if (refreshToken != null && refreshToken.isNotEmpty) {
       _refreshToken = refreshToken;
       _username = username;
+      await _restoreUserProfileCache(usernameHint: username);
     }
     if (_logoutMode == AuthLogoutMode.biometricReady) {
       _isLoggedIn = false;
@@ -1527,12 +1658,15 @@ class AppState extends ChangeNotifier {
     }
     _nickname = profile['nickname']?.toString();
     _avatar = profile['avatar']?.toString();
+    await _persistUserProfileCache();
     _isLoggedIn = true;
     _sessionBootState = SessionBootState.authenticated;
     notifyListeners();
   }
 
   Future<void> _clearSessionAndUnauthenticated() async {
+    final previousUsername = _username;
+    final previousUserId = _userId;
     _isLoggedIn = false;
     _token = null;
     _refreshToken = null;
@@ -1558,6 +1692,10 @@ class AppState extends ChangeNotifier {
     try {
       await _secureStorage.clearAllAuth();
       await _secureStorage.clearLogoutMode();
+      await _clearUserProfileCache(
+        usernameHint: previousUsername,
+        userIdHint: previousUserId,
+      );
     } catch (e) {
       debugPrint('清理失效 token 失败: $e');
     }

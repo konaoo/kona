@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tool/providers/app_state.dart';
+import 'dart:convert';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -74,5 +75,49 @@ void main() {
     expect(await storage.read(key: 'auth_access_token'), isNull);
     expect(await storage.read(key: 'auth_refresh_token'), isNull);
     expect(await storage.read(key: 'auth_logout_mode'), 'normal');
+  });
+
+  test('AppState persists user profile cache for avatar/nickname', () async {
+    final appState = AppState(tokenLoader: () async => null);
+
+    await appState.setLoggedIn(
+      token: 't_profile',
+      refreshToken: 'r_profile',
+      username: 'u_profile',
+      userId: 'uid-profile',
+      userNumber: 10001,
+      nickname: 'Kona',
+      avatar: 'base64-avatar',
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final rawByName = prefs.getString('u:name:u_profile:user_profile');
+    expect(rawByName, isNotNull);
+    final byName = jsonDecode(rawByName!) as Map<String, dynamic>;
+    final byNameData = byName['data'] as Map<String, dynamic>;
+    expect(byNameData['username'], 'u_profile');
+    expect(byNameData['nickname'], 'Kona');
+    expect(byNameData['avatar'], 'base64-avatar');
+    expect(byNameData['user_number'], 10001);
+  });
+
+  test('Logout clears user profile cache when biometric is disabled', () async {
+    final appState = AppState(tokenLoader: () async => null);
+
+    await appState.setLoggedIn(
+      token: 't_profile_clear',
+      refreshToken: 'r_profile_clear',
+      username: 'u_profile_clear',
+      userId: 'uid-profile-clear',
+      nickname: 'ToClear',
+      avatar: 'avatar-clear',
+    );
+
+    appState.logout();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('u:name:u_profile_clear:user_profile'), isNull);
+    expect(prefs.getString('u:uid-profile-clear:user_profile'), isNull);
   });
 }

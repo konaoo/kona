@@ -15,6 +15,7 @@ class ApiConfig {
 
   /// 邀请码申请入口（可替换为你的问卷/表单链接）
   static const String inviteAcquireUrl = 'https://xhslink.com/m/1yML4q97wdK';
+  static const String feedbackUrl = 'https://xhslink.com/m/1yML4q97wdK';
   static const String changePassword = '/api/auth/password/change';
   static const String bootstrapCredentials = '/api/auth/bootstrap_credentials';
   static const String profileMe = '/api/auth/me';

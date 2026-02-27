@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+
 import '../config/theme.dart';
+import 'app_settings_page.dart';
 import '../providers/app_state.dart';
 
 /// 我的页面
@@ -33,6 +35,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     });
   }
+
   Future<void> _pickAvatar(AppState appState) async {
     try {
       final file = await _picker.pickImage(
@@ -99,72 +102,6 @@ class _ProfilePageState extends State<ProfilePage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('昵称保存失败，请稍后重试')));
     }
-  }
-
-  Future<void> _changePassword(AppState appState) async {
-    final oldCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('修改密码', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: oldCtrl,
-              obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '原密码'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: newCtrl,
-              obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '新密码'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: confirmCtrl,
-              obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '确认新密码'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('提交', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
-      ),
-    );
-    if (result != true) return;
-    final oldPassword = oldCtrl.text;
-    final newPassword = newCtrl.text;
-    final confirm = confirmCtrl.text;
-    if (newPassword != confirm) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('两次输入的新密码不一致')));
-      return;
-    }
-    final ok = await appState.changePassword(
-      oldPassword: oldPassword,
-      newPassword: newPassword,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? '密码修改成功' : '密码修改失败，请检查原密码')),
-    );
   }
 
   Widget _buildAvatar(AppState appState) {
@@ -249,19 +186,13 @@ class _ProfilePageState extends State<ProfilePage> {
                           Text(
                             appState.nickname?.isNotEmpty == true
                                 ? appState.nickname!
-                                : '用户 #${appState.userNumber ?? 0}',
+                                : (appState.username?.isNotEmpty == true
+                                      ? appState.username!
+                                      : '用户'),
                             style: TextStyle(
                               fontSize: FontSize.xl,
                               fontWeight: FontWeight.bold,
                               color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            appState.username ?? 'user',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.textSecondary,
                             ),
                           ),
                         ],
@@ -278,41 +209,14 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: Spacing.lg),
 
               // 设置项
-              _buildThemeToggle(appState),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(Icons.lock_reset, '修改密码', () {
-                _changePassword(appState);
-              }),
-              const SizedBox(height: Spacing.sm),
-              _buildBiometricToggle(appState),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(Icons.settings, '系统设置', () {}),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(Icons.info_outline, '关于我们', () {
-                _showAboutDialog(context);
-              }),
-
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: widget.onLogout,
-                  style: TextButton.styleFrom(
-                    backgroundColor: AppTheme.bgCard,
-                    padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
+              _buildSettingItem(Icons.settings, '系统设置', () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        AppSettingsPage(onLogout: widget.onLogout),
                   ),
-                  child: Text(
-                    '退出登录',
-                    style: TextStyle(
-                      fontSize: FontSize.lg,
-                      color: AppTheme.danger,
-                    ),
-                  ),
-                ),
-              ),
+                );
+              }),
             ],
           ),
         );
@@ -346,152 +250,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildThemeToggle(AppState appState) {
-    return Container(
-      padding: const EdgeInsets.all(Spacing.lg),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.palette_outlined, size: 20, color: AppTheme.accentLight),
-          const SizedBox(width: Spacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '切换主题',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '浅色 / 暗黑',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: appState.isLightTheme,
-            onChanged: (_) => appState.toggleTheme(),
-            activeThumbColor: AppTheme.accent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBiometricToggle(AppState appState) {
-    return Container(
-      padding: const EdgeInsets.all(Spacing.lg),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.fingerprint, size: 20, color: AppTheme.accentLight),
-          const SizedBox(width: Spacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '生物识别登录',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'iOS / Android 可用',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: appState.biometricEnabled,
-            onChanged: (v) async {
-              final ok = await appState.setBiometricEnabled(v);
-              if (!ok && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('当前设备不可用生物识别')),
-                );
-              }
-            },
-            activeThumbColor: AppTheme.accent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppTheme.bgCard,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.account_balance_wallet, size: 32, color: AppTheme.accent),
-            ),
-            const SizedBox(height: Spacing.md),
-            Text(
-              '咔咔记账',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            Text('v1.0.0', style: TextStyle(color: AppTheme.textSecondary)),
-            const SizedBox(height: 10),
-            Text(
-              '专注于个人资产管理的极简应用。',
-              style: TextStyle(color: AppTheme.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '© 2026 Kona Tool',
-              style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('确定', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
       ),
     );
   }
