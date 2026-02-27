@@ -3423,9 +3423,10 @@ class DatabaseManager:
                         base_total = float(prev['total_pnl'] or 0)
                         base_invest = float(prev['total_invest'] or 0)
                     else:
-                        # 与日历月视图保持一致：无期初快照时按 0 基线累计
-                        base_total = 0.0
-                        base_invest = float(business_rows[0]['total_invest'] or 0)
+                        # 修正: 无期初快照时，基准总盈亏应为本月第一天的(总盈亏 - 当日盈亏)
+                        first_day = business_rows[0]
+                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
+                        base_invest = float(first_day['total_invest'] or 0)
                 else:
                     last = prev
                     base_total = float(prev['total_pnl'] or 0) if prev else 0.0
@@ -3463,9 +3464,10 @@ class DatabaseManager:
                         base_total = float(prev['total_pnl'] or 0)
                         base_invest = float(prev['total_invest'] or 0)
                     else:
-                        # 与日历年视图保持一致：无期初快照时按 0 基线累计
-                        base_total = 0.0
-                        base_invest = float(business_rows[0]['total_invest'] or 0)
+                        # 修正: 无期初快照时，基准总盈亏应为今年第一天的(总盈亏 - 当日盈亏)
+                        first_day = business_rows[0]
+                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
+                        base_invest = float(first_day['total_invest'] or 0)
                 else:
                     last = prev
                     base_total = float(prev['total_pnl'] or 0) if prev else 0.0
