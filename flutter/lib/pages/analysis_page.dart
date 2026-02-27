@@ -583,8 +583,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildPeriodTab('当日', 'day'),
+              const SizedBox(width: 8),
               _buildPeriodTab('本月', 'month'),
+              const SizedBox(width: 8),
               _buildPeriodTab('今年', 'year'),
+              const SizedBox(width: 8),
               _buildPeriodTab('全部', 'all'),
             ],
           ),
