@@ -164,7 +164,8 @@ def fix_snapshots():
                 asset_detail[curr] = {"codes": [], "old_rate": old_rate}
             asset_detail[curr]["codes"].append(code)
 
-        logger.info(f"  外币资产: {', '.join(f'{k}({len(v[\"codes\"])}只)' for k, v in asset_detail.items())}")
+        detail_str = ', '.join(f"{k}({len(v['codes'])}只)" for k, v in asset_detail.items())
+        logger.info(f"  外币资产: {detail_str}")
 
         # 5. 查出总市值用于计算外币占比
         # 由于我们不知道每天的具体价格，使用一个近似方法：
