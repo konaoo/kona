@@ -8,6 +8,28 @@
 
 ---
 
+## v1.0.13 - 后端行情预取缓存（秒回优化）
+- 发布状态：Released
+- 发布类型：Minor
+- 范围：Backend
+
+### Summary
+- 新增后台行情预取线程，每 30 秒自动批量拉取所有持仓证券的行情并写入内存缓存。
+- API 请求始终命中热缓存，响应时间从 500ms~2s 降至 <50ms。
+
+### Changed
+- `price.py` 新增 `PricePreloader` 类（后台守护线程 + SQLite 代码收集 + 定时 `batch_get_prices`）。
+- `config.py` 新增 `PRELOAD_INTERVAL_SECONDS` 配置项（默认 30 秒）。
+- `app.py` 和 `wsgi.py` 启动时自动启动预取线程。
+
+### Verification
+- 重启后端后日志出现 `PricePreloader started`，之后 App 刷新时日志应全部为 `Cache hit`。
+
+### Notes
+- 可通过环境变量 `PRELOAD_INTERVAL_SECONDS` 调整预取间隔。
+
+---
+
 ## v1.0.12 - 启动即时同步与排行汇率修正
 - 发布状态：Released
 - 发布类型：Patch

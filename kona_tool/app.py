@@ -30,6 +30,7 @@ from core.price import (
     search_stocks,
     get_price_runtime_metrics,
     get_price_source_health,
+    PricePreloader,
 )
 from core.parser import parse_code, get_display_code
 from core.asset_type import infer_asset_type
@@ -2399,6 +2400,13 @@ if __name__ == '__main__':
     if config.ENABLE_STARTUP_SNAPSHOT:
         threading.Thread(target=take_snapshot, daemon=True).start()
     
+    # 启动行情预取线程
+    preloader = PricePreloader.get_instance(
+        db_path=str(config.DATABASE_PATH),
+        interval=config.PRELOAD_INTERVAL_SECONDS,
+    )
+    preloader.start()
+
     # 自动打开浏览器
     threading.Thread(target=open_browser, daemon=True).start()
     

@@ -95,6 +95,9 @@ CACHE_ENABLED = True
 CACHE_TTL = 60
 CACHE_STALE_TTL = int(os.getenv("CACHE_STALE_TTL", "300"))
 
+# 行情预取间隔（秒），设为小于 CACHE_TTL 以确保缓存永远不过期
+PRELOAD_INTERVAL_SECONDS = int(os.getenv("PRELOAD_INTERVAL_SECONDS", "30"))
+
 # 汇率配置
 DEFAULT_FOREX_RATES = {
     "USD": 7.25,

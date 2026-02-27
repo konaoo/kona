@@ -215,6 +215,77 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
     return results
 
 
+class PricePreloader:
+    """
+    后台预取线程：定时收集所有用户持有的证券代码，
+    批量拉取行情并写入 PriceCache，确保 API 请求始终命中缓存。
+    """
+
+    _instance = None
+
+    def __init__(self, db_path: str, interval: int = 30):
+        self._db_path = db_path
+        self._interval = interval
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    @classmethod
+    def get_instance(cls, db_path: str = '', interval: int = 30) -> 'PricePreloader':
+        if cls._instance is None:
+            cls._instance = cls(db_path, interval)
+        return cls._instance
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            logger.info("PricePreloader already running, skip.")
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        logger.info(
+            f"PricePreloader started (interval={self._interval}s)"
+        )
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        logger.info("PricePreloader stopping...")
+
+    def _collect_codes(self) -> List[str]:
+        """从数据库收集所有用户持有的唯一证券代码"""
+        import sqlite3
+        codes: List[str] = []
+        try:
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT code FROM portfolio")
+            codes = [row[0] for row in cursor.fetchall() if row[0]]
+            conn.close()
+        except Exception as e:
+            logger.error(f"PricePreloader failed to collect codes: {e}")
+        return codes
+
+    def _run(self) -> None:
+        logger.info("PricePreloader thread started.")
+        while not self._stop_event.is_set():
+            try:
+                codes = self._collect_codes()
+                if codes:
+                    logger.info(
+                        f"PricePreloader: refreshing {len(codes)} codes..."
+                    )
+                    batch_get_prices(codes, use_cache=False)
+                    logger.info(
+                        f"PricePreloader: done, {len(codes)} codes cached."
+                    )
+                else:
+                    logger.debug("PricePreloader: no codes to refresh.")
+            except Exception as e:
+                logger.error(f"PricePreloader error: {e}")
+
+            # 等待指定间隔，支持提前停止
+            self._stop_event.wait(timeout=self._interval)
+
+
 def get_forex_rates() -> Dict[str, float]:
     """
     获取实时汇率
