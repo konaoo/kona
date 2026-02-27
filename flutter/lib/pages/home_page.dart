@@ -27,6 +27,7 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> {
   final FabScrollVisibilityController _fabVisibilityController =
       FabScrollVisibilityController();
+  bool _refreshInFlight = false;
 
   @override
   void initState() {
@@ -34,8 +35,14 @@ class HomePageState extends State<HomePage> {
   }
 
   Future<void> _refreshData() async {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
     final appState = context.read<AppState>();
-    await appState.refreshAll(force: true);
+    try {
+      await appState.refreshAll(force: true);
+    } finally {
+      _refreshInFlight = false;
+    }
   }
 
   void resetFabVisibilityController() {

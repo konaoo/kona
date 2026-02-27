@@ -19,7 +19,8 @@ class NewsPage extends StatefulWidget {
 class _NewsPageState extends State<NewsPage> {
   final ApiService _api = ApiService();
   List<Map<String, dynamic>> _news = [];
-  bool _loading = true;
+  bool _isInitialLoading = true;
+  bool _isRefreshing = false;
   bool _onlyImportant = false;
   final Set<String> _expandedKeys = {};
   final ScrollController _scrollController = ScrollController();
@@ -43,7 +44,7 @@ class _NewsPageState extends State<NewsPage> {
   }
 
   void _onScroll() {
-    if (!_hasMore || _loadingMore) return;
+    if (!_hasMore || _loadingMore || _isRefreshing || _isInitialLoading) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadNews();
@@ -51,26 +52,36 @@ class _NewsPageState extends State<NewsPage> {
   }
 
   Future<void> _loadNews({bool reset = false}) async {
-    if (_loadingMore && !reset) return;
     if (reset) {
+      if (_isRefreshing || _loadingMore) return;
       if (!mounted) return;
       setState(() {
-        _loading = true;
         _page = 1;
         _hasMore = true;
-        _news = [];
-        _newsIds.clear();
-        _expandedKeys.clear();
+        if (_news.isEmpty) {
+          _isInitialLoading = true;
+        } else {
+          _isRefreshing = true;
+        }
       });
     } else {
+      if (_loadingMore || _isRefreshing || _isInitialLoading || !_hasMore) {
+        return;
+      }
       if (!mounted) return;
       setState(() => _loadingMore = true);
     }
+
+    if (reset) {
+      _expandedKeys.clear();
+    }
+
     try {
       final loader = widget.newsLoader;
+      final requestPage = reset ? 1 : _page;
       final data = loader != null
-          ? await loader(page: _page, pageSize: _pageSize)
-          : await _api.getNews(page: _page, pageSize: _pageSize);
+          ? await loader(page: requestPage, pageSize: _pageSize)
+          : await _api.getNews(page: requestPage, pageSize: _pageSize);
       final items =
           (data['items'] as List?)
               ?.map((e) => e as Map<String, dynamic>)
@@ -78,25 +89,46 @@ class _NewsPageState extends State<NewsPage> {
           [];
       final hasMore = data['has_more'] == true;
 
-      for (final item in items) {
-        final key = _itemKey(item);
-        if (_newsIds.add(key)) {
-          _news.add(item);
-        }
-      }
-
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadingMore = false;
-        _hasMore = hasMore;
-        if (items.isNotEmpty) _page += 1;
-      });
+      if (reset) {
+        final nextNews = <Map<String, dynamic>>[];
+        final nextIds = <String>{};
+        for (final item in items) {
+          final key = _itemKey(item);
+          if (nextIds.add(key)) {
+            nextNews.add(item);
+          }
+        }
+        setState(() {
+          _news = nextNews;
+          _newsIds
+            ..clear()
+            ..addAll(nextIds);
+          _isInitialLoading = false;
+          _isRefreshing = false;
+          _loadingMore = false;
+          _hasMore = hasMore;
+          _page = items.isNotEmpty ? 2 : 1;
+        });
+      } else {
+        for (final item in items) {
+          final key = _itemKey(item);
+          if (_newsIds.add(key)) {
+            _news.add(item);
+          }
+        }
+        setState(() {
+          _loadingMore = false;
+          _hasMore = hasMore;
+          if (items.isNotEmpty) _page += 1;
+        });
+      }
     } catch (e) {
       debugPrint('加载快讯失败: $e');
       if (!mounted) return;
       setState(() {
-        _loading = false;
+        _isInitialLoading = false;
+        _isRefreshing = false;
         _loadingMore = false;
       });
     }
@@ -160,13 +192,34 @@ class _NewsPageState extends State<NewsPage> {
               ),
             ),
           ),
-          if (_loading)
-            SliverFillRemaining(
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.accent),
+          if (filteredNews.isNotEmpty)
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildNewsItem(filteredNews[index]),
+                childCount: filteredNews.length,
               ),
             )
-          else if (filteredNews.isEmpty)
+          else if (_isInitialLoading)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.xl,
+                  Spacing.md,
+                  Spacing.xl,
+                  Spacing.xl,
+                ),
+                child: Column(
+                  children: [
+                    _buildNewsSkeletonItem(),
+                    const SizedBox(height: 8),
+                    _buildNewsSkeletonItem(),
+                    const SizedBox(height: 8),
+                    _buildNewsSkeletonItem(),
+                  ],
+                ),
+              ),
+            )
+          else
             SliverFillRemaining(
               child: Center(
                 child: Column(
@@ -185,13 +238,6 @@ class _NewsPageState extends State<NewsPage> {
                   ],
                 ),
               ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildNewsItem(filteredNews[index]),
-                childCount: filteredNews.length,
-              ),
             ),
           if (_loadingMore)
             SliverToBoxAdapter(
@@ -209,6 +255,45 @@ class _NewsPageState extends State<NewsPage> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNewsSkeletonItem() {
+    Widget line({required double width, required double height}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: AppTheme.bgElevated.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(Spacing.lg),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+          width: 1,
+        ),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          line(width: 72, height: 10),
+          const SizedBox(height: Spacing.md),
+          line(width: double.infinity, height: 12),
+          const SizedBox(height: 8),
+          line(width: double.infinity, height: 12),
+          const SizedBox(height: 8),
+          line(width: 180, height: 12),
         ],
       ),
     );

@@ -32,6 +32,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
   bool _loading = true;
+  bool _isRefreshing = false;
   bool _overviewLoaded = false;
   int _overviewRetryCount = 0;
   Timer? _overviewRetryTimer;
@@ -67,7 +68,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     super.dispose();
   }
 
-  Future<void> _loadData({bool force = false}) async {
+  Future<void> _loadData({bool force = false, bool showLoadingUi = true}) async {
     var renderedByCache = false;
     if (!force && !_overviewLoaded) {
       final cached = await _loadOverviewFromStorage();
@@ -80,7 +81,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
     if (_overviewLoaded && !force) return;
-    if (!renderedByCache) {
+    if (!renderedByCache && showLoadingUi) {
       setState(() => _loading = true);
     }
     try {
@@ -97,7 +98,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       _overviewRetryCount = 0;
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
-      if (!renderedByCache) {
+      if (!renderedByCache && showLoadingUi) {
         setState(() => _loading = false);
       }
       if (_overviewRetryCount < _maxTransientRetry) {
@@ -139,7 +140,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
   }
 
-  Future<void> _loadCalendar({bool force = false}) async {
+  Future<void> _loadCalendar({
+    bool force = false,
+    bool showLoadingUi = true,
+  }) async {
     final requestCacheKey = _calendarCacheKey();
     final requestStorageKey = _calendarStorageKey(requestCacheKey);
     var renderedByCache = false;
@@ -170,7 +174,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       return;
     }
 
-    if (!renderedByCache) {
+    if (!renderedByCache && showLoadingUi) {
       setState(() => _calendarLoading = true);
     }
     try {
@@ -202,7 +206,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     } catch (e) {
       debugPrint('加载收益日历失败: $e');
       if (!mounted) return;
-      if (!renderedByCache) {
+      if (!renderedByCache && showLoadingUi) {
         setState(() => _calendarLoading = false);
       }
       if (_calendarRetryCount < _maxTransientRetry) {
@@ -474,6 +478,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Future<void> _onPullToRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
     _overviewRetryTimer?.cancel();
     _calendarRetryTimer?.cancel();
     _overviewRetryCount = 0;
@@ -483,10 +489,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
       // 分析页空数据时补拉一次首页核心数据（不阻塞手动刷新返回）。
       unawaited(appState.refreshHomeData());
     }
-    await Future.wait<void>([
-      _loadData(force: true),
-      _loadCalendar(force: true),
-    ]);
+    try {
+      await Future.wait<void>([
+        _loadData(force: true, showLoadingUi: false),
+        _loadCalendar(force: true, showLoadingUi: false),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   @override
@@ -788,96 +800,90 @@ class _AnalysisPageState extends State<AnalysisPage> {
             color: AppTheme.bgCard,
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
-          child: _calendarLoading
-              ? Center(child: CircularProgressIndicator(color: AppTheme.accent))
-              : GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: _calendarTimeType == 'day'
-                        ? 6
-                        : (_calendarTimeType == 'month' ? 4 : 5),
-                    childAspectRatio: _calendarTimeType == 'day' ? 0.9 : 1.0,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: calendarGrid.length,
-                  itemBuilder: (context, index) {
-                    final item = calendarGrid[index];
-                    final day = item['day'];
-                    final pnl = item['pnl'] as double?;
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: _calendarTimeType == 'day'
+                  ? 6
+                  : (_calendarTimeType == 'month' ? 4 : 5),
+              childAspectRatio: _calendarTimeType == 'day' ? 0.9 : 1.0,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: calendarGrid.length,
+            itemBuilder: (context, index) {
+              final item = calendarGrid[index];
+              final day = item['day'];
+              final pnl = item['pnl'] as double?;
 
-                    Color backgroundColor;
-                    Color textColor;
+              Color backgroundColor;
+              Color textColor;
 
-                    if (pnl != null) {
-                      if (pnl > 0) {
-                        backgroundColor = const Color(
-                          0xFFEF4444,
-                        ).withOpacity(0.15);
-                        textColor = const Color(0xFFEF4444);
-                      } else if (pnl < 0) {
-                        backgroundColor = const Color(
-                          0xFF10B981,
-                        ).withOpacity(0.15);
-                        textColor = const Color(0xFF10B981);
-                      } else {
-                        backgroundColor = AppTheme.bgElevated;
-                        textColor = AppTheme.textSecondary;
-                      }
-                    } else {
-                      backgroundColor = AppTheme.bgElevated;
-                      textColor = AppTheme.textTertiary;
-                    }
+              if (pnl != null) {
+                if (pnl > 0) {
+                  backgroundColor = const Color(0xFFEF4444).withOpacity(0.15);
+                  textColor = const Color(0xFFEF4444);
+                } else if (pnl < 0) {
+                  backgroundColor = const Color(0xFF10B981).withOpacity(0.15);
+                  textColor = const Color(0xFF10B981);
+                } else {
+                  backgroundColor = AppTheme.bgElevated;
+                  textColor = AppTheme.textSecondary;
+                }
+              } else {
+                backgroundColor = AppTheme.bgElevated;
+                textColor = AppTheme.textTertiary;
+              }
 
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _calendarTimeType == 'day'
-                                ? day.toString()
-                                : (_calendarTimeType == 'month'
-                                      ? '${day}月'
-                                      : day.toString()),
-                            style: TextStyle(
-                              fontSize: FontSize.sm,
-                              color: textColor,
-                              fontWeight: pnl != null
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                          if (pnl != null) ...[
-                            const SizedBox(height: 2),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                _formatCalendarPnl(pnl, appState),
-                                maxLines: 1,
-                                softWrap: false,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: textColor,
-                                ),
-                              ),
-                            ),
-                          ] else ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              '-',
-                              style: TextStyle(fontSize: 11, color: textColor),
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
+              return Container(
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _calendarTimeType == 'day'
+                          ? day.toString()
+                          : (_calendarTimeType == 'month'
+                                ? '${day}月'
+                                : day.toString()),
+                      style: TextStyle(
+                        fontSize: FontSize.sm,
+                        color: textColor,
+                        fontWeight: pnl != null
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    if (pnl != null) ...[
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _formatCalendarPnl(pnl, appState),
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: textColor,
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '-',
+                        style: TextStyle(fontSize: 11, color: textColor),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
         ),
         const SizedBox(height: Spacing.md),
         Container(
@@ -1172,6 +1178,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   String _calendarSummaryText(AppState appState) {
     final items = _calendarData['items'] as List<dynamic>? ?? [];
+    if (_calendarLoading && items.isEmpty) {
+      return '加载中...';
+    }
     if (items.isEmpty) {
       return '暂无快照数据';
     }

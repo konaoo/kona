@@ -20,6 +20,7 @@ class InvestPage extends StatefulWidget {
 class InvestPageState extends State<InvestPage> {
   final FabScrollVisibilityController _fabVisibilityController =
       FabScrollVisibilityController();
+  bool _refreshInFlight = false;
 
   @override
   void initState() {
@@ -27,7 +28,13 @@ class InvestPageState extends State<InvestPage> {
   }
 
   Future<void> _loadData() async {
-    await context.read<AppState>().refreshHomeData();
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
+    try {
+      await context.read<AppState>().refreshHomeData();
+    } finally {
+      _refreshInFlight = false;
+    }
   }
 
   void resetFabVisibilityController() {

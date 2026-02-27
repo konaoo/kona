@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -318,6 +320,63 @@ void main() {
     );
     await refresh.onRefresh();
     await tester.pump();
+
+    expect(overviewCalls, greaterThanOrEqualTo(2));
+    expect(calendarCalls, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('分析页下拉刷新时不显示中部大Loading', (tester) async {
+    final refreshBlock = Completer<void>();
+    var overviewCalls = 0;
+    var calendarCalls = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>(
+        create: (_) => AppState(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnalysisPage(
+              overviewLoader: (_) async {
+                overviewCalls += 1;
+                if (overviewCalls > 1) {
+                  await refreshBlock.future;
+                }
+                return {
+                  'day': {'pnl': 0, 'pnl_rate': 0},
+                  'month': {'pnl': 0, 'pnl_rate': 0},
+                  'year': {'pnl': 0, 'pnl_rate': 0},
+                  'all': {'pnl': 0, 'pnl_rate': 0},
+                };
+              },
+              calendarLoader: ({required timeType, year, month}) async {
+                calendarCalls += 1;
+                if (calendarCalls > 1) {
+                  await refreshBlock.future;
+                }
+                return calendarResponse(
+                  timeType: timeType,
+                  year: year,
+                  month: month,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final refresh = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    final refreshFuture = refresh.onRefresh();
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    refreshBlock.complete();
+    await refreshFuture;
+    await tester.pumpAndSettle();
 
     expect(overviewCalls, greaterThanOrEqualTo(2));
     expect(calendarCalls, greaterThanOrEqualTo(2));
