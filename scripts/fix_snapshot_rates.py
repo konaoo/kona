@@ -20,8 +20,23 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-# 把项目根目录加入路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 把 kona_tool 目录加入路径以便导入 config
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+kona_tool_dir = os.path.join(project_root, "kona_tool")
+if os.path.isdir(kona_tool_dir):
+    sys.path.insert(0, kona_tool_dir)
+else:
+    sys.path.insert(0, project_root)
+
+# 加载 .env
+try:
+    from dotenv import load_dotenv
+    env_path = os.path.join(kona_tool_dir, ".env")
+    if os.path.isfile(env_path):
+        load_dotenv(env_path)
+except ImportError:
+    pass
 
 import config
 
