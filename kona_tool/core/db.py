@@ -3389,10 +3389,15 @@ class DatabaseManager:
                     if not prev:
                         return {'pnl': 0, 'pnl_rate': 0, 'base_value': base}
                     prev_total = float(prev['total_pnl']) if prev['total_pnl'] else 0
+                    # 修正：收益率分母应使用期初本金（prev_invest），避免当日加仓稀释收益率
+                    # 如果期初本金为0（新用户首日），则兜底使用当日期末本金
+                    prev_invest = float(prev['total_invest']) if prev['total_invest'] else 0
+                    calc_base = prev_invest if prev_invest > 0 else base
+                    
                     pnl = today_total - prev_total
                     return {
                         'pnl': pnl,
-                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'pnl_rate': round(pnl / calc_base * 100, 2) if calc_base else 0,
                         'base_value': base,
                     }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
@@ -3428,9 +3433,11 @@ class DatabaseManager:
                 if last:
                     pnl = float(last['total_pnl'] or 0) - base_total
                     base = base_invest or float(last['total_invest'] or 0) or 1
+                    # 修正：收益率分母优先使用期初本金
+                    calc_base = base_invest if base_invest > 0 else base
                     return {
                         'pnl': pnl,
-                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'pnl_rate': round(pnl / calc_base * 100, 2) if calc_base else 0,
                         'base_value': base,
                     }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
@@ -3466,9 +3473,11 @@ class DatabaseManager:
                 if last:
                     pnl = float(last['total_pnl'] or 0) - base_total
                     base = base_invest or float(last['total_invest'] or 0) or 1
+                    # 修正：收益率分母优先使用期初本金
+                    calc_base = base_invest if base_invest > 0 else base
                     return {
                         'pnl': pnl,
-                        'pnl_rate': round(pnl / base * 100, 2) if base else 0,
+                        'pnl_rate': round(pnl / calc_base * 100, 2) if calc_base else 0,
                         'base_value': base,
                     }
                 return {'pnl': 0, 'pnl_rate': 0, 'base_value': 0}
