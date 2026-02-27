@@ -100,8 +100,8 @@ PRELOAD_INTERVAL_SECONDS = int(os.getenv("PRELOAD_INTERVAL_SECONDS", "30"))
 
 # 汇率配置
 DEFAULT_FOREX_RATES = {
-    "USD": 7.25,
-    "HKD": 0.93,
+    "USD": 7.0,
+    "HKD": 0.9,
     "CNY": 1.00
 }
 

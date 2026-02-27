@@ -224,9 +224,9 @@ class AppState extends ChangeNotifier {
   double _rateForCurrency(String curr) {
     switch (curr.toUpperCase()) {
       case 'USD':
-        return _exchangeRates['USD'] ?? 7.25;
+        return _exchangeRates['USD'] ?? 7.0;
       case 'HKD':
-        return _exchangeRates['HKD'] ?? 0.93;
+        return _exchangeRates['HKD'] ?? 0.9;
       default:
         return 1.0;
     }

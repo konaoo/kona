@@ -289,33 +289,54 @@ class PricePreloader:
 def get_forex_rates() -> Dict[str, float]:
     """
     获取实时汇率
-    
+
+    优先使用 exchangerate-api.com（免费、无需注册），
+    回退到新浪外汇接口，最终兜底使用 config 默认值。
+
     Returns:
-        汇率字典 {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0}
+        汇率字典 {'USD': 7.0, 'HKD': 0.9, 'CNY': 1.0}
     """
     rates = config.DEFAULT_FOREX_RATES.copy()
 
     if not is_policy_enabled("upstream.rate", default=True):
         logger.warning("Rate upstream disabled by admin policy")
         return rates
-    
+
+    # 主数据源：exchangerate-api.com
+    try:
+        url = "https://open.er-api.com/v6/latest/USD"
+        r = monitored_http_get("exchangerate_api", url, headers=config.API_HEADERS["default"], timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("result") == "success" and "rates" in data:
+                api_rates = data["rates"]
+                cny = safe_float(api_rates.get("CNY", 0))
+                hkd_per_usd = safe_float(api_rates.get("HKD", 0))
+                if cny > 0:
+                    rates["USD"] = round(cny, 4)
+                    logger.debug(f"Updated USD rate from exchangerate-api: {cny}")
+                if hkd_per_usd > 0 and cny > 0:
+                    rates["HKD"] = round(cny / hkd_per_usd, 4)
+                    logger.debug(f"Updated HKD rate from exchangerate-api: {rates['HKD']}")
+                return rates
+    except Exception as e:
+        logger.warning(f"exchangerate-api failed: {e}, trying sina fallback")
+
+    # 备用数据源：新浪外汇
     try:
         url = config.API_ENDPOINTS["sina_forex"]
         r = monitored_http_get("sina_forex", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
-        
         if r.status_code == 200:
             text = r.text
-            # 使用正则匹配 hf_USDCNY=7.25, hf_HKDCNY=0.93
             matches = re.findall(r'hf_([A-Z]+)CNY.*?=([0-9.]+)', text)
             for curr, price_str in matches:
                 p = safe_float(price_str)
                 if p > 0:
                     rates[curr] = p
-                    logger.debug(f"Updated {curr} rate: {p}")
-                    
+                    logger.debug(f"Updated {curr} rate from sina: {p}")
     except Exception as e:
         logger.warning(f"Failed to get forex rates: {e}, using defaults")
-    
+
     return rates
 
 
