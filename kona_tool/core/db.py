@@ -3749,7 +3749,24 @@ class DatabaseManager:
                     (year_start,) + user_param,
                 )
                 base_row = cursor.fetchone()
-                prev_total = float(base_row['total_pnl']) if base_row and base_row['total_pnl'] is not None else 0.0
+                if base_row and base_row['total_pnl'] is not None:
+                    prev_total = float(base_row['total_pnl'])
+                else:
+                    cursor.execute(
+                        f'''
+                        SELECT date, total_pnl, day_pnl
+                        FROM daily_snapshots
+                        WHERE date >= ? AND date <= ? AND {user_condition}
+                        ORDER BY date ASC
+                        LIMIT 1
+                        ''',
+                        (year_start, year_end) + user_param,
+                    )
+                    first_row = cursor.fetchone()
+                    if first_row and first_row['total_pnl'] is not None:
+                        prev_total = float(first_row['total_pnl']) - float(first_row['day_pnl'] or 0.0)
+                    else:
+                        prev_total = 0.0
                 month_limit = now.month if target_year == now.year else 12
 
                 for m in range(1, month_limit + 1):
@@ -3797,7 +3814,24 @@ class DatabaseManager:
                         (base_date,) + user_param,
                     )
                     base_row = cursor.fetchone()
-                    prev_total = float(base_row['total_pnl']) if base_row and base_row['total_pnl'] is not None else 0.0
+                    if base_row and base_row['total_pnl'] is not None:
+                        prev_total = float(base_row['total_pnl'])
+                    else:
+                        cursor.execute(
+                            f'''
+                            SELECT date, total_pnl, day_pnl
+                            FROM daily_snapshots
+                            WHERE date >= ? AND date <= ? AND {user_condition}
+                            ORDER BY date ASC
+                            LIMIT 1
+                            ''',
+                            (base_date, today_str) + user_param,
+                        )
+                        first_row = cursor.fetchone()
+                        if first_row and first_row['total_pnl'] is not None:
+                            prev_total = float(first_row['total_pnl']) - float(first_row['day_pnl'] or 0.0)
+                        else:
+                            prev_total = 0.0
                     for y in range(start_year, now.year + 1):
                         current_total = year_last.get(y, prev_total)
                         pnl = current_total - prev_total
