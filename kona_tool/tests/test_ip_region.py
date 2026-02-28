@@ -25,6 +25,7 @@ class IpRegionTests(unittest.TestCase):
     def test_normalize_region_parts_to_sheng_shi(self):
         self.assertEqual(normalize_region_parts("广东省", "深圳市"), "广东-深圳")
         self.assertEqual(normalize_region_parts("湖北", "武汉市"), "湖北-武汉")
+        self.assertEqual(normalize_region_parts("浙江省", "杭州市"), "浙江-杭州")
 
     def test_normalize_region_text_filters_non_chinese(self):
         self.assertEqual(normalize_region_text("Guangdong Province-Shenzhen"), "")
@@ -37,21 +38,39 @@ class IpRegionTests(unittest.TestCase):
         self.assertFalse(is_normalized_region("Guangdong-Shenzhen"))
         self.assertFalse(is_normalized_region("湖北-"))
 
+    @patch("core.ip_region._resolve_from_pconline")
     @patch("core.ip_region._resolve_from_ipwho")
     @patch("core.ip_region._resolve_from_ip_api")
-    def test_resolve_ip_region_prefers_ip_api(self, mock_api, mock_ipwho):
+    def test_resolve_ip_region_prefers_pconline(self, mock_api, mock_ipwho, mock_pconline):
+        mock_pconline.return_value = "广东-深圳"
         mock_api.return_value = "广东-深圳"
         mock_ipwho.return_value = "湖北-武汉"
         self.assertEqual(resolve_ip_region("1.2.3.4"), "广东-深圳")
+        mock_pconline.assert_called_once()
+        mock_api.assert_not_called()
+        mock_ipwho.assert_not_called()
+
+    @patch("core.ip_region._resolve_from_pconline")
+    @patch("core.ip_region._resolve_from_ipwho")
+    @patch("core.ip_region._resolve_from_ip_api")
+    def test_resolve_ip_region_fallback_to_ip_api(self, mock_api, mock_ipwho, mock_pconline):
+        mock_pconline.return_value = ""
+        mock_api.return_value = "浙江-杭州"
+        mock_ipwho.return_value = "湖北-武汉"
+        self.assertEqual(resolve_ip_region("8.8.8.8"), "浙江-杭州")
+        mock_pconline.assert_called_once()
         mock_api.assert_called_once()
         mock_ipwho.assert_not_called()
 
+    @patch("core.ip_region._resolve_from_pconline")
     @patch("core.ip_region._resolve_from_ipwho")
     @patch("core.ip_region._resolve_from_ip_api")
-    def test_resolve_ip_region_fallback_to_ipwho(self, mock_api, mock_ipwho):
+    def test_resolve_ip_region_fallback_to_ipwho(self, mock_api, mock_ipwho, mock_pconline):
+        mock_pconline.return_value = ""
         mock_api.return_value = ""
         mock_ipwho.return_value = "浙江-杭州"
         self.assertEqual(resolve_ip_region("8.8.8.8"), "浙江-杭州")
+        mock_pconline.assert_called_once()
         mock_api.assert_called_once()
         mock_ipwho.assert_called_once()
 

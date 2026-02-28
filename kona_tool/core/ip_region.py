@@ -22,7 +22,6 @@ _PROVINCE_SUFFIXES = (
     "自治区",
     "省",
     "市",
-    "州",
 )
 _CITY_SUFFIXES = (
     "自治州",
@@ -30,7 +29,6 @@ _CITY_SUFFIXES = (
     "特别行政区",
     "市",
     "盟",
-    "州",
 )
 
 
@@ -120,6 +118,22 @@ def _resolve_from_ip_api(ip: str) -> str:
     return normalize_region_parts(payload.get("regionName"), payload.get("city"))
 
 
+def _resolve_from_pconline(ip: str) -> str:
+    req = urllib.request.Request(
+        f"https://whois.pconline.com.cn/ipJson.jsp?ip={ip}&json=true",
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+    with urllib.request.urlopen(req, timeout=1.5) as response:
+        raw_bytes = response.read()
+    text = raw_bytes.decode("gbk", errors="ignore")
+    payload = json.loads(text or "{}")
+    if not isinstance(payload, dict):
+        return ""
+    province = payload.get("pro")
+    city = payload.get("city")
+    return normalize_region_parts(province, city)
+
+
 def _resolve_from_ipwho(ip: str) -> str:
     payload = _http_json(f"https://ipwho.is/{ip}", timeout=1.2)
     if payload.get("success") is False:
@@ -132,6 +146,12 @@ def resolve_ip_region(ip: str) -> str:
     safe_ip = str(ip or "").strip()
     if not is_public_ip(safe_ip):
         return ""
+    try:
+        resolved = _resolve_from_pconline(safe_ip)
+        if resolved:
+            return resolved
+    except Exception:
+        pass
     try:
         resolved = _resolve_from_ip_api(safe_ip)
         if resolved:
