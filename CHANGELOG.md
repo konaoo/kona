@@ -8,6 +8,58 @@
 
 ---
 
+## v1.0.17 - 管理后台排序分页、活跃地区与首屏体验修复
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Web | Backend | Flutter | Infra | Docs
+
+### Summary
+- 管理后台用户页完成服务端排序 + 分页统一，支持按最近活跃、总资产、注册时间降序查看。
+- 管理后台时间展示统一北京时间，地区展示统一中文 `省-市`，并补齐历史回填链路。
+- Web 管理端硬刷新黑屏问题修复，首屏增加加载占位与超时保护。
+- 服务器完成最小扩容（2 worker + 预取降频 + 2GB swap），提升抗压能力。
+
+### Added
+- `GET /api/admin/users` 新增排序参数：`sort_by`、`sort_dir`。
+- 用户页新增排序下拉与分页条（10/20/50/100）。
+- 新增活跃地区字段链路：`last_active_ip`、`last_active_region`（管理后台展示）。
+- 新增并执行地区回填脚本（按历史 IP 回填规范化地区）。
+
+### Changed
+- 用户页查询从固定 `limit=100` 改为服务端分页。
+- 后端用户列表查询改为排序白名单，排序键进入缓存 key，避免串缓存。
+- 地区显示策略统一：有值显示中文省市，无值显示 `未知`。
+- Web 首屏按路径区分 boot 背景（门户/业务端/管理端），并增加 `auth/me` 启动超时保护。
+- 线上 Gunicorn 从 `workers=1` 调整为 `workers=2`（threads 维持 4）；预取间隔上调为 300 秒。
+
+### Fixed
+- 修复管理后台用户页“单页拉全量”导致的查询和交互不稳定问题。
+- 修复管理后台时间非北京时间、地区中英混杂及空值展示不统一问题。
+- 修复管理端硬刷新时出现大面积黑页的首屏体验问题。
+
+### Ops / Deployment
+- 已推送 `main`：`cb935ed`、`5fb4a91`、`d1a9ec0` 等。
+- 已完成线上部署与服务重启，回填生效。
+- 已启用 swap（2GB）并写入 `/etc/fstab` 持久化。
+
+### Data / Migration
+- 用户表地区数据执行历史回填：
+  - 可回填记录已更新到 `last_active_region`。
+  - 无公网 IP 或不可解析记录保持 `未知`。
+
+### Verification
+- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests/test_admin_api_foundation.py`
+- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`
+- 线上抽样：
+  - `/api/admin/users` 排序分页返回正确
+  - 活跃地区字段返回并规范化
+  - `/admin/users` 强刷不再纯黑屏
+
+### Notes
+- 当前服务器为 `t3.micro`，20 人同时高频刷新行情仍会出现高延迟与部分超时；建议下一步升配 `t3.small` 或 `t3.medium`。
+
+---
+
 ## v1.0.16 - 资产分类规则收敛与美股ETF代码链路修复
 - 发布状态：Released
 - 发布类型：Patch
