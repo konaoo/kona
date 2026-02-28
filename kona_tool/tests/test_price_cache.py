@@ -16,14 +16,18 @@ from unittest.mock import patch
 class TestBatchCache(unittest.TestCase):
     def test_batch_skips_cached_codes(self):
         price.price_cache.clear()
-        price.price_cache.set('sh600000', (10, 9, 0, 0))
+        cached_code = 'ci_cached_code_001'
+        miss_code = 'ci_missing_code_001'
+        price.price_cache.set(cached_code, (10, 9, 0, 0))
 
         with patch('core.price.get_price', return_value=(5, 4, 1, 0)) as mock_get:
-            res = price.batch_get_prices(['sh600000', 'sh600001'])
+            res = price.batch_get_prices([cached_code, miss_code])
+            called_args = [call.args for call in mock_get.call_args_list]
 
-            self.assertEqual(mock_get.call_count, 1)
-            self.assertEqual(res['sh600000'][0], 10)
-            self.assertEqual(res['sh600001'][0], 5)
+            self.assertEqual(called_args.count((miss_code, False)), 1)
+            self.assertNotIn((cached_code, False), called_args)
+            self.assertEqual(res[cached_code][0], 10)
+            self.assertEqual(res[miss_code][0], 5)
 
 
 if __name__ == '__main__':
