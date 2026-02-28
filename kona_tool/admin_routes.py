@@ -25,6 +25,7 @@ from core.system import system_manager
 from core.admin.user_admin import reset_user_password, revoke_user_sessions
 from core.admin.policies import list_policies, update_policy, batch_update_policies
 from core.policy_runtime import invalidate_policy_cache
+from core.ip_region import normalize_region_text
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
@@ -341,6 +342,11 @@ def _admin_log_read(route_name: str, cache_state: str, elapsed_ms: int, params_h
         )
     except Exception:
         pass
+
+
+def _admin_region_display(value: Any) -> str:
+    normalized = normalize_region_text(value)
+    return normalized or "未知"
 
 
 def _real_user_where(alias: str = "") -> str:
@@ -984,6 +990,7 @@ def create_admin_blueprint(db, admin_write_audit):
                     if total <= 0:
                         total = int(item.get("__total_count") or 0)
                     item.pop("__total_count", None)
+                    item["last_login_region"] = _admin_region_display(item.get("last_login_region"))
                     users.append(item)
                 if not rows:
                     cursor.execute(
@@ -1092,7 +1099,9 @@ def create_admin_blueprint(db, admin_write_audit):
             row = cursor.fetchone()
             if not row:
                 return jsonify({"error": "User not found"}), 404
-            return jsonify(dict(row))
+            item = dict(row)
+            item["last_login_region"] = _admin_region_display(item.get("last_login_region"))
+            return jsonify(item)
         finally:
             conn.close()
 

@@ -58,6 +58,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM admin_audit_logs")
         cursor.execute("DELETE FROM daily_snapshots")
+        cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
         conn.commit()
         conn.close()
@@ -293,8 +294,30 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertAlmostEqual(float(items[0].get("total_asset_cny") or 0), 12345.0, places=3)
         self.assertAlmostEqual(float(items[0].get("total_invest_cny") or 0), 6789.0, places=3)
         self.assertIn("last_login_region", items[0])
-        self.assertEqual(items[0].get("last_login_region"), "")
+        self.assertEqual(items[0].get("last_login_region"), "未知")
         self.assertNotIn("__local__", {str(i.get("id")) for i in items})
+
+    def test_admin_users_region_display_is_normalized(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "target_user", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET last_login_region = ? WHERE id = ?",
+            ("广东省-深圳市", "u_target"),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?q=target&include_local=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        items = (resp.get_json() or {}).get("items") or []
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].get("last_login_region"), "广东-深圳")
 
     def test_admin_user_portfolio_endpoint_returns_holdings(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

@@ -40,7 +40,28 @@ export function pct(value: number): string {
 
 export function shortDateTime(value: unknown): string {
   if (!value) return '-'
-  const d = new Date(String(value))
+  const raw = String(value).trim()
+  if (!raw) return '-'
+  const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw)
+  const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`
+  const d = new Date(normalized)
   if (Number.isNaN(d.getTime())) return String(value)
-  return d.toLocaleString('zh-CN', { hour12: false })
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(d)
+  const map = new Map(parts.map((part) => [part.type, part.value]))
+  const y = map.get('year') || '0000'
+  const m = map.get('month') || '00'
+  const day = map.get('day') || '00'
+  const hh = map.get('hour') || '00'
+  const mm = map.get('minute') || '00'
+  const ss = map.get('second') || '00'
+  return `${y}/${m}/${day} ${hh}:${mm}:${ss}`
 }

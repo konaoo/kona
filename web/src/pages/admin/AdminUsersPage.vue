@@ -34,7 +34,7 @@
             <td>{{ formatCny(u.total_invest_cny) }}</td>
             <td>{{ shortDateTime(u.created_at) }}</td>
             <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
-            <td>{{ u.last_login_region || '-' }}</td>
+            <td>{{ displayRegion(u.last_login_region) }}</td>
             <td class="actions">
               <button class="btn" @click="openDetail(u)">详情</button>
               <button class="btn" @click="toggleStatus(u)">{{ u.status === 'disabled' ? '解封' : '封禁' }}</button>
@@ -177,6 +177,11 @@ function formatQty(value: unknown): string {
 function formatPrice(value: unknown): string {
   const n = Number(value)
   return Number.isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '-'
+}
+
+function displayRegion(value: unknown): string {
+  const raw = String(value || '').trim()
+  return raw || '未知'
 }
 
 onMounted(() => {

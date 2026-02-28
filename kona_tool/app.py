@@ -9,15 +9,13 @@ import time
 import secrets
 import json
 import hashlib
-from functools import wraps, lru_cache
+from functools import wraps
 from collections import defaultdict
 from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from pathlib import Path
 import os
-import ipaddress
-import urllib.request
 
 import config
 try:
@@ -59,6 +57,7 @@ from core.auth import (
     generate_refresh_token,
     hash_refresh_token,
 )
+from core.ip_region import resolve_ip_region
 import re
 from typing import Any, Dict
 from datetime import datetime, timedelta, timezone
@@ -125,52 +124,12 @@ def _client_ip() -> str:
     return request.remote_addr or 'unknown'
 
 
-def _is_public_ip(ip: str) -> bool:
-    value = str(ip or "").strip()
-    if not value:
-        return False
-    try:
-        ip_obj = ipaddress.ip_address(value)
-    except ValueError:
-        return False
-    return not (
-        ip_obj.is_private
-        or ip_obj.is_loopback
-        or ip_obj.is_link_local
-        or ip_obj.is_multicast
-        or ip_obj.is_reserved
-        or ip_obj.is_unspecified
-    )
-
-
-@lru_cache(maxsize=2048)
-def _lookup_ip_region_cached(ip: str) -> str:
-    if not _is_public_ip(ip):
-        return ""
-    req = urllib.request.Request(
-        f"https://ipwho.is/{ip}",
-        headers={"User-Agent": "kona-ip-geo/1.0"},
-    )
-    with urllib.request.urlopen(req, timeout=1.2) as response:
-        raw = response.read().decode("utf-8", errors="ignore")
-    payload = json.loads(raw or "{}")
-    if not isinstance(payload, dict):
-        return ""
-    if payload.get("success") is False:
-        return ""
-    province = str(payload.get("region") or "").strip()
-    city = str(payload.get("city") or "").strip()
-    if province and city and city != province:
-        return f"{province}-{city}"[:120]
-    return (province or city)[:120]
-
-
 def _resolve_ip_region(ip: str) -> str:
     safe_ip = str(ip or "").strip()
     if not safe_ip:
         return ""
     try:
-        return _lookup_ip_region_cached(safe_ip)
+        return resolve_ip_region(safe_ip)
     except Exception as exc:
         logger.info("IP region lookup failed ip=%s error=%s", safe_ip, exc)
         return ""
