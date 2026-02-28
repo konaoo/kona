@@ -50,27 +50,23 @@
         </tbody>
       </table>
 
-      <div v-if="totalPages > 1" class="pager">
-        <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
-        <div class="pager-numbers">
-          <button
-            v-for="page in pageNumbers"
-            :key="page"
-            class="pager-number"
-            :class="{ active: currentPage === page }"
-            @click="goToPage(page)"
-          >
-            {{ page }}
-          </button>
+      <div class="pager-wrap">
+        <div class="pager">
+          <span class="pager-total">共 {{ totalRows }} 条</span>
+          <select v-model.number="pageSize" class="pager-select">
+            <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+          </select>
+          <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
+          <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
         </div>
-        <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
       </div>
     </section>
   </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
@@ -78,23 +74,18 @@ const overview = reactive<Record<string, any>>({
   dashboard: {},
   retention_rows: [],
 })
-const pageSize = 20
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const currentPage = ref(1)
 const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
+const totalRows = computed(() => retentionRows.value.length)
 const totalPages = computed(() => {
-  const total = retentionRows.value.length
-  return total > 0 ? Math.ceil(total / pageSize) : 1
+  const total = totalRows.value
+  return total > 0 ? Math.ceil(total / pageSize.value) : 1
 })
 const pagedRows = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return retentionRows.value.slice(start, start + pageSize)
-})
-const pageNumbers = computed(() => {
-  const pages = []
-  for (let i = 1; i <= totalPages.value; i += 1) {
-    pages.push(i)
-  }
-  return pages
+  const start = (currentPage.value - 1) * pageSize.value
+  return retentionRows.value.slice(start, start + pageSize.value)
 })
 
 async function load() {
@@ -123,6 +114,10 @@ function prevPage() {
 function nextPage() {
   goToPage(currentPage.value + 1)
 }
+
+watch(pageSize, () => {
+  currentPage.value = 1
+})
 
 onMounted(load)
 </script>
@@ -192,39 +187,37 @@ onMounted(load)
   font-weight: 600;
 }
 
-.pager {
+.pager-wrap {
   margin-top: 12px;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
 }
 
-.pager-numbers {
+.pager {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+}
+
+.pager-total,
+.pager-page {
+  color: #3f6086;
+  font-weight: 600;
+}
+
+.pager-select {
+  min-width: 110px;
+  height: 36px;
+  border: 1px solid #c7d7ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #35557d;
+  padding: 0 10px;
 }
 
 .pager-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.pager-number {
-  min-width: 34px;
-  height: 34px;
-  border: 1px solid #c7d7ea;
-  border-radius: 8px;
-  background: #fff;
-  color: #2b4d74;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.pager-number.active {
-  background: #1f8ea5;
-  border-color: #1f8ea5;
-  color: #fff;
 }
 
 .empty {
@@ -244,6 +237,10 @@ onMounted(load)
 
   .kpi-value {
     font-size: 30px;
+  }
+
+  .pager-wrap {
+    justify-content: flex-start;
   }
 
   .pager {

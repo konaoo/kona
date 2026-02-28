@@ -235,6 +235,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(items[0].get("id"), "u_target")
         self.assertAlmostEqual(float(items[0].get("total_asset_cny") or 0), 12345.0, places=3)
         self.assertAlmostEqual(float(items[0].get("total_invest_cny") or 0), 6789.0, places=3)
+        self.assertIn("last_login_region", items[0])
+        self.assertEqual(items[0].get("last_login_region"), "")
         self.assertNotIn("__local__", {str(i.get("id")) for i in items})
 
     def test_admin_user_portfolio_endpoint_returns_holdings(self):

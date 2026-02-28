@@ -739,6 +739,9 @@ def create_admin_blueprint(db, admin_write_audit):
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
+                        NULL AS last_active_at,
+                        '' AS last_login_ip,
+                        '' AS last_login_region,
                         0 AS active_sessions,
                         COALESCE(ls_local.total_asset, 0.0) AS total_asset_cny,
                         COALESCE(ls_local.total_invest, 0.0) AS total_invest_cny,
@@ -773,6 +776,9 @@ def create_admin_blueprint(db, admin_write_audit):
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
+                        u.last_active_at,
+                        COALESCE(u.last_login_ip, '') AS last_login_ip,
+                        COALESCE(u.last_login_region, '') AS last_login_region,
                         (
                             SELECT COUNT(1)
                             FROM auth_refresh_tokens rt
@@ -819,6 +825,9 @@ def create_admin_blueprint(db, admin_write_audit):
                     bu.status,
                     bu.created_at,
                     bu.last_login,
+                    bu.last_active_at,
+                    bu.last_login_ip,
+                    bu.last_login_region,
                     bu.active_sessions,
                     bu.total_asset_cny,
                     bu.total_invest_cny,
@@ -870,6 +879,9 @@ def create_admin_blueprint(db, admin_write_audit):
                         "status": "active",
                         "created_at": None,
                         "last_login": None,
+                        "last_active_at": None,
+                        "last_login_ip": "",
+                        "last_login_region": "",
                         "active_sessions": 0,
                         "can_manage": 0,
                     })
@@ -888,6 +900,9 @@ def create_admin_blueprint(db, admin_write_audit):
                     LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                     u.created_at,
                     u.last_login,
+                    u.last_active_at,
+                    COALESCE(u.last_login_ip, '') AS last_login_ip,
+                    COALESCE(u.last_login_region, '') AS last_login_region,
                     (
                         SELECT COUNT(1)
                         FROM auth_refresh_tokens rt

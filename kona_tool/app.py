@@ -9,13 +9,15 @@ import time
 import secrets
 import json
 import hashlib
-from functools import wraps
+from functools import wraps, lru_cache
 from collections import defaultdict
 from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from pathlib import Path
 import os
+import ipaddress
+import urllib.request
 
 import config
 try:
@@ -102,6 +104,9 @@ _undo_records = {}
 _UNDO_WINDOW_SECONDS = 15.0
 _policy_rate_lock = threading.Lock()
 _policy_rate_counters = defaultdict(int)
+_activity_touch_lock = threading.Lock()
+_activity_touch_last_ts: Dict[str, float] = {}
+_ACTIVITY_TOUCH_INTERVAL_SECONDS = 30.0
 _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/password/change",
     "/api/auth/logout",
@@ -118,6 +123,57 @@ def _client_ip() -> str:
     if xri:
         return xri.strip()
     return request.remote_addr or 'unknown'
+
+
+def _is_public_ip(ip: str) -> bool:
+    value = str(ip or "").strip()
+    if not value:
+        return False
+    try:
+        ip_obj = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return not (
+        ip_obj.is_private
+        or ip_obj.is_loopback
+        or ip_obj.is_link_local
+        or ip_obj.is_multicast
+        or ip_obj.is_reserved
+        or ip_obj.is_unspecified
+    )
+
+
+@lru_cache(maxsize=2048)
+def _lookup_ip_region_cached(ip: str) -> str:
+    if not _is_public_ip(ip):
+        return ""
+    req = urllib.request.Request(
+        f"https://ipwho.is/{ip}",
+        headers={"User-Agent": "kona-ip-geo/1.0"},
+    )
+    with urllib.request.urlopen(req, timeout=1.2) as response:
+        raw = response.read().decode("utf-8", errors="ignore")
+    payload = json.loads(raw or "{}")
+    if not isinstance(payload, dict):
+        return ""
+    if payload.get("success") is False:
+        return ""
+    province = str(payload.get("region") or "").strip()
+    city = str(payload.get("city") or "").strip()
+    if province and city and city != province:
+        return f"{province}-{city}"[:120]
+    return (province or city)[:120]
+
+
+def _resolve_ip_region(ip: str) -> str:
+    safe_ip = str(ip or "").strip()
+    if not safe_ip:
+        return ""
+    try:
+        return _lookup_ip_region_cached(safe_ip)
+    except Exception as exc:
+        logger.info("IP region lookup failed ip=%s error=%s", safe_ip, exc)
+        return ""
 
 
 def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -> Dict[str, str]:
@@ -449,6 +505,22 @@ def _apply_policy_rate_limit(scope_key: str, limit_per_min: int) -> bool:
         return _policy_rate_counters[key] <= limit_per_min
 
 
+def _should_touch_user_activity(user_id: str) -> bool:
+    uid = str(user_id or "").strip()
+    if not uid:
+        return False
+    now = time.time()
+    with _activity_touch_lock:
+        stale = [k for k, ts in _activity_touch_last_ts.items() if (now - ts) > 3600]
+        for k in stale:
+            _activity_touch_last_ts.pop(k, None)
+        last = _activity_touch_last_ts.get(uid, 0.0)
+        if (now - last) < _ACTIVITY_TOUCH_INTERVAL_SECONDS:
+            return False
+        _activity_touch_last_ts[uid] = now
+        return True
+
+
 @app.before_request
 def _enforce_api_group_policy():
     path = request.path or ""
@@ -505,6 +577,24 @@ def _enforce_api_group_policy():
             429,
         )
     return None
+
+
+@app.after_request
+def _mark_user_recent_activity(response):
+    try:
+        path = request.path or ""
+        if not path.startswith("/api/") or path.startswith("/api/admin/"):
+            return response
+        if request.method == "OPTIONS":
+            return response
+        user_id = str(getattr(g, "user_id", "") or "").strip()
+        if not user_id:
+            return response
+        if _should_touch_user_activity(user_id):
+            db.update_last_active(user_id)
+    except Exception as exc:
+        logger.debug("update last active failed: %s", exc)
+    return response
 
 
 def _refresh_token_expiry_days() -> int:
@@ -1888,7 +1978,12 @@ def auth_login():
         _auth_audit(event='auth_login', outcome='failed', username=username, reason='bad_password', level='warning')
         return jsonify({"error": "Invalid username or password"}), 401
 
-    db.update_last_login(user["id"])
+    client_ip = _client_ip()
+    db.update_last_login(
+        user["id"],
+        login_ip=client_ip,
+        login_region=_resolve_ip_region(client_ip),
+    )
     tokens = _issue_auth_tokens(user["id"], username, device_id=device_id)
     profile = get_user_profile(db, user["id"]) or {}
     _auth_audit(event='auth_login', outcome='success', username=username, reason=f"user_id={user['id']}")
@@ -1957,7 +2052,12 @@ def auth_register():
         _auth_audit(event='auth_register', outcome='failed', username=username, reason='consume_invite_failed', level='warning')
         return jsonify({"error": reason or "Invite code invalid or already used"}), 400
 
-    db.update_last_login(created["id"])
+    client_ip = _client_ip()
+    db.update_last_login(
+        created["id"],
+        login_ip=client_ip,
+        login_region=_resolve_ip_region(client_ip),
+    )
     tokens = _issue_auth_tokens(created["id"], username, device_id=device_id)
     profile = get_user_profile(db, created["id"]) or {}
     _auth_audit(event='auth_register', outcome='success', username=username, reason=f"user_id={created['id']}")
@@ -2045,7 +2145,12 @@ def auth_bootstrap_credentials():
         _auth_audit(event='auth_bootstrap', outcome='failed', username=username, reason=reason or 'bootstrap_failed', level='warning')
         return jsonify({"error": reason or "Bootstrap failed"}), 400
     db.revoke_all_refresh_tokens(g.user_id)
-    db.update_last_login(g.user_id)
+    client_ip = _client_ip()
+    db.update_last_login(
+        g.user_id,
+        login_ip=client_ip,
+        login_region=_resolve_ip_region(client_ip),
+    )
     tokens = _issue_auth_tokens(g.user_id, username)
     profile = get_user_profile(db, g.user_id) or {}
     _auth_audit(event='auth_bootstrap', outcome='success', username=username, reason=f'user_id={g.user_id}')

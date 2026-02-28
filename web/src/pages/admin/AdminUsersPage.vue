@@ -21,6 +21,8 @@
             <th>总资产金额（￥）</th>
             <th>投资资产金额（￥）</th>
             <th>注册时间</th>
+            <th>最近活跃时间</th>
+            <th>最近登录地区</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -31,13 +33,15 @@
             <td>{{ formatCny(u.total_asset_cny) }}</td>
             <td>{{ formatCny(u.total_invest_cny) }}</td>
             <td>{{ shortDateTime(u.created_at) }}</td>
+            <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
+            <td>{{ u.last_login_region || '-' }}</td>
             <td class="actions">
-              <button class="btn" @click="toggleStatus(u)">{{ u.status === 'disabled' ? '解封' : '封禁' }}</button>
               <button class="btn" @click="openDetail(u)">详情</button>
+              <button class="btn" @click="toggleStatus(u)">{{ u.status === 'disabled' ? '解封' : '封禁' }}</button>
             </td>
           </tr>
           <tr v-if="!(users.items || []).length">
-            <td colspan="6" class="empty">暂无用户数据</td>
+            <td colspan="8" class="empty">暂无用户数据</td>
           </tr>
         </tbody>
       </table>
@@ -120,6 +124,10 @@ async function load() {
 async function toggleStatus(user: Record<string, any>) {
   try {
     const next = user.status === 'disabled' ? 'active' : 'disabled'
+    if (next === 'disabled') {
+      if (!window.confirm(`确认封禁用户 ${user.username} 吗？`)) return
+      if (!window.confirm(`二次确认：封禁后 ${user.username} 将无法登录，是否继续？`)) return
+    }
     await api.post('/api/admin/users/status', { user_id: user.id, status: next })
     flash('状态已更新', true)
     await load()
@@ -188,6 +196,15 @@ onMounted(load)
   display: flex;
   gap: 8px;
   justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 170px;
+}
+
+.table th:last-child,
+.table td:last-child {
+  text-align: center;
 }
 
 .up {

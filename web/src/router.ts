@@ -10,9 +10,7 @@ import AppAssetDetailPage from './pages/app/AppAssetDetailPage.vue'
 import AdminLoginPage from './pages/admin/AdminLoginPage.vue'
 import AdminOverviewPage from './pages/admin/AdminOverviewPage.vue'
 import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
-import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
 import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
-import AdminDataPage from './pages/admin/AdminDataPage.vue'
 import AdminApisPage from './pages/admin/AdminApisPage.vue'
 import AdminAuditPage from './pages/admin/AdminAuditPage.vue'
 import { useKonaStore } from './shared/store'
@@ -34,11 +32,11 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/login', component: AdminLoginPage },
   { path: '/admin/overview', component: AdminOverviewPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/users', component: AdminUsersPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/config', component: AdminConfigPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/invites', component: AdminInvitesPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/data', component: AdminDataPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/apis', component: AdminApisPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/audit', component: AdminAuditPage, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/admin/config', redirect: '/admin/overview' },
+  { path: '/admin/data', redirect: '/admin/overview' },
 ]
 
 export const router = createRouter({
