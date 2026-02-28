@@ -18,7 +18,7 @@
     <section class="panel retention-panel">
       <div class="head">
         <h3>用户增长与留存</h3>
-        <button class="btn" @click="load">刷新</button>
+        <button class="btn" @click="load(true)">刷新</button>
       </div>
       <table class="table">
         <thead>
@@ -52,7 +52,7 @@
 
       <div class="pager-wrap">
         <div class="pager">
-          <span class="pager-total">共 {{ totalRows }} 条</span>
+          <span class="pager-total">共{{ totalRows }}条</span>
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
@@ -88,8 +88,9 @@ const pagedRows = computed(() => {
   return retentionRows.value.slice(start, start + pageSize.value)
 })
 
-async function load() {
-  const payload = await api.get<Record<string, any>>('/api/admin/overview')
+async function load(force = false) {
+  const suffix = force ? '?force=1' : ''
+  const payload = await api.get<Record<string, any>>(`/api/admin/overview${suffix}`)
   overview.dashboard = payload?.dashboard || {}
   overview.retention_rows = payload?.retention_rows || []
   currentPage.value = 1
@@ -119,7 +120,9 @@ watch(pageSize, () => {
   currentPage.value = 1
 })
 
-onMounted(load)
+onMounted(() => {
+  void load()
+})
 </script>
 
 <style scoped>
@@ -196,16 +199,29 @@ onMounted(load)
 .pager {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 10px;
+  background: #f7fbff;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .pager-total,
 .pager-page {
   color: #3f6086;
   font-weight: 600;
+  white-space: nowrap;
+  word-break: keep-all;
+  line-height: 1.2;
+  flex: 0 0 auto;
 }
 
 .pager-select {
+  width: 120px !important;
+  max-width: 120px;
   min-width: 110px;
   height: 36px;
   border: 1px solid #c7d7ea;
@@ -213,6 +229,12 @@ onMounted(load)
   background: #fff;
   color: #35557d;
   padding: 0 10px;
+  flex: 0 0 auto;
+}
+
+.pager-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .pager-btn:disabled {

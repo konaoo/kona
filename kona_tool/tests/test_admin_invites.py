@@ -14,6 +14,7 @@ os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test_admin_invites
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
+import admin_routes  # noqa: E402
 
 
 def _seed_admin(user_id: str = "u_admin", username: str = "admin_user"):
@@ -39,6 +40,8 @@ class AdminInviteTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM invite_codes")
@@ -88,6 +91,73 @@ class AdminInviteTests(unittest.TestCase):
         text = export_resp.data.decode("utf-8")
         self.assertIn("邀请码,批次标识,状态", text)
         self.assertIn("使用用户名,使用用户编号,使用用户内部ID", text)
+
+    def test_invites_pagination_keeps_exact_total(self):
+        headers = _seed_admin()
+        gen = self.client.post(
+            "/api/admin/invites/generate",
+            headers=headers,
+            json={"count": 12, "batch_id": "batch_page"},
+        )
+        self.assertEqual(gen.status_code, 200)
+
+        listed = self.client.get(
+            "/api/admin/invites?status=all&batch_id=batch_page&limit=5&offset=10",
+            headers=headers,
+        )
+        self.assertEqual(listed.status_code, 200)
+        payload = listed.get_json() or {}
+        self.assertEqual(int(payload.get("total") or 0), 12)
+        self.assertEqual(len(payload.get("items") or []), 2)
+
+    def test_generate_invalidates_invites_read_cache(self):
+        headers = _seed_admin()
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+
+        first = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(int((first.get_json() or {}).get("total") or 0), 0)
+
+        gen = self.client.post(
+            "/api/admin/invites/generate",
+            headers=headers,
+            json={"count": 1, "batch_id": "batch_cache"},
+        )
+        self.assertEqual(gen.status_code, 200)
+
+        second = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(int((second.get_json() or {}).get("total") or 0), 1)
+
+    def test_force_param_bypasses_invites_read_cache(self):
+        headers = _seed_admin()
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+
+        first = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(int((first.get_json() or {}).get("total") or 0), 0)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO invite_codes (code, batch_id, status, created_by, note)
+            VALUES (?, ?, 'active', ?, ?)
+            """,
+            ("FORCECACHE1", "batch_force", "u_admin", ""),
+        )
+        conn.commit()
+        conn.close()
+
+        cached = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(cached.status_code, 200)
+        self.assertEqual(int((cached.get_json() or {}).get("total") or 0), 0)
+
+        forced = self.client.get("/api/admin/invites?status=active&limit=10&offset=0&force=1", headers=headers)
+        self.assertEqual(forced.status_code, 200)
+        self.assertEqual(int((forced.get_json() or {}).get("total") or 0), 1)
 
 
 if __name__ == "__main__":

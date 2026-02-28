@@ -52,6 +52,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM admin_audit_logs")
@@ -167,6 +169,61 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertAlmostEqual(float(cohort_row.get("retention_7d") or 0), 0.5, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_14d") or 0), 0.0, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_30d") or 0), 0.0, places=3)
+
+    def test_admin_overview_force_param_bypasses_read_cache(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        header = _auth_headers("u_admin", "admin_user")
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+
+        metrics_side_effect = [
+            {
+                "user_total": 11,
+                "new_today": 1,
+                "new_7d": 1,
+                "new_30d": 1,
+                "dau": 2,
+                "wau": 2,
+                "mau": 2,
+                "last_login_distribution": {
+                    "within_1d": 1,
+                    "within_7d": 1,
+                    "within_30d": 0,
+                    "over_30d": 0,
+                    "never_login": 0,
+                },
+            },
+            {
+                "user_total": 22,
+                "new_today": 2,
+                "new_7d": 2,
+                "new_30d": 2,
+                "dau": 3,
+                "wau": 3,
+                "mau": 3,
+                "last_login_distribution": {
+                    "within_1d": 2,
+                    "within_7d": 1,
+                    "within_30d": 0,
+                    "over_30d": 0,
+                    "never_login": 0,
+                },
+            },
+        ]
+        with patch.object(admin_routes, "_get_user_ops_metrics", side_effect=metrics_side_effect) as mock_metrics, patch.object(
+            admin_routes, "_get_user_retention_rows", return_value=[]
+        ), patch.object(admin_routes, "_recent_admin_audits", return_value=[]):
+            first = self.client.get("/api/admin/overview", headers=header)
+            second = self.client.get("/api/admin/overview", headers=header)
+            forced = self.client.get("/api/admin/overview?force=1", headers=header)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(forced.status_code, 200)
+        self.assertEqual((first.get_json() or {}).get("dashboard", {}).get("total_users"), 11)
+        self.assertEqual((second.get_json() or {}).get("dashboard", {}).get("total_users"), 11)
+        self.assertEqual((forced.get_json() or {}).get("dashboard", {}).get("total_users"), 22)
+        self.assertEqual(mock_metrics.call_count, 2)
 
     def test_admin_disable_enable_user_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

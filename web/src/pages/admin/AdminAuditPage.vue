@@ -3,7 +3,7 @@
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
         <input class="input" v-model.trim="action" placeholder="按 action 过滤" />
-        <button class="btn" @click="load">查询</button>
+        <button class="btn" @click="load(true)">查询</button>
       </div>
     </section>
 
@@ -43,12 +43,15 @@ import { shortDateTime } from '../../shared/format'
 const action = ref('')
 const logs = reactive<Record<string, any>>({ items: [] })
 
-async function load() {
+async function load(force = false) {
   const q = encodeURIComponent(action.value)
-  Object.assign(logs, await api.get(`/api/admin/audit/logs?action=${q}&limit=200`))
+  const suffix = force ? '&force=1' : ''
+  Object.assign(logs, await api.get(`/api/admin/audit/logs?action=${q}&limit=200${suffix}`))
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+})
 </script>
 
 <style scoped>

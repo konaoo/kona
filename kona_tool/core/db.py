@@ -370,6 +370,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_id ON daily_snapshots(user_id)')
         cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_snapshots_date_user_unique ON daily_snapshots(date, user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_snapshots_user_date_id ON daily_snapshots(user_id, date DESC, id DESC)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_user_date ON daily_snapshot_market_breakdowns(user_id, date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_date ON daily_snapshot_market_breakdowns(date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_breakdowns_source ON daily_snapshot_market_breakdowns(source)')
@@ -377,6 +378,8 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_action ON admin_audit_logs(action)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_status ON invite_codes(status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_status_created_code ON invite_codes(status, created_at DESC, code ASC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_created_code ON invite_codes(created_at DESC, code ASC)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_batch_id ON invite_codes(batch_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at ON auth_refresh_tokens(expires_at)')
@@ -666,6 +669,7 @@ class DatabaseManager:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_last_active_at ON users(last_active_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_user_number ON users(user_number)")
 
@@ -1381,32 +1385,56 @@ class DatabaseManager:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                f"SELECT COUNT(1) AS c FROM invite_codes ic {where_sql}",
-                tuple(params),
-            )
-            total = int(cursor.fetchone()["c"])
-            cursor.execute(
                 f"""
+                WITH filtered AS (
+                    SELECT
+                        ic.code,
+                        ic.batch_id,
+                        ic.status,
+                        ic.created_by,
+                        ic.created_at,
+                        ic.used_by_user_id,
+                        ic.used_at,
+                        ic.note,
+                        COALESCE(u.username, '') AS used_by_username,
+                        u.user_number AS used_by_user_number
+                    FROM invite_codes ic
+                    LEFT JOIN users u ON u.id = ic.used_by_user_id
+                    {where_sql}
+                )
                 SELECT
-                    ic.code,
-                    ic.batch_id,
-                    ic.status,
-                    ic.created_by,
-                    ic.created_at,
-                    ic.used_by_user_id,
-                    ic.used_at,
-                    ic.note,
-                    COALESCE(u.username, '') AS used_by_username,
-                    u.user_number AS used_by_user_number
-                FROM invite_codes ic
-                LEFT JOIN users u ON u.id = ic.used_by_user_id
-                {where_sql}
-                ORDER BY ic.created_at DESC, ic.code ASC
+                    code,
+                    batch_id,
+                    status,
+                    created_by,
+                    created_at,
+                    used_by_user_id,
+                    used_at,
+                    note,
+                    used_by_username,
+                    used_by_user_number,
+                    COUNT(1) OVER() AS __total_count
+                FROM filtered
+                ORDER BY created_at DESC, code ASC
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params + [limit, offset]),
             )
-            items = [dict(r) for r in cursor.fetchall()]
+            rows = cursor.fetchall()
+            total = 0
+            items = []
+            for row in rows:
+                item = dict(row)
+                if total <= 0:
+                    total = int(item.get("__total_count") or 0)
+                item.pop("__total_count", None)
+                items.append(item)
+            if not rows:
+                cursor.execute(
+                    f"SELECT COUNT(1) AS c FROM invite_codes ic {where_sql}",
+                    tuple(params),
+                )
+                total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
             return {"items": items, "total": total, "limit": limit, "offset": offset}
         finally:
             conn.close()

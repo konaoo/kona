@@ -2,7 +2,7 @@
   <LegacyAdminShell title="接口策略" subtitle="健康检查与策略开关">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
-        <button class="btn" @click="load">刷新</button>
+        <button class="btn" @click="load(true)">刷新</button>
       </div>
     </section>
 
@@ -38,9 +38,11 @@ import { api } from '../../shared/http'
 const health = reactive<Record<string, any>>({})
 const policies = reactive<Record<string, any>>({ items: [] })
 
-async function load() {
-  Object.assign(health, await api.get('/api/admin/apis/health'))
-  Object.assign(policies, await api.get('/api/admin/apis/policies?scope_type=all'))
+async function load(force = false) {
+  const healthForcePart = force ? '?force=1' : ''
+  const policyForcePart = force ? '&force=1' : ''
+  Object.assign(health, await api.get(`/api/admin/apis/health${healthForcePart}`))
+  Object.assign(policies, await api.get(`/api/admin/apis/policies?scope_type=all${policyForcePart}`))
 }
 
 async function toggle(item: Record<string, any>) {
@@ -49,10 +51,12 @@ async function toggle(item: Record<string, any>) {
     enabled: !item.enabled,
     limit_per_min: item.limit_per_min,
   })
-  await load()
+  await load(true)
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+})
 </script>
 
 <style scoped>

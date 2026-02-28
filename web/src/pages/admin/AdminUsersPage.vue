@@ -8,7 +8,7 @@
           <option value="active">active</option>
           <option value="disabled">disabled</option>
         </select>
-        <button class="btn" @click="load">查询</button>
+        <button class="btn" @click="load(true)">查询</button>
       </div>
     </section>
 
@@ -115,10 +115,11 @@ function flash(msg: string, success: boolean) {
   ok.value = success
 }
 
-async function load() {
+async function load(force = false) {
   const q = encodeURIComponent(query.value)
   const s = encodeURIComponent(status.value)
-  Object.assign(users, await api.get(`/api/admin/users?q=${q}&status=${s}&limit=100&offset=0&include_local=0`))
+  const forcePart = force ? '&force=1' : ''
+  Object.assign(users, await api.get(`/api/admin/users?q=${q}&status=${s}&limit=100&offset=0&include_local=0${forcePart}`))
 }
 
 async function toggleStatus(user: Record<string, any>) {
@@ -130,7 +131,7 @@ async function toggleStatus(user: Record<string, any>) {
     }
     await api.post('/api/admin/users/status', { user_id: user.id, status: next })
     flash('状态已更新', true)
-    await load()
+    await load(true)
   } catch (e) {
     flash(e instanceof Error ? e.message : '更新失败', false)
   }
@@ -178,7 +179,9 @@ function formatPrice(value: unknown): string {
   return Number.isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '-'
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+})
 </script>
 
 <style scoped>

@@ -6,9 +6,13 @@ from __future__ import annotations
 import importlib.util
 import csv
 import io
+import hashlib
+import json
 import secrets
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, g, current_app, make_response
@@ -180,6 +184,8 @@ _RUNTIME_CONFIG_OVERRIDES: Dict[str, Any] = {}
 _DEFAULT_CONFIG_VALUES: Dict[str, Any] = {
     key: getattr(config, key, None) for key in CONFIG_WHITELIST
 }
+_ADMIN_READ_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_ADMIN_READ_CACHE_LOCK = threading.Lock()
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -264,6 +270,79 @@ def _json_body() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _admin_cache_ttl_seconds() -> int:
+    try:
+        ttl = int(getattr(config, "ADMIN_READ_CACHE_TTL_SECONDS", 120))
+    except Exception:
+        ttl = 120
+    return max(0, min(ttl, 3600))
+
+
+def _admin_parse_force_arg() -> bool:
+    raw = str(request.args.get("force", "") or "").strip()
+    if not raw:
+        return False
+    return _coerce_bool(raw)
+
+
+def _admin_cache_key(route_name: str, params: Dict[str, Any]) -> Tuple[str, str]:
+    normalized = {
+        str(k): str(v)
+        for k, v in params.items()
+        if str(k).strip().lower() != "force"
+    }
+    payload = json.dumps(normalized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    digest = hashlib.sha1(f"{route_name}|{payload}".encode("utf-8")).hexdigest()
+    return f"{route_name}:{digest}", digest
+
+
+def _admin_cache_clear() -> None:
+    with _ADMIN_READ_CACHE_LOCK:
+        _ADMIN_READ_CACHE.clear()
+
+
+def _admin_cached_payload(
+    route_name: str,
+    params: Dict[str, Any],
+    force: bool,
+    loader: Callable[[], Dict[str, Any]],
+) -> Tuple[Dict[str, Any], str, str, int]:
+    ttl = _admin_cache_ttl_seconds()
+    cache_key, params_hash = _admin_cache_key(route_name, params)
+    started = time.perf_counter()
+    if not force and ttl > 0:
+        now_ts = time.time()
+        with _ADMIN_READ_CACHE_LOCK:
+            hit = _ADMIN_READ_CACHE.get(cache_key)
+            if hit and hit[0] > now_ts:
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                return dict(hit[1]), "HIT", params_hash, elapsed_ms
+            if hit:
+                _ADMIN_READ_CACHE.pop(cache_key, None)
+
+    payload = loader()
+    if ttl > 0:
+        expires_at = time.time() + ttl
+        with _ADMIN_READ_CACHE_LOCK:
+            _ADMIN_READ_CACHE[cache_key] = (expires_at, dict(payload))
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    cache_state = "BYPASS" if force or ttl <= 0 else "MISS"
+    return payload, cache_state, params_hash, elapsed_ms
+
+
+def _admin_log_read(route_name: str, cache_state: str, elapsed_ms: int, params_hash: str) -> None:
+    try:
+        current_app.logger.info(
+            "admin_read route=%s cache=%s elapsed_ms=%s params_hash=%s",
+            route_name,
+            cache_state,
+            elapsed_ms,
+            params_hash,
+        )
+    except Exception:
+        pass
+
+
 def _real_user_where(alias: str = "") -> str:
     prefix = f"{alias}." if alias else ""
     return (
@@ -292,24 +371,53 @@ def _has_local_anonymous_user(cursor) -> bool:
 
 
 def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
+    now_local = datetime.now()
+    today_start = datetime(now_local.year, now_local.month, now_local.day, 0, 0, 0)
+    tomorrow_start = today_start + timedelta(days=1)
+    start_7d = today_start - timedelta(days=6)
+    start_30d = today_start - timedelta(days=29)
+    cutoff_1d = now_local - timedelta(days=1)
+    cutoff_7d = now_local - timedelta(days=7)
+    cutoff_30d = now_local - timedelta(days=30)
+
     cursor.execute(
         f"""
         SELECT
             COUNT(*) AS user_total,
-            SUM(CASE WHEN DATE(u.created_at, 'localtime') = DATE('now', 'localtime') THEN 1 ELSE 0 END) AS new_today,
-            SUM(CASE WHEN DATE(u.created_at, 'localtime') >= DATE('now', 'localtime', '-6 day') THEN 1 ELSE 0 END) AS new_7d,
-            SUM(CASE WHEN DATE(u.created_at, 'localtime') >= DATE('now', 'localtime', '-29 day') THEN 1 ELSE 0 END) AS new_30d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATE(u.last_login, 'localtime') = DATE('now', 'localtime') THEN 1 ELSE 0 END) AS dau,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATE(u.last_login, 'localtime') >= DATE('now', 'localtime', '-6 day') THEN 1 ELSE 0 END) AS wau,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATE(u.last_login, 'localtime') >= DATE('now', 'localtime', '-29 day') THEN 1 ELSE 0 END) AS mau,
+            SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_today,
+            SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_7d,
+            SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_30d,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS dau,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS wau,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS mau,
             SUM(CASE WHEN u.last_login IS NULL OR TRIM(u.last_login) = '' THEN 1 ELSE 0 END) AS never_login,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATETIME(u.last_login, 'localtime') >= DATETIME('now', 'localtime', '-1 day') THEN 1 ELSE 0 END) AS within_1d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATETIME(u.last_login, 'localtime') < DATETIME('now', 'localtime', '-1 day') AND DATETIME(u.last_login, 'localtime') >= DATETIME('now', 'localtime', '-7 day') THEN 1 ELSE 0 END) AS within_7d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATETIME(u.last_login, 'localtime') < DATETIME('now', 'localtime', '-7 day') AND DATETIME(u.last_login, 'localtime') >= DATETIME('now', 'localtime', '-30 day') THEN 1 ELSE 0 END) AS within_30d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND DATETIME(u.last_login, 'localtime') < DATETIME('now', 'localtime', '-30 day') THEN 1 ELSE 0 END) AS over_30d
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_1d,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_7d,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_30d,
+            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? THEN 1 ELSE 0 END) AS over_30d
         FROM users u
         WHERE {_real_user_where('u')}
-        """
+        """,
+        (
+            today_start.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            start_7d.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            start_30d.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            today_start.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            start_7d.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            start_30d.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_1d.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_1d.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_7d.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_7d.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_30d.strftime("%Y-%m-%d %H:%M:%S"),
+            cutoff_30d.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
     )
     row = cursor.fetchone() or {}
     metrics = {
@@ -336,18 +444,21 @@ def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
 
 def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
     window_days = max(1, int(days))
-    start_offset = f"-{window_days - 1} day"
+    today_local = datetime.now()
+    today_start = datetime(today_local.year, today_local.month, today_local.day, 0, 0, 0)
+    tomorrow_start = today_start + timedelta(days=1)
+    start_day = today_start - timedelta(days=window_days - 1)
 
     cursor.execute(
         f"""
         SELECT
-            DATE(u.created_at, 'localtime') AS cohort_date,
+            SUBSTR(u.created_at, 1, 10) AS cohort_date,
             COUNT(*) AS new_users,
             SUM(
                 CASE
                     WHEN u.last_login IS NOT NULL
                          AND TRIM(u.last_login) != ''
-                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+1 day')
+                         AND u.last_login >= DATETIME(u.created_at, '+1 day')
                     THEN 1 ELSE 0
                 END
             ) AS retained_1d_count,
@@ -355,7 +466,7 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
                 CASE
                     WHEN u.last_login IS NOT NULL
                          AND TRIM(u.last_login) != ''
-                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+3 day')
+                         AND u.last_login >= DATETIME(u.created_at, '+3 day')
                     THEN 1 ELSE 0
                 END
             ) AS retained_3d_count,
@@ -363,7 +474,7 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
                 CASE
                     WHEN u.last_login IS NOT NULL
                          AND TRIM(u.last_login) != ''
-                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+7 day')
+                         AND u.last_login >= DATETIME(u.created_at, '+7 day')
                     THEN 1 ELSE 0
                 END
             ) AS retained_7d_count,
@@ -371,7 +482,7 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
                 CASE
                     WHEN u.last_login IS NOT NULL
                          AND TRIM(u.last_login) != ''
-                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+14 day')
+                         AND u.last_login >= DATETIME(u.created_at, '+14 day')
                     THEN 1 ELSE 0
                 END
             ) AS retained_14d_count,
@@ -379,16 +490,20 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
                 CASE
                     WHEN u.last_login IS NOT NULL
                          AND TRIM(u.last_login) != ''
-                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+30 day')
+                         AND u.last_login >= DATETIME(u.created_at, '+30 day')
                     THEN 1 ELSE 0
                 END
             ) AS retained_30d_count
         FROM users u
         WHERE {_real_user_where('u')}
-          AND DATE(u.created_at, 'localtime') BETWEEN DATE('now', 'localtime', ?) AND DATE('now', 'localtime')
-        GROUP BY DATE(u.created_at, 'localtime')
+          AND COALESCE(u.created_at, '') >= ?
+          AND COALESCE(u.created_at, '') < ?
+        GROUP BY SUBSTR(u.created_at, 1, 10)
         """,
-        (start_offset,),
+        (
+            start_day.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
     )
     cohort_rows = cursor.fetchall()
 
@@ -409,16 +524,20 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
     cursor.execute(
         f"""
         SELECT
-            DATE(u.last_login, 'localtime') AS active_date,
+            SUBSTR(u.last_login, 1, 10) AS active_date,
             COUNT(*) AS active_users
         FROM users u
         WHERE {_real_user_where('u')}
           AND u.last_login IS NOT NULL
           AND TRIM(u.last_login) != ''
-          AND DATE(u.last_login, 'localtime') BETWEEN DATE('now', 'localtime', ?) AND DATE('now', 'localtime')
-        GROUP BY DATE(u.last_login, 'localtime')
+          AND u.last_login >= ?
+          AND u.last_login < ?
+        GROUP BY SUBSTR(u.last_login, 1, 10)
         """,
-        (start_offset,),
+        (
+            start_day.strftime("%Y-%m-%d %H:%M:%S"),
+            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
     )
     active_rows = cursor.fetchall()
     active_map = {
@@ -499,42 +618,64 @@ def _get_active_session_count(cursor, user_id: str) -> int:
 def create_admin_blueprint(db, admin_write_audit):
     bp = Blueprint("admin_routes", __name__, url_prefix="/api/admin")
 
+    @bp.after_request
+    def _admin_after_request(response):
+        # 管理后台写操作后统一清理读缓存，保证页面手动刷新可立即看到最新状态。
+        if request.method.upper() != "GET" and int(getattr(response, "status_code", 500) or 500) < 400:
+            _admin_cache_clear()
+        return response
+
     @bp.route("/overview", methods=["GET"])
     @admin_required
     def admin_overview():
-        conn = db.get_connection()
-        cursor = conn.cursor()
         try:
-            user_ops = _get_user_ops_metrics(cursor)
-            retention_rows = _get_user_retention_rows(cursor, days=60)
+            force = _admin_parse_force_arg()
+        except ValueError:
+            return jsonify({"error": "Invalid force"}), 400
 
-            cursor.execute("SELECT COUNT(*) AS c FROM daily_snapshots")
-            snapshot_total = int(cursor.fetchone()["c"])
-            cursor.execute("SELECT MAX(date) AS latest_date FROM daily_snapshots")
-            latest_row = cursor.fetchone()
-            latest_snapshot_date = latest_row["latest_date"] if latest_row else None
+        def _load_overview_payload() -> Dict[str, Any]:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            try:
+                user_ops = _get_user_ops_metrics(cursor)
+                retention_rows = _get_user_retention_rows(cursor, days=60)
 
-            recent_audits = _recent_admin_audits(cursor, limit=20)
+                cursor.execute("SELECT COUNT(*) AS c FROM daily_snapshots")
+                snapshot_total = int(cursor.fetchone()["c"])
+                cursor.execute("SELECT MAX(date) AS latest_date FROM daily_snapshots")
+                latest_row = cursor.fetchone()
+                latest_snapshot_date = latest_row["latest_date"] if latest_row else None
 
-            return jsonify({
-                "dashboard": {
-                    "new_users_today": user_ops["new_today"],
-                    "active_users_today": user_ops["dau"],
-                    "total_users": user_ops["user_total"],
-                },
-                "retention_rows": retention_rows,
-                "users": {
-                    "total": user_ops["user_total"],
-                },
-                "user_ops": user_ops,
-                "snapshots": {
-                    "total": snapshot_total,
-                    "latest_date": latest_snapshot_date,
-                },
-                "recent_audits": recent_audits,
-            })
-        finally:
-            conn.close()
+                recent_audits = _recent_admin_audits(cursor, limit=20)
+
+                return {
+                    "dashboard": {
+                        "new_users_today": user_ops["new_today"],
+                        "active_users_today": user_ops["dau"],
+                        "total_users": user_ops["user_total"],
+                    },
+                    "retention_rows": retention_rows,
+                    "users": {
+                        "total": user_ops["user_total"],
+                    },
+                    "user_ops": user_ops,
+                    "snapshots": {
+                        "total": snapshot_total,
+                        "latest_date": latest_snapshot_date,
+                    },
+                    "recent_audits": recent_audits,
+                }
+            finally:
+                conn.close()
+
+        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
+            route_name="admin_overview",
+            params={"force": request.args.get("force", "")},
+            force=force,
+            loader=_load_overview_payload,
+        )
+        _admin_log_read("admin_overview", cache_state, elapsed_ms, params_hash)
+        return jsonify(payload)
 
     @bp.route("/meta/dictionaries", methods=["GET"])
     @admin_required
@@ -796,53 +937,84 @@ def create_admin_blueprint(db, admin_write_audit):
                     {local_union_sql}
                 )
         """
-        conn = db.get_connection()
-        cursor = conn.cursor()
         try:
-            cursor.execute(
-                f"""
-                {base_users_cte_sql}
-                SELECT COUNT(*) AS c
-                FROM base_users bu
-                {where_sql}
-                """,
-                tuple(params),
-            )
-            total = int((cursor.fetchone() or {"c": 0})["c"])
+            force = _admin_parse_force_arg()
+        except ValueError:
+            return jsonify({"error": "Invalid force"}), 400
 
-            cursor.execute(
-                f"""
-                {base_users_cte_sql}
-                SELECT
-                    bu.id,
-                    bu.username,
-                    bu.nickname,
-                    bu.phone,
-                    bu.user_number,
-                    bu.register_method,
-                    bu.is_admin,
-                    bu.must_change_password,
-                    bu.status,
-                    bu.created_at,
-                    bu.last_login,
-                    bu.last_active_at,
-                    bu.last_login_ip,
-                    bu.last_login_region,
-                    bu.active_sessions,
-                    bu.total_asset_cny,
-                    bu.total_invest_cny,
-                    bu.can_manage
-                FROM base_users bu
-                {where_sql}
-                ORDER BY COALESCE(bu.last_login, bu.created_at, '') DESC, bu.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                tuple(params + [limit, offset]),
-            )
-            users = [dict(row) for row in cursor.fetchall()]
-            return jsonify({"items": users, "limit": limit, "offset": offset, "total": total})
-        finally:
-            conn.close()
+        def _load_users_payload() -> Dict[str, Any]:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    f"""
+                    {base_users_cte_sql}
+                    SELECT
+                        bu.id,
+                        bu.username,
+                        bu.nickname,
+                        bu.phone,
+                        bu.user_number,
+                        bu.register_method,
+                        bu.is_admin,
+                        bu.must_change_password,
+                        bu.status,
+                        bu.created_at,
+                        bu.last_login,
+                        bu.last_active_at,
+                        bu.last_login_ip,
+                        bu.last_login_region,
+                        bu.active_sessions,
+                        bu.total_asset_cny,
+                        bu.total_invest_cny,
+                        bu.can_manage,
+                        COUNT(1) OVER() AS __total_count
+                    FROM base_users bu
+                    {where_sql}
+                    ORDER BY COALESCE(bu.last_login, bu.created_at, '') DESC, bu.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    tuple(params + [limit, offset]),
+                )
+                rows = cursor.fetchall()
+                users: List[Dict[str, Any]] = []
+                total = 0
+                for row in rows:
+                    item = dict(row)
+                    if total <= 0:
+                        total = int(item.get("__total_count") or 0)
+                    item.pop("__total_count", None)
+                    users.append(item)
+                if not rows:
+                    cursor.execute(
+                        f"""
+                        {base_users_cte_sql}
+                        SELECT COUNT(*) AS c
+                        FROM base_users bu
+                        {where_sql}
+                        """,
+                        tuple(params),
+                    )
+                    total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+                return {"items": users, "limit": limit, "offset": offset, "total": total}
+            finally:
+                conn.close()
+
+        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
+            route_name="admin_users",
+            params={
+                "q": q,
+                "status": status,
+                "include_local": int(include_local),
+                "limit": limit,
+                "offset": offset,
+                "force": request.args.get("force", ""),
+            },
+            force=force,
+            loader=_load_users_payload,
+        )
+        _admin_log_read("admin_users", cache_state, elapsed_ms, params_hash)
+        return jsonify(payload)
 
     @bp.route("/users/metrics", methods=["GET"])
     @admin_required
@@ -1669,7 +1841,24 @@ def create_admin_blueprint(db, admin_write_audit):
         batch_id = request.args.get("batch_id", "").strip()
         limit = max(1, min(request.args.get("limit", 200, type=int), 2000))
         offset = max(0, request.args.get("offset", 0, type=int))
-        payload = db.list_invite_codes(status=status, batch_id=batch_id, limit=limit, offset=offset)
+        try:
+            force = _admin_parse_force_arg()
+        except ValueError:
+            return jsonify({"error": "Invalid force"}), 400
+
+        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
+            route_name="admin_invites",
+            params={
+                "status": status,
+                "batch_id": batch_id,
+                "limit": limit,
+                "offset": offset,
+                "force": request.args.get("force", ""),
+            },
+            force=force,
+            loader=lambda: db.list_invite_codes(status=status, batch_id=batch_id, limit=limit, offset=offset),
+        )
+        _admin_log_read("admin_invites", cache_state, elapsed_ms, params_hash)
         return jsonify(payload)
 
     @bp.route("/invites/stats", methods=["GET"])
@@ -1817,46 +2006,80 @@ def create_admin_blueprint(db, admin_write_audit):
             params.append(end_time)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
-        conn = db.get_connection()
-        cursor = conn.cursor()
         try:
-            cursor.execute(
-                f"""
-                SELECT COUNT(1) AS c
-                FROM admin_audit_logs a
-                {where_sql}
-                """,
-                tuple(params),
-            )
-            total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
-            cursor.execute(
-                f"""
-                SELECT
-                    a.id,
-                    a.admin_user_id,
-                    COALESCE(u.username, '') AS admin_username,
-                    a.action,
-                    a.target_type,
-                    a.target_id,
-                    a.method,
-                    a.path,
-                    a.status_code,
-                    a.result,
-                    a.error,
-                    a.request_body,
-                    a.created_at
-                FROM admin_audit_logs a
-                LEFT JOIN users u ON u.id = a.admin_user_id
-                {where_sql}
-                ORDER BY a.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                tuple(params + [limit, offset]),
-            )
-            items = [dict(row) for row in cursor.fetchall()]
-            return jsonify({"items": items, "limit": limit, "offset": offset, "total": total})
-        finally:
-            conn.close()
+            force = _admin_parse_force_arg()
+        except ValueError:
+            return jsonify({"error": "Invalid force"}), 400
+
+        def _load_audit_payload() -> Dict[str, Any]:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        a.id,
+                        a.admin_user_id,
+                        COALESCE(u.username, '') AS admin_username,
+                        a.action,
+                        a.target_type,
+                        a.target_id,
+                        a.method,
+                        a.path,
+                        a.status_code,
+                        a.result,
+                        a.error,
+                        a.request_body,
+                        a.created_at,
+                        COUNT(1) OVER() AS __total_count
+                    FROM admin_audit_logs a
+                    LEFT JOIN users u ON u.id = a.admin_user_id
+                    {where_sql}
+                    ORDER BY a.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    tuple(params + [limit, offset]),
+                )
+                rows = cursor.fetchall()
+                total = 0
+                items: List[Dict[str, Any]] = []
+                for row in rows:
+                    item = dict(row)
+                    if total <= 0:
+                        total = int(item.get("__total_count") or 0)
+                    item.pop("__total_count", None)
+                    items.append(item)
+                if not rows:
+                    cursor.execute(
+                        f"""
+                        SELECT COUNT(1) AS c
+                        FROM admin_audit_logs a
+                        {where_sql}
+                        """,
+                        tuple(params),
+                    )
+                    total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
+                return {"items": items, "limit": limit, "offset": offset, "total": total}
+            finally:
+                conn.close()
+
+        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
+            route_name="admin_audit_logs",
+            params={
+                "action": action,
+                "admin_user_id": admin_user_id,
+                "result": result_filter,
+                "start_time": start_time,
+                "end_time": end_time,
+                "limit": limit,
+                "offset": offset,
+                "force": request.args.get("force", ""),
+            },
+            force=force,
+            loader=_load_audit_payload,
+        )
+        _admin_log_read("admin_audit_logs", cache_state, elapsed_ms, params_hash)
+        return jsonify(payload)
 
     @bp.route("/audit/export", methods=["GET"])
     @admin_required

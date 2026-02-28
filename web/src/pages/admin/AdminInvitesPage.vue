@@ -4,7 +4,7 @@
       <div class="toolbar">
         <input class="input" v-model.number="count" type="number" min="1" max="50" placeholder="生成数量" />
         <button class="btn primary" @click="generate">生成邀请码</button>
-        <button class="btn" @click="load">刷新列表</button>
+        <button class="btn" @click="load({ force: true })">刷新列表</button>
       </div>
       <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
     </section>
@@ -32,7 +32,7 @@
         </thead>
         <tbody v-if="inviteStatus === 'active'">
           <tr v-for="item in invites.items || []" :key="item.code">
-            <td>{{ shortDateTime(item.created_at) }}</td>
+            <td>{{ formatDateOnly(item.created_at) }}</td>
             <td>{{ item.code }}</td>
             <td>{{ statusLabel(item.status) }}</td>
           </tr>
@@ -54,7 +54,7 @@
 
       <div class="pager-wrap">
         <div class="pager">
-          <span class="pager-total">共 {{ totalRows }} 条</span>
+          <span class="pager-total">共{{ totalRows }}条</span>
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
@@ -81,6 +81,8 @@ const inviteStatus = ref<'active' | 'used'>('active')
 const pageSize = ref(10)
 const pageSizeOptions = [10, 20, 50, 100]
 const currentPage = ref(1)
+let lastRequestKey = ''
+let inflightKey = ''
 
 const totalRows = computed(() => Number(invites.total || 0))
 const totalPages = computed(() => {
@@ -101,11 +103,38 @@ function statusLabel(status: unknown): string {
   return value || '-'
 }
 
-async function load() {
-  const status = encodeURIComponent(inviteStatus.value)
+function formatDateOnly(value: unknown): string {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+  if (raw.length >= 10) return raw.slice(0, 10)
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+async function load(options: { force?: boolean } = {}) {
+  const status = inviteStatus.value
   const limit = pageSize.value
   const offset = (currentPage.value - 1) * pageSize.value
-  Object.assign(invites, await api.get(`/api/admin/invites?status=${status}&limit=${limit}&offset=${offset}`))
+  const force = Boolean(options.force)
+  const key = `${status}|${limit}|${offset}|${force ? '1' : '0'}`
+  if (!force && (key === lastRequestKey || key === inflightKey)) return
+  inflightKey = key
+  try {
+    const params = new URLSearchParams({
+      status,
+      limit: String(limit),
+      offset: String(offset),
+    })
+    if (force) params.set('force', '1')
+    Object.assign(invites, await api.get(`/api/admin/invites?${params.toString()}`))
+    if (!force) lastRequestKey = key
+  } finally {
+    if (inflightKey === key) inflightKey = ''
+  }
 }
 
 function switchTab(next: 'active' | 'used') {
@@ -131,14 +160,17 @@ async function generate() {
     await api.post('/api/admin/invites/generate', { count: count.value })
     flash('生成成功', true)
     currentPage.value = 1
-    await load()
+    await load({ force: true })
   } catch (e) {
     flash(e instanceof Error ? e.message : '生成失败', false)
   }
 }
 
 watch([inviteStatus, pageSize], async () => {
-  currentPage.value = 1
+  if (currentPage.value !== 1) {
+    currentPage.value = 1
+    return
+  }
   await load()
 })
 
@@ -146,7 +178,9 @@ watch(currentPage, async () => {
   await load()
 })
 
-onMounted(load)
+onMounted(() => {
+  void load()
+})
 </script>
 
 <style scoped>
@@ -159,16 +193,26 @@ onMounted(load)
   margin-bottom: 12px;
   display: flex;
   gap: 8px;
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid #d8e6f4;
+  border-radius: 10px;
+  background: #f4f9ff;
 }
 
 .tab-btn {
-  border: 1px solid #c7d7ea;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: #fff;
+  background: transparent;
   color: #36567d;
-  padding: 8px 14px;
+  padding: 8px 16px;
   cursor: pointer;
   font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  background: #e8f2ff;
 }
 
 .tab-btn.active {
@@ -186,16 +230,29 @@ onMounted(load)
 .pager {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 10px;
+  background: #f7fbff;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .pager-total,
 .pager-page {
   color: #3f6086;
   font-weight: 600;
+  white-space: nowrap;
+  word-break: keep-all;
+  line-height: 1.2;
+  flex: 0 0 auto;
 }
 
 .pager-select {
+  width: 120px !important;
+  max-width: 120px;
   min-width: 110px;
   height: 36px;
   border: 1px solid #c7d7ea;
@@ -203,6 +260,12 @@ onMounted(load)
   background: #fff;
   color: #35557d;
   padding: 0 10px;
+  flex: 0 0 auto;
+}
+
+.pager-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .pager-btn:disabled {
