@@ -752,6 +752,26 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'USD')
 
+    def test_portfolio_add_invalid_f_prefix_letters_normalizes_to_us(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'f_NUGT',
+            'name': '二倍做多金矿指数ETF-Direxion',
+            'price': 303.938,
+            'qty': 1.0,
+            'curr': 'CNY',
+            'asset_type': 'fund',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        self.assertEqual(add_resp.get_json().get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'gb_nugt'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('asset_type'), 'us')
+        self.assertEqual(target.get('curr'), 'USD')
+
     def test_delete_corrective_removes_transactions_and_future_snapshots(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600001',

@@ -64,6 +64,15 @@ class TestMarketCodeNormalization(unittest.TestCase):
         self.assertAlmostEqual(amt, 1.0)
         self.assertAlmostEqual(chg, (1.0 / 532.0) * 100)
 
+    def test_infer_asset_type_us_etf_remains_us(self):
+        self.assertEqual(infer_asset_type("gb_qqq", "Invesco QQQ ETF"), "us")
+
+    def test_infer_asset_type_a_share_etf_remains_a(self):
+        self.assertEqual(infer_asset_type("sh510300", "沪深300ETF"), "a")
+
+    def test_infer_asset_type_invalid_f_prefix_letters_treated_as_us(self):
+        self.assertEqual(infer_asset_type("f_NUGT", "Direxion NUGT ETF"), "us")
+
 
 if __name__ == "__main__":
     unittest.main()

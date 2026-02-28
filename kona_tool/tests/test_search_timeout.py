@@ -95,6 +95,45 @@ class SearchTimeoutTests(unittest.TestCase):
         finally:
             config.SEARCH_SOURCE_TIMEOUT_SECONDS = original_source
 
+    def test_search_filters_letter_prefixed_fund_codes(self):
+        def fake_search_sina(query, type_code):
+            if type_code == "41":
+                return [
+                    {
+                        "code": "gb_nugt",
+                        "name": "3X多金矿",
+                        "type_name": "美股",
+                        "currency": "USD",
+                    }
+                ]
+            return []
+
+        def fake_search_fund(query):
+            return [
+                {
+                    "code": "f_NUGT",
+                    "name": "二倍做多金矿指数ETF-Direxion",
+                    "type_name": "基金",
+                    "currency": "CNY",
+                },
+                {
+                    "code": "f_110017",
+                    "name": "易方达增强回报债券A",
+                    "type_name": "基金",
+                    "currency": "CNY",
+                },
+            ]
+
+        with mock.patch.object(price_module, "_search_sina", side_effect=fake_search_sina), mock.patch.object(
+            price_module, "_search_fund", side_effect=fake_search_fund
+        ):
+            results = price_module.search_stocks("nugt")
+
+        codes = [item.get("code") for item in results]
+        self.assertIn("gb_nugt", codes)
+        self.assertIn("f_110017", codes)
+        self.assertNotIn("f_NUGT", codes)
+
 
 if __name__ == "__main__":
     unittest.main()

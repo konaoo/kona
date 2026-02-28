@@ -120,6 +120,41 @@ def _client_ip() -> str:
     return request.remote_addr or 'unknown'
 
 
+def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -> Dict[str, str]:
+    """标准化持仓代码/币种/资产类型，确保前端四类展示稳定。"""
+    parsed = parse_code(raw_code, raw_curr)
+    code = str(parsed.get('code') or '').strip()
+    curr = str(parsed.get('curr') or '').strip().upper()
+    name = str(raw_name or '').strip() or code
+
+    lower = code.lower()
+    if lower.startswith('f_'):
+        suffix = code[2:].strip()
+        # f_ 仅保留纯数字场外基金；字母型统一纠正为美股代码
+        if suffix and not suffix.isdigit() and re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', suffix):
+            code = f"gb_{suffix.lower()}"
+            curr = 'USD'
+            lower = code.lower()
+
+    # 强制市场币种，避免错币种写入
+    if lower.startswith(('gb_', 'ft_')):
+        curr = 'USD'
+    elif lower.startswith('f_') or lower.startswith(('sh', 'sz', 'bj')):
+        curr = 'CNY'
+    elif '.hk' in lower or lower.startswith('hk'):
+        curr = 'HKD'
+    elif not curr:
+        curr = 'CNY'
+
+    asset_type = infer_asset_type(code, name)
+    return {
+        'code': code,
+        'curr': curr,
+        'name': name,
+        'asset_type': asset_type,
+    }
+
+
 def _rate_limit_key() -> str:
     return _client_ip() or get_remote_address()
 
@@ -815,19 +850,16 @@ def add_asset():
     if dedup_hit:
         return jsonify(dedup_payload), dedup_status
     
-    # 解析代码
-    parsed = parse_code(data['code'], data.get('curr', ''))
-    data['code'] = parsed['code']
-    data['curr'] = parsed['curr']
-    data['name'] = data.get('name', parsed['code'])
+    normalized = _normalize_portfolio_identity(
+        data['code'],
+        data.get('curr', ''),
+        data.get('name', ''),
+    )
+    data['code'] = normalized['code']
+    data['curr'] = normalized['curr']
+    data['name'] = normalized['name']
     data['adjustment'] = data.get('adjustment', 0.0)
-    # 资产类型（基金/港股/美股/A股）
-    provided_type = data.get('asset_type', '').strip()
-    inferred_type = infer_asset_type(data['code'], data.get('name', ''))
-    if not provided_type:
-        data['asset_type'] = inferred_type
-    else:
-        data['asset_type'] = inferred_type if (provided_type == 'us' and inferred_type == 'fund') else provided_type
+    data['asset_type'] = normalized['asset_type']
     
     success = db.add_asset(data, user_id)
     
@@ -1316,13 +1348,15 @@ def buy_asset_with_cash():
             400,
         )
 
-    parsed = parse_code(data['code'], data.get('curr', ''))
-    code = parsed['code']
-    curr = parsed['curr']
-    name = data.get('name', code)
-    provided_type = str(data.get('asset_type', '') or '').strip()
-    inferred_type = infer_asset_type(code, name)
-    asset_type = inferred_type if (provided_type == 'us' and inferred_type == 'fund') else (provided_type or inferred_type)
+    normalized = _normalize_portfolio_identity(
+        data['code'],
+        data.get('curr', ''),
+        data.get('name', ''),
+    )
+    code = normalized['code']
+    curr = normalized['curr']
+    name = normalized['name']
+    asset_type = normalized['asset_type']
 
     cash_asset = db.get_cash_asset_by_id(cash_asset_id, user_id)
     if not cash_asset:

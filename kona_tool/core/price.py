@@ -471,7 +471,9 @@ def search_stocks(query: str) -> list:
                 try:
                     items = future.result()
                     for item in items:
-                        code = item.get('code', '')
+                        code = str(item.get('code', '') or '').strip()
+                        if _is_invalid_letter_fund_code(code):
+                            continue
                         if code and code not in seen_codes:
                             seen_codes.add(code)
                             results.append(item)
@@ -490,7 +492,8 @@ def search_stocks(query: str) -> list:
     query_lower = query.lower()
 
     for item in results:
-        asset_type = _asset_type_from_type_name(item.get('type_name', ''))
+        code = str(item.get('code', '') or '')
+        asset_type = _asset_type_from_type_name(item.get('type_name', ''), code)
         item['asset_type'] = asset_type
         final_results.append(item)
 
@@ -546,7 +549,28 @@ def _search_source_timeout_seconds() -> float:
     return max(0.3, timeout)
 
 
-def _asset_type_from_type_name(type_name: str) -> str:
+def _is_invalid_letter_fund_code(code: str) -> bool:
+    lower = str(code or "").lower()
+    if not lower.startswith("f_"):
+        return False
+    suffix = lower[2:].strip()
+    return bool(suffix) and not suffix.isdigit()
+
+
+def _asset_type_from_type_name(type_name: str, code: str = "") -> str:
+    lower_code = str(code or "").lower()
+    if lower_code.startswith("gb_"):
+        return "us"
+    if lower_code.startswith("ft_"):
+        return "fund"
+    if lower_code.startswith("f_"):
+        suffix = lower_code[2:].strip()
+        return "fund" if suffix.isdigit() else "us"
+    if ".hk" in lower_code or lower_code.startswith("hk"):
+        return "hk"
+    if lower_code.startswith(("sh", "sz", "bj")):
+        return "a"
+
     normalized = str(type_name or "").strip()
     if normalized == "港股":
         return "hk"

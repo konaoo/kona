@@ -4,9 +4,6 @@
 """
 import re
 import logging
-from typing import Optional
-
-from .stock import get_us_asset_type
 
 logger = logging.getLogger(__name__)
 
@@ -24,27 +21,44 @@ def infer_asset_type(code: str, name: str = '') -> str:
     c = (code or '').strip()
     if not c:
         return 'a'
+    lower = c.lower()
 
-    # 明确基金前缀
-    if c.lower().startswith(('f_', 'ft_')):
+    # FT 基金（ISIN）一律基金
+    if lower.startswith('ft_'):
         return 'fund'
+
+    # f_ 仅允许纯数字场外基金代码；字母型 f_ 视为误标，按美股处理
+    if lower.startswith('f_'):
+        suffix = c[2:].strip()
+        if re.fullmatch(r'\d+', suffix):
+            return 'fund'
+        if re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', suffix):
+            return 'us'
+        return 'fund'
+
+    # A 股（含场内基金/ETF）前缀
+    if lower.startswith(('sh', 'sz', 'bj')):
+        return 'a'
+
+    # 美股代码前缀
+    if lower.startswith('gb_'):
+        return 'us'
 
     # 港股
     if '.HK' in c.upper() or c.lower().startswith('hk'):
         return 'hk'
     if re.fullmatch(r'\d{5}', c):
         return 'hk'
+    if re.fullmatch(r'\d{6}', c):
+        return 'a'
 
-    # 名称包含 ETF / 基金
+    # 美股（纯字母/点）
+    if re.fullmatch(r'[A-Za-z\\.]+', c):
+        return 'us'
+
+    # 无明确市场代码时，名称提示基金
     if _name_hint_is_fund(name):
         return 'fund'
-
-    # 美股（gb_ 或 纯字母/点）
-    if c.lower().startswith('gb_') or re.fullmatch(r'[A-Za-z\\.]+', c):
-        us_type = get_us_asset_type(c)
-        if us_type == 'fund':
-            return 'fund'
-        return 'us'
 
     # 其他默认 A 股
     return 'a'
