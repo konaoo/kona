@@ -772,6 +772,35 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(target.get('asset_type'), 'us')
         self.assertEqual(target.get('curr'), 'USD')
 
+    def test_portfolio_add_existing_name_not_overwritten_by_short_name(self):
+        first = self.client.post('/api/portfolio/add', json={
+            'code': 'gb_nugt',
+            'name': '二倍做多金矿指数ETF-Direxion',
+            'price': 303.938,
+            'qty': 1.0,
+            'curr': 'USD',
+            'asset_type': 'us',
+        })
+        self.assertEqual(first.status_code, 200)
+
+        second = self.client.post('/api/portfolio/add', json={
+            'code': 'gb_nugt',
+            'name': '3X多金矿',
+            'price': 313.53,
+            'qty': 2.0,
+            'curr': 'USD',
+            'asset_type': 'us',
+        })
+        self.assertEqual(second.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'gb_nugt'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('name'), '二倍做多金矿指数ETF-Direxion')
+        self.assertAlmostEqual(float(target.get('qty') or 0.0), 2.0, places=6)
+
     def test_delete_corrective_removes_transactions_and_future_snapshots(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600001',

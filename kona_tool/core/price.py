@@ -450,6 +450,7 @@ def search_stocks(query: str) -> list:
     }
     pending = set(futures.keys())
     timed_out_sources = []
+    alias_name_hints: Dict[str, str] = {}
 
     try:
         while pending:
@@ -473,6 +474,12 @@ def search_stocks(query: str) -> list:
                     for item in items:
                         code = str(item.get('code', '') or '').strip()
                         if _is_invalid_letter_fund_code(code):
+                            mapped_code = _map_letter_fund_to_us_code(code)
+                            alias_name = str(item.get('name', '') or '').strip()
+                            if mapped_code and alias_name:
+                                key = _code_key(mapped_code)
+                                current = alias_name_hints.get(key, '')
+                                alias_name_hints[key] = _pick_preferred_name(current, alias_name)
                             continue
                         if code and code not in seen_codes:
                             seen_codes.add(code)
@@ -493,6 +500,10 @@ def search_stocks(query: str) -> list:
 
     for item in results:
         code = str(item.get('code', '') or '')
+        key = _code_key(code)
+        alias_name = alias_name_hints.get(key, '')
+        if alias_name:
+            item['name'] = _pick_preferred_name(str(item.get('name', '') or '').strip(), alias_name)
         asset_type = _asset_type_from_type_name(item.get('type_name', ''), code)
         item['asset_type'] = asset_type
         final_results.append(item)
@@ -555,6 +566,30 @@ def _is_invalid_letter_fund_code(code: str) -> bool:
         return False
     suffix = lower[2:].strip()
     return bool(suffix) and not suffix.isdigit()
+
+
+def _map_letter_fund_to_us_code(code: str) -> str:
+    lower = str(code or "").lower()
+    if not lower.startswith("f_"):
+        return ""
+    suffix = lower[2:].strip()
+    if not re.fullmatch(r"[a-z][a-z0-9.\-]*", suffix):
+        return ""
+    return f"gb_{suffix}"
+
+
+def _code_key(code: str) -> str:
+    return str(code or "").strip().lower()
+
+
+def _pick_preferred_name(current: str, incoming: str) -> str:
+    cur = str(current or "").strip()
+    inc = str(incoming or "").strip()
+    if not cur:
+        return inc
+    if not inc:
+        return cur
+    return inc if len(inc) > len(cur) else cur
 
 
 def _asset_type_from_type_name(type_name: str, code: str = "") -> str:

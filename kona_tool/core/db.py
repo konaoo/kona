@@ -1745,56 +1745,97 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            # 对于有 user_id 的情况，使用 code + user_id 作为唯一键
+            incoming_name = str(data.get('name') or '').strip()
             if user_id:
-                # 先检查是否存在
-                cursor.execute('''
-                    SELECT id FROM portfolio WHERE code = ? AND user_id = ?
-                ''', (data['code'], user_id))
-                
-                if cursor.fetchone():
-                    # 更新
-                    cursor.execute('''
-                        UPDATE portfolio SET name=?, qty=?, price=?, curr=?, adjustment=?, asset_type=?, updated_at=CURRENT_TIMESTAMP
+                cursor.execute(
+                    '''
+                    SELECT id, name FROM portfolio WHERE code = ? AND user_id = ?
+                    ''',
+                    (data['code'], user_id),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT id, name FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    ''',
+                    (data['code'],),
+                )
+            existing = cursor.fetchone()
+
+            if existing:
+                existing_name = str(existing['name'] or '').strip()
+                # 已有名称优先，避免被搜索短名覆盖；仅当原名称为空时才回填新名称。
+                next_name = existing_name or incoming_name or data['code']
+                if user_id:
+                    cursor.execute(
+                        '''
+                        UPDATE portfolio
+                        SET name=?, qty=?, price=?, curr=?, adjustment=?, asset_type=?, updated_at=CURRENT_TIMESTAMP
                         WHERE code = ? AND user_id = ?
-                    ''', (
-                        data['name'],
-                        data['qty'],
-                        data['price'],
-                        data.get('curr', 'CNY'),
-                        data.get('adjustment', 0.0),
-                        data.get('asset_type', 'a'),
-                        data['code'],
-                        user_id
-                    ))
+                        ''',
+                        (
+                            next_name,
+                            data['qty'],
+                            data['price'],
+                            data.get('curr', 'CNY'),
+                            data.get('adjustment', 0.0),
+                            data.get('asset_type', 'a'),
+                            data['code'],
+                            user_id,
+                        ),
+                    )
                 else:
-                    # 插入
-                    cursor.execute('''
+                    cursor.execute(
+                        '''
+                        UPDATE portfolio
+                        SET name=?, qty=?, price=?, curr=?, adjustment=?, asset_type=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        ''',
+                        (
+                            next_name,
+                            data['qty'],
+                            data['price'],
+                            data.get('curr', 'CNY'),
+                            data.get('adjustment', 0.0),
+                            data.get('asset_type', 'a'),
+                            data['code'],
+                        ),
+                    )
+            else:
+                next_name = incoming_name or data['code']
+                if user_id:
+                    cursor.execute(
+                        '''
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    ''', (
-                        data['code'],
-                        data['name'],
-                        data['qty'],
-                        data['price'],
-                        data.get('curr', 'CNY'),
-                        data.get('adjustment', 0.0),
-                        data.get('asset_type', 'a'),
-                        user_id
-                    ))
-            else:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (
-                    data['code'],
-                    data['name'],
-                    data['qty'],
-                    data['price'],
-                    data.get('curr', 'CNY'),
-                    data.get('adjustment', 0.0),
-                    data.get('asset_type', 'a')
-                ))
+                        ''',
+                        (
+                            data['code'],
+                            next_name,
+                            data['qty'],
+                            data['price'],
+                            data.get('curr', 'CNY'),
+                            data.get('adjustment', 0.0),
+                            data.get('asset_type', 'a'),
+                            user_id,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        '''
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ''',
+                        (
+                            data['code'],
+                            next_name,
+                            data['qty'],
+                            data['price'],
+                            data.get('curr', 'CNY'),
+                            data.get('adjustment', 0.0),
+                            data.get('asset_type', 'a'),
+                        ),
+                    )
             
             conn.commit()
             logger.info(f"Asset added/updated: {data['code']}")
