@@ -219,6 +219,8 @@ class DatabaseManager:
                 last_login TIMESTAMP,
                 last_login_ip TEXT,
                 last_login_region TEXT,
+                last_active_ip TEXT,
+                last_active_region TEXT,
                 last_active_at TIMESTAMP
             )
         ''')
@@ -548,6 +550,8 @@ class DatabaseManager:
             "last_login",
             "last_login_ip",
             "last_login_region",
+            "last_active_ip",
+            "last_active_region",
             "last_active_at",
         }
         needs_rebuild = ("email" in cols) or any(c not in cols for c in rebuild_required_cols)
@@ -577,6 +581,8 @@ class DatabaseManager:
                     last_login TIMESTAMP,
                     last_login_ip TEXT,
                     last_login_region TEXT,
+                    last_active_ip TEXT,
+                    last_active_region TEXT,
                     last_active_at TIMESTAMP
                 )
                 """
@@ -597,8 +603,8 @@ class DatabaseManager:
                         id, username, password_hash, legacy_needs_password_setup,
                         must_change_password, password_updated_at, password_reset_at, password_reset_by,
                         nickname, avatar, register_method, phone,
-                        user_number, is_admin, status, created_at, last_login, last_login_ip, last_login_region, last_active_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        user_number, is_admin, status, created_at, last_login, last_login_ip, last_login_region, last_active_ip, last_active_region, last_active_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -620,6 +626,8 @@ class DatabaseManager:
                         row.get("last_login"),
                         row.get("last_login_ip"),
                         row.get("last_login_region"),
+                        row.get("last_active_ip"),
+                        row.get("last_active_region"),
                         row.get("last_active_at"),
                     ),
                 )
@@ -655,6 +663,8 @@ class DatabaseManager:
             _ensure_column("last_login", "last_login TIMESTAMP")
             _ensure_column("last_login_ip", "last_login_ip TEXT")
             _ensure_column("last_login_region", "last_login_region TEXT")
+            _ensure_column("last_active_ip", "last_active_ip TEXT")
+            _ensure_column("last_active_region", "last_active_region TEXT")
             _ensure_column("last_active_at", "last_active_at TIMESTAMP")
 
         cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
@@ -847,6 +857,12 @@ class DatabaseManager:
             if login_region is not None:
                 updates.append("last_login_region = ?")
                 params.append(str(login_region).strip()[:120])
+            if login_ip is not None:
+                updates.append("last_active_ip = ?")
+                params.append(str(login_ip).strip()[:64])
+            if login_region is not None:
+                updates.append("last_active_region = ?")
+                params.append(str(login_region).strip()[:120])
             params.append(user_id)
             cursor.execute(
                 f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
@@ -856,15 +872,29 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_last_active(self, user_id: str) -> None:
+    def update_last_active(
+        self,
+        user_id: str,
+        active_ip: Optional[str] = None,
+        active_region: Optional[str] = None,
+    ) -> None:
         if not user_id:
             return
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            updates = ["last_active_at = CURRENT_TIMESTAMP"]
+            params: List[Any] = []
+            if active_ip is not None:
+                updates.append("last_active_ip = ?")
+                params.append(str(active_ip).strip()[:64])
+            if active_region is not None:
+                updates.append("last_active_region = ?")
+                params.append(str(active_region).strip()[:120])
+            params.append(user_id)
             cursor.execute(
-                "UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (user_id,),
+                f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
             )
             conn.commit()
         finally:

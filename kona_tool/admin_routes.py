@@ -889,6 +889,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         NULL AS last_active_at,
                         '' AS last_login_ip,
                         '' AS last_login_region,
+                        '' AS last_active_ip,
+                        '' AS last_active_region,
                         0 AS active_sessions,
                         COALESCE(ls_local.total_asset, 0.0) AS total_asset_cny,
                         COALESCE(ls_local.total_invest, 0.0) AS total_invest_cny,
@@ -926,6 +928,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         u.last_active_at,
                         COALESCE(u.last_login_ip, '') AS last_login_ip,
                         COALESCE(u.last_login_region, '') AS last_login_region,
+                        COALESCE(u.last_active_ip, '') AS last_active_ip,
+                        COALESCE(u.last_active_region, '') AS last_active_region,
                         (
                             SELECT COUNT(1)
                             FROM auth_refresh_tokens rt
@@ -970,6 +974,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         bu.last_active_at,
                         bu.last_login_ip,
                         bu.last_login_region,
+                        bu.last_active_ip,
+                        bu.last_active_region,
                         bu.active_sessions,
                         bu.total_asset_cny,
                         bu.total_invest_cny,
@@ -991,6 +997,9 @@ def create_admin_blueprint(db, admin_write_audit):
                         total = int(item.get("__total_count") or 0)
                     item.pop("__total_count", None)
                     item["last_login_region"] = _admin_region_display(item.get("last_login_region"))
+                    item["last_active_region"] = _admin_region_display(
+                        item.get("last_active_region") or item.get("last_login_region")
+                    )
                     users.append(item)
                 if not rows:
                     cursor.execute(
@@ -1061,6 +1070,8 @@ def create_admin_blueprint(db, admin_write_audit):
                         "last_active_at": None,
                         "last_login_ip": "",
                         "last_login_region": "",
+                        "last_active_ip": "",
+                        "last_active_region": "",
                         "active_sessions": 0,
                         "can_manage": 0,
                     })
@@ -1082,6 +1093,8 @@ def create_admin_blueprint(db, admin_write_audit):
                     u.last_active_at,
                     COALESCE(u.last_login_ip, '') AS last_login_ip,
                     COALESCE(u.last_login_region, '') AS last_login_region,
+                    COALESCE(u.last_active_ip, '') AS last_active_ip,
+                    COALESCE(u.last_active_region, '') AS last_active_region,
                     (
                         SELECT COUNT(1)
                         FROM auth_refresh_tokens rt
@@ -1101,6 +1114,9 @@ def create_admin_blueprint(db, admin_write_audit):
                 return jsonify({"error": "User not found"}), 404
             item = dict(row)
             item["last_login_region"] = _admin_region_display(item.get("last_login_region"))
+            item["last_active_region"] = _admin_region_display(
+                item.get("last_active_region") or item.get("last_login_region")
+            )
             return jsonify(item)
         finally:
             conn.close()

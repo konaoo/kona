@@ -295,6 +295,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertAlmostEqual(float(items[0].get("total_invest_cny") or 0), 6789.0, places=3)
         self.assertIn("last_login_region", items[0])
         self.assertEqual(items[0].get("last_login_region"), "未知")
+        self.assertIn("last_active_region", items[0])
+        self.assertEqual(items[0].get("last_active_region"), "未知")
         self.assertNotIn("__local__", {str(i.get("id")) for i in items})
 
     def test_admin_users_region_display_is_normalized(self):
@@ -318,6 +320,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         items = (resp.get_json() or {}).get("items") or []
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].get("last_login_region"), "广东-深圳")
+        self.assertEqual(items[0].get("last_active_region"), "广东-深圳")
 
     def test_admin_user_portfolio_endpoint_returns_holdings(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

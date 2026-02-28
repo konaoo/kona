@@ -550,7 +550,12 @@ def _mark_user_recent_activity(response):
         if not user_id:
             return response
         if _should_touch_user_activity(user_id):
-            db.update_last_active(user_id)
+            active_ip = _client_ip()
+            db.update_last_active(
+                user_id,
+                active_ip=active_ip,
+                active_region=_resolve_ip_region(active_ip),
+            )
     except Exception as exc:
         logger.debug("update last active failed: %s", exc)
     return response
