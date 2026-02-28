@@ -13,6 +13,26 @@
         margin: 0;
       }
 
+      html.admin-boot,
+      html.admin-boot body,
+      html.admin-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
+      html.app-boot,
+      html.app-boot body,
+      html.app-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
       html.portal-boot,
       html.portal-boot body,
       html.portal-boot #app {
@@ -22,18 +42,42 @@
           radial-gradient(860px 620px at 70% 92%, rgba(99, 102, 241, 0.18), transparent 55%),
           linear-gradient(135deg, #fff7f1 0%, #f2f7ff 55%, #f6f2ff 100%) !important;
       }
+
+      .boot-splash {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        user-select: none;
+      }
+
+      html.portal-boot .boot-splash {
+        color: rgba(31, 61, 99, 0.72);
+      }
     </style>
     <script>
       (function () {
         var path = window.location.pathname || '/'
         if (path === '/' || path === '/index.html') {
           document.documentElement.classList.add('portal-boot')
+          return
+        }
+        if (path.indexOf('/admin') === 0) {
+          document.documentElement.classList.add('admin-boot')
+          return
+        }
+        if (path.indexOf('/app') === 0) {
+          document.documentElement.classList.add('app-boot')
         }
       })()
     </script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="boot-splash">加载中...</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

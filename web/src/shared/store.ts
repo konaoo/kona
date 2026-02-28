@@ -67,6 +67,7 @@ const SYNC_VERSION_STORAGE_KEY = 'web_sync_versions_v1'
 const STORE_CACHE_STORAGE_KEY = 'web_store_cache_v1'
 const STORE_CACHE_STATIC_TTL_MS = 5 * 60_000
 const STORE_CACHE_QUOTES_TTL_MS = 60_000
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 2500
 const DEFAULT_QUOTE_POLICY: QuotePolicy = {
   interval_open_sec: 5,
   interval_closed_sec: 120,
@@ -423,11 +424,17 @@ async function bootstrap() {
   if (state.bootstrapped) return
   state.bootstrapped = true
   if (!state.token || !state.refreshToken) return
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
   try {
-    const me = await api.get<User>('/api/auth/me', true)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('AUTH_BOOTSTRAP_TIMEOUT')), AUTH_BOOTSTRAP_TIMEOUT_MS)
+    })
+    const me = await Promise.race([api.get<User>('/api/auth/me', true), timeoutPromise])
+    if (timeoutId) clearTimeout(timeoutId)
     state.user = me
     persistUser(me)
   } catch {
+    if (timeoutId) clearTimeout(timeoutId)
     clearAuthState()
   }
 }
