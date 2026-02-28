@@ -19,13 +19,15 @@ from flask import Blueprint, jsonify, request, g, current_app, make_response
 
 import config
 from core.auth import admin_required
-from core.price import get_price_runtime_metrics, get_price_source_health
+from core.price import get_price_runtime_metrics, get_price_source_health, get_forex_rates
+from core.fund import get_fund_eastmoney_f10
 from core.snapshot import take_snapshot
 from core.system import system_manager
 from core.admin.user_admin import reset_user_password, revoke_user_sessions
 from core.admin.policies import list_policies, update_policy, batch_update_policies
 from core.policy_runtime import invalidate_policy_cache
 from core.ip_region import normalize_region_text
+from core.utils import monitored_http_get, safe_float
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
@@ -187,6 +189,20 @@ _DEFAULT_CONFIG_VALUES: Dict[str, Any] = {
 }
 _ADMIN_READ_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_READ_CACHE_LOCK = threading.Lock()
+_API_TEST_CASES: List[Dict[str, str]] = [
+    {"name": "腾讯", "code": "hk00700", "asset_type": "hk"},
+    {"name": "阿里巴巴", "code": "gb_baba", "asset_type": "us"},
+    {"name": "特斯拉", "code": "gb_tsla", "asset_type": "us"},
+    {"name": "宁德时代", "code": "sz300750", "asset_type": "a"},
+    {"name": "场内基金ETF", "code": "sh510300", "asset_type": "a"},
+    {"name": "场外基金", "code": "f_161725", "asset_type": "fund"},
+]
+_API_TEST_PROVIDER_LABELS: Dict[str, str] = {
+    "sina_quote": "新浪行情",
+    "tencent_quote": "腾讯行情",
+    "eastmoney_quote": "东方财富行情",
+    "forex_rate": "汇率",
+}
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -347,6 +363,281 @@ def _admin_log_read(route_name: str, cache_state: str, elapsed_ms: int, params_h
 def _admin_region_display(value: Any) -> str:
     normalized = normalize_region_text(value)
     return normalized or "未知"
+
+
+def _format_api_test_item(
+    *,
+    case: Dict[str, str],
+    ok: bool,
+    latency_ms: int,
+    detail: str = "",
+    price: float = 0.0,
+    yclose: float = 0.0,
+) -> Dict[str, Any]:
+    change = (price - yclose) if yclose > 0 else 0.0
+    change_pct = (change / yclose * 100) if yclose > 0 else 0.0
+    return {
+        "name": str(case.get("name", "")),
+        "code": str(case.get("code", "")),
+        "asset_type": str(case.get("asset_type", "")),
+        "ok": bool(ok),
+        "price": round(float(price or 0.0), 4),
+        "yclose": round(float(yclose or 0.0), 4),
+        "change": round(change, 4),
+        "change_pct": round(change_pct, 4),
+        "latency_ms": int(latency_ms),
+        "detail": detail,
+    }
+
+
+def _to_sina_quote_code(raw_code: str) -> str:
+    code = str(raw_code or "").strip().lower()
+    if code.startswith("f_"):
+        return code
+    if code.startswith(("sh", "sz", "bj", "hk", "gb_", "s_")):
+        return code
+    if code.isdigit() and len(code) == 6:
+        return ("sh" if code[0] in {"5", "6", "9"} else "sz") + code
+    if code.isdigit() and len(code) == 5:
+        return "hk" + code
+    if ".hk" in code:
+        return "hk" + code.replace(".hk", "")
+    if code:
+        return "gb_" + code
+    return code
+
+
+def _to_tencent_quote_code(raw_code: str) -> str:
+    code = str(raw_code or "").strip()
+    lower = code.lower()
+    if lower.startswith("f_"):
+        return lower
+    if lower.startswith("gb_"):
+        return f"us.{lower.replace('gb_', '').upper()}"
+    if lower.startswith(("sh", "sz", "bj", "hk", "s_")):
+        return lower
+    if lower.isdigit() and len(lower) == 6:
+        return ("sh" if lower[0] in {"5", "6", "9"} else "sz") + lower
+    if lower.isdigit() and len(lower) == 5:
+        return "hk" + lower
+    if ".hk" in lower:
+        return "hk" + lower.replace(".hk", "")
+    return f"us.{code.upper()}" if code else lower
+
+
+def _eastmoney_secid_candidates(raw_code: str) -> List[str]:
+    code = str(raw_code or "").strip().lower()
+    if code.startswith("f_"):
+        return []
+    if code.startswith("gb_"):
+        symbol = code.replace("gb_", "").upper()
+        return [f"105.{symbol}", f"106.{symbol}"]
+    if code.startswith("hk"):
+        digits = "".join(ch for ch in code[2:] if ch.isdigit())
+        if digits:
+            return [f"116.{digits.zfill(5)}"]
+    if code.startswith("sh") and len(code) >= 8:
+        return [f"1.{code[2:8]}"]
+    if code.startswith(("sz", "bj")) and len(code) >= 8:
+        return [f"0.{code[2:8]}"]
+    if code.isdigit() and len(code) == 6:
+        market = "1" if code[0] in {"5", "6", "9"} else "0"
+        return [f"{market}.{code}"]
+    return []
+
+
+def _parse_sina_quote(raw_code: str, text: str) -> Tuple[float, float]:
+    if '="' not in text:
+        return 0.0, 0.0
+    payload = text.split('="', 1)[1].split('"', 1)[0]
+    data = payload.split(",")
+    code = _to_sina_quote_code(raw_code)
+    curr = 0.0
+    yclose = 0.0
+    if code.startswith("gb_"):
+        curr = safe_float(data[1] if len(data) > 1 else 0)
+        yclose = safe_float(data[26] if len(data) > 26 else 0)
+        if curr <= 0:
+            curr = safe_float(data[21] if len(data) > 21 else 0)
+    elif code.startswith("hk"):
+        curr = safe_float(data[6] if len(data) > 6 else 0)
+        yclose = safe_float(data[3] if len(data) > 3 else 0)
+    else:
+        curr = safe_float(data[3] if len(data) > 3 else 0)
+        yclose = safe_float(data[2] if len(data) > 2 else 0)
+    if curr <= 0 and yclose > 0:
+        curr = yclose
+    return curr, yclose
+
+
+def _test_sina_quote(code: str) -> Tuple[float, float]:
+    sina_code = _to_sina_quote_code(code)
+    if sina_code.startswith("f_"):
+        raise ValueError("新浪行情暂不支持场外基金代码")
+    url = config.API_ENDPOINTS["sina_stock"].format(code=sina_code)
+    resp = monitored_http_get(
+        "admin_sina_quote_test",
+        url,
+        headers=config.HEADERS,
+        timeout=min(3.0, float(getattr(config, "API_TIMEOUT", 3))),
+    )
+    price, yclose = _parse_sina_quote(code, resp.text)
+    if price <= 0:
+        raise RuntimeError("新浪返回为空或解析失败")
+    return price, yclose
+
+
+def _test_tencent_quote(code: str) -> Tuple[float, float]:
+    tencent_code = _to_tencent_quote_code(code)
+    if tencent_code.startswith("f_"):
+        raise ValueError("腾讯行情暂不支持场外基金代码")
+    url = config.API_ENDPOINTS["tencent_stock"].format(code=tencent_code)
+    resp = monitored_http_get(
+        "admin_tencent_quote_test",
+        url,
+        timeout=min(3.0, float(getattr(config, "API_TIMEOUT", 3))),
+    )
+    text = resp.text
+    if '="' not in text:
+        raise RuntimeError("腾讯返回格式异常")
+    payload = text.split('="', 1)[1].split('"', 1)[0]
+    parts = payload.split("~")
+    curr = safe_float(parts[3] if len(parts) > 3 else 0)
+    yclose = safe_float(parts[4] if len(parts) > 4 else 0)
+    if curr <= 0 and yclose > 0:
+        curr = yclose
+    if curr <= 0:
+        raise RuntimeError("腾讯返回为空或解析失败")
+    return curr, yclose
+
+
+def _test_eastmoney_quote(code: str) -> Tuple[float, float]:
+    lower = str(code or "").strip().lower()
+    if lower.startswith("f_"):
+        price, yclose, _, _ = get_fund_eastmoney_f10(lower.replace("f_", ""))
+        if price <= 0:
+            raise RuntimeError("东方财富基金净值接口无返回")
+        return float(price), float(yclose)
+
+    secids = _eastmoney_secid_candidates(lower)
+    if not secids:
+        raise ValueError("东方财富不支持该代码格式")
+
+    base_url = str(config.API_ENDPOINTS.get("eastmoney_stock") or "").strip()
+    if not base_url:
+        base_url = "https://push2.eastmoney.com/api/qt/stock/get"
+
+    for secid in secids:
+        resp = monitored_http_get(
+            "admin_eastmoney_quote_test",
+            base_url,
+            params={"invt": 2, "fltt": 2, "fields": "f43,f60", "secid": secid},
+            headers={"User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0")},
+            timeout=min(3.0, float(getattr(config, "API_TIMEOUT", 3))),
+        )
+        body = resp.json() if resp.status_code == 200 else {}
+        data = body.get("data") if isinstance(body, dict) else {}
+        if not isinstance(data, dict):
+            continue
+        curr = safe_float(data.get("f43"))
+        yclose = safe_float(data.get("f60"))
+        if curr > 10000 and yclose > 10000:
+            curr = curr / 100.0
+            yclose = yclose / 100.0
+        if curr <= 0 and yclose > 0:
+            curr = yclose
+        if curr > 0:
+            return curr, yclose
+    raise RuntimeError("东方财富返回为空或解析失败")
+
+
+def _run_market_provider_test(provider_key: str) -> Dict[str, Any]:
+    tester_map = {
+        "sina_quote": _test_sina_quote,
+        "tencent_quote": _test_tencent_quote,
+        "eastmoney_quote": _test_eastmoney_quote,
+    }
+    tester = tester_map.get(provider_key)
+    if tester is None:
+        raise ValueError("Unsupported provider_key")
+
+    items: List[Dict[str, Any]] = []
+    for case in _API_TEST_CASES:
+        started = time.perf_counter()
+        try:
+            price, yclose = tester(str(case.get("code", "")))
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            items.append(
+                _format_api_test_item(
+                    case=case,
+                    ok=True,
+                    latency_ms=latency_ms,
+                    detail="ok",
+                    price=price,
+                    yclose=yclose,
+                )
+            )
+        except Exception as e:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            items.append(
+                _format_api_test_item(
+                    case=case,
+                    ok=False,
+                    latency_ms=latency_ms,
+                    detail=str(e),
+                )
+            )
+
+    status = "ok" if all(bool(item.get("ok")) for item in items) else "degraded"
+    return {
+        "provider_key": provider_key,
+        "provider_label": _API_TEST_PROVIDER_LABELS.get(provider_key, provider_key),
+        "status": status,
+        "tested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "items": items,
+    }
+
+
+def _run_forex_provider_test() -> Dict[str, Any]:
+    started = time.perf_counter()
+    rates = get_forex_rates()
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    usd = safe_float((rates or {}).get("USD", 0))
+    hkd = safe_float((rates or {}).get("HKD", 0))
+    cny = safe_float((rates or {}).get("CNY", 1))
+    items = [
+        {
+            "name": "USD/CNY",
+            "code": "USD",
+            "ok": usd > 0,
+            "rate": round(usd, 6),
+            "latency_ms": latency_ms,
+            "detail": "ok" if usd > 0 else "无有效汇率",
+        },
+        {
+            "name": "HKD/CNY",
+            "code": "HKD",
+            "ok": hkd > 0,
+            "rate": round(hkd, 6),
+            "latency_ms": latency_ms,
+            "detail": "ok" if hkd > 0 else "无有效汇率",
+        },
+        {
+            "name": "CNY/CNY",
+            "code": "CNY",
+            "ok": cny > 0,
+            "rate": round(cny if cny > 0 else 1.0, 6),
+            "latency_ms": latency_ms,
+            "detail": "ok",
+        },
+    ]
+    return {
+        "provider_key": "forex_rate",
+        "provider_label": _API_TEST_PROVIDER_LABELS["forex_rate"],
+        "status": "ok" if all(bool(item.get("ok")) for item in items) else "degraded",
+        "tested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "items": items,
+    }
 
 
 def _real_user_where(alias: str = "") -> str:
@@ -1779,6 +2070,21 @@ def create_admin_blueprint(db, admin_write_audit):
         if code == 200:
             invalidate_policy_cache()
         return jsonify(payload), code
+
+    @bp.route("/apis/provider_test", methods=["POST"])
+    @admin_required
+    def admin_apis_provider_test():
+        data = _json_body()
+        provider_key = str(data.get("provider_key", "")).strip().lower()
+        if provider_key not in _API_TEST_PROVIDER_LABELS:
+            return jsonify({"error": "Invalid provider_key"}), 400
+
+        if provider_key == "forex_rate":
+            payload = _run_forex_provider_test()
+            return jsonify(payload)
+
+        payload = _run_market_provider_test(provider_key)
+        return jsonify(payload)
 
     @bp.route("/apis/smoke_test", methods=["POST"])
     @admin_write_audit(action="admin.apis.smoke_test", target_type="system")

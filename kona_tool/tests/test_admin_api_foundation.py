@@ -620,6 +620,63 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(row["action"], "admin.apis.smoke_test")
         self.assertEqual(row["status_code"], 200)
 
+    @patch.object(
+        admin_routes,
+        "_run_market_provider_test",
+        return_value={
+            "provider_key": "sina_quote",
+            "provider_label": "新浪行情",
+            "status": "ok",
+            "tested_at_utc": "2026-02-28T10:00:00+00:00",
+            "items": [{"name": "腾讯", "code": "hk00700", "ok": True, "latency_ms": 20}],
+        },
+    )
+    def test_admin_provider_test_market_success(self, _mock_run):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/provider_test",
+            json={"provider_key": "sina_quote"},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body.get("provider_key"), "sina_quote")
+        self.assertEqual(body.get("status"), "ok")
+        self.assertEqual((body.get("items") or [{}])[0].get("code"), "hk00700")
+
+    @patch.object(
+        admin_routes,
+        "_run_forex_provider_test",
+        return_value={
+            "provider_key": "forex_rate",
+            "provider_label": "汇率",
+            "status": "ok",
+            "tested_at_utc": "2026-02-28T10:00:00+00:00",
+            "items": [{"name": "USD/CNY", "code": "USD", "ok": True, "rate": 7.2, "latency_ms": 15}],
+        },
+    )
+    def test_admin_provider_test_forex_success(self, _mock_run):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/provider_test",
+            json={"provider_key": "forex_rate"},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body.get("provider_key"), "forex_rate")
+        self.assertEqual((body.get("items") or [{}])[0].get("name"), "USD/CNY")
+
+    def test_admin_provider_test_invalid_provider_returns_400(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/provider_test",
+            json={"provider_key": "unknown"},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json().get("error"), "Invalid provider_key")
+
     def test_admin_policy_update_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.post(
