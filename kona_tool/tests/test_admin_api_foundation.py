@@ -17,9 +17,16 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
 import admin_routes  # noqa: E402
+from core.auth import hash_password  # noqa: E402
 
 
-def _seed_user(user_id: str, username: str, is_admin: int = 0, status: str = "active") -> None:
+def _seed_user(
+    user_id: str,
+    username: str,
+    is_admin: int = 0,
+    status: str = "active",
+    password_hash: str = "scrypt$16384$8$1$U0FMVA==$SEFTSA==",
+) -> None:
     conn = app_module.db.get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -27,7 +34,7 @@ def _seed_user(user_id: str, username: str, is_admin: int = 0, status: str = "ac
         INSERT OR REPLACE INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
         VALUES (?, ?, ?, 0, ?, ?)
         """,
-        (user_id, username, "scrypt$16384$8$1$U0FMVA==$SEFTSA==", is_admin, status),
+        (user_id, username, password_hash, is_admin, status),
     )
     conn.commit()
     conn.close()
@@ -191,6 +198,99 @@ class AdminApiFoundationTests(unittest.TestCase):
         row = self._latest_audit()
         self.assertIsNotNone(row)
         self.assertEqual(row["action"], "admin.users.enable")
+
+    def test_admin_users_support_include_local_and_amount_fields(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "target_user", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-02-28", 12345, 6789, 1000, 500, 200, 300, 20, "u_target"),
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-02-28", 888, 777, 0, 0, 0, 0, 0, ""),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?q=target&include_local=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get("items") or []
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].get("id"), "u_target")
+        self.assertAlmostEqual(float(items[0].get("total_asset_cny") or 0), 12345.0, places=3)
+        self.assertAlmostEqual(float(items[0].get("total_invest_cny") or 0), 6789.0, places=3)
+        self.assertNotIn("__local__", {str(i.get("id")) for i in items})
+
+    def test_admin_user_portfolio_endpoint_returns_holdings(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "target_user", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("gb_tsla", "特斯拉", 3, 220.5, "USD", 0, "us", "u_target"),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users/u_target/portfolio",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get("items") or []
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item.get("code"), "gb_tsla")
+        self.assertEqual(item.get("name"), "特斯拉")
+        self.assertAlmostEqual(float(item.get("qty") or 0), 3.0, places=3)
+        self.assertAlmostEqual(float(item.get("price") or 0), 220.5, places=3)
+        self.assertEqual(item.get("curr"), "USD")
+
+    def test_disabled_user_cannot_login(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user(
+            "u_target",
+            "target_user",
+            is_admin=0,
+            status="active",
+            password_hash=hash_password("Aa123456"),
+        )
+
+        disable_resp = self.client.post(
+            "/api/admin/users/status",
+            json={"user_id": "u_target", "status": "disabled"},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(disable_resp.status_code, 200)
+
+        login_resp = self.client.post(
+            "/api/auth/login",
+            json={"username": "target_user", "password": "Aa123456"},
+        )
+        self.assertEqual(login_resp.status_code, 403)
+        self.assertEqual((login_resp.get_json() or {}).get("error"), "User is disabled")
 
     def test_admin_config_update_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

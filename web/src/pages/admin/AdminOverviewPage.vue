@@ -150,7 +150,7 @@ onMounted(load)
 .kpi-value {
   margin-top: 8px;
   color: #1f3d63;
-  font-size: 52px;
+  font-size: 38px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: 0.5px;
@@ -175,6 +175,11 @@ onMounted(load)
 .table td {
   text-align: center;
   vertical-align: middle;
+}
+
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
 }
 
 .table th {
@@ -238,7 +243,7 @@ onMounted(load)
   }
 
   .kpi-value {
-    font-size: 40px;
+    font-size: 30px;
   }
 
   .pager {

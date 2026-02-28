@@ -692,6 +692,11 @@ def create_admin_blueprint(db, admin_write_audit):
     def admin_users():
         q = request.args.get("q", "").strip()
         status = request.args.get("status", "all").strip().lower()
+        include_local_raw = request.args.get("include_local", "1")
+        try:
+            include_local = _coerce_bool(include_local_raw)
+        except ValueError:
+            return jsonify({"error": "Invalid include_local"}), 400
         limit = max(1, min(request.args.get("limit", 100, type=int), 300))
         offset = max(0, request.args.get("offset", 0, type=int))
 
@@ -708,12 +713,54 @@ def create_admin_blueprint(db, admin_write_audit):
             params.append(status)
 
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                f"""
-                WITH base_users AS (
+        local_exists_sql = (
+            "EXISTS ("
+            "SELECT 1 FROM portfolio WHERE user_id IS NULL OR TRIM(user_id) = '' "
+            "UNION ALL SELECT 1 FROM cash_assets WHERE user_id IS NULL OR TRIM(user_id) = '' "
+            "UNION ALL SELECT 1 FROM other_assets WHERE user_id IS NULL OR TRIM(user_id) = '' "
+            "UNION ALL SELECT 1 FROM liabilities WHERE user_id IS NULL OR TRIM(user_id) = '' "
+            "UNION ALL SELECT 1 FROM transactions WHERE user_id IS NULL OR TRIM(user_id) = '' "
+            "UNION ALL SELECT 1 FROM daily_snapshots WHERE user_id IS NULL OR TRIM(user_id) = ''"
+            ")"
+        )
+        local_union_sql = ""
+        if include_local:
+            local_union_sql = f"""
+                    UNION ALL
+                    SELECT
+                        '__local__' AS id,
+                        'local_user' AS username,
+                        '本机未登录用户' AS nickname,
+                        '' AS phone,
+                        NULL AS user_number,
+                        'local_anonymous' AS register_method,
+                        0 AS is_admin,
+                        0 AS must_change_password,
+                        'active' AS status,
+                        NULL AS created_at,
+                        NULL AS last_login,
+                        0 AS active_sessions,
+                        COALESCE(ls_local.total_asset, 0.0) AS total_asset_cny,
+                        COALESCE(ls_local.total_invest, 0.0) AS total_invest_cny,
+                        0 AS can_manage
+                    FROM (SELECT 1) seed
+                    LEFT JOIN latest_snapshots ls_local
+                      ON ls_local.uid = '' AND ls_local.rn = 1
+                    WHERE {local_exists_sql}
+            """
+        base_users_cte_sql = f"""
+                WITH latest_snapshots AS (
+                    SELECT
+                        COALESCE(user_id, '') AS uid,
+                        total_asset,
+                        total_invest,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY COALESCE(user_id, '')
+                            ORDER BY date DESC, id DESC
+                        ) AS rn
+                    FROM daily_snapshots
+                ),
+                base_users AS (
                     SELECT
                         u.id,
                         u.username,
@@ -733,33 +780,22 @@ def create_admin_blueprint(db, admin_write_audit):
                               AND rt.revoked_at IS NULL
                               AND DATETIME(rt.expires_at) > DATETIME('now')
                         ) AS active_sessions,
+                        COALESCE(ls.total_asset, 0.0) AS total_asset_cny,
+                        COALESCE(ls.total_invest, 0.0) AS total_invest_cny,
                         1 AS can_manage
                     FROM users u
+                    LEFT JOIN latest_snapshots ls
+                      ON ls.uid = u.id AND ls.rn = 1
                     WHERE {_real_user_where("u")}
-                    UNION ALL
-                    SELECT
-                        '__local__' AS id,
-                        'local_user' AS username,
-                        '本机未登录用户' AS nickname,
-                        '' AS phone,
-                        NULL AS user_number,
-                        'local_anonymous' AS register_method,
-                        0 AS is_admin,
-                        0 AS must_change_password,
-                        'active' AS status,
-                        NULL AS created_at,
-                        NULL AS last_login,
-                        0 AS active_sessions,
-                        0 AS can_manage
-                    WHERE EXISTS (
-                        SELECT 1 FROM portfolio WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM cash_assets WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM other_assets WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM liabilities WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM transactions WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM daily_snapshots WHERE user_id IS NULL OR TRIM(user_id) = ''
-                    )
+                    {local_union_sql}
                 )
+        """
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"""
+                {base_users_cte_sql}
                 SELECT COUNT(*) AS c
                 FROM base_users bu
                 {where_sql}
@@ -770,53 +806,7 @@ def create_admin_blueprint(db, admin_write_audit):
 
             cursor.execute(
                 f"""
-                WITH base_users AS (
-                    SELECT
-                        u.id,
-                        u.username,
-                        COALESCE(u.nickname, '') AS nickname,
-                        u.phone,
-                        u.user_number,
-                        COALESCE(u.register_method, '') AS register_method,
-                        COALESCE(u.is_admin, 0) AS is_admin,
-                        COALESCE(u.must_change_password, 0) AS must_change_password,
-                        LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
-                        u.created_at,
-                        u.last_login,
-                        (
-                            SELECT COUNT(1)
-                            FROM auth_refresh_tokens rt
-                            WHERE rt.user_id = u.id
-                              AND rt.revoked_at IS NULL
-                              AND DATETIME(rt.expires_at) > DATETIME('now')
-                        ) AS active_sessions,
-                        1 AS can_manage
-                    FROM users u
-                    WHERE {_real_user_where("u")}
-                    UNION ALL
-                    SELECT
-                        '__local__' AS id,
-                        'local_user' AS username,
-                        '本机未登录用户' AS nickname,
-                        '' AS phone,
-                        NULL AS user_number,
-                        'local_anonymous' AS register_method,
-                        0 AS is_admin,
-                        0 AS must_change_password,
-                        'active' AS status,
-                        NULL AS created_at,
-                        NULL AS last_login,
-                        0 AS active_sessions,
-                        0 AS can_manage
-                    WHERE EXISTS (
-                        SELECT 1 FROM portfolio WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM cash_assets WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM other_assets WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM liabilities WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM transactions WHERE user_id IS NULL OR TRIM(user_id) = ''
-                        UNION ALL SELECT 1 FROM daily_snapshots WHERE user_id IS NULL OR TRIM(user_id) = ''
-                    )
-                )
+                {base_users_cte_sql}
                 SELECT
                     bu.id,
                     bu.username,
@@ -830,6 +820,8 @@ def create_admin_blueprint(db, admin_write_audit):
                     bu.created_at,
                     bu.last_login,
                     bu.active_sessions,
+                    bu.total_asset_cny,
+                    bu.total_invest_cny,
                     bu.can_manage
                 FROM base_users bu
                 {where_sql}
@@ -916,6 +908,51 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify(dict(row))
         finally:
             conn.close()
+
+    @bp.route("/users/<user_id>/portfolio", methods=["GET"])
+    @admin_required
+    def admin_user_portfolio(user_id: str):
+        uid = str(user_id or "").strip()
+        if not uid:
+            return jsonify({"error": "Missing user_id"}), 400
+        if uid == "__local__":
+            return jsonify({"error": "Local anonymous user is read-only"}), 400
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"""
+                SELECT 1
+                FROM users u
+                WHERE u.id = ? AND {_real_user_where("u")}
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            if not cursor.fetchone():
+                return jsonify({"error": "User not found"}), 404
+        finally:
+            conn.close()
+
+        portfolio = db.get_portfolio("all", uid)
+        return jsonify(
+            {
+                "user_id": uid,
+                "total": len(portfolio),
+                "items": [
+                    {
+                        "code": str(item.get("code", "")),
+                        "name": str(item.get("name", "")),
+                        "qty": float(item.get("qty") or 0.0),
+                        "price": float(item.get("price") or 0.0),
+                        "curr": str(item.get("curr", "")),
+                        "asset_type": str(item.get("asset_type", "")),
+                    }
+                    for item in portfolio
+                ],
+            }
+        )
 
     @bp.route("/users/status", methods=["POST"])
     @admin_write_audit(action="admin.users.status", target_type="user")
