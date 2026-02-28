@@ -128,14 +128,14 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS portfolio (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code TEXT UNIQUE NOT NULL,
+                code TEXT NOT NULL,
                 name TEXT NOT NULL,
                 qty REAL NOT NULL,
                 price REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 adjustment REAL DEFAULT 0.0,
                 asset_type TEXT DEFAULT 'a',
-                user_id TEXT,
+                user_id TEXT NOT NULL DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -327,7 +327,7 @@ class DatabaseManager:
             if column not in cols:
                 cursor.execute(f'ALTER TABLE {table} ADD COLUMN {col_def}')
 
-        _ensure_column('portfolio', 'user_id', 'user_id TEXT')
+        _ensure_column('portfolio', 'user_id', "user_id TEXT NOT NULL DEFAULT ''")
         _ensure_column('transactions', 'user_id', 'user_id TEXT')
         _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
@@ -347,11 +347,15 @@ class DatabaseManager:
         _ensure_column('daily_snapshot_market_breakdowns', 'confidence', "confidence REAL NOT NULL DEFAULT 1.0")
         _ensure_column('daily_snapshot_market_breakdowns', 'meta_json', "meta_json TEXT")
         _ensure_column('daily_snapshot_market_breakdowns', 'updated_at', "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        self._ensure_portfolio_user_scoped_unique(cursor)
         self._ensure_users_schema(cursor)
 
         # 创建索引以优化查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_portfolio_code ON portfolio(code)')
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_code_user_unique ON portfolio(code, user_id)"
+        )
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_cash_assets_user_id ON cash_assets(user_id)')
@@ -382,6 +386,115 @@ class DatabaseManager:
 
         conn.commit()
         conn.close()
+
+    def _ensure_portfolio_user_scoped_unique(self, cursor) -> None:
+        """将 portfolio 的全局 code 唯一约束迁移为 (code, user_id) 唯一约束。"""
+        cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='portfolio'"
+        )
+        row = cursor.fetchone()
+        if isinstance(row, sqlite3.Row):
+            raw_sql = row["sql"]
+        else:
+            raw_sql = row[0] if row else ""
+        table_sql = str(raw_sql or "").lower()
+        has_legacy_unique = "code text unique" in table_sql or "code\ttext unique" in table_sql
+
+        if has_legacy_unique:
+            logger.info("Migrating portfolio schema from global code unique to (code, user_id) unique")
+            cursor.execute("DROP TABLE IF EXISTS portfolio_new")
+            cursor.execute(
+                """
+                CREATE TABLE portfolio_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    qty REAL NOT NULL,
+                    price REAL NOT NULL,
+                    curr TEXT NOT NULL DEFAULT 'CNY',
+                    adjustment REAL DEFAULT 0.0,
+                    asset_type TEXT DEFAULT 'a',
+                    user_id TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO portfolio_new (
+                    id, code, name, qty, price, curr, adjustment, asset_type, user_id, created_at, updated_at
+                )
+                SELECT
+                    id,
+                    code,
+                    name,
+                    qty,
+                    price,
+                    COALESCE(curr, 'CNY'),
+                    COALESCE(adjustment, 0.0),
+                    COALESCE(NULLIF(asset_type, ''), 'a'),
+                    COALESCE(user_id, ''),
+                    COALESCE(created_at, CURRENT_TIMESTAMP),
+                    COALESCE(updated_at, CURRENT_TIMESTAMP)
+                FROM portfolio
+                """
+            )
+            cursor.execute("DROP TABLE portfolio")
+            cursor.execute("ALTER TABLE portfolio_new RENAME TO portfolio")
+
+        # 统一 user_id 的空值，避免 NULL 绕过联合唯一键
+        cursor.execute("UPDATE portfolio SET user_id = '' WHERE user_id IS NULL")
+
+        # 清理可能存在的 code 单列唯一索引，避免继续阻塞跨用户同代码
+        cursor.execute("PRAGMA index_list(portfolio)")
+        for index_row in cursor.fetchall():
+            index_name = index_row[1]
+            is_unique = int(index_row[2] or 0) == 1
+            if not is_unique:
+                continue
+            safe_name = str(index_name).replace('"', '""')
+            cursor.execute(f'PRAGMA index_info("{safe_name}")')
+            cols = [str(col_row[2]) for col_row in cursor.fetchall()]
+            if cols == ["code"]:
+                cursor.execute(f'DROP INDEX IF EXISTS "{safe_name}"')
+
+        removed = self._deduplicate_portfolio_by_code_user(cursor)
+        if removed > 0:
+            logger.warning(
+                "Removed %s duplicate portfolio rows before creating (code, user_id) unique index",
+                removed,
+            )
+
+    def _deduplicate_portfolio_by_code_user(self, cursor) -> int:
+        """按 (code, user_id) 去重，保留最近更新的一条记录。"""
+        removed = 0
+        cursor.execute(
+            """
+            SELECT code, COALESCE(user_id, '') AS uid, COUNT(1) AS c
+            FROM portfolio
+            GROUP BY code, COALESCE(user_id, '')
+            HAVING COUNT(1) > 1
+            """
+        )
+        duplicates = cursor.fetchall()
+        for row in duplicates:
+            code = row[0]
+            user_id = row[1]
+            cursor.execute(
+                """
+                SELECT id
+                FROM portfolio
+                WHERE code = ? AND COALESCE(user_id, '') = ?
+                ORDER BY datetime(COALESCE(updated_at, created_at, '1970-01-01 00:00:00')) DESC, id DESC
+                """,
+                (code, user_id),
+            )
+            ids = [int(r[0]) for r in cursor.fetchall()]
+            for drop_id in ids[1:]:
+                cursor.execute("DELETE FROM portfolio WHERE id = ?", (drop_id,))
+                removed += 1
+        return removed
 
     def _normalize_username_seed(self, seed: str) -> str:
         s = (seed or "").strip().lower()
@@ -1687,7 +1800,12 @@ class DatabaseManager:
             logger.info(f"Asset added/updated: {data['code']}")
             return True
         except Exception as e:
-            logger.error(f"Failed to add asset: {e}")
+            logger.error(
+                "Failed to add asset: code=%s user_id=%s err=%s",
+                data.get('code'),
+                user_id or '',
+                e,
+            )
             conn.rollback()
             return False
         finally:
@@ -2444,7 +2562,13 @@ class DatabaseManager:
                 'cash_deduct_amount': float(cash_deduct_amount),
             }
         except Exception as e:
-            logger.error(f"Failed to buy asset with cash: {e}")
+            logger.error(
+                "Failed to buy asset with cash: code=%s user_id=%s cash_asset_id=%s err=%s",
+                code,
+                user_id or '',
+                cash_asset_id,
+                e,
+            )
             conn.rollback()
             return {'ok': False, 'code': 'ASSET_BUY_WITH_CASH_FAILED', 'error': 'Failed to buy asset with cash'}
         finally:

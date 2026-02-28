@@ -9,6 +9,13 @@ import '../models/portfolio.dart';
 import '../models/asset.dart';
 import 'top_toast.dart';
 
+class _SearchCacheEntry {
+  final List<dynamic> results;
+  final DateTime savedAt;
+
+  const _SearchCacheEntry({required this.results, required this.savedAt});
+}
+
 class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
@@ -35,10 +42,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool _saving = false;
   bool _searching = false;
   String? _errorText;
+  String? _searchErrorText;
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
   String _tradeMode = 'buy';
   int? _selectedCashAssetId;
+  int _searchSeq = 0;
+  final Map<String, _SearchCacheEntry> _searchCache =
+      <String, _SearchCacheEntry>{};
+  static const Duration _searchCacheTtl = Duration(seconds: 20);
+  static const Duration _searchDebounce = Duration(milliseconds: 280);
   static const int _maxRecentCashAssets = 5;
   static final List<int> _recentCashAssetIds = <int>[];
 
@@ -145,7 +158,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         _selected = null;
         _results = [];
         _errorText = null;
+        _searchErrorText = null;
         _searching = false;
+        _searchSeq += 1;
       });
       return;
     }
@@ -154,27 +169,56 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     _selected = null;
     _errorText = null;
+    _searchErrorText = null;
     _debounce?.cancel();
-    _debounce = Timer(
-      const Duration(milliseconds: 800),
-      () => _search(value.trim()),
-    );
+    _debounce = Timer(_searchDebounce, () => _search(value.trim()));
   }
 
   Future<void> _search(String query) async {
-    setState(() => _searching = true);
+    final key = query.toLowerCase();
+    final now = DateTime.now();
+    final cached = _searchCache[key];
+    if (cached != null && now.difference(cached.savedAt) < _searchCacheTtl) {
+      if (!mounted) return;
+      setState(() {
+        _results = cached.results;
+        _searching = false;
+        _searchErrorText = null;
+      });
+      return;
+    }
+
+    final seq = ++_searchSeq;
+    setState(() {
+      _searching = true;
+      _searchErrorText = null;
+    });
     final appState = context.read<AppState>();
-    final results = await appState.searchStocks(query);
+    List<dynamic> results;
+    try {
+      results = await appState.searchStocks(query);
+    } catch (_) {
+      if (!mounted || seq != _searchSeq) return;
+      if (_queryController.text.trim() != query) return;
+      setState(() {
+        _searching = false;
+        _searchErrorText = '搜索失败，请稍后重试';
+      });
+      return;
+    }
     if (!mounted) return;
-    
+    if (seq != _searchSeq) return;
+
     // 放弃过期的结果（如用户已清空或改变了搜索词）
     if (_queryController.text.trim() != query) {
       return;
     }
-    
+
+    _searchCache[key] = _SearchCacheEntry(results: results, savedAt: now);
     setState(() {
       _results = results;
       _searching = false;
+      _searchErrorText = null;
     });
   }
 
@@ -673,38 +717,40 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       }
     }
 
-    TopToast.showSuccess(toastContext, '已保存');
-    if (mounted) {
-      Navigator.pop(context);
+    final result = await actionFuture;
+    if (!mounted || !toastContext.mounted) return;
+    if (!result.ok) {
+      setState(() {
+        _saving = false;
+        _errorText = result.message ?? '保存失败，请稍后重试';
+      });
+      TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
+      return;
     }
-    unawaited(() async {
-      final result = await actionFuture;
-      if (!toastContext.mounted) return;
-      if (!result.ok) {
-        TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
-        return;
-      }
-      final undoToken = result.data?['undo_token']?.toString();
-      if (undoToken != null && undoToken.isNotEmpty) {
-        TopToast.showAction(
-          toastContext,
-          message: '已保存',
-          actionLabel: '撤销',
-          onAction: () {
-            unawaited(() async {
-              final undoResult = await appState.undoInvestmentOperation(undoToken);
-              if (!toastContext.mounted) return;
-              if (undoResult.ok) {
-                TopToast.showInfo(toastContext, '已撤销');
-              } else {
-                TopToast.showError(toastContext, undoResult.message ?? '撤销失败');
-              }
-            }());
-          },
-          duration: const Duration(seconds: 15),
-        );
-      }
-    }());
+
+    TopToast.showSuccess(toastContext, '已保存');
+    Navigator.pop(context);
+
+    final undoToken = result.data?['undo_token']?.toString();
+    if (undoToken != null && undoToken.isNotEmpty) {
+      TopToast.showAction(
+        toastContext,
+        message: '已保存',
+        actionLabel: '撤销',
+        onAction: () {
+          unawaited(() async {
+            final undoResult = await appState.undoInvestmentOperation(undoToken);
+            if (!toastContext.mounted) return;
+            if (undoResult.ok) {
+              TopToast.showInfo(toastContext, '已撤销');
+            } else {
+              TopToast.showError(toastContext, undoResult.message ?? '撤销失败');
+            }
+          }());
+        },
+        duration: const Duration(seconds: 15),
+      );
+    }
   }
 
   Future<void> _confirmCorrectiveDelete() async {
@@ -1065,6 +1111,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       ),
                     ),
                   _buildSearchResults(),
+                  if (_searchErrorText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _searchErrorText!,
+                        style: TextStyle(
+                          color: AppTheme.danger,
+                          fontSize: FontSize.sm,
+                        ),
+                      ),
+                    ),
                   if (_selected != null) ...[
                     const SizedBox(height: 8),
                     Row(

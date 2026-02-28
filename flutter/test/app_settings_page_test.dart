@@ -57,4 +57,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(loggedOut, isTrue);
   });
+
+  testWidgets('Logout pops to root route before callback', (
+    WidgetTester tester,
+  ) async {
+    final appState = AppState(tokenLoader: () async => null);
+    await appState.setLoggedIn(
+      token: 't2',
+      refreshToken: 'r2',
+      username: 'kona',
+      userId: 'uid-2',
+    );
+
+    var loggedOut = false;
+    final openSettingsKey = GlobalKey();
+    const rootMarker = Key('root-marker');
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Column(
+                children: [
+                  const Text('Root', key: rootMarker),
+                  ElevatedButton(
+                    key: openSettingsKey,
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AppSettingsPage(
+                            onLogout: () {
+                              loggedOut = true;
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Open Settings'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(openSettingsKey));
+    await tester.pumpAndSettle();
+    expect(find.text('系统设置'), findsOneWidget);
+
+    await tester.tap(find.text('退出登录'));
+    await tester.pumpAndSettle();
+
+    expect(loggedOut, isTrue);
+    expect(find.byKey(rootMarker), findsOneWidget);
+    expect(find.text('系统设置'), findsNothing);
+  });
 }

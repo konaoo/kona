@@ -276,7 +276,13 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: widget.onLogout,
+                  onPressed: () {
+                    Navigator.of(
+                      context,
+                      rootNavigator: true,
+                    ).popUntil((route) => route.isFirst);
+                    widget.onLogout();
+                  },
                   style: TextButton.styleFrom(
                     backgroundColor: AppTheme.bgCard,
                     padding: const EdgeInsets.symmetric(vertical: Spacing.lg),

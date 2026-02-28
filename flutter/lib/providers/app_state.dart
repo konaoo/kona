@@ -72,6 +72,9 @@ class AppState extends ChangeNotifier {
        _tokenLoaderOverride = tokenLoader,
        _profileLoaderOverride = profileLoader,
        _refreshSessionOverride = refreshLoader {
+    _api.onAuthExpired = () {
+      unawaited(_handleAuthExpired());
+    };
     _loadTheme();
     _restoreSession();
   }
@@ -90,8 +93,19 @@ class AppState extends ChangeNotifier {
   bool _biometricEnabled = false;
   String? _authErrorMessage;
   AuthLogoutMode _logoutMode = AuthLogoutMode.normal;
+  bool _handlingAuthExpired = false;
   // C1: App 锁屏状态
   bool _isAppLocked = false;
+
+  Future<void> _handleAuthExpired() async {
+    if (_handlingAuthExpired) return;
+    _handlingAuthExpired = true;
+    try {
+      await _clearSessionAndUnauthenticated();
+    } finally {
+      _handlingAuthExpired = false;
+    }
+  }
 
   // 资产数据
   double _totalAsset = 0;

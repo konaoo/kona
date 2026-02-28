@@ -7,11 +7,10 @@ import logging
 import re
 import threading
 from typing import Dict, Tuple, Optional, List, Any
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
 import config
 from .stock import get_stock_price
-from .asset_type import infer_asset_type, asset_type_label
 from .fund import get_fund_price
 from .source_health import source_health
 from .utils import monitored_http_get
@@ -385,7 +384,12 @@ def _search_sina(query: str, type_code: str) -> List[dict]:
         else:
              url = f"http://suggest3.sinajs.cn/suggest/type={type_code}&key={query}&name=suggestdata_{int(time.time())}"
              
-        r = monitored_http_get("sina_search", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get(
+            "sina_search",
+            url,
+            headers=config.HEADERS,
+            timeout=_search_source_timeout_seconds(),
+        )
         r.encoding = 'gbk'
         if r.status_code == 200:
             results = _parse_sina_response(r.text, type_code)
@@ -402,7 +406,7 @@ def _search_fund(query: str) -> List[dict]:
             "eastmoney_fund_search",
             fund_url,
             params={'m': 1, 'key': query},
-            timeout=config.API_TIMEOUT,
+            timeout=_search_source_timeout_seconds(),
         )
         if r.status_code == 200:
             data = r.json()
@@ -431,38 +435,63 @@ def search_stocks(query: str) -> list:
     Returns:
         搜索结果列表 [{'code': '...', 'name': '...', 'type_name': '...', 'currency': '...'}, ...]
     """
+    started_at = time.monotonic()
     results = []
     seen_codes = set()
-    
-    # 并行执行搜索
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = []
-        # 1. A股
-        futures.append(executor.submit(_search_sina, query, '11'))
-        # 2. 港股
-        futures.append(executor.submit(_search_sina, query, '31'))
-        # 3. 美股
-        futures.append(executor.submit(_search_sina, query, '41'))
-        # 4. 基金
-        futures.append(executor.submit(_search_fund, query))
-        
-        for future in as_completed(futures):
-            try:
-                items = future.result()
-                for item in items:
-                    if item['code'] not in seen_codes:
-                        seen_codes.add(item['code'])
-                        results.append(item)
-            except Exception as e:
-                logger.error(f"Search task failed: {e}")
+    max_wait_seconds = _search_aggregate_timeout_seconds()
+    deadline = time.monotonic() + max_wait_seconds
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    futures = {
+        executor.submit(_search_sina, query, '11'): 'a',
+        executor.submit(_search_sina, query, '31'): 'hk',
+        executor.submit(_search_sina, query, '41'): 'us',
+        executor.submit(_search_fund, query): 'fund',
+    }
+    pending = set(futures.keys())
+    timed_out_sources = []
+
+    try:
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out_sources.extend(futures[f] for f in pending)
+                break
+
+            done, pending = wait(
+                pending,
+                timeout=remaining,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                timed_out_sources.extend(futures[f] for f in pending)
+                break
+
+            for future in done:
+                try:
+                    items = future.result()
+                    for item in items:
+                        code = item.get('code', '')
+                        if code and code not in seen_codes:
+                            seen_codes.add(code)
+                            results.append(item)
+                except Exception as e:
+                    logger.error(f"Search task failed: {e}")
+    finally:
+        if timed_out_sources:
+            logger.info(
+                "search_stocks timeout for query=%s sources=%s",
+                query,
+                ",".join(sorted(set(timed_out_sources))),
+            )
+        executor.shutdown(wait=False, cancel_futures=True)
                 
     final_results = []
     query_lower = query.lower()
-    
+
     for item in results:
-        asset_type = infer_asset_type(item.get('code', ''), item.get('name', ''))
+        asset_type = _asset_type_from_type_name(item.get('type_name', ''))
         item['asset_type'] = asset_type
-        item['type_name'] = asset_type_label(asset_type)
         final_results.append(item)
 
     # 排序逻辑：完全匹配代码的优先，然后是名字前置匹配，然后默认顺序
@@ -486,4 +515,43 @@ def search_stocks(query: str) -> list:
         return 3
 
     final_results.sort(key=_sort_key)
-    return final_results[:15]
+    final_results = final_results[:15]
+
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    logger.info(
+        "search_stocks done query=%s elapsed_ms=%s result_count=%s timed_out_sources=%s",
+        query,
+        elapsed_ms,
+        len(final_results),
+        ",".join(sorted(set(timed_out_sources))) if timed_out_sources else "-",
+    )
+    return final_results
+
+
+def _search_aggregate_timeout_seconds() -> float:
+    return max(
+        0.5,
+        float(getattr(config, "SEARCH_AGGREGATE_TIMEOUT_SECONDS", 1.8)),
+    )
+
+
+def _search_source_timeout_seconds() -> float:
+    timeout = float(
+        getattr(
+            config,
+            "SEARCH_SOURCE_TIMEOUT_SECONDS",
+            getattr(config, "API_TIMEOUT", 3),
+        )
+    )
+    return max(0.3, timeout)
+
+
+def _asset_type_from_type_name(type_name: str) -> str:
+    normalized = str(type_name or "").strip()
+    if normalized == "港股":
+        return "hk"
+    if normalized == "美股":
+        return "us"
+    if normalized == "基金":
+        return "fund"
+    return "a"

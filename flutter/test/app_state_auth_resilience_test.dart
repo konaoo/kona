@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/services/api_service.dart';
@@ -9,6 +10,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   test('login succeeds even if auth persistence fails', () async {
@@ -64,5 +66,25 @@ void main() {
 
     expect(ok, isFalse);
     expect(appState.authErrorMessage, '浏览器存储环境异常，请刷新页面或切换 HTTPS 后重试');
+  });
+
+  test('auth expired callback clears session immediately', () async {
+    final appState = AppState(tokenLoader: () async => null);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await appState.setLoggedIn(
+      token: 't-auth-expire',
+      refreshToken: 'r-auth-expire',
+      username: 'kona',
+      userId: 'uid-auth-expire',
+    );
+
+    expect(appState.sessionBootState, SessionBootState.authenticated);
+    final api = ApiService();
+    expect(api.onAuthExpired, isNotNull);
+    api.onAuthExpired?.call();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(appState.sessionBootState, SessionBootState.unauthenticated);
+    expect(appState.isLoggedIn, isFalse);
   });
 }

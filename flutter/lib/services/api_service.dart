@@ -19,6 +19,8 @@ class ApiService {
   final http.Client _client = http.Client();
   final SecureStorageService _secureStorage = SecureStorageService();
   Future<bool>? _refreshInFlight;
+  bool _lastRefreshHardFailure = false;
+  void Function()? onAuthExpired;
 
   /// 设置认证 token
   void setToken(String token) {
@@ -47,6 +49,23 @@ class ApiService {
     _token = null;
   }
 
+  void _notifyAuthExpired() {
+    final cb = onAuthExpired;
+    if (cb != null) {
+      scheduleMicrotask(cb);
+    }
+  }
+
+  ApiException _buildAuthFailureException() {
+    final hardFailure = _lastRefreshHardFailure;
+    _lastRefreshHardFailure = false;
+    if (hardFailure) {
+      _notifyAuthExpired();
+      return ApiException('未登录或登录已过期', statusCode: 401);
+    }
+    return ApiException('会话校验失败，请检查网络后重试');
+  }
+
   Future<bool> _refreshAccessToken() async {
     final inFlight = _refreshInFlight;
     if (inFlight != null) return inFlight;
@@ -63,8 +82,10 @@ class ApiService {
   }
 
   Future<bool> _refreshAccessTokenInternal() async {
+    _lastRefreshHardFailure = false;
     final refreshToken = await _secureStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
+      _lastRefreshHardFailure = true;
       return false;
     }
     try {
@@ -78,6 +99,7 @@ class ApiService {
       if (response.statusCode != 200) {
         if (response.statusCode == 401 || response.statusCode == 403) {
           await _clearAuthTokensFromStorage();
+          _lastRefreshHardFailure = true;
         }
         return false;
       }
@@ -85,19 +107,28 @@ class ApiService {
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
         await _clearAuthTokensFromStorage();
+        _lastRefreshHardFailure = true;
         return false;
       }
       final accessToken = decoded['access_token']?.toString() ?? '';
       final nextRefreshToken = decoded['refresh_token']?.toString() ?? '';
       if (accessToken.isEmpty || nextRefreshToken.isEmpty) {
         await _clearAuthTokensFromStorage();
+        _lastRefreshHardFailure = true;
         return false;
       }
       _token = accessToken;
       await _secureStorage.setToken(accessToken);
       await _secureStorage.setRefreshToken(nextRefreshToken);
       return true;
+    } on TimeoutException {
+      _lastRefreshHardFailure = false;
+      return false;
+    } on http.ClientException {
+      _lastRefreshHardFailure = false;
+      return false;
     } catch (_) {
+      _lastRefreshHardFailure = false;
       return false;
     }
   }
@@ -178,8 +209,10 @@ class ApiService {
               attempt -= 1;
               continue;
             }
+          } else if (endpoint == ApiConfig.refresh) {
+            _lastRefreshHardFailure = true;
           }
-          throw ApiException('未登录或登录已过期', statusCode: 401);
+          throw _buildAuthFailureException();
         } else {
           throw ApiException(
             _extractErrorMessage(response),
@@ -232,8 +265,10 @@ class ApiService {
               attempt -= 1;
               continue;
             }
+          } else if (endpoint == ApiConfig.refresh) {
+            _lastRefreshHardFailure = true;
           }
-          throw ApiException('未登录或登录已过期', statusCode: 401);
+          throw _buildAuthFailureException();
         } else {
           throw ApiException(
             _extractErrorMessage(response),
@@ -419,7 +454,11 @@ class ApiService {
   /// 搜索股票/基金
   Future<List<dynamic>> searchStocks(String query) async {
     if (query.isEmpty) return [];
-    return await _get('${ApiConfig.search}?q=$query') ?? [];
+    final endpoint = Uri(
+      path: ApiConfig.search,
+      queryParameters: {'q': query},
+    ).toString();
+    return await _get(endpoint) ?? [];
   }
 
   /// 添加投资资产
