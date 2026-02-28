@@ -2,13 +2,18 @@
   <LegacyAdminShell title="用户管理" subtitle="查询、封禁与资产明细">
     <section class="panel" style="padding: 16px; margin-bottom: 16px;">
       <div class="toolbar">
-        <input class="input" v-model.trim="query" placeholder="搜索用户名/昵称/手机号" />
+        <input class="input" v-model.trim="query" placeholder="搜索用户名/昵称/手机号" @keyup.enter="onSearch" />
         <select class="input slim" v-model="status">
           <option value="all">全部</option>
           <option value="active">active</option>
           <option value="disabled">disabled</option>
         </select>
-        <button class="btn" @click="load(true)">查询</button>
+        <select class="input slim" v-model="sortBy">
+          <option value="last_active_at">最近活跃时间（降序）</option>
+          <option value="total_asset_cny">总资产金额（降序）</option>
+          <option value="created_at">注册时间（降序）</option>
+        </select>
+        <button class="btn" @click="onSearch">查询</button>
       </div>
     </section>
 
@@ -45,6 +50,19 @@
           </tr>
         </tbody>
       </table>
+
+      <div class="pager-wrap">
+        <div class="pager">
+          <span class="pager-total">共{{ totalRows }}条</span>
+          <select v-model.number="pageSize" class="pager-select">
+            <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+          </select>
+          <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
+          <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+        </div>
+      </div>
+
       <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
     </section>
 
@@ -86,16 +104,32 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 import { money, shortDateTime } from '../../shared/format'
 
+type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'created_at'
+
 const query = ref('')
 const status = ref('all')
+const sortBy = ref<UserSortBy>('last_active_at')
+const sortDir = 'desc'
 const users = reactive<Record<string, any>>({ items: [], total: 0 })
 const message = ref('')
 const ok = ref(true)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
+let lastRequestKey = ''
+let inflightKey = ''
+
+const totalRows = computed(() => Number(users.total || 0))
+const totalPages = computed(() => {
+  const total = totalRows.value
+  return total > 0 ? Math.ceil(total / pageSize.value) : 1
+})
+
 const detail = reactive<{
   visible: boolean
   loading: boolean
@@ -115,11 +149,56 @@ function flash(msg: string, success: boolean) {
   ok.value = success
 }
 
-async function load(force = false) {
-  const q = encodeURIComponent(query.value)
-  const s = encodeURIComponent(status.value)
-  const forcePart = force ? '&force=1' : ''
-  Object.assign(users, await api.get(`/api/admin/users?q=${q}&status=${s}&limit=100&offset=0&include_local=0${forcePart}`))
+async function load(options: { force?: boolean } = {}) {
+  const force = Boolean(options.force)
+  const offset = (currentPage.value - 1) * pageSize.value
+  const key = [
+    query.value,
+    status.value,
+    sortBy.value,
+    sortDir,
+    String(pageSize.value),
+    String(offset),
+    force ? '1' : '0',
+  ].join('|')
+  if (!force && (key === lastRequestKey || key === inflightKey)) return
+
+  inflightKey = key
+  try {
+    const params = new URLSearchParams({
+      q: query.value,
+      status: status.value,
+      include_local: '0',
+      sort_by: sortBy.value,
+      sort_dir: sortDir,
+      limit: String(pageSize.value),
+      offset: String(offset),
+    })
+    if (force) params.set('force', '1')
+    Object.assign(users, await api.get(`/api/admin/users?${params.toString()}`))
+    if (!force) lastRequestKey = key
+  } finally {
+    if (inflightKey === key) inflightKey = ''
+  }
+}
+
+async function onSearch() {
+  currentPage.value = 1
+  await load({ force: true })
+}
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value || page === currentPage.value) return
+  currentPage.value = page
+  void load()
+}
+
+function prevPage() {
+  goToPage(currentPage.value - 1)
+}
+
+function nextPage() {
+  goToPage(currentPage.value + 1)
 }
 
 async function toggleStatus(user: Record<string, any>) {
@@ -131,7 +210,7 @@ async function toggleStatus(user: Record<string, any>) {
     }
     await api.post('/api/admin/users/status', { user_id: user.id, status: next })
     flash('状态已更新', true)
-    await load(true)
+    await load({ force: true })
   } catch (e) {
     flash(e instanceof Error ? e.message : '更新失败', false)
   }
@@ -184,6 +263,11 @@ function displayRegion(value: unknown): string {
   return raw || '未知'
 }
 
+watch([status, sortBy, pageSize], async () => {
+  currentPage.value = 1
+  await load()
+})
+
 onMounted(() => {
   void load()
 })
@@ -192,7 +276,7 @@ onMounted(() => {
 <style scoped>
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 80px;
+  grid-template-columns: minmax(0, 1fr) 140px 220px 80px;
   gap: 8px;
 }
 
@@ -213,6 +297,58 @@ onMounted(() => {
 .table th:last-child,
 .table td:last-child {
   text-align: center;
+}
+
+.pager-wrap {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 10px;
+  background: #f7fbff;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.pager-total,
+.pager-page {
+  color: #3f6086;
+  font-weight: 600;
+  white-space: nowrap;
+  word-break: keep-all;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.pager-select {
+  width: 120px !important;
+  max-width: 120px;
+  min-width: 110px;
+  height: 36px;
+  border: 1px solid #c7d7ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #35557d;
+  padding: 0 10px;
+  flex: 0 0 auto;
+}
+
+.pager-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.pager-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .up {
@@ -269,6 +405,14 @@ onMounted(() => {
   }
 
   .actions {
+    flex-wrap: wrap;
+  }
+
+  .pager-wrap {
+    justify-content: flex-start;
+  }
+
+  .pager {
     flex-wrap: wrap;
   }
 }

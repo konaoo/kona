@@ -322,6 +322,121 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(items[0].get("last_login_region"), "广东-深圳")
         self.assertEqual(items[0].get("last_active_region"), "广东-深圳")
 
+    def test_admin_users_support_sort_by_total_asset_desc_with_pagination(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+        _seed_user("u_t2", "target_2", is_admin=0, status="active")
+        _seed_user("u_t3", "target_3", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-28", 100.0, 90.0, 0, 0, 0, 0, 0, "u_t1"),
+                ("2026-02-28", 300.0, 290.0, 0, 0, 0, 0, 0, "u_t2"),
+                ("2026-02-28", 200.0, 190.0, 0, 0, 0, 0, 0, "u_t3"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        resp_page1 = self.client.get(
+            "/api/admin/users?q=target&include_local=0&sort_by=total_asset_cny&sort_dir=desc&limit=2&offset=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp_page1.status_code, 200)
+        payload_page1 = resp_page1.get_json() or {}
+        items_page1 = payload_page1.get("items") or []
+        self.assertEqual(payload_page1.get("total"), 3)
+        self.assertEqual(len(items_page1), 2)
+        self.assertEqual([str(i.get("id")) for i in items_page1], ["u_t2", "u_t3"])
+
+        resp_page2 = self.client.get(
+            "/api/admin/users?q=target&include_local=0&sort_by=total_asset_cny&sort_dir=desc&limit=2&offset=2",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp_page2.status_code, 200)
+        payload_page2 = resp_page2.get_json() or {}
+        items_page2 = payload_page2.get("items") or []
+        self.assertEqual(payload_page2.get("total"), 3)
+        self.assertEqual([str(i.get("id")) for i in items_page2], ["u_t1"])
+
+    def test_admin_users_support_sort_by_created_at_desc(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+        _seed_user("u_t2", "target_2", is_admin=0, status="active")
+        _seed_user("u_t3", "target_3", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-01 10:00:00", "u_t1"))
+        cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-03 10:00:00", "u_t2"))
+        cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-02 10:00:00", "u_t3"))
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?q=target&include_local=0&sort_by=created_at&sort_dir=desc&limit=10&offset=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        items = (resp.get_json() or {}).get("items") or []
+        self.assertEqual([str(i.get("id")) for i in items], ["u_t2", "u_t3", "u_t1"])
+
+    def test_admin_users_support_sort_by_last_active_at_desc_with_fallback(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+        _seed_user("u_t2", "target_2", is_admin=0, status="active")
+        _seed_user("u_t3", "target_3", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET created_at = ?, last_login = ?, last_active_at = NULL WHERE id = ?",
+            ("2026-02-10 10:00:00", "2026-02-20 10:00:00", "u_t1"),
+        )
+        cursor.execute(
+            "UPDATE users SET created_at = ?, last_login = ?, last_active_at = ? WHERE id = ?",
+            ("2026-02-09 10:00:00", "2026-02-19 10:00:00", "2026-02-21 10:00:00", "u_t2"),
+        )
+        cursor.execute(
+            "UPDATE users SET created_at = ?, last_login = NULL, last_active_at = NULL WHERE id = ?",
+            ("2026-02-22 10:00:00", "u_t3"),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?q=target&include_local=0&sort_by=last_active_at&sort_dir=desc&limit=10&offset=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        items = (resp.get_json() or {}).get("items") or []
+        self.assertEqual([str(i.get("id")) for i in items], ["u_t3", "u_t2", "u_t1"])
+
+    def test_admin_users_invalid_sort_params_return_400(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+
+        bad_sort_by = self.client.get(
+            "/api/admin/users?include_local=0&sort_by=unknown",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(bad_sort_by.status_code, 400)
+        self.assertEqual((bad_sort_by.get_json() or {}).get("error"), "Invalid sort_by")
+
+        bad_sort_dir = self.client.get(
+            "/api/admin/users?include_local=0&sort_dir=down",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(bad_sort_dir.status_code, 400)
+        self.assertEqual((bad_sort_dir.get_json() or {}).get("error"), "Invalid sort_dir")
+
     def test_admin_user_portfolio_endpoint_returns_holdings(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_target", "target_user", is_admin=0, status="active")

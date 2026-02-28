@@ -839,11 +839,23 @@ def create_admin_blueprint(db, admin_write_audit):
     def admin_users():
         q = request.args.get("q", "").strip()
         status = request.args.get("status", "all").strip().lower()
+        sort_by = request.args.get("sort_by", "last_active_at").strip().lower()
+        sort_dir = request.args.get("sort_dir", "desc").strip().lower()
         include_local_raw = request.args.get("include_local", "1")
         try:
             include_local = _coerce_bool(include_local_raw)
         except ValueError:
             return jsonify({"error": "Invalid include_local"}), 400
+        sort_expr_map = {
+            "last_active_at": "COALESCE(bu.last_active_at, bu.last_login, bu.created_at, '')",
+            "total_asset_cny": "COALESCE(bu.total_asset_cny, 0.0)",
+            "created_at": "COALESCE(bu.created_at, '')",
+        }
+        if sort_by not in sort_expr_map:
+            return jsonify({"error": "Invalid sort_by"}), 400
+        if sort_dir not in {"asc", "desc"}:
+            return jsonify({"error": "Invalid sort_dir"}), 400
+        order_by_sql = f"{sort_expr_map[sort_by]} {sort_dir.upper()}, bu.id DESC"
         limit = max(1, min(request.args.get("limit", 100, type=int), 300))
         offset = max(0, request.args.get("offset", 0, type=int))
 
@@ -983,7 +995,7 @@ def create_admin_blueprint(db, admin_write_audit):
                         COUNT(1) OVER() AS __total_count
                     FROM base_users bu
                     {where_sql}
-                    ORDER BY COALESCE(bu.last_login, bu.created_at, '') DESC, bu.id DESC
+                    ORDER BY {order_by_sql}
                     LIMIT ? OFFSET ?
                     """,
                     tuple(params + [limit, offset]),
@@ -1022,6 +1034,8 @@ def create_admin_blueprint(db, admin_write_audit):
                 "q": q,
                 "status": status,
                 "include_local": int(include_local),
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
                 "limit": limit,
                 "offset": offset,
                 "force": request.args.get("force", ""),
