@@ -9,7 +9,7 @@ import io
 import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, g, current_app, make_response
 
@@ -334,6 +334,127 @@ def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
     return metrics
 
 
+def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
+    window_days = max(1, int(days))
+    start_offset = f"-{window_days - 1} day"
+
+    cursor.execute(
+        f"""
+        SELECT
+            DATE(u.created_at, 'localtime') AS cohort_date,
+            COUNT(*) AS new_users,
+            SUM(
+                CASE
+                    WHEN u.last_login IS NOT NULL
+                         AND TRIM(u.last_login) != ''
+                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+1 day')
+                    THEN 1 ELSE 0
+                END
+            ) AS retained_1d_count,
+            SUM(
+                CASE
+                    WHEN u.last_login IS NOT NULL
+                         AND TRIM(u.last_login) != ''
+                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+3 day')
+                    THEN 1 ELSE 0
+                END
+            ) AS retained_3d_count,
+            SUM(
+                CASE
+                    WHEN u.last_login IS NOT NULL
+                         AND TRIM(u.last_login) != ''
+                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+7 day')
+                    THEN 1 ELSE 0
+                END
+            ) AS retained_7d_count,
+            SUM(
+                CASE
+                    WHEN u.last_login IS NOT NULL
+                         AND TRIM(u.last_login) != ''
+                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+14 day')
+                    THEN 1 ELSE 0
+                END
+            ) AS retained_14d_count,
+            SUM(
+                CASE
+                    WHEN u.last_login IS NOT NULL
+                         AND TRIM(u.last_login) != ''
+                         AND DATE(u.last_login, 'localtime') >= DATE(u.created_at, 'localtime', '+30 day')
+                    THEN 1 ELSE 0
+                END
+            ) AS retained_30d_count
+        FROM users u
+        WHERE {_real_user_where('u')}
+          AND DATE(u.created_at, 'localtime') BETWEEN DATE('now', 'localtime', ?) AND DATE('now', 'localtime')
+        GROUP BY DATE(u.created_at, 'localtime')
+        """,
+        (start_offset,),
+    )
+    cohort_rows = cursor.fetchall()
+
+    cohort_map: Dict[str, Dict[str, int]] = {}
+    for row in cohort_rows:
+        cohort_date = str((row["cohort_date"] if row else "") or "")
+        if not cohort_date:
+            continue
+        cohort_map[cohort_date] = {
+            "new_users": int(row["new_users"] or 0),
+            "retained_1d_count": int(row["retained_1d_count"] or 0),
+            "retained_3d_count": int(row["retained_3d_count"] or 0),
+            "retained_7d_count": int(row["retained_7d_count"] or 0),
+            "retained_14d_count": int(row["retained_14d_count"] or 0),
+            "retained_30d_count": int(row["retained_30d_count"] or 0),
+        }
+
+    cursor.execute(
+        f"""
+        SELECT
+            DATE(u.last_login, 'localtime') AS active_date,
+            COUNT(*) AS active_users
+        FROM users u
+        WHERE {_real_user_where('u')}
+          AND u.last_login IS NOT NULL
+          AND TRIM(u.last_login) != ''
+          AND DATE(u.last_login, 'localtime') BETWEEN DATE('now', 'localtime', ?) AND DATE('now', 'localtime')
+        GROUP BY DATE(u.last_login, 'localtime')
+        """,
+        (start_offset,),
+    )
+    active_rows = cursor.fetchall()
+    active_map = {
+        str((row["active_date"] if row else "") or ""): int(row["active_users"] or 0)
+        for row in active_rows
+        if str((row["active_date"] if row else "") or "")
+    }
+
+    def _safe_rate(retained: int, new_users: int, age_days: int, threshold: int):
+        if new_users <= 0 or age_days < threshold:
+            return None
+        return round(retained / new_users, 4)
+
+    today = date.today()
+    result: List[Dict[str, Any]] = []
+    for i in range(window_days):
+        current = today - timedelta(days=i)
+        date_str = current.isoformat()
+        cohort = cohort_map.get(date_str, {})
+        new_users = int(cohort.get("new_users", 0) or 0)
+        age_days = i
+        result.append(
+            {
+                "date": date_str,
+                "new_users": new_users,
+                "active_users": int(active_map.get(date_str, 0) or 0),
+                "retention_1d": _safe_rate(int(cohort.get("retained_1d_count", 0) or 0), new_users, age_days, 1),
+                "retention_3d": _safe_rate(int(cohort.get("retained_3d_count", 0) or 0), new_users, age_days, 3),
+                "retention_7d": _safe_rate(int(cohort.get("retained_7d_count", 0) or 0), new_users, age_days, 7),
+                "retention_14d": _safe_rate(int(cohort.get("retained_14d_count", 0) or 0), new_users, age_days, 14),
+                "retention_30d": _safe_rate(int(cohort.get("retained_30d_count", 0) or 0), new_users, age_days, 30),
+            }
+        )
+    return result
+
+
 def _recent_admin_audits(cursor, limit: int = 20) -> List[Dict[str, Any]]:
     cursor.execute(
         """
@@ -385,6 +506,7 @@ def create_admin_blueprint(db, admin_write_audit):
         cursor = conn.cursor()
         try:
             user_ops = _get_user_ops_metrics(cursor)
+            retention_rows = _get_user_retention_rows(cursor, days=60)
 
             cursor.execute("SELECT COUNT(*) AS c FROM daily_snapshots")
             snapshot_total = int(cursor.fetchone()["c"])
@@ -395,6 +517,12 @@ def create_admin_blueprint(db, admin_write_audit):
             recent_audits = _recent_admin_audits(cursor, limit=20)
 
             return jsonify({
+                "dashboard": {
+                    "new_users_today": user_ops["new_today"],
+                    "active_users_today": user_ops["dau"],
+                    "total_users": user_ops["user_total"],
+                },
+                "retention_rows": retention_rows,
                 "users": {
                     "total": user_ops["user_total"],
                 },

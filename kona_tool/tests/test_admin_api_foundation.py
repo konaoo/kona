@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -94,6 +95,71 @@ class AdminApiFoundationTests(unittest.TestCase):
         data = resp.get_json()
         self.assertIn("users", data)
         self.assertIn("snapshots", data)
+
+    def test_admin_overview_returns_dashboard_and_retention_rows(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_u1", "user_u1", is_admin=0, status="active")
+        _seed_user("u_u2", "user_u2", is_admin=0, status="active")
+
+        today = datetime.now().date()
+        cohort_day = today - timedelta(days=40)
+        retained_day = cohort_day + timedelta(days=8)
+        today_str = today.isoformat()
+        cohort_str = cohort_day.isoformat()
+        retained_str = retained_day.isoformat()
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET created_at = ?, last_login = ?
+            WHERE id = ?
+            """,
+            (f"{cohort_str} 09:00:00", f"{retained_str} 09:00:00", "u_u1"),
+        )
+        cursor.execute(
+            """
+            UPDATE users
+            SET created_at = ?, last_login = NULL
+            WHERE id = ?
+            """,
+            (f"{cohort_str} 10:00:00", "u_u2"),
+        )
+        cursor.execute(
+            """
+            UPDATE users
+            SET created_at = ?, last_login = ?
+            WHERE id = ?
+            """,
+            (f"{today_str} 11:00:00", f"{today_str} 12:00:00", "u_admin"),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/overview",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+
+        dashboard = data.get("dashboard") or {}
+        self.assertIn("new_users_today", dashboard)
+        self.assertIn("active_users_today", dashboard)
+        self.assertIn("total_users", dashboard)
+
+        rows = data.get("retention_rows") or []
+        self.assertTrue(rows)
+        cohort_row = next((r for r in rows if (r.get("date") or "") == cohort_str), None)
+        self.assertIsNotNone(cohort_row)
+        self.assertEqual(int(cohort_row.get("new_users") or 0), 2)
+        self.assertIn("active_users", cohort_row)
+        self.assertAlmostEqual(float(cohort_row.get("retention_1d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("retention_3d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("retention_7d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("retention_14d") or 0), 0.0, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("retention_30d") or 0), 0.0, places=3)
 
     def test_admin_disable_enable_user_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

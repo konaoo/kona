@@ -1,49 +1,51 @@
 <template>
-  <LegacyAdminShell title="后台概览" subtitle="运营与审计摘要">
-    <section class="grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 16px;">
-      <article class="panel card">
-        <div class="label">用户总数</div>
-        <div class="value">{{ overview.users?.total ?? 0 }}</div>
+  <LegacyAdminShell title="后台概览" subtitle="用户增长与留存">
+    <section class="kpi-grid">
+      <article class="panel kpi-card">
+        <div class="kpi-label">新增用户数（当日）</div>
+        <div class="kpi-value">{{ overview.dashboard?.new_users_today ?? 0 }}</div>
       </article>
-      <article class="panel card">
-        <div class="label">快照总数</div>
-        <div class="value">{{ overview.snapshots?.total ?? 0 }}</div>
+      <article class="panel kpi-card">
+        <div class="kpi-label">活跃用户数（当日）</div>
+        <div class="kpi-value">{{ overview.dashboard?.active_users_today ?? 0 }}</div>
       </article>
-      <article class="panel card">
-        <div class="label">最新快照日期</div>
-        <div class="value small">{{ overview.snapshots?.latest_date ?? '-' }}</div>
+      <article class="panel kpi-card">
+        <div class="kpi-label">累计用户数（历史）</div>
+        <div class="kpi-value">{{ overview.dashboard?.total_users ?? 0 }}</div>
       </article>
     </section>
 
-    <section class="panel" style="padding: 16px; margin-bottom: 16px;">
+    <section class="panel retention-panel">
       <div class="head">
-        <h3>待办摘要</h3>
+        <h3>用户增长与留存</h3>
         <button class="btn" @click="load">刷新</button>
       </div>
       <table class="table">
-        <thead><tr><th>级别</th><th>标题</th><th>描述</th><th>建议</th></tr></thead>
-        <tbody>
-          <tr v-for="item in (todo.items || [])" :key="item.code">
-            <td>{{ item.level }}</td>
-            <td>{{ item.title }}</td>
-            <td>{{ item.description }}</td>
-            <td>{{ item.suggestion }}</td>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>新增用户数</th>
+            <th>活跃用户数</th>
+            <th>用户次留</th>
+            <th>3留</th>
+            <th>7留</th>
+            <th>14留</th>
+            <th>30留</th>
           </tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="panel" style="padding: 16px">
-      <h3>最近审计</h3>
-      <table class="table">
-        <thead><tr><th>时间</th><th>动作</th><th>结果</th><th>操作人</th><th>目标</th></tr></thead>
+        </thead>
         <tbody>
-          <tr v-for="item in (overview.recent_audits || [])" :key="item.id">
-            <td>{{ shortDateTime(item.created_at) }}</td>
-            <td>{{ item.action }}</td>
-            <td>{{ item.result }}</td>
-            <td>{{ item.admin_username || '-' }}</td>
-            <td>{{ item.target_type }} / {{ item.target_id }}</td>
+          <tr v-for="item in (overview.retention_rows || [])" :key="item.date">
+            <td>{{ item.date }}</td>
+            <td>{{ item.new_users ?? 0 }}</td>
+            <td>{{ item.active_users ?? 0 }}</td>
+            <td>{{ formatRate(item.retention_1d) }}</td>
+            <td>{{ formatRate(item.retention_3d) }}</td>
+            <td>{{ formatRate(item.retention_7d) }}</td>
+            <td>{{ formatRate(item.retention_14d) }}</td>
+            <td>{{ formatRate(item.retention_30d) }}</td>
+          </tr>
+          <tr v-if="!(overview.retention_rows || []).length">
+            <td colspan="8" class="empty">暂无数据</td>
           </tr>
         </tbody>
       </table>
@@ -55,48 +57,76 @@
 import { onMounted, reactive } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
-import { shortDateTime } from '../../shared/format'
 
-const overview = reactive<Record<string, any>>({ users: {}, snapshots: {}, recent_audits: [] })
-const todo = reactive<Record<string, any>>({ items: [] })
+const overview = reactive<Record<string, any>>({
+  dashboard: {},
+  retention_rows: [],
+})
 
 async function load() {
-  Object.assign(overview, await api.get('/api/admin/overview'))
-  Object.assign(todo, await api.get('/api/admin/summary/todo'))
+  const payload = await api.get<Record<string, any>>('/api/admin/overview')
+  overview.dashboard = payload?.dashboard || {}
+  overview.retention_rows = payload?.retention_rows || []
+}
+
+function formatRate(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return `${(num * 100).toFixed(1)}%`
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.card {
-  padding: 14px;
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-.label {
+.kpi-card {
+  padding: 18px;
+}
+
+.kpi-label {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
-.value {
-  margin-top: 6px;
-  font-size: 24px;
+.kpi-value {
+  margin-top: 8px;
+  font-size: 38px;
+  line-height: 1;
   font-weight: 800;
+  letter-spacing: 0.5px;
 }
 
-.value.small {
-  font-size: 15px;
+.retention-panel {
+  padding: 16px;
 }
 
 .head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
 }
 
 @media (max-width: 900px) {
-  .grid {
-    grid-template-columns: 1fr !important;
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-value {
+    font-size: 30px;
   }
 }
 </style>
