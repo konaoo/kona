@@ -8,6 +8,61 @@
 
 ---
 
+## v1.0.16 - 资产分类规则收敛与美股ETF代码链路修复
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Backend | Docs
+
+### Summary
+- 收敛资产分类口径，前端保持四类展示不变：`A股 / 美股 / 港股 / 基金`。
+- 修复 `NUGT/QQQ/BOXX` 等美股 ETF 被错误识别为基金、导致价格链路异常的问题。
+- 增加入库标准化与搜索过滤，阻断 `f_` 字母代码再次落库。
+
+### Added
+- 新增持仓标准化函数：统一处理 `code/curr/asset_type`，入库前强制标准化。
+- 新增回归测试：
+  - `test_infer_asset_type_us_etf_remains_us`
+  - `test_search_filters_letter_prefixed_fund_codes`
+  - `test_portfolio_add_invalid_f_prefix_letters_normalizes_to_us`
+
+### Changed
+- 资产类型推断规则：
+  - `gb_` 统一按美股；
+  - `f_` 仅纯数字按基金；
+  - `sh/sz/bj`（含场内 ETF）统一按 A 股。
+- 搜索结果过滤字母型 `f_` 代码（例如 `f_NUGT`、`f_BOXX`）。
+- `portfolio/add` 与 `buy_with_cash` 统一走标准化入库逻辑。
+
+### Fixed
+- 修复美股 ETF 误入基金链路导致的“有持仓但价格为 0”问题。
+- 修复历史脏数据 `f_` 字母代码导致的分类与币种错误。
+
+### Ops / Deployment
+- 代码已推送 `main`：`449dee0`。
+- 后端已部署并重启：`kona` 服务 `active`。
+- 线上已执行历史数据修复：`f_` 字母代码批量转 `gb_`（并修正 `curr=USD, asset_type=us`）。
+
+### Data / Migration
+- 已生成修复前备份：
+  - `archive/backups/portfolio_pre_symbol_fix_20260228_030518.db`
+- 已修复记录：2 条（`f_NUGT` -> `gb_nugt`）。
+
+### Verification
+- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests.test_market_code_normalization tests.test_search_timeout tests.test_api_baseline`
+- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests.test_portfolio_schema_migration tests.test_portfolio_user_scope tests.test_search_timeout tests.test_market_code_normalization`
+- 线上冒烟：
+  - `GET /api/search?q=nugt` 返回仅 `gb_*` 美股结果
+  - `get_price('gb_nugt')` 可取价，`f_NUGT` 不再作为有效入库代码
+
+### Notes
+- 业务规则固定：
+  - A股：A股股票 + 场内基金（ETF/LOF/REITs）
+  - 美股：美股股票 + 美股 ETF
+  - 港股：港股股票 + 港股 ETF
+  - 基金：仅场外基金（`f_` 纯数字）
+
+---
+
 ## v1.0.15 - 跨端会话稳定性与门户下载体验修复
 - 发布状态：Released
 - 发布类型：Patch
