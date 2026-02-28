@@ -34,7 +34,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in (overview.retention_rows || [])" :key="item.date">
+          <tr v-for="item in pagedRows" :key="item.date">
             <td>{{ item.date }}</td>
             <td>{{ item.new_users ?? 0 }}</td>
             <td>{{ item.active_users ?? 0 }}</td>
@@ -44,17 +44,33 @@
             <td>{{ formatRate(item.retention_14d) }}</td>
             <td>{{ formatRate(item.retention_30d) }}</td>
           </tr>
-          <tr v-if="!(overview.retention_rows || []).length">
+          <tr v-if="!retentionRows.length">
             <td colspan="8" class="empty">暂无数据</td>
           </tr>
         </tbody>
       </table>
+
+      <div v-if="totalPages > 1" class="pager">
+        <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+        <div class="pager-numbers">
+          <button
+            v-for="page in pageNumbers"
+            :key="page"
+            class="pager-number"
+            :class="{ active: currentPage === page }"
+            @click="goToPage(page)"
+          >
+            {{ page }}
+          </button>
+        </div>
+        <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+      </div>
     </section>
   </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
@@ -62,11 +78,30 @@ const overview = reactive<Record<string, any>>({
   dashboard: {},
   retention_rows: [],
 })
+const pageSize = 20
+const currentPage = ref(1)
+const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
+const totalPages = computed(() => {
+  const total = retentionRows.value.length
+  return total > 0 ? Math.ceil(total / pageSize) : 1
+})
+const pagedRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return retentionRows.value.slice(start, start + pageSize)
+})
+const pageNumbers = computed(() => {
+  const pages = []
+  for (let i = 1; i <= totalPages.value; i += 1) {
+    pages.push(i)
+  }
+  return pages
+})
 
 async function load() {
   const payload = await api.get<Record<string, any>>('/api/admin/overview')
   overview.dashboard = payload?.dashboard || {}
   overview.retention_rows = payload?.retention_rows || []
+  currentPage.value = 1
 }
 
 function formatRate(value: unknown): string {
@@ -74,6 +109,19 @@ function formatRate(value: unknown): string {
   const num = Number(value)
   if (!Number.isFinite(num)) return '-'
   return `${(num * 100).toFixed(1)}%`
+}
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+}
+
+function prevPage() {
+  goToPage(currentPage.value - 1)
+}
+
+function nextPage() {
+  goToPage(currentPage.value + 1)
 }
 
 onMounted(load)
@@ -89,16 +137,20 @@ onMounted(load)
 
 .kpi-card {
   padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  border: 1px solid #d7e3f3;
 }
 
 .kpi-label {
-  color: var(--muted);
-  font-size: 13px;
+  color: #46658b;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .kpi-value {
   margin-top: 8px;
-  font-size: 38px;
+  color: #1f3d63;
+  font-size: 52px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: 0.5px;
@@ -115,9 +167,65 @@ onMounted(load)
   margin-bottom: 10px;
 }
 
-.empty {
-  color: var(--muted);
+.head h3 {
+  color: #35597f;
+}
+
+.table th,
+.table td {
   text-align: center;
+  vertical-align: middle;
+}
+
+.table th {
+  color: #42658b;
+  font-weight: 700;
+}
+
+.table td {
+  color: #233f61;
+  font-weight: 600;
+}
+
+.pager {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.pager-numbers {
+  display: flex;
+  gap: 6px;
+}
+
+.pager-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pager-number {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid #c7d7ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #2b4d74;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pager-number.active {
+  background: #1f8ea5;
+  border-color: #1f8ea5;
+  color: #fff;
+}
+
+.empty {
+  color: #5f7a98 !important;
+  text-align: center;
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {
@@ -125,8 +233,16 @@ onMounted(load)
     grid-template-columns: 1fr;
   }
 
+  .kpi-label {
+    font-size: 16px;
+  }
+
   .kpi-value {
-    font-size: 30px;
+    font-size: 40px;
+  }
+
+  .pager {
+    flex-wrap: wrap;
   }
 }
 </style>
