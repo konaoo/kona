@@ -35,7 +35,7 @@ CLIENT_APP_RELEASE_NOTES = os.getenv(
 ).strip()
 CLIENT_APP_DOWNLOAD_URL = os.getenv(
     "CLIENT_APP_DOWNLOAD_URL",
-    "https://kaka-wallet-1300924971.cos.ap-beijing.myqcloud.com/app-release.apk"
+    "https://kaka-1402418961.cos.ap-guangzhou.myqcloud.com/kaka-latest.apk"
 ).strip()
 CLIENT_APP_FORCE_UPDATE = os.getenv("CLIENT_APP_FORCE_UPDATE", "false").lower() == "true"
 
