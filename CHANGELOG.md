@@ -8,6 +8,61 @@
 
 ---
 
+## v1.0.18 - 腾讯云迁移与公网入口收敛（Nginx + Redis）
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Infra | Backend | Flutter | Docs
+
+### Summary
+- 生产环境从 AWS 单机迁移到腾讯云轻量服务器（广州），线上入口统一为 `http://114.132.238.12`。
+- 入口架构收敛为正式形态：`Nginx(80) -> Gunicorn(127.0.0.1:5003)`，业务端口 `5003` 不再对公网暴露。
+- 修复迁移后登录 `500`：补齐 Redis 并恢复限流存储到本地 Redis。
+- Flutter 客户端默认 API 地址切换至新公网入口。
+
+### Added
+- 腾讯云主机新增 systemd 服务：
+  - `kona.service`
+  - `nginx.service`
+  - `redis.service`
+- 新增迁移交接文档：
+  - `docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`
+
+### Changed
+- Gunicorn 监听地址从 `0.0.0.0:5003` 调整为 `127.0.0.1:5003`。
+- Nginx 主配置改为默认反向代理站点，统一转发到 `127.0.0.1:5003`。
+- `.env` 中限流存储恢复为 `RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0`。
+- Flutter `ApiConfig.baseUrl` 从旧 AWS 地址切换为新腾讯云地址。
+
+### Fixed
+- 修复迁移后登录接口 `POST /api/auth/login` 返回 `500`（根因：Redis 未安装导致 Flask-Limiter 连接拒绝）。
+- 修复 OpenCloudOS 默认 Nginx 站点抢占导致首页显示系统 404 的问题。
+
+### Ops / Deployment
+- 新服务器：`114.132.238.12`（广州）。
+- 公网验收：
+  - `GET /health` -> `200`
+  - `GET /` -> 前端首页正常返回
+  - `GET :5003/health` -> 公网不可达（符合“仅内网监听”预期）
+- 腾讯云防火墙已放通 `80/22`；`5003` 已可删除/不再需要对公网放行。
+
+### Data / Migration
+- 已从旧机同步代码、`.env` 与 `portfolio.db` 至新机目录：
+  - `/opt/kaka/portfolio`
+  - `/opt/kaka/portfolio/kona_tool/.env`
+  - `/opt/kaka/portfolio/kona_tool/portfolio.db`
+- 注意：旧 AWS 停机前应确保无新增写入，避免新旧库分叉。
+
+### Verification
+- `curl -i http://114.132.238.12/health`
+- `curl -i http://114.132.238.12/`
+- `curl -i -H 'Content-Type: application/json' -d '{\"username\":\"kona\",\"password\":\"x\"}' http://114.132.238.12/api/auth/login`（应返回 401/业务错误，不应 500）
+- `flutter test test/api_service_web_test.dart`
+
+### Notes
+- 当前线上入口仍为 IP，建议下一步接入域名 + HTTPS（443）并将 App 基地址改为域名，彻底摆脱 IP 迁移成本。
+
+---
+
 ## v1.0.17 - 管理后台排序分页、活跃地区与首屏体验修复
 - 发布状态：Released
 - 发布类型：Patch

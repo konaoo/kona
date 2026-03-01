@@ -1,6 +1,13 @@
 # Deployment
 
-This project deploys the **backend** (kona_tool) to AWS using GitHub Actions.
+This project deploys the **backend** (kona_tool) via GitHub Actions.
+
+> Current production (as of 2026-03-01): **Tencent Cloud Lighthouse**
+> - Public entry: `http://114.132.238.12`
+> - Runtime: `Nginx(80) -> Gunicorn(127.0.0.1:5003) -> Flask`
+> - Data: `SQLite + Redis(localhost)`
+>
+> Detailed handover: `docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`
 
 ---
 
@@ -21,12 +28,12 @@ This project deploys the **backend** (kona_tool) to AWS using GitHub Actions.
 
 ---
 
-## Current Deployment Flow
+## Current Deployment Flow (Tencent Cloud)
 
 1. Push to GitHub `main`
 2. `backend-gate` and `frontend-gate` must both pass
-3. GitHub Actions connects to AWS via SSH
-4. Pulls latest code in `/home/ec2-user/portfolio/kona_tool`
+3. GitHub Actions connects to target server via SSH
+4. Pulls latest code in server app dir (current: `/opt/kaka/portfolio/kona_tool`)
 5. Installs dependencies (including `gunicorn`)
 6. Writes/updates `systemd` service (`kona.service`)
 7. Restarts backend via `systemctl`
@@ -41,16 +48,16 @@ Workflow file:
 
 ## GitHub Secrets Required
 
-- `SSH_HOST`: AWS public IP
-- `SSH_USER`: `ec2-user`
+- `SSH_HOST`: server public IP (current: `114.132.238.12`)
+- `SSH_USER`: server SSH user (current: `root`)
 - `SSH_KEY`: private SSH key
-- `APP_DIR`: `/home/ec2-user/portfolio/kona_tool`
+- `APP_DIR`: server app path (current: `/opt/kaka/portfolio/kona_tool`)
 
 ---
 
 ## Health Check
 
-After restart, the workflow checks:
+After restart, health check target:
 
 ```
 http://127.0.0.1:5003/api/rates
@@ -60,18 +67,15 @@ If the response code is `200`, deployment is considered successful.
 
 ---
 
-## AWS Runtime
+## Runtime (Current Production)
 
-The backend is started by `systemd` using `gunicorn`:
+`kona.service` starts gunicorn:
 
 ```
-/home/ec2-user/.local/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5003 --timeout 120 wsgi:app
+/opt/kaka/portfolio/kona_tool/.venv/bin/gunicorn --workers 2 --threads 4 --bind 127.0.0.1:5003 --timeout 120 wsgi:app
 ```
 
-Service name:
-```
-kona.service
-```
+Nginx proxies public traffic from port `80` to `127.0.0.1:5003`.
 
 ---
 
@@ -83,37 +87,37 @@ Current code supports `Flask-Limiter` with configurable backend:
 RATELIMIT_STORAGE_URL
 ```
 
-Recommended production setup on AWS (Amazon Linux):
+Recommended production setup:
 
 ```bash
-sudo dnf install -y redis6
-sudo systemctl enable --now redis6
-sudo systemctl status redis6 -l
+sudo dnf install -y redis
+sudo systemctl enable --now redis
+sudo systemctl status redis -l
 ```
 
 Set backend `.env`:
 
 ```bash
-cd /home/ec2-user/portfolio/kona_tool
+cd /opt/kaka/portfolio/kona_tool
 grep '^RATELIMIT_STORAGE_URL=' .env || echo 'RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0' >> .env
 ```
 
 Restart backend:
 
 ```bash
-sudo systemctl restart kona
-sudo systemctl status kona -l
+sudo systemctl restart kona.service
+sudo systemctl status kona.service -l
 ```
 
 Quick verify:
 
 ```bash
-redis6-cli ping
+redis-cli ping
 curl -s http://127.0.0.1:5003/health
 ```
 
 Expected:
-- `redis6-cli ping` returns `PONG`
+- `redis-cli ping` returns `PONG`
 - `/health` returns `{"status":"ok",...}`
 
 ---
