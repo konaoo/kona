@@ -138,7 +138,7 @@ void main() {
 
     await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();
-    expect(find.text('当前版本：v1.0.17+17'), findsOneWidget);
-    expect(find.text('我知道了'), findsOneWidget);
+    expect(find.text('隐私协议'), findsOneWidget);
+    expect(find.text('《第三方信息共享清单》'), findsOneWidget);
   });
 }

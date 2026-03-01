@@ -13,6 +13,7 @@ import '../models/app_version.dart';
 import '../services/api_service.dart';
 import 'app_settings_page.dart';
 import '../providers/app_state.dart';
+import 'about_page.dart';
 
 /// 我的页面
 typedef ProfileUrlOpener = Future<bool> Function(Uri uri, LaunchMode mode);
@@ -171,87 +172,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
-        content: FutureBuilder<String>(
-          future: _appVersionFuture,
-          builder: (context, snapshot) {
-            final versionText = snapshot.data ?? '读取版本中...';
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: AppTheme.bgCard,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.account_balance_wallet,
-                        size: 28,
-                        color: AppTheme.accent,
-                      ),
-                    ),
-                    const SizedBox(width: Spacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '咔咔记账',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '当前版本：$versionText',
-                            style: TextStyle(color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: Spacing.md),
-                Text(
-                  '咔咔记账是一个面向长期投资者的资产记录工具，帮助你把银行卡、A股/港股/美股、基金、房产和负债放到一个页面里统一管理。',
-                  style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
-                ),
-                const SizedBox(height: Spacing.sm),
-                Text(
-                  '官网：kakawallet.fun',
-                  style: TextStyle(color: AppTheme.textSecondary),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '© 2026 KakaWallet',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('我知道了', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
       ),
     );
   }
@@ -508,7 +428,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 _checkUpdate,
               ),
               const SizedBox(height: Spacing.sm),
-              _buildSettingItem(Icons.info_outline, '关于我们', _showAboutDialog),
+              _buildSettingItem(Icons.info_outline, '关于我们', () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const AboutPage()),
+                );
+              }),
             ],
           ),
         );
