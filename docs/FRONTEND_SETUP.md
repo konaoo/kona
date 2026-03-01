@@ -49,9 +49,9 @@ For local development:
 http://127.0.0.1:5003
 ```
 
-For AWS (production):
+For production (current):
 ```
-http://35.78.253.89:5003
+http://114.132.238.12
 ```
 
 ---

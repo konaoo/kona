@@ -1,4 +1,4 @@
-# Runbook (Local Development)
+# Runbook (Local + Production Quick Checks)
 
 This guide covers how to run the backend and frontend locally, and common checks.
 
@@ -78,6 +78,27 @@ If you need a clean slate for testing:
 - If API calls fail, confirm backend is running and base URL is correct.
 - If Flutter cannot run, check Flutter SDK installation.
 - If backend fails to start, check `kona_tool/app.log`.
+
+---
+
+## Production Quick Checks (Current)
+
+Public entry:
+```
+http://114.132.238.12
+```
+
+Health:
+```
+http://114.132.238.12/health
+```
+
+Server services:
+```bash
+sudo systemctl status kona.service --no-pager
+sudo systemctl status nginx --no-pager
+sudo systemctl status redis --no-pager
+```
 
 ---
 

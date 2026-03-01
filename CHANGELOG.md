@@ -32,6 +32,7 @@
 - Nginx 主配置改为默认反向代理站点，统一转发到 `127.0.0.1:5003`。
 - `.env` 中限流存储恢复为 `RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0`。
 - Flutter `ApiConfig.baseUrl` 从旧 AWS 地址切换为新腾讯云地址。
+- 运维文档统一收敛到当前生产入口：`docs/MAINTENANCE.md`、`docs/RUNBOOK.md`、`docs/API_IMPORT.md`、`docs/FRONTEND_SETUP.md`、`docs/PROJECT_OVERVIEW.md`、`docs/openapi.yaml`。
 
 ### Fixed
 - 修复迁移后登录接口 `POST /api/auth/login` 返回 `500`（根因：Redis 未安装导致 Flask-Limiter 连接拒绝）。

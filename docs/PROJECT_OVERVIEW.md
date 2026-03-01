@@ -10,7 +10,7 @@ This is a compact, durable summary of the project so a new machine or a fresh se
 - Frontend: Flutter (mobile/desktop/web)
 - Backend: Python Flask (API + web pages)
 - Database: SQLite (`portfolio.db`)
-- Deployment: AWS + GitHub Actions (auto + manual)
+- Deployment: Tencent Cloud + GitHub Actions (auto + manual)
 
 ---
 
@@ -63,11 +63,11 @@ python3 app.py
 
 ---
 
-## Deployment (AWS + GitHub Actions)
+## Deployment (Tencent Cloud + GitHub Actions)
 
 - Push to `main` triggers deploy
 - Manual deploy button enabled via `workflow_dispatch`
-- Health check: `http://127.0.0.1:5003/api/rates`
+- Public health check: `http://114.132.238.12/health`
 
 Secrets required:
 - `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `APP_DIR`
@@ -103,9 +103,9 @@ Secrets required:
 
 - Service running:
 ```
-ps -ef | grep "python3 app.py"
+sudo systemctl status kona.service --no-pager
 ```
 - Health check:
 ```
-http://<server-ip>:5003/api/rates
+http://114.132.238.12/health
 ```
