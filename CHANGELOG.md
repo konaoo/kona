@@ -8,6 +8,89 @@
 
 ---
 
+## v1.0.21 - 登录与版本规则统一、投资页碎股支持
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Backend | Docs
+
+### Summary
+- 登录失败提示统一为用户可理解文案：`用户名/密码错误，请重试`。
+- 客户端版本号规范切换为无 `+build` 形式（`1.0.x`），并保持安卓可覆盖升级。
+- “邀请码页 / 咔咔用户群页”文案默认左对齐；我的页面移除“问题反馈”入口。
+- 投资页补齐碎股体验：持仓数量支持最多 2 位小数显示（自动去零）；添加资产弹窗价格文案改为“买入成本价”。
+
+### Changed
+- `flutter/pubspec.yaml`：版本由 `1.0.20+20` 调整为 `1.0.21`。
+- `flutter/android/app/build.gradle.kts`：安卓内部安装序号改为从 `versionName` 的 patch 段解析（例如 `1.0.21 -> 21`）。
+- `kona_tool/config.py`：`CLIENT_APP_BUILD_NUMBER` 默认与 `CLIENT_APP_VERSION` patch 段对齐，兼容 `/api/app/version` 旧字段。
+- `flutter/lib/providers/app_state.dart`、`flutter/lib/services/api_service.dart`：登录 401 映射文案统一。
+- `flutter/lib/pages/invest_page.dart`、`flutter/lib/widgets/invest_trade_dialog.dart`：数量显示与输入、价格文案优化（碎股支持 + 买入成本价）。
+
+### Fixed
+- 修复登录密码错误时出现“会话校验失败...”的误导提示。
+- 修复投资页数量被强制整数显示导致“看起来不支持碎股”的问题。
+- 修复添加资产场景中价格字段语义不清的问题（改为“买入成本价”）。
+
+### Ops / Deployment
+- 相关提交：`7a0bde1`、`9141a5b`、`03c3831`。
+- 已推送 `main` 并完成自动部署，GitHub Actions `Deploy to Production` 全部通过。
+
+### Verification
+- `cd flutter && flutter test test/invest_trade_dialog_test.dart` 通过。
+- `main` 部署流水线（run: `22543463788`）通过：`Frontend Gate`、`Backend Gate (3.9/3.11)`、`Deploy` 均为绿色。
+- Android 真机（PLG110）安装验收通过。
+
+### Notes
+- 当前对外客户端版本为 `1.0.21`；后续 patch 继续递增 `1.0.22/1.0.23...`。
+
+---
+
+## v1.0.20 - 邀请码站内化与运营配置上线
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Backend | Web | Infra
+
+### Summary
+- 注册页“没有邀请码，点我获取”从外跳改为 App 内页面展示（文案 + 图片）。
+- 管理后台新增“运营配置”，支持在线维护邀请码页配置。
+- 邀请码页与“咔咔用户群”页面能力复用、配置解耦：两套文案与图片独立维护。
+- 补齐版本检查链路与下载地址回退逻辑，提升更新提示和下载稳定性。
+
+### Added
+- 后端新增运行时配置存储：`runtime_configs`（持久化运营配置）。
+- 后端新增管理员接口：
+  - `GET/POST /api/admin/ops/invite_acquire*`
+  - `GET/POST /api/admin/ops/user_group*`
+- `GET /api/web/config` 增加：
+  - `invite_acquire_text`、`invite_acquire_image_url`
+  - `user_group_text`、`user_group_image_url`
+- Flutter 新增站内展示页：`InviteAcquirePage`（`invite` / `user_group` 两个场景）。
+- Web 管理端 `运营配置` 页改为双区块独立保存（邀请码/用户群）。
+
+### Changed
+- `flutter/pubspec.yaml`：版本由 `1.0.19+19` 升级为 `1.0.20+20`。
+- 我的页面新增“咔咔用户群”入口，注册页入口与其共用展示能力但读取不同配置。
+- `about` 页面改为独立页面，更新入口链路更清晰。
+- `/api/app/version` 与下载链接回退策略联动 `CLIENT_APP_DOWNLOAD_URL`。
+
+### Fixed
+- 修复注册入口跳转外部平台导致不可控的问题（改为站内可运营页面）。
+- 修复邀请码配置与用户群配置耦合问题（拆分为两套独立键）。
+- 修复 CI 部署阶段 `git fetch` 偶发空响应导致失败的问题（增加重试并强制 HTTP/1.1）。
+
+### Ops / Deployment
+- 相关提交：`72e3230`、`e3fc8c7`、`65bcd66`、`01e680d`、`a492a0f`、`8665dd3`、`03392d9`。
+- 已推送 `main` 并完成线上部署与验收。
+
+### Verification
+- 后端单测覆盖新增运营配置接口与 `/api/web/config` 扩展字段（`tests/test_admin_api_foundation.py`、`tests/test_api_baseline.py`）。
+- Flutter 与 Web 相关变更通过 CI gate，功能已完成真机验收。
+
+### Notes
+- `v1.0.20` 仍使用 `+build` 写法；`v1.0.21` 起切换到无 `+build` 规范。
+
+---
+
 ## v1.0.19 - 登录网络异常修复与构建环境升级
 - 发布状态：Released
 - 发布类型：Patch
