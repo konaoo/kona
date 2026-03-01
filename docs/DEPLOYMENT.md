@@ -4,7 +4,7 @@ This project deploys the **backend** (kona_tool) via GitHub Actions.
 
 > Current production (as of 2026-03-01): **Tencent Cloud Lighthouse**
 > - Public entry: `http://114.132.238.12`
-> - Runtime: `Nginx(80) -> Gunicorn(127.0.0.1:5003) -> Flask`
+> - Runtime: `Caddy(80/443) -> Gunicorn(127.0.0.1:5003) -> Flask`
 > - Data: `SQLite + Redis(localhost)`
 >
 > Detailed handover: `docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`
@@ -49,9 +49,9 @@ Workflow file:
 ## GitHub Secrets Required
 
 - `SSH_HOST`: server public IP (current: `114.132.238.12`)
-- `SSH_USER`: server SSH user (current: `root`)
 - `SSH_KEY`: private SSH key
 - `APP_DIR`: server app path (current: `/opt/kaka/portfolio/kona_tool`)
+- (Note: `SSH_USER` is currently hardcoded as `root` in the deploy.yml workflow and is not strictly required as a secret)
 
 ---
 
@@ -75,7 +75,7 @@ If the response code is `200`, deployment is considered successful.
 /opt/kaka/portfolio/kona_tool/.venv/bin/gunicorn --workers 2 --threads 4 --bind 127.0.0.1:5003 --timeout 120 wsgi:app
 ```
 
-Nginx proxies public traffic from port `80` to `127.0.0.1:5003`.
+Caddy proxies public traffic from port `80/443` to `127.0.0.1:5003`.
 
 ---
 

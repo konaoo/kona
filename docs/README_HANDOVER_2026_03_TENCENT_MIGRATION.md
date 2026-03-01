@@ -119,7 +119,7 @@ redis-cli -h 127.0.0.1 -p 6379 ping
 ## 7. Flutter 客户端基地址
 
 - 文件：`flutter/lib/config/api_config.dart`
-- 当前：`https://kakawallet.fun`（并带 `www` 备用重试）
+- 当前：`http://114.132.238.12`（临时直连，DNS修复后切回 kakawallet.fun）
 
 对应测试：
 - `flutter/test/api_service_web_test.dart`

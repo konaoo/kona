@@ -21,7 +21,6 @@ This is a compact, durable summary of the project so a new machine or a fresh se
 ├─ flutter/                    # Flutter frontend
 ├─ kona_tool/                  # Flask backend
 ├─ .github/workflows/          # GitHub Actions (deploy)
-├─ archive/HI/                 # Legacy (archived)
 └─ docs/                       # Documentation
 ```
 
@@ -57,9 +56,10 @@ Key files:
 ```
 cd kona_tool
 pip3 install -r requirements.txt
+export JWT_SECRET="dev_secret_key"
 python3 app.py
 ```
-- Port: `5003` (see `kona_tool/config.py`)
+- Port: `52345` locally / `5003` in production (see `kona_tool/config.py` and `deploy.yml`)
 
 ---
 

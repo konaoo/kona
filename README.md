@@ -42,10 +42,11 @@ kona_repo/
 ```bash
 cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
 pip3 install -r requirements.txt
+export JWT_SECRET="dev_secret_key"
 python3 app.py
 ```
 
-默认端口：`5003`
+默认端口：`52345`（说明：本地 Python 启动走 52345，线上部署使用 Gunicorn 跑 5003 端口）
 
 ### 3.2 Flutter 本地运行
 

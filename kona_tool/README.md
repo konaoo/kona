@@ -1,4 +1,4 @@
-# Portfolio Management System v10.0
+# Portfolio Management System v12.0
 
 一个现代化的投资组合管理系统，支持A股、港股、美股、基金等多种资产的实时行情监控和盈亏分析。
 
@@ -19,7 +19,7 @@
 ## 项目结构
 
 ```
-tool/
+kona_tool/
 ├── app.py                 # 主程序入口
 ├── config.py             # 配置文件
 ├── core/                 # 核心模块
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-程序启动后会自动在浏览器中打开 `http://127.0.0.1:5000`
+程序启动后会自动在浏览器中打开 `http://127.0.0.1:52345`
 
 ## API接口
 
@@ -192,7 +192,13 @@ db.backup_from_csv(str(config.BACKUP_CSV_PATH))
 
 ## 版本历史
 
-### v10.0 (当前版本)
+### v12.0 (当前版本)
+- 全新 Flutter / Vue3 多端支持与重构
+- 新增投资收益分析、日历视图、快照统计
+- 新增安全认证、指纹登录及管理控制台
+- 完全兼容腾讯云轻量服务器自动部署
+
+### v10.0
 - 重构架构，模块化设计
 - 改用SQLite数据库
 - 添加批量价格API

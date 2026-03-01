@@ -11,7 +11,6 @@ This document explains the purpose of each top-level directory and the key folde
 ├─ .github/workflows/          # GitHub Actions (auto deploy)
 ├─ flutter/                    # Flutter frontend
 ├─ kona_tool/                  # Flask backend
-├─ archive/HI/                 # Archived legacy code (not used in production)
 ├─ docs/                       # Documentation (this folder)
 └─ README.md
 ```
@@ -71,5 +70,4 @@ kona_tool/
 
 ## Archived
 
-- `archive/HI/` is legacy code kept for reference. It is not used in deployment.
 - `kona_tool/archive/old_files/` contains old tests, logs, and backups.
