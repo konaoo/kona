@@ -141,7 +141,7 @@ class _InviteAcquirePageState extends State<InviteAcquirePage> {
                   children: [
                     Text(
                       _text,
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.start,
                       style: TextStyle(
                         color: AppTheme.textPrimary,
                         fontSize: FontSize.lg,

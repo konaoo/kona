@@ -16,11 +16,11 @@ void main() {
   test('login succeeds even if auth persistence fails', () async {
     final failingStorage = SecureStorageService(
       isWebOverride: false,
-      secureWriteOverride: (_, __) async {
+      secureWriteOverride: (key, value) async {
         throw Exception('secure write failed');
       },
-      secureReadOverride: (_) async => null,
-      secureDeleteOverride: (_) async {},
+      secureReadOverride: (key) async => null,
+      secureDeleteOverride: (key) async {},
     );
     final appState = AppState(
       tokenLoader: () async => null,
@@ -51,7 +51,7 @@ void main() {
     final ok = await appState.login(username: 'kona', password: 'bad');
 
     expect(ok, isFalse);
-    expect(appState.authErrorMessage, '用户名/密码错误，请重新再试');
+    expect(appState.authErrorMessage, '用户名/密码错误，请重试');
   });
 
   test('login maps null-check error to storage guidance', () async {

@@ -6,6 +6,18 @@
 import os
 from pathlib import Path
 
+
+def _derive_build_number_from_version(version_text: str, fallback: int = 1) -> int:
+    value = str(version_text or "").strip()
+    if not value:
+        return max(1, int(fallback))
+    last = value.split(".")[-1].strip()
+    try:
+        return max(1, int(last))
+    except Exception:
+        return max(1, int(fallback))
+
+
 # 基础路径
 BASE_DIR = Path(__file__).parent.absolute()
 DATABASE_PATH = Path(os.getenv("KONA_DATABASE_PATH", str(BASE_DIR / "portfolio.db")))
@@ -27,8 +39,16 @@ DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
 # 客户端 App 更新配置 (Flutter端检查更新使用)
-CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.20").strip()
-CLIENT_APP_BUILD_NUMBER = int(os.getenv("CLIENT_APP_BUILD_NUMBER", "20"))
+CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.21").strip()
+_DEFAULT_CLIENT_APP_BUILD_NUMBER = _derive_build_number_from_version(CLIENT_APP_VERSION, fallback=1)
+_CLIENT_APP_BUILD_NUMBER_ENV = os.getenv("CLIENT_APP_BUILD_NUMBER", "").strip()
+if _CLIENT_APP_BUILD_NUMBER_ENV:
+    try:
+        CLIENT_APP_BUILD_NUMBER = max(1, int(_CLIENT_APP_BUILD_NUMBER_ENV))
+    except Exception:
+        CLIENT_APP_BUILD_NUMBER = _DEFAULT_CLIENT_APP_BUILD_NUMBER
+else:
+    CLIENT_APP_BUILD_NUMBER = _DEFAULT_CLIENT_APP_BUILD_NUMBER
 CLIENT_APP_RELEASE_NOTES = os.getenv(
     "CLIENT_APP_RELEASE_NOTES",
     "1. 修复网络异常问题\n2. 优化升级流程"

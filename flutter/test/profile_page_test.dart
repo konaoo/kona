@@ -4,12 +4,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:tool/config/api_config.dart';
 import 'package:tool/models/app_version.dart';
 import 'package:tool/pages/profile_page.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/services/api_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class MockApiService implements ApiService {
   @override
@@ -67,8 +65,6 @@ void main() {
       createdAtRaw: '2026-02-27 00:00:00',
     );
 
-    Uri? openedUri;
-    LaunchMode? openedMode;
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
@@ -78,11 +74,6 @@ void main() {
               onLogout: () {},
               versionLoader: () async => 'v1.0.17+17',
               nowProvider: () => DateTime.utc(2026, 3, 1, 0, 0, 0),
-              externalUrlOpener: (uri, mode) async {
-                openedUri = uri;
-                openedMode = mode;
-                return true;
-              },
             ),
           ),
         ),
@@ -93,7 +84,6 @@ void main() {
     expect(find.text('kona'), findsOneWidget);
     expect(find.text('已在咔咔记录 3 天'), findsOneWidget);
     expect(find.text('个人设置'), findsOneWidget);
-    expect(find.text('问题反馈'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('关于我们'), findsOneWidget);
     expect(find.text('咔咔用户群'), findsOneWidget);
@@ -106,10 +96,6 @@ void main() {
         .widgetList<Text>(settingTexts)
         .toList()
         .indexWhere((w) => w.data == '个人设置');
-    final feedbackIndex = tester
-        .widgetList<Text>(settingTexts)
-        .toList()
-        .indexWhere((w) => w.data == '问题反馈');
     final updateIndex = tester
         .widgetList<Text>(settingTexts)
         .toList()
@@ -122,15 +108,9 @@ void main() {
         .widgetList<Text>(settingTexts)
         .toList()
         .indexWhere((w) => w.data == '咔咔用户群');
-    expect(personalSettingIndex, lessThan(feedbackIndex));
-    expect(feedbackIndex, lessThan(updateIndex));
+    expect(personalSettingIndex, lessThan(updateIndex));
     expect(updateIndex, lessThan(aboutIndex));
     expect(aboutIndex, lessThan(userGroupIndex));
-
-    await tester.tap(find.text('问题反馈'));
-    await tester.pumpAndSettle();
-    expect(openedUri?.toString(), ApiConfig.feedbackUrl);
-    expect(openedMode, LaunchMode.externalApplication);
 
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();

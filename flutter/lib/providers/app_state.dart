@@ -1272,7 +1272,7 @@ class AppState extends ChangeNotifier {
       } else {
         final invalidCreds = error.statusCode == 401;
         if (invalidCreds) {
-          return '用户名/密码错误，请重新再试';
+          return '用户名/密码错误，请重试';
         }
       }
       return raw.isNotEmpty ? raw : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');

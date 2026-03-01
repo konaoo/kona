@@ -136,6 +136,15 @@ Web 专项：
    - 服务器：`/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk`
    - 下载链接：`https://kakawallet.fun/download/apk`
 
+客户端版本号规范（新增）：
+
+1. 对外版本号固定使用 `1.0.x`，不再使用 `+build`（示例：`1.0.21`、`1.0.22`）。
+2. 安卓内部安装序号（`versionCode`）由 `versionName` 的 patch 段自动映射：
+   - `1.0.21 -> 21`
+   - `1.0.22 -> 22`
+3. 后端 `/api/app/version` 继续返回 `buildNumber` 兼容旧端；默认与 `version` 的 patch 段对齐。
+4. 版本展示统一为 `v1.0.x`，不再展示 `+build`。
+
 APK 覆盖发布命令（固定）：
 
 ```bash
@@ -181,6 +190,7 @@ curl -I https://kakawallet.fun/download/apk
 
 ## 7. 最近版本摘要
 
+- `v1.0.21`：登录错误提示统一为“用户名/密码错误，请重试”；邀请码页/用户群页文案默认左对齐；我的页面移除“问题反馈”；版本号规范切换为无 `+build`（安卓内部序号自动映射 patch）。
 - `v1.0.19`：修复 Clash/TUN 代理导致 App 登录 TLS 握手失败；Caddy 新增 HTTP 直连入口，Flutter 端临时切换 IP 直连；构建环境升级 Gradle 8.13 + JDK 21。
 - `v1.0.18`：生产环境迁移至腾讯云（广州），线上入口统一到 `http://114.132.238.12`；完成 `Nginx(80) -> Gunicorn(127.0.0.1:5003)` 正式收敛，修复迁移后登录 500（Redis 限流依赖补齐）。
 - `v1.0.17`：管理后台用户页支持“最近活跃/总资产/注册时间”降序排序与服务端分页（10/20/50/100）；统一北京时间与中文省市地区展示（含历史回填）；修复 `/admin/users` 强刷黑页；线上完成最小扩容（2 workers + 预取降频 + 2GB swap）。

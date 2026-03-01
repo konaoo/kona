@@ -314,6 +314,9 @@ class ApiService {
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
         } else if (response.statusCode == 401) {
+          if (endpoint == ApiConfig.login || endpoint == ApiConfig.register) {
+            throw ApiException(_extractErrorMessage(response), statusCode: 401);
+          }
           if (!retriedAfterRefresh &&
               endpoint != ApiConfig.refresh &&
               endpoint != ApiConfig.login &&

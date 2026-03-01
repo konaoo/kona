@@ -7,7 +7,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../models/app_version.dart';
 import 'app_settings_page.dart';
@@ -41,39 +40,12 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   bool _profileLoaded = false;
-  late final Future<String> _appVersionFuture = _loadAppVersion();
-
-  Future<String> _loadAppVersion() async {
-    if (widget.versionLoader != null) return widget.versionLoader!();
-    final info = await PackageInfo.fromPlatform();
-    final version = info.version.trim();
-    final build = info.buildNumber.trim();
-    if (version.isEmpty) return '未知版本';
-    if (build.isEmpty) return 'v$version';
-    return 'v$version+$build';
-  }
 
   Future<bool> _openExternalUrl(Uri uri, LaunchMode mode) {
     if (widget.externalUrlOpener != null) {
       return widget.externalUrlOpener!(uri, mode);
     }
     return launchUrl(uri, mode: mode);
-  }
-
-  Future<void> _openFeedback() async {
-    final uri = Uri.tryParse(ApiConfig.feedbackUrl);
-    if (uri == null || !uri.hasScheme) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('反馈链接配置无效')));
-      return;
-    }
-    final ok = await _openExternalUrl(uri, LaunchMode.externalApplication);
-    if (!mounted || ok) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('无法打开反馈链接')));
   }
 
   Future<void> _openUserGroupPage() async {
@@ -100,7 +72,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final latestVersion = await apiService.getAppVersion();
 
       final info = await PackageInfo.fromPlatform();
-      final currentBuild = int.tryParse(info.buildNumber) ?? 0;
+      final currentVersion = info.version.trim();
 
       if (!mounted) return;
       // 隐藏 Loading
@@ -111,7 +83,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return;
       }
 
-      if (latestVersion.buildNumber <= currentBuild) {
+      if (!_isNewerVersion(latestVersion.version, currentVersion)) {
         messenger.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
         return;
       }
@@ -126,12 +98,40 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  bool _isNewerVersion(String latest, String current) {
+    final latestParts = _parseVersion(latest);
+    final currentParts = _parseVersion(current);
+    final maxLen = latestParts.length > currentParts.length
+        ? latestParts.length
+        : currentParts.length;
+    for (int i = 0; i < maxLen; i++) {
+      final lv = i < latestParts.length ? latestParts[i] : 0;
+      final cv = i < currentParts.length ? currentParts[i] : 0;
+      if (lv > cv) return true;
+      if (lv < cv) return false;
+    }
+    return false;
+  }
+
+  List<int> _parseVersion(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return const <int>[0, 0, 0];
+    return value
+        .split('.')
+        .map((part) {
+          final match = RegExp(r'^\d+').firstMatch(part.trim());
+          if (match == null) return 0;
+          return int.tryParse(match.group(0) ?? '') ?? 0;
+        })
+        .toList(growable: false);
+  }
+
   void _showUpdateDialog(AppVersion version) {
     showDialog(
       context: context,
       barrierDismissible: !version.forceUpdate,
-      builder: (context) => WillPopScope(
-        onWillPop: () async => !version.forceUpdate,
+      builder: (context) => PopScope(
+        canPop: !version.forceUpdate,
         child: AlertDialog(
           backgroundColor: AppTheme.bgElevated,
           title: Text(
@@ -442,8 +442,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 );
               }),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(Icons.feedback_outlined, '问题反馈', _openFeedback),
               const SizedBox(height: Spacing.sm),
               _buildSettingItem(
                 Icons.system_update_outlined,
