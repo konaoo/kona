@@ -1,0 +1,7 @@
+# KakaWallet Project AI Assistant Rules
+
+## General
+- Tech Stack: Flutter (Client), Python/Flask (Backend), Vue.js (Frontend Portal).
+
+## Release & Deployment
+- **When releasing a new version**: You MUST automatically update the `CLIENT_APP_DOWNLOAD_URL` in the environment configuration to point to the new APK download link. This URL provides the update link for both the Flutter App and the Web portal (`/api/web/config`). Do not ask if you should update it; it's a mandatory step for releases.
