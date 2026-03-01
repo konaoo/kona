@@ -70,7 +70,16 @@ python3 app.py
 - Public health check: `http://114.132.238.12/health`
 
 Secrets required:
-- `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `APP_DIR`
+- `SSH_HOST`, `SSH_KEY`, `APP_DIR`
+- `SSH_USER` is currently hardcoded as `root` in `.github/workflows/deploy.yml`.
+
+---
+
+## App Version Rule
+
+- Client version uses `1.0.x` only (no `+build`), for example: `1.0.21`, `1.0.22`.
+- Android install code is aligned with patch segment (for example: `1.0.21 -> 21`) to keep upgrade install stable.
+- `/api/app/version` keeps `buildNumber` for compatibility, and it should align with the patch segment.
 
 ---
 

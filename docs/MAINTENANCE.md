@@ -9,7 +9,7 @@ This guide covers routine maintenance, backups, and troubleshooting.
 Check services:
 ```
 sudo systemctl status kona.service --no-pager
-sudo systemctl status nginx --no-pager
+sudo systemctl status caddy --no-pager
 sudo systemctl status redis --no-pager
 ```
 
@@ -77,8 +77,17 @@ cp kona_tool/portfolio.db kona_tool/archive/db/portfolio_$(date +%Y%m%d_%H%M%S).
 
 If GitHub Actions fails:
 - Check `Actions` logs in GitHub
-- Confirm secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `APP_DIR`
+- Confirm secrets `SSH_HOST`, `SSH_KEY`, `APP_DIR`
 - Verify Tencent firewall allows SSH (port 22) and HTTP (port 80)
+
+Common deploy error (`git fetch ... Empty reply from server`):
+```bash
+# run on server
+cd "$APP_DIR"
+git -c http.version=HTTP/1.1 fetch --depth=1 origin main
+curl -I https://github.com
+```
+If both fail, check server outbound network to `github.com:443`.
 
 ---
 
@@ -86,7 +95,7 @@ If GitHub Actions fails:
 
 If frontend cannot reach API:
 - Confirm Flutter base URL in `flutter/lib/config/api_config.dart`
-- Confirm `nginx` is running and `http://114.132.238.12/health` is reachable
+- Confirm `caddy` is running and `http://114.132.238.12/health` is reachable
 - Confirm `kona.service` still binds `127.0.0.1:5003` internally
 
 ---
@@ -94,7 +103,6 @@ If frontend cannot reach API:
 ## Safe Cleanup
 
 Archived folders:
-- `archive/HI`
 - `kona_tool/archive/old_files`
 
 Do not delete without backup:

@@ -18,12 +18,13 @@ pip3 install -r requirements.txt
 
 ### Run
 ```
+export JWT_SECRET="dev_secret_key"
 python3 app.py
 ```
 
 ### Health Check
 ```
-http://127.0.0.1:5003/api/rates
+http://127.0.0.1:52345/api/rates
 ```
 
 ### Common Checks
@@ -52,12 +53,33 @@ flutter/lib/config/api_config.dart
 ```
 Set base URL to local backend for dev:
 ```
-http://127.0.0.1:5003
+http://127.0.0.1:52345
 ```
 
 ### Run
 ```
 flutter run
+```
+
+### Android Build Prerequisite (Java/JDK)
+
+If `flutter build apk` reports `Unable to locate a Java Runtime`, set JDK explicitly:
+
+```bash
+flutter config --jdk-dir="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+flutter doctor -v
+```
+
+Then build:
+
+```bash
+flutter build apk --release
+```
+
+Install to device:
+
+```bash
+adb -s <device_id> install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
 ### Data Refresh Behavior (SWR)
@@ -96,7 +118,7 @@ http://114.132.238.12/health
 Server services:
 ```bash
 sudo systemctl status kona.service --no-pager
-sudo systemctl status nginx --no-pager
+sudo systemctl status caddy --no-pager
 sudo systemctl status redis --no-pager
 ```
 
