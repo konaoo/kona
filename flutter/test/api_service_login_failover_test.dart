@@ -24,6 +24,7 @@ void main() {
     );
     expect(resolved.first, ApiConfig.baseUrl);
     expect(resolved, contains('https://www.kakawallet.fun'));
+    // baseUrl (http://114.132.238.12) + deduplicated www = 2 entries
     expect(resolved.length, 2);
   });
 
@@ -51,7 +52,7 @@ void main() {
         username: 'konae',
         password: 'pw',
         baseUrlCandidatesOverride: const <String>[
-          'https://kakawallet.fun',
+          'http://114.132.238.12',
           'https://www.kakawallet.fun',
           'https://backup.kakawallet.fun',
         ],

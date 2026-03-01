@@ -8,6 +8,45 @@
 
 ---
 
+## v1.0.19 - 登录网络异常修复与构建环境升级
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Backend(Caddy) | Infra
+
+### Summary
+- 修复 Flutter 客户端登录报"网络连接异常（TLS 握手失败）"的问题。
+- 根因：Clash TUN 代理劫持域名 DNS 导致 HTTPS 连接不到真实服务器；Caddy 无 HTTP 直连降级通道。
+- 服务器 Caddy 新增 `:80` HTTP 直连入口，Flutter 端 `baseUrl` 临时切换为 `http://114.132.238.12` IP 直连。
+- 构建环境升级：Gradle 7.3.1 → 8.13，JDK 21（Flutter 3.41 必须）。
+
+### Changed
+- `flutter/lib/config/api_config.dart`：`baseUrl` 从 `https://kakawallet.fun` 改为 `http://114.132.238.12`；域名 URL 保留为登录 fallback 备选。
+- `flutter/android/gradle/wrapper/gradle-wrapper.properties`：Gradle 7.3.1 → 8.13（适配 Flutter 3.41 + Kotlin 2.2.20 + AGP 8.11.1）。
+- `flutter/pubspec.yaml`：版本号 `1.0.17+17` → `1.0.19+19`。
+- 服务器 `/etc/caddy/Caddyfile`：新增 `:80 { reverse_proxy 127.0.0.1:5003 }` 块，IP HTTP 请求直通后端。
+
+### Fixed
+- 修复 Clash/TUN 环境下域名 DNS 被劫持（解析到 `198.18.x.x`）导致 App 登录 TLS 握手失败的问题。
+- 修复 Caddy 在 IP 直连场景下强制 `308 → HTTPS` 但 TLS 证书无匹配 SNI 导致连接拒绝的问题。
+- 修复 Flutter 3.41 下 Gradle 7.3.1 构建失败（`FlutterPlugin.kt: Unresolved reference: filePermissions`）的问题。
+
+### Ops / Deployment
+- 服务器 Caddy 配置已生效（`systemctl reload caddy`），旧配置已备份为 `Caddyfile.bak.20260301`。
+- 新电脑已安装 OpenJDK 21（`brew install openjdk@21`）。
+- APK 已构建并安装到 PLG110 真机验证。
+
+### Verification
+- `curl http://114.132.238.12/health` → `200 OK`
+- `curl http://114.132.238.12/api/auth/login` → `401`（业务正常拒绝）
+- `flutter test test/api_service_login_failover_test.dart` → 3/3 All tests passed
+- 真机登录验证通过
+
+### Notes
+- DNS 记录本身是正确的（`@` 和 `www` 均指向 `114.132.238.12`），问题出在客户端 Clash TUN 代理劫持。
+- 后续 DNS/代理环境稳定后可切回 `https://kakawallet.fun`。
+
+---
+
 ## v1.0.18 - 腾讯云迁移与公网入口收敛（Nginx + Redis）
 - 发布状态：Released
 - 发布类型：Patch

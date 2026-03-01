@@ -1,11 +1,14 @@
 /// API 配置
 class ApiConfig {
   /// API 基础地址
-  static const String baseUrl = 'https://kakawallet.fun';
-  static const String loginFallbackBaseUrl = 'https://www.kakawallet.fun';
+  /// 注意：域名 DNS 当前解析异常（198.18.x.x），临时使用 IP 直连。
+  /// DNS 修复后应切回 https://kakawallet.fun。
+  static const String baseUrl = 'http://114.132.238.12';
+  static const String loginFallbackBaseUrl = 'https://kakawallet.fun';
   static const List<String> loginBaseUrlCandidates = <String>[
     baseUrl,
     loginFallbackBaseUrl,
+    'https://www.kakawallet.fun',
   ];
 
   /// 请求超时时间（秒）
