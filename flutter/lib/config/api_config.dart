@@ -1,7 +1,7 @@
 /// API 配置
 class ApiConfig {
   /// API 基础地址
-  static const String baseUrl = 'http://114.132.238.12';
+  static const String baseUrl = 'https://kakawallet.fun';
 
   /// 请求超时时间（秒）
   static const int timeout = 30;
