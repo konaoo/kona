@@ -7,13 +7,18 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.insert(0, os.path.join(project_root, "kona_tool"))
 
-import config
 try:
     from dotenv import load_dotenv
     env_path = os.path.join(project_root, "kona_tool", ".env")
     load_dotenv(env_path)
 except ImportError:
     pass
+
+import os
+if "JWT_SECRET" not in os.environ:
+    os.environ["JWT_SECRET"] = "dummy_for_script"
+
+import config
 
 from core.db import db
 from core.snapshot import calculate_portfolio_stats

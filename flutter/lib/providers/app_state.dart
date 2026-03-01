@@ -1309,7 +1309,7 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (e) {
       _authErrorMessage = _mapAuthErrorMessage(e, isRegister: false);
-      debugPrint('登录异常: $e');
+      debugPrint('登录异常(${e.runtimeType}): $e');
       return false;
     }
   }
