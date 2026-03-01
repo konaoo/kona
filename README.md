@@ -9,7 +9,7 @@
 - 前端：Flutter（Android / iOS / macOS）+ Vue3（Web）
 - 后端：Python Flask
 - 数据库：SQLite（`portfolio.db`）
-- 部署：GitHub Actions + 腾讯云轻量服务器（`Nginx + systemd + gunicorn`）
+- 部署：GitHub Actions + 腾讯云轻量服务器（`Caddy + systemd + gunicorn`，Nginx 已停用）
 
 定位：在保证“日常可用 + 可持续运维”的前提下，统一管理资产、收益、快照、行情与后台运营能力。
 
@@ -78,12 +78,15 @@ npm run build
 - 运维手册：[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)
 - Runbook：[`docs/RUNBOOK.md`](./docs/RUNBOOK.md)
 - OpenAPI：[`docs/openapi.yaml`](./docs/openapi.yaml)
+- 腾讯迁移交接：[`docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`](./docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md)
+- 换电脑与后续待办总清单：[`docs/README_HANDOVER_2026_03_NEW_PC_TODO.md`](./docs/README_HANDOVER_2026_03_NEW_PC_TODO.md)
 
 线上入口（当前）：
 
-- 门户：`http://114.132.238.12/`
+- IP 直连：`http://114.132.238.12/`
 - 业务端：`http://114.132.238.12/app/login`
 - 管理端：`http://114.132.238.12/admin/login`
+- 域名：`https://kakawallet.fun`（注意：若大陆接入未完成备案，可能出现拦截/握手失败）
 
 ---
 

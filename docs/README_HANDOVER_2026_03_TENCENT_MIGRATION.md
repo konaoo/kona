@@ -1,14 +1,17 @@
 # 腾讯云迁移交接（2026-03）
 
-本文用于新接手的 Codex/开发者快速理解当前线上形态、关键配置与排障方法。
+本文用于新接手的 Codex/开发者快速理解“腾讯云迁移链路”与关键排障点。  
+完整换电脑接手与待办，请优先读：
+- [`README_HANDOVER_2026_03_NEW_PC_TODO.md`](./README_HANDOVER_2026_03_NEW_PC_TODO.md)
+- [`tencent-cutover-checklist.md`](./tencent-cutover-checklist.md)
 
 ---
 
 ## 1. 当前线上结论
 
-- 生产公网入口：`http://114.132.238.12`
+- 生产公网入口（IP）：`http://114.132.238.12`
 - 服务器：腾讯云轻量（广州）
-- 架构：`Nginx(80) -> Gunicorn(127.0.0.1:5003) -> Flask`
+- 架构（当前）：`Caddy(80/443) -> Gunicorn(127.0.0.1:5003) -> Flask`
 - 限流存储：本机 Redis（`127.0.0.1:6379`）
 - 数据库：SQLite（`/opt/kaka/portfolio/kona_tool/portfolio.db`）
 
@@ -20,10 +23,10 @@
 - 后端目录：`/opt/kaka/portfolio/kona_tool`
 - 环境配置：`/opt/kaka/portfolio/kona_tool/.env`
 - Gunicorn 服务：`/etc/systemd/system/kona.service`
-- Nginx 配置：`/etc/nginx/nginx.conf`
+- Caddy 配置：`/etc/caddy/Caddyfile`
 - 服务日志：
   - `journalctl -u kona.service`
-  - `journalctl -u nginx`
+  - `journalctl -u caddy`
   - `journalctl -u redis`
 
 ---
@@ -32,7 +35,7 @@
 
 ```bash
 sudo systemctl status kona.service --no-pager
-sudo systemctl status nginx --no-pager
+sudo systemctl status caddy --no-pager
 sudo systemctl status redis --no-pager
 ```
 
@@ -40,14 +43,14 @@ sudo systemctl status redis --no-pager
 
 ```bash
 sudo systemctl restart kona.service
-sudo systemctl restart nginx
+sudo systemctl restart caddy
 sudo systemctl restart redis
 ```
 
 开机自启：
 
 ```bash
-sudo systemctl enable kona.service nginx redis
+sudo systemctl enable kona.service caddy redis
 ```
 
 ---
@@ -90,23 +93,24 @@ redis-cli -h 127.0.0.1 -p 6379 ping
 - 安装并启用 Redis
 - 保持 `.env` 为 `RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0`
 
-### 5.2 Nginx 首页显示系统 404
+### 5.2 迁移后入口服务混乱（Nginx/Caddy）
 
 现象：
-- 访问 80 端口出现 OpenCloudOS 默认 404 页面
+- 访问结果不稳定，可能出现默认页、TLS 异常或握手重置
 
 根因：
-- 系统默认 server 块抢占 `default_server`
+- 入口服务切换阶段配置不一致（Nginx/Caddy 并存或证书链路不一致）
 
-修复：
-- 清理冲突配置
-- 在 `/etc/nginx/nginx.conf` 保留唯一默认 server，并反向代理到 `127.0.0.1:5003`
+修复方向：
+- 固定单一入口（当前为 Caddy）
+- 保持 `:5003` 仅本机监听
+- 每次改动后跑 HTTPS 冒烟
 
 ---
 
 ## 6. 安全与端口策略
 
-- 对外仅开放：`22`（SSH）、`80`（HTTP）
+- 对外仅开放：`22`（SSH）、`80`（HTTP）、`443`（HTTPS）
 - `5003` 仅本机监听，不对公网开放
 - 防火墙中不应长期保留 `5003` 公网入站规则
 
@@ -115,7 +119,7 @@ redis-cli -h 127.0.0.1 -p 6379 ping
 ## 7. Flutter 客户端基地址
 
 - 文件：`flutter/lib/config/api_config.dart`
-- 当前：`http://114.132.238.12`
+- 当前：`https://kakawallet.fun`（并带 `www` 备用重试）
 
 对应测试：
 - `flutter/test/api_service_web_test.dart`
@@ -135,12 +139,12 @@ redis-cli -h 127.0.0.1 -p 6379 ping
 
 ---
 
-## 9. 下一步建议
+## 9. 下一步建议（更新）
 
-1. 接入域名与 HTTPS（443）
-2. 客户端改用域名（避免未来换 IP 再发版）
-3. 增加迁移前置检查脚本（Python/Redis/.env/DB）
-4. 为 `.env` 建立模板（区分 `prod` 与 `migrate`）
+1. 优先稳定登录链路（若域名入口异常，先临时回切旧 AWS）。
+2. 备案/接入链路完成后，再把域名稳定指向腾讯云。
+3. 每次切流必须按 `tencent-cutover-checklist.md` 执行。
+4. 为 `.env` 建立模板（区分 `prod` 与 `migrate`）。
 
 ---
 
