@@ -394,6 +394,11 @@ class InvestPageState extends State<InvestPage> {
     return value.toStringAsFixed(decimals);
   }
 
+  String _formatDisplayQty(double value) {
+    final text = value.toStringAsFixed(2);
+    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
   String? _priceSessionLabel(dynamic item, dynamic priceInfo) {
     if (priceInfo == null) return null;
     if (item.marketType != 'us') return null;
@@ -579,7 +584,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.qty.toStringAsFixed(0)}',
+                        _formatDisplayQty(item.qty),
                         style: TextStyle(
                           fontSize: subValueSize,
                           color: AppTheme.textTertiary,

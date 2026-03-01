@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
@@ -54,6 +55,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   static const Duration _searchDebounce = Duration(milliseconds: 280);
   static const int _maxRecentCashAssets = 5;
   static final List<int> _recentCashAssetIds = <int>[];
+  static final List<TextInputFormatter> _qtyInputFormatters = <TextInputFormatter>[
+    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
+  ];
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
@@ -1252,7 +1256,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       decimal: true,
                     ),
                     style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration('价格'),
+                    decoration: _compactDecoration(_isAdd ? '买入成本价' : '价格'),
                   ),
                   const SizedBox(height: Spacing.md),
                   TextField(
@@ -1260,6 +1264,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    inputFormatters: _qtyInputFormatters,
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: _compactDecoration('数量'),
                   ),

@@ -17,7 +17,8 @@ class _ThrowingSearchAppState extends AppState {
 }
 
 class _SaveStateAppState extends AppState {
-  _SaveStateAppState({required this.result}) : super(tokenLoader: () async => null);
+  _SaveStateAppState({required this.result})
+    : super(tokenLoader: () async => null);
 
   final AssetActionResult result;
   int buyWithCashCalls = 0;
@@ -74,18 +75,13 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: appState,
         child: const MaterialApp(
-          home: Scaffold(
-            body: InvestTradeDialog(mode: 'add'),
-          ),
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byType(TextField).first,
-      'tsla',
-    );
+    await tester.enterText(find.byType(TextField).first, 'tsla');
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pumpAndSettle();
 
@@ -95,8 +91,10 @@ void main() {
 
   Future<void> prepareAddDialog(
     WidgetTester tester,
-    AppState appState,
-  ) async {
+    AppState appState, {
+    String priceText = '100',
+    String qtyText = '2',
+  }) async {
     await appState.setLoggedIn(
       token: 'token',
       refreshToken: 'refresh',
@@ -107,9 +105,7 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: appState,
         child: const MaterialApp(
-          home: Scaffold(
-            body: InvestTradeDialog(mode: 'add'),
-          ),
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
         ),
       ),
     );
@@ -121,10 +117,28 @@ void main() {
     await tester.tap(find.text('Tesla').first);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).at(1), '100');
-    await tester.enterText(find.byType(TextField).at(2), '2');
+    await tester.enterText(find.byType(TextField).at(1), priceText);
+    await tester.enterText(find.byType(TextField).at(2), qtyText);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('Add mode shows 买入成本价 and accepts fractional qty', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    await prepareAddDialog(tester, appState, priceText: '100', qtyText: '1.25');
+
+    expect(find.text('买入成本价'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InvestTradeDialog), findsNothing);
+    expect(appState.buyWithCashCalls, 1);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('Save failure keeps dialog open and shows error', (
     WidgetTester tester,
