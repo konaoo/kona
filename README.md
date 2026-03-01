@@ -128,6 +128,17 @@ Web 专项：
 2. `README.md` 只保留结构化导航 + 最近版本摘要，不写日期流水账。
 3. 同一上线波次合并为一个版本条目，不按单 commit 拆分。
 4. 协作执行特例（Web + 管理后台 Admin）：默认“完成即直推 `main`”，推送后由你验收；Flutter 与非 Admin 后端改动仍按常规确认流程执行。
+5. APK 对外下载采用固定文件名覆盖发布，不改下载链接；固定路径：
+   - 服务器：`/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk`
+   - 下载链接：`https://kakawallet.fun/download/apk`
+
+APK 覆盖发布命令（固定）：
+
+```bash
+scp -i ~/.ssh/tencent_kona_key \
+  /Users/kona/Desktop/kaka/kona_repo/flutter/build/app/outputs/flutter-apk/app-release.apk \
+  root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
+```
 
 `CHANGELOG.md` 条目模板：
 

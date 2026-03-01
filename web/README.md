@@ -159,19 +159,19 @@ web/
   - 若未设置 `WEB_APK_DOWNLOAD_URL` 且本地存在 `kona_tool/static/downloads/kaka-latest-release.apk`，
     门户自动使用 `/download/apk` 作为下载链接。
 
-APK 发布最小流程（与你当前结构一致）：
+APK 覆盖发布（固定命令，推荐）：
 
 ```bash
-mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/downloads
-cp /Users/kona/Desktop/kaka/apk_exports/kaka-latest-release.apk \
-  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/downloads/kaka-latest-release.apk
+scp -i ~/.ssh/tencent_kona_key \
+  /Users/kona/Desktop/kaka/kona_repo/flutter/build/app/outputs/flutter-apk/app-release.apk \
+  root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
 ```
 
 验证：
 
 ```bash
-curl -I http://127.0.0.1:52345/download/apk
-curl http://127.0.0.1:52345/api/web/config
+curl -I https://kakawallet.fun/download/apk
+curl https://kakawallet.fun/api/web/config
 ```
 
 ### 6.2 管理端（`/admin/*`）
