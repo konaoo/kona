@@ -1016,9 +1016,13 @@ def get_system_info():
 @app.route('/api/web/config')
 def get_web_config():
     """公开 Web 门户配置（无需鉴权）。"""
-    apk_download_url = config.WEB_APK_DOWNLOAD_URL
+    # 优先使用专门的WEB_APK_DOWNLOAD_URL，若无则使用与App检查更新一致的CLIENT_APP_DOWNLOAD_URL
+    apk_download_url = config.WEB_APK_DOWNLOAD_URL or config.CLIENT_APP_DOWNLOAD_URL
+    
+    # 最后退化为检查本地是否存在apk文件
     if not apk_download_url and config.WEB_APK_LOCAL_PATH.exists():
         apk_download_url = "/download/apk"
+        
     return jsonify(
         {
             "portal_title": config.WEB_PORTAL_TITLE,
