@@ -1,124 +1,68 @@
 <template>
   <LegacyAdminShell title="运营配置" subtitle="邀请码页与用户群页（App内）">
     <section class="panel panel-body">
-      <div class="head">
-        <h3>邀请码页面配置</h3>
-        <button class="btn" :disabled="loadingInvite || savingInvite" @click="loadInvite">刷新</button>
-      </div>
-
-      <label class="field">
-        <span class="label">文案</span>
-        <textarea
-          v-model.trim="inviteForm.text"
-          class="input textarea"
-          maxlength="200"
-          placeholder="例如：小红书被限制了，进微信群领邀请码。"
-        />
-      </label>
-
-      <label class="field">
-        <span class="label">图片 URL</span>
-        <input
-          v-model.trim="inviteForm.image_url"
-          class="input"
-          type="url"
-          maxlength="2048"
-          placeholder="https://example.com/invite-qrcode.png"
-        />
-      </label>
-
-      <div class="actions">
-        <button class="btn primary" :disabled="loadingInvite || savingInvite" @click="saveInvite">
-          {{ savingInvite ? '保存中...' : '保存邀请码配置' }}
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">运营配置</h3>
+          <p class="section-sub">点击编辑后在弹窗内修改，保存后将立即生效。</p>
+        </div>
+        <button class="btn" :disabled="loadingAny" @click="refreshAll">
+          {{ loadingAny ? '刷新中...' : '刷新' }}
         </button>
       </div>
 
-      <p v-if="inviteMessage" :class="inviteOk ? 'up' : 'down'">{{ inviteMessage }}</p>
-    </section>
+      <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="page-message">{{ pageMessage }}</p>
 
-    <section class="panel panel-body">
-      <h3>邀请码页面预览</h3>
-      <p class="preview-text">{{ invitePreviewText }}</p>
-      <div class="preview-image-wrap">
-        <img
-          v-if="showInvitePreviewImage"
-          :src="inviteImageUrl"
-          alt="邀请码页面图片预览"
-          class="preview-image"
-          @error="inviteImageLoadFailed = true"
-          @load="inviteImageLoadFailed = false"
-        />
-        <div v-else class="preview-empty">
-          <span v-if="inviteImageUrl && inviteImageLoadFailed">图片加载失败，请检查 URL</span>
-          <span v-else>未配置图片 URL（App 将展示内置占位图）</span>
-        </div>
+      <div class="config-list">
+        <article v-for="scene in SCENES" :key="scene" class="config-item">
+          <div class="item-main">
+            <div class="item-copy">
+              <h4 class="item-title">{{ sceneTitle(scene) }}</h4>
+              <p class="item-text">{{ scenePreviewText(scene) }}</p>
+              <span :class="['item-meta', sceneImageMetaClass(scene)]">{{ sceneImageMeta(scene) }}</span>
+            </div>
+
+            <div class="item-thumb">
+              <img
+                v-if="showSceneImage(scene)"
+                :src="sceneImageUrl(scene)"
+                :alt="`${sceneTitle(scene)}缩略图`"
+                @error="thumbLoadFailed[scene] = true"
+                @load="thumbLoadFailed[scene] = false"
+              />
+              <span v-else>暂无缩略图</span>
+            </div>
+          </div>
+
+          <div class="item-actions">
+            <button class="btn primary" :disabled="loading[scene]" @click="openEditor(scene)">
+              编辑
+            </button>
+          </div>
+        </article>
       </div>
     </section>
 
-    <section class="panel panel-body">
-      <div class="head">
-        <h3>用户群页面配置</h3>
-        <button class="btn" :disabled="loadingUserGroup || savingUserGroup" @click="loadUserGroup">刷新</button>
-      </div>
-
-      <label class="field">
-        <span class="label">文案</span>
-        <textarea
-          v-model.trim="userGroupForm.text"
-          class="input textarea"
-          maxlength="200"
-          placeholder="例如：加入咔咔用户群"
-        />
-      </label>
-
-      <label class="field">
-        <span class="label">图片 URL</span>
-        <input
-          v-model.trim="userGroupForm.image_url"
-          class="input"
-          type="url"
-          maxlength="2048"
-          placeholder="https://example.com/user-group-qrcode.webp"
-        />
-      </label>
-
-      <div class="actions">
-        <button
-          class="btn primary"
-          :disabled="loadingUserGroup || savingUserGroup"
-          @click="saveUserGroup"
-        >
-          {{ savingUserGroup ? '保存中...' : '保存用户群配置' }}
-        </button>
-      </div>
-
-      <p v-if="userGroupMessage" :class="userGroupOk ? 'up' : 'down'">{{ userGroupMessage }}</p>
-    </section>
-
-    <section class="panel panel-body">
-      <h3>用户群页面预览</h3>
-      <p class="preview-text">{{ userGroupPreviewText }}</p>
-      <div class="preview-image-wrap">
-        <img
-          v-if="showUserGroupPreviewImage"
-          :src="userGroupImageUrl"
-          alt="用户群页面图片预览"
-          class="preview-image"
-          @error="userGroupImageLoadFailed = true"
-          @load="userGroupImageLoadFailed = false"
-        />
-        <div v-else class="preview-empty">
-          <span v-if="userGroupImageUrl && userGroupImageLoadFailed">图片加载失败，请检查 URL</span>
-          <span v-else>未配置图片 URL（App 将展示内置占位图）</span>
-        </div>
-      </div>
-    </section>
+    <OpsConfigEditorModal
+      :visible="editor.visible"
+      :title="currentMeta.modalTitle"
+      :draft="editor.draft"
+      :default-text="currentMeta.defaultText"
+      :saving="editor.saving"
+      :message="editor.message"
+      :ok="editor.ok"
+      @close="closeEditor"
+      @save="saveEditor"
+      @update:text="editor.draft.text = $event"
+      @update:image-url="editor.draft.image_url = $event"
+    />
   </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
+import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
 import { api } from '../../shared/http'
 
 type OpsConfigPayload = {
@@ -126,188 +70,330 @@ type OpsConfigPayload = {
   image_url?: string
 }
 
-const DEFAULT_INVITE_TEXT = '小红书被限制了，进微信群领邀请码。'
-const DEFAULT_USER_GROUP_TEXT = '加入咔咔用户群'
+const SCENES = ['invite', 'user_group'] as const
+type ConfigScene = typeof SCENES[number]
 
-const loadingInvite = ref(false)
-const savingInvite = ref(false)
-const inviteMessage = ref('')
-const inviteOk = ref(true)
-const inviteImageLoadFailed = ref(false)
-const inviteForm = reactive<Required<OpsConfigPayload>>({
-  text: '',
-  image_url: '',
+const META: Record<
+  ConfigScene,
+  {
+    title: string
+    modalTitle: string
+    defaultText: string
+    loadPath: string
+    savePath: string
+    saveSuccess: string
+    loadError: string
+    saveError: string
+  }
+> = {
+  invite: {
+    title: '邀请码页面',
+    modalTitle: '邀请码配置',
+    defaultText: '小红书被限制了，进微信群领邀请码。',
+    loadPath: '/api/admin/ops/invite_acquire',
+    savePath: '/api/admin/ops/invite_acquire/update',
+    saveSuccess: '邀请码配置已保存',
+    loadError: '读取邀请码配置失败',
+    saveError: '邀请码配置保存失败',
+  },
+  user_group: {
+    title: '用户群页面',
+    modalTitle: '用户群配置',
+    defaultText: '加入咔咔用户群',
+    loadPath: '/api/admin/ops/user_group',
+    savePath: '/api/admin/ops/user_group/update',
+    saveSuccess: '用户群配置已保存',
+    loadError: '读取用户群配置失败',
+    saveError: '用户群配置保存失败',
+  },
+}
+
+const configForm = reactive<Record<ConfigScene, Required<OpsConfigPayload>>>({
+  invite: { text: '', image_url: '' },
+  user_group: { text: '', image_url: '' },
 })
 
-const loadingUserGroup = ref(false)
-const savingUserGroup = ref(false)
-const userGroupMessage = ref('')
-const userGroupOk = ref(true)
-const userGroupImageLoadFailed = ref(false)
-const userGroupForm = reactive<Required<OpsConfigPayload>>({
-  text: '',
-  image_url: '',
+const loading = reactive<Record<ConfigScene, boolean>>({
+  invite: false,
+  user_group: false,
 })
 
-const inviteImageUrl = computed(() => String(inviteForm.image_url || '').trim())
-const invitePreviewText = computed(() => String(inviteForm.text || '').trim() || DEFAULT_INVITE_TEXT)
-const showInvitePreviewImage = computed(
-  () => Boolean(inviteImageUrl.value) && !inviteImageLoadFailed.value,
-)
+const thumbLoadFailed = reactive<Record<ConfigScene, boolean>>({
+  invite: false,
+  user_group: false,
+})
 
-const userGroupImageUrl = computed(() => String(userGroupForm.image_url || '').trim())
-const userGroupPreviewText = computed(
-  () => String(userGroupForm.text || '').trim() || DEFAULT_USER_GROUP_TEXT,
-)
-const showUserGroupPreviewImage = computed(
-  () => Boolean(userGroupImageUrl.value) && !userGroupImageLoadFailed.value,
-)
+const pageMessage = ref('')
+const pageOk = ref(true)
 
-function flashInvite(msg: string, success: boolean) {
-  inviteMessage.value = msg
-  inviteOk.value = success
-}
+const editor = reactive<{
+  visible: boolean
+  scene: ConfigScene
+  saving: boolean
+  message: string
+  ok: boolean
+  draft: Required<OpsConfigPayload>
+}>({
+  visible: false,
+  scene: 'invite',
+  saving: false,
+  message: '',
+  ok: true,
+  draft: {
+    text: '',
+    image_url: '',
+  },
+})
 
-function flashUserGroup(msg: string, success: boolean) {
-  userGroupMessage.value = msg
-  userGroupOk.value = success
-}
+const loadingAny = computed(() => SCENES.some((scene) => loading[scene]))
+const currentMeta = computed(() => META[editor.scene])
 
-async function loadInvite() {
-  loadingInvite.value = true
-  inviteMessage.value = ''
-  inviteImageLoadFailed.value = false
-  try {
-    const payload = await api.get<OpsConfigPayload>('/api/admin/ops/invite_acquire')
-    inviteForm.text = String(payload?.text || '')
-    inviteForm.image_url = String(payload?.image_url || '')
-  } catch (e) {
-    flashInvite(e instanceof Error ? e.message : '读取邀请码配置失败', false)
-  } finally {
-    loadingInvite.value = false
+function normalizePayload(
+  payload: OpsConfigPayload | null | undefined,
+  fallback: Required<OpsConfigPayload> = { text: '', image_url: '' },
+): Required<OpsConfigPayload> {
+  return {
+    text: String(payload?.text ?? fallback.text ?? ''),
+    image_url: String(payload?.image_url ?? fallback.image_url ?? ''),
   }
 }
 
-async function saveInvite() {
-  savingInvite.value = true
-  inviteMessage.value = ''
+function flashPage(msg: string, success: boolean) {
+  pageMessage.value = msg
+  pageOk.value = success
+}
+
+function flashEditor(msg: string, success: boolean) {
+  editor.message = msg
+  editor.ok = success
+}
+
+function sceneTitle(scene: ConfigScene): string {
+  return META[scene].title
+}
+
+function sceneImageUrl(scene: ConfigScene): string {
+  return String(configForm[scene].image_url || '').trim()
+}
+
+function scenePreviewText(scene: ConfigScene): string {
+  if (loading[scene]) return '读取中...'
+  const text = String(configForm[scene].text || '').trim()
+  return text || META[scene].defaultText
+}
+
+function showSceneImage(scene: ConfigScene): boolean {
+  const imageUrl = sceneImageUrl(scene)
+  return Boolean(imageUrl) && !thumbLoadFailed[scene]
+}
+
+function sceneImageMeta(scene: ConfigScene): string {
+  if (loading[scene]) return '图片读取中...'
+  const imageUrl = sceneImageUrl(scene)
+  if (!imageUrl) return '未配置图片（使用占位图）'
+  if (thumbLoadFailed[scene]) return '图片链接不可用'
+  return '已配置图片'
+}
+
+function sceneImageMetaClass(scene: ConfigScene): string {
+  return thumbLoadFailed[scene] ? 'is-error' : ''
+}
+
+async function loadConfig(scene: ConfigScene) {
+  loading[scene] = true
+  thumbLoadFailed[scene] = false
   try {
-    const payload = await api.post<OpsConfigPayload>('/api/admin/ops/invite_acquire/update', {
-      text: inviteForm.text,
-      image_url: inviteForm.image_url,
-    })
-    inviteForm.text = String(payload?.text || '')
-    inviteForm.image_url = String(payload?.image_url || '')
-    inviteImageLoadFailed.value = false
-    flashInvite('邀请码配置已保存', true)
+    const payload = await api.get<OpsConfigPayload>(META[scene].loadPath)
+    const normalized = normalizePayload(payload)
+    configForm[scene].text = normalized.text
+    configForm[scene].image_url = normalized.image_url
   } catch (e) {
-    flashInvite(e instanceof Error ? e.message : '邀请码配置保存失败', false)
+    flashPage(e instanceof Error ? e.message : META[scene].loadError, false)
   } finally {
-    savingInvite.value = false
+    loading[scene] = false
   }
 }
 
-async function loadUserGroup() {
-  loadingUserGroup.value = true
-  userGroupMessage.value = ''
-  userGroupImageLoadFailed.value = false
+async function refreshAll() {
+  pageMessage.value = ''
+  await Promise.all(SCENES.map((scene) => loadConfig(scene)))
+}
+
+function openEditor(scene: ConfigScene) {
+  editor.scene = scene
+  editor.visible = true
+  editor.saving = false
+  editor.message = ''
+  editor.ok = true
+  editor.draft = normalizePayload(configForm[scene])
+}
+
+function closeEditor() {
+  if (editor.saving) return
+  editor.visible = false
+  editor.message = ''
+}
+
+function validateEditor(): string | null {
+  const text = String(editor.draft.text || '').trim()
+  const imageUrl = String(editor.draft.image_url || '').trim()
+
+  if (text.length < 1 || text.length > 200) return '文案长度需在 1 到 200 个字符之间'
+  if (imageUrl.length > 2048) return '图片链接长度不能超过 2048 个字符'
+  if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return '图片链接必须以 http:// 或 https:// 开头'
+  return null
+}
+
+async function saveEditor() {
+  const validation = validateEditor()
+  if (validation) {
+    flashEditor(validation, false)
+    return
+  }
+
+  const scene = editor.scene
+  const payloadToSave = normalizePayload(editor.draft)
+  payloadToSave.text = payloadToSave.text.trim()
+  payloadToSave.image_url = payloadToSave.image_url.trim()
+
+  editor.saving = true
+  editor.message = ''
   try {
-    const payload = await api.get<OpsConfigPayload>('/api/admin/ops/user_group')
-    userGroupForm.text = String(payload?.text || '')
-    userGroupForm.image_url = String(payload?.image_url || '')
+    const payload = await api.post<OpsConfigPayload>(META[scene].savePath, payloadToSave)
+    const normalized = normalizePayload(payload, payloadToSave)
+    configForm[scene].text = normalized.text
+    configForm[scene].image_url = normalized.image_url
+    thumbLoadFailed[scene] = false
+    flashPage(META[scene].saveSuccess, true)
+    closeEditor()
   } catch (e) {
-    flashUserGroup(e instanceof Error ? e.message : '读取用户群配置失败', false)
+    flashEditor(e instanceof Error ? e.message : META[scene].saveError, false)
   } finally {
-    loadingUserGroup.value = false
+    editor.saving = false
   }
 }
 
-async function saveUserGroup() {
-  savingUserGroup.value = true
-  userGroupMessage.value = ''
-  try {
-    const payload = await api.post<OpsConfigPayload>('/api/admin/ops/user_group/update', {
-      text: userGroupForm.text,
-      image_url: userGroupForm.image_url,
-    })
-    userGroupForm.text = String(payload?.text || '')
-    userGroupForm.image_url = String(payload?.image_url || '')
-    userGroupImageLoadFailed.value = false
-    flashUserGroup('用户群配置已保存', true)
-  } catch (e) {
-    flashUserGroup(e instanceof Error ? e.message : '用户群配置保存失败', false)
-  } finally {
-    savingUserGroup.value = false
-  }
-}
-
-onMounted(async () => {
-  await Promise.all([loadInvite(), loadUserGroup()])
+onMounted(() => {
+  void refreshAll()
 })
 </script>
 
 <style scoped>
 .panel-body {
-  padding: 16px;
+  padding: 18px;
   margin-bottom: 16px;
 }
 
-.head {
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  margin: 0;
+  color: #1f3f58;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.section-sub {
+  margin: 6px 0 0;
+  color: #55708f;
+  font-size: 13px;
+}
+
+.page-message {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.config-list {
+  display: grid;
+  gap: 12px;
+}
+
+.config-item {
+  border: 1px solid #d6e1ee;
+  border-radius: 12px;
+  background: #fbfdff;
+  padding: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 14px;
 }
 
-.field {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.label {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.textarea {
-  min-height: 96px;
-  resize: vertical;
-}
-
-.actions {
-  margin-top: 12px;
+.item-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 14px;
 }
 
-.preview-text {
-  margin: 10px 0 12px;
-  color: var(--text-primary);
-  line-height: 1.6;
+.item-copy {
+  flex: 1;
+  min-width: 0;
 }
 
-.preview-image-wrap {
-  border: 1px dashed var(--line);
-  border-radius: 10px;
-  min-height: 180px;
-  background: var(--bg-soft);
-  display: grid;
-  place-items: center;
+.item-title {
+  margin: 0;
+  color: #1f3f58;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.item-text {
+  margin: 8px 0 6px;
+  color: #10243e;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.preview-image {
-  max-width: 100%;
-  max-height: 360px;
-  object-fit: contain;
+.item-meta {
+  color: #55708f;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.preview-empty {
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 14px;
+.item-meta.is-error {
+  color: var(--danger);
+}
+
+.item-thumb {
+  width: 92px;
+  height: 92px;
+  border-radius: 10px;
+  border: 1px solid #c9d8e8;
+  background: #fff;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.item-thumb span {
+  padding: 8px;
   text-align: center;
+  color: #6b84a3;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.item-actions {
+  flex: 0 0 auto;
 }
 
 .up {
@@ -316,5 +402,34 @@ onMounted(async () => {
 
 .down {
   color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .section-head {
+    flex-direction: column;
+  }
+
+  .config-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .item-main {
+    width: 100%;
+  }
+
+  .item-thumb {
+    width: 76px;
+    height: 76px;
+  }
+
+  .item-actions {
+    width: 100%;
+  }
+
+  .item-actions .btn {
+    width: 100%;
+  }
+
 }
 </style>
