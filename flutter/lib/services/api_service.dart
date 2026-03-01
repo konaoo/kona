@@ -9,6 +9,14 @@ import 'secure_storage_service.dart';
 import '../utils/network_error_stub.dart'
     if (dart.library.io) '../utils/network_error_io.dart';
 
+typedef PostTransport =
+    Future<dynamic> Function(
+      String endpoint,
+      Map<String, dynamic> data, {
+      bool retryOnTransient,
+      int transientMaxAttempts,
+    });
+
 /// API 服务 - 封装所有后端 API 调用
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -21,6 +29,7 @@ class ApiService {
   Future<bool>? _refreshInFlight;
   bool _lastRefreshHardFailure = false;
   void Function()? onAuthExpired;
+  PostTransport? _postOverrideForTesting;
 
   /// 设置认证 token
   void setToken(String token) {
@@ -176,17 +185,65 @@ class ApiService {
   bool _isRetryableError(Object error) {
     return error is TimeoutException ||
         isSocketLikeError(error) ||
-        error is http.ClientException;
+        error is http.ClientException ||
+        _isHandshakeLikeError(error);
+  }
+
+  bool _isHandshakeLikeError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('handshakeexception') ||
+        text.contains('sslhandshakeexception') ||
+        text.contains('connection terminated during handshake') ||
+        text.contains('tls') ||
+        text.contains('ssl');
   }
 
   ApiException _mapNetworkError(Object error) {
     if (error is TimeoutException) {
       return ApiException('请求超时，请稍后重试');
     }
+    if (_isHandshakeLikeError(error)) {
+      return ApiException('网络连接异常（TLS 握手失败），请检查网络后重试');
+    }
     if (isSocketLikeError(error) || error is http.ClientException) {
       return ApiException('网络连接异常，请检查网络后重试');
     }
     return ApiException('网络连接失败: $error');
+  }
+
+  @visibleForTesting
+  void setPostOverrideForTesting(PostTransport? override) {
+    _postOverrideForTesting = override;
+  }
+
+  @visibleForTesting
+  static List<String> resolveLoginBaseUrls({List<String>? candidatesOverride}) {
+    final raw = (candidatesOverride == null || candidatesOverride.isEmpty)
+        ? ApiConfig.loginBaseUrlCandidates
+        : candidatesOverride;
+    final normalized = <String>[];
+    final seen = <String>{};
+    for (final item in raw) {
+      final base = item.trim().replaceFirst(RegExp(r'/$'), '');
+      if (base.isEmpty || seen.contains(base)) continue;
+      seen.add(base);
+      normalized.add(base);
+    }
+    final primary = ApiConfig.baseUrl.trim().replaceFirst(RegExp(r'/$'), '');
+    if (primary.isNotEmpty && !seen.contains(primary)) {
+      normalized.insert(0, primary);
+    }
+    return normalized;
+  }
+
+  bool _isNetworkCategoryApiException(ApiException e) {
+    if (e.statusCode != null) return false;
+    final msg = e.message.toLowerCase();
+    return msg.contains('网络连接异常') ||
+        msg.contains('tls') ||
+        msg.contains('握手') ||
+        msg.contains('超时') ||
+        msg.contains('network');
   }
 
   /// 通用 GET 请求
@@ -238,9 +295,10 @@ class ApiService {
     String endpoint,
     Map<String, dynamic> data, {
     bool retryOnTransient = false,
+    int transientMaxAttempts = 2,
   }) async {
     Object? lastError;
-    final maxAttempts = retryOnTransient ? 2 : 1;
+    final maxAttempts = retryOnTransient ? max(2, transientMaxAttempts) : 1;
     var retriedAfterRefresh = false;
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -278,6 +336,10 @@ class ApiService {
       } catch (e) {
         if (e is ApiException) rethrow;
         lastError = e;
+        debugPrint(
+          'POST失败 endpoint=$endpoint attempt=${attempt + 1}/$maxAttempts '
+          'type=${e.runtimeType} error=$e',
+        );
         if (_isRetryableError(e) && attempt < maxAttempts - 1) {
           await Future<void>.delayed(const Duration(milliseconds: 300));
           continue;
@@ -286,6 +348,29 @@ class ApiService {
       }
     }
     throw _mapNetworkError(lastError ?? 'unknown error');
+  }
+
+  Future<dynamic> _postRequest(
+    String endpoint,
+    Map<String, dynamic> data, {
+    bool retryOnTransient = false,
+    int transientMaxAttempts = 2,
+  }) {
+    final override = _postOverrideForTesting;
+    if (override != null) {
+      return override(
+        endpoint,
+        data,
+        retryOnTransient: retryOnTransient,
+        transientMaxAttempts: transientMaxAttempts,
+      );
+    }
+    return _post(
+      endpoint,
+      data,
+      retryOnTransient: retryOnTransient,
+      transientMaxAttempts: transientMaxAttempts,
+    );
   }
 
   AssetActionResult _failureResult(
@@ -342,14 +427,63 @@ class ApiService {
     required String username,
     required String password,
     String? deviceId,
+    List<String>? baseUrlCandidatesOverride,
   }) async {
-    final raw = await _post(ApiConfig.login, {
+    final payload = <String, dynamic>{
       'username': username,
       'password': password,
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
-    });
+    };
+
+    dynamic raw;
+    try {
+      raw = await _postRequest(
+        ApiConfig.login,
+        payload,
+        retryOnTransient: true,
+        transientMaxAttempts: 3,
+      );
+    } catch (e) {
+      final canFallback =
+          !kIsWeb && e is ApiException && _isNetworkCategoryApiException(e);
+      if (!canFallback) {
+        rethrow;
+      }
+      final baseCandidates = resolveLoginBaseUrls(
+        candidatesOverride: baseUrlCandidatesOverride,
+      );
+      if (baseCandidates.length <= 1) {
+        rethrow;
+      }
+      ApiException? lastApiError = e;
+      var succeeded = false;
+      for (final fallbackBase in baseCandidates.skip(1)) {
+        final fallbackEndpoint = '$fallbackBase${ApiConfig.login}';
+        debugPrint('登录主域失败，切换备用域重试: $fallbackEndpoint');
+        try {
+          raw = await _postRequest(
+            fallbackEndpoint,
+            payload,
+            retryOnTransient: true,
+            transientMaxAttempts: 2,
+          );
+          succeeded = true;
+          break;
+        } catch (fallbackError) {
+          if (fallbackError is ApiException &&
+              _isNetworkCategoryApiException(fallbackError)) {
+            lastApiError = fallbackError;
+            continue;
+          }
+          rethrow;
+        }
+      }
+      if (!succeeded) {
+        throw lastApiError ?? ApiException('网络连接异常，请检查网络后重试');
+      }
+    }
     final data = _ensureMapResponse(raw, actionLabel: '登录');
-    if (data != null && data['access_token'] != null) {
+    if (data['access_token'] != null) {
       _token = data['access_token'];
     }
     return data;
@@ -368,7 +502,7 @@ class ApiService {
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
     final data = _ensureMapResponse(raw, actionLabel: '注册');
-    if (data != null && data['access_token'] != null) {
+    if (data['access_token'] != null) {
       _token = data['access_token'];
     }
     return data;
@@ -390,7 +524,7 @@ class ApiService {
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
     final data = _ensureMapResponse(raw, actionLabel: '会话刷新');
-    if (data != null && data['access_token'] != null) {
+    if (data['access_token'] != null) {
       _token = data['access_token'];
     }
     return data;
@@ -423,8 +557,8 @@ class ApiService {
   }) async {
     try {
       final data = await _post(ApiConfig.profileUpdate, {
-        if (nickname != null) 'nickname': nickname,
-        if (avatar != null) 'avatar': avatar,
+        'nickname': ?nickname,
+        'avatar': ?avatar,
       });
       return data;
     } catch (e) {

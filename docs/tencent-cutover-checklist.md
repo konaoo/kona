@@ -1,0 +1,54 @@
+# 域名切回腾讯云检查清单（备案通过后）
+
+结论：备案通过前，主域名不要长期指向大陆机房；备案通过后按下面步骤一次切换，避免再次出现 TLS 握手失败/拦截页问题。
+
+## 1. 切换前准备（腾讯云服务器）
+
+```bash
+ssh -i ~/.ssh/tencent_kona_key root@114.132.238.12
+systemctl status kona.service --no-pager
+systemctl status caddy --no-pager
+ss -lntp | egrep ':80 |:443 |:5003 '
+curl -sk https://127.0.0.1/api/web/config -H 'Host: kakawallet.fun'
+```
+
+期望：
+- `kona.service`、`caddy` 都是 `active (running)`
+- 80/443 监听存在，5003 仅本机监听
+- 本机 HTTPS 返回 `200` 和 JSON
+
+## 2. DNS 切换（阿里云 DNS）
+
+把 `@` 和 `www` 的 A 记录都改为腾讯云公网 IP（示例：`114.132.238.12`），TTL 建议先设 `60` 秒，稳定后再调回 `600` 秒。
+
+## 3. 外网验证（切换后 5-15 分钟）
+
+```bash
+dig +short kakawallet.fun
+dig +short www.kakawallet.fun
+curl -vk --connect-timeout 8 https://kakawallet.fun/api/web/config
+curl -vk --connect-timeout 8 https://www.kakawallet.fun/api/web/config
+```
+
+期望：
+- 两个域名都解析到腾讯云 IP
+- HTTPS 握手成功（不再 `Connection reset by peer`）
+- `/api/web/config` 返回 `200`
+
+## 4. App 端冒烟
+
+1. Android 真机登录（账号：`konae`）  
+2. 进入投资页加载列表  
+3. 添加资产并刷新  
+4. 管理后台登录并打开用户页
+
+## 5. 观察期与回滚
+
+观察 24 小时：
+- 登录失败率是否异常升高
+- 服务器日志是否出现大量 TLS 或 5xx
+
+若异常，立即回滚 DNS 到旧 AWS：
+- `@`、`www` A 记录改回 `57.180.79.186`
+- TTL 保持 `60` 秒直到恢复
+

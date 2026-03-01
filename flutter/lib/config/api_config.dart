@@ -2,6 +2,11 @@
 class ApiConfig {
   /// API 基础地址
   static const String baseUrl = 'https://kakawallet.fun';
+  static const String loginFallbackBaseUrl = 'https://www.kakawallet.fun';
+  static const List<String> loginBaseUrlCandidates = <String>[
+    baseUrl,
+    loginFallbackBaseUrl,
+  ];
 
   /// 请求超时时间（秒）
   static const int timeout = 30;
