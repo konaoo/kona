@@ -140,6 +140,21 @@ scp -i ~/.ssh/tencent_kona_key \
   root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
 ```
 
+本地构建 + 上传一键命令（固定）：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter build apk --release && \
+scp -i ~/.ssh/tencent_kona_key \
+  /Users/kona/Desktop/kaka/kona_repo/flutter/build/app/outputs/flutter-apk/app-release.apk \
+  root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
+```
+
+上传后快速校验（建议每次都跑）：
+
+```bash
+curl -I https://kakawallet.fun/download/apk
+```
+
 `CHANGELOG.md` 条目模板：
 
 ```md
