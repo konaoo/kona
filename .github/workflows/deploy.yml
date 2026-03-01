@@ -183,7 +183,18 @@ jobs:
               echo "requirements file not found in $APP_DIR"
               exit 1
             fi
-            python3 -m pip install --user -r "$REQ_FILE"
+            PYTHON_BIN="python3"
+            if [ -f "kona_tool/.venv/bin/python3" ]; then
+              PYTHON_BIN="kona_tool/.venv/bin/python3"
+            elif [ -f ".venv/bin/python3" ]; then
+              PYTHON_BIN=".venv/bin/python3"
+            fi
+            
+            if [ "$PYTHON_BIN" != "python3" ]; then
+              $PYTHON_BIN -m pip install -r "$REQ_FILE"
+            else
+              $PYTHON_BIN -m pip install --user -r "$REQ_FILE"
+            fi
 
             if [ ! -f /tmp/web-dist.tar.gz ]; then
               echo "Missing /tmp/web-dist.tar.gz"
