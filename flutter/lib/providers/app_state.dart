@@ -176,6 +176,7 @@ class AppState extends ChangeNotifier {
   // Getters
   // ============================================================
 
+  ApiService get apiService => _api;
   bool get isLoggedIn => _isLoggedIn;
   SessionBootState get sessionBootState => _sessionBootState;
   bool get isSessionReady => _sessionBootState != SessionBootState.initializing;

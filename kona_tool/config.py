@@ -26,6 +26,19 @@ PORT = int(os.getenv("KONA_PORT", os.getenv("PORT", "52345")))
 DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
+# 客户端 App 更新配置 (Flutter端检查更新使用)
+CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.19").strip()
+CLIENT_APP_BUILD_NUMBER = int(os.getenv("CLIENT_APP_BUILD_NUMBER", "19"))
+CLIENT_APP_RELEASE_NOTES = os.getenv(
+    "CLIENT_APP_RELEASE_NOTES",
+    "1. 修复网络异常问题\n2. 优化升级流程"
+).strip()
+CLIENT_APP_DOWNLOAD_URL = os.getenv(
+    "CLIENT_APP_DOWNLOAD_URL",
+    "https://kaka-wallet-1300924971.cos.ap-beijing.myqcloud.com/app-release.apk"
+).strip()
+CLIENT_APP_FORCE_UPDATE = os.getenv("CLIENT_APP_FORCE_UPDATE", "false").lower() == "true"
+
 # 新 Web 门户配置（独立 H5）
 WEB_APK_DOWNLOAD_URL = os.getenv(
     "WEB_APK_DOWNLOAD_URL",

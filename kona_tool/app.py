@@ -781,6 +781,18 @@ def direct_test_page():
  
 
 
+@app.route('/api/app/version', methods=['GET'])
+def api_app_version():
+    """获取最新版客户端应用配置"""
+    return jsonify({
+        "version": config.CLIENT_APP_VERSION,
+        "buildNumber": config.CLIENT_APP_BUILD_NUMBER,
+        "releaseNotes": config.CLIENT_APP_RELEASE_NOTES,
+        "downloadUrl": config.CLIENT_APP_DOWNLOAD_URL,
+        "forceUpdate": config.CLIENT_APP_FORCE_UPDATE,
+    })
+
+
 @app.route('/api/price')
 def api_price():
     """获取单个价格"""

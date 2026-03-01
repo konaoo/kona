@@ -3,10 +3,41 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:tool/config/api_config.dart';
+import 'package:tool/models/app_version.dart';
 import 'package:tool/pages/profile_page.dart';
 import 'package:tool/providers/app_state.dart';
+import 'package:tool/services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+class MockApiService implements ApiService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  @override
+  Future<AppVersion?> getAppVersion() async {
+    return const AppVersion(
+      version: '1.0.2',
+      buildNumber: 2,
+      releaseNotes: 'test notes',
+      downloadUrl: 'http://test.com/app.apk',
+      forceUpdate: false,
+    );
+  }
+
+  @override
+  set onAuthExpired(void Function()? callback) {}
+
+  @override
+  void setToken(String token) {}
+
+  @override
+  void clearToken() {}
+
+  @override
+  Future<Map<String, dynamic>?> getProfile() async => null;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,12 +45,20 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     FlutterSecureStorage.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'tool',
+      packageName: 'com.example.tool',
+      version: '1.0.1',
+      buildNumber: '1',
+      buildSignature: 'sign',
+    );
   });
 
   testWidgets('Profile page shows menu order and profile info', (
     WidgetTester tester,
   ) async {
-    final appState = AppState(tokenLoader: () async => null);
+    final mockApi = MockApiService();
+    final appState = AppState(tokenLoader: () async => null, api: mockApi);
     await appState.setLoggedIn(
       token: 't',
       refreshToken: 'r',
@@ -90,8 +129,12 @@ void main() {
 
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
-    expect(openedUri?.toString(), ApiConfig.apkDownloadUrl);
-    expect(openedMode, LaunchMode.inAppBrowserView);
+    expect(find.text('发现新版本 1.0.2'), findsOneWidget);
+    expect(find.text('test notes'), findsOneWidget);
+
+    await tester.tap(find.text('暂不更新'));
+    await tester.pumpAndSettle();
+    expect(find.text('发现新版本 1.0.2'), findsNothing);
 
     await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();

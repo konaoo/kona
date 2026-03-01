@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config/api_config.dart';
 import '../config/theme.dart';
+import '../models/app_version.dart';
+import '../services/api_service.dart';
 import 'app_settings_page.dart';
 import '../providers/app_state.dart';
 
@@ -75,14 +77,101 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _checkUpdate() async {
     final messenger = ScaffoldMessenger.of(context);
-    final uri = Uri.parse(ApiConfig.apkDownloadUrl);
-    var ok = await _openExternalUrl(uri, LaunchMode.inAppBrowserView);
-    if (!ok) {
-      ok = await _openExternalUrl(uri, LaunchMode.externalApplication);
+    
+    // 显示 Loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final apiService = context.read<AppState>().apiService;
+      final latestVersion = await apiService.getAppVersion();
+      
+      final info = await PackageInfo.fromPlatform();
+      final currentBuild = int.tryParse(info.buildNumber) ?? 0;
+
+      if (!mounted) return;
+      // 隐藏 Loading
+      Navigator.of(context).pop();
+
+      if (latestVersion == null) {
+        messenger.showSnackBar(const SnackBar(content: Text('检查更新失败，请稍后重试')));
+        return;
+      }
+
+      if (latestVersion.buildNumber <= currentBuild) {
+        messenger.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+        return;
+      }
+
+      // 有新版本，弹窗提示
+      _showUpdateDialog(latestVersion);
+    } catch (e) {
+      if (!mounted) return;
+      // 隐藏 Loading
+      Navigator.of(context).pop();
+      messenger.showSnackBar(SnackBar(content: Text('检查更新出错: $e')));
     }
-    if (!mounted) return;
-    messenger.showSnackBar(
-      SnackBar(content: Text(ok ? '已打开应用内下载页面，请按提示完成安装' : '无法打开下载链接，请稍后再试')),
+  }
+
+  void _showUpdateDialog(AppVersion version) {
+    showDialog(
+      context: context,
+      barrierDismissible: !version.forceUpdate,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => !version.forceUpdate,
+        child: AlertDialog(
+          backgroundColor: AppTheme.bgElevated,
+          title: Text(
+            '发现新版本 ${version.version}',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '更新内容：',
+                  style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  version.releaseNotes,
+                  style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            if (!version.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('暂不更新', style: TextStyle(color: AppTheme.textTertiary)),
+              ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                if (!version.forceUpdate) {
+                  Navigator.pop(context);
+                }
+                final uri = Uri.parse(version.downloadUrl);
+                var ok = await _openExternalUrl(uri, LaunchMode.inAppBrowserView);
+                if (!ok) {
+                  await _openExternalUrl(uri, LaunchMode.externalApplication);
+                }
+              },
+              child: const Text('立即下载'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import '../models/app_version.dart';
 import '../models/asset_action_result.dart';
 import 'secure_storage_service.dart';
 import '../utils/network_error_stub.dart'
@@ -557,8 +558,8 @@ class ApiService {
   }) async {
     try {
       final data = await _post(ApiConfig.profileUpdate, {
-        'nickname': ?nickname,
-        'avatar': ?avatar,
+        'nickname': nickname,
+        'avatar': avatar,
       });
       return data;
     } catch (e) {
@@ -572,6 +573,18 @@ class ApiService {
       final data = await _get(ApiConfig.profileMe);
       return data;
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// 获取最新版本信息
+  Future<AppVersion?> getAppVersion() async {
+    try {
+      final data = await _get(ApiConfig.getAppVersion);
+      if (data == null) return null;
+      return AppVersion.fromJson(data);
+    } catch (e) {
+      debugPrint('获取版本信息失败: $e');
       return null;
     }
   }
