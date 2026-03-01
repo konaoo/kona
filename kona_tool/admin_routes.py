@@ -193,16 +193,20 @@ _DEFAULT_CONFIG_VALUES: Dict[str, Any] = {
 _ADMIN_READ_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_READ_CACHE_LOCK = threading.Lock()
 _API_TEST_CASES: List[Dict[str, str]] = [
-    {"name": "腾讯", "code": "hk00700", "asset_type": "hk"},
-    {"name": "阿里巴巴", "code": "gb_baba", "asset_type": "us"},
+    {"name": "工商银行", "code": "sh601398", "asset_type": "a"},
+    {"name": "比亚迪", "code": "sz002594", "asset_type": "a"},
+    {"name": "腾讯控股", "code": "hk00700", "asset_type": "hk"},
+    {"name": "美团-W", "code": "hk03690", "asset_type": "hk"},
+    {"name": "苹果", "code": "gb_aapl", "asset_type": "us"},
     {"name": "特斯拉", "code": "gb_tsla", "asset_type": "us"},
-    {"name": "宁德时代", "code": "sz300750", "asset_type": "a"},
-    {"name": "场内基金ETF", "code": "sh510300", "asset_type": "a"},
-    {"name": "场外基金", "code": "f_161725", "asset_type": "fund"},
+    {"name": "自由现金流ETF", "code": "sz159201", "asset_type": "a"},
+    {"name": "标普ETF", "code": "sz159655", "asset_type": "a"},
+    {"name": "易方达增强回报债券A", "code": "f_110017", "asset_type": "fund"},
+    {"name": "广发成长甄选混合C", "code": "f_026733", "asset_type": "fund"},
 ]
 _API_TEST_PROVIDER_LABELS: Dict[str, str] = {
-    "sina_quote": "新浪行情",
-    "tencent_quote": "腾讯行情",
+    "sina_quote": "新浪财经行情",
+    "tencent_quote": "腾讯财经行情",
     "eastmoney_quote": "东方财富行情",
     "forex_rate": "汇率",
 }
@@ -478,7 +482,9 @@ def _to_tencent_quote_code(raw_code: str) -> str:
     if lower.startswith("f_"):
         return lower
     if lower.startswith("gb_"):
-        return f"us.{lower.replace('gb_', '').upper()}"
+        return f"us{lower.replace('gb_', '').upper()}"
+    if lower.startswith("us."):
+        return f"us{lower.replace('us.', '').upper()}"
     if lower.startswith(("sh", "sz", "bj", "hk", "s_")):
         return lower
     if lower.isdigit() and len(lower) == 6:
@@ -487,7 +493,7 @@ def _to_tencent_quote_code(raw_code: str) -> str:
         return "hk" + lower
     if ".hk" in lower:
         return "hk" + lower.replace(".hk", "")
-    return f"us.{code.upper()}" if code else lower
+    return f"us{code.upper()}" if code else lower
 
 
 def _eastmoney_secid_candidates(raw_code: str) -> List[str]:
@@ -540,10 +546,12 @@ def _test_sina_quote(code: str) -> Tuple[float, float]:
     if sina_code.startswith("f_"):
         raise ValueError("新浪行情暂不支持场外基金代码")
     url = config.API_ENDPOINTS["sina_stock"].format(code=sina_code)
+    headers = dict(config.HEADERS or {})
+    headers["Referer"] = "https://finance.sina.com.cn"
     resp = monitored_http_get(
         "admin_sina_quote_test",
         url,
-        headers=config.HEADERS,
+        headers=headers,
         timeout=min(3.0, float(getattr(config, "API_TIMEOUT", 3))),
     )
     price, yclose = _parse_sina_quote(code, resp.text)
@@ -669,31 +677,22 @@ def _run_forex_provider_test() -> Dict[str, Any]:
     latency_ms = int((time.perf_counter() - started) * 1000)
     usd = safe_float((rates or {}).get("USD", 0))
     hkd = safe_float((rates or {}).get("HKD", 0))
-    cny = safe_float((rates or {}).get("CNY", 1))
     items = [
         {
-            "name": "USD/CNY",
-            "code": "USD",
+            "name": "美元兑人民币",
+            "code": "USD/CNY",
             "ok": usd > 0,
             "rate": round(usd, 6),
             "latency_ms": latency_ms,
             "detail": "ok" if usd > 0 else "无有效汇率",
         },
         {
-            "name": "HKD/CNY",
-            "code": "HKD",
+            "name": "港币兑人民币",
+            "code": "HKD/CNY",
             "ok": hkd > 0,
             "rate": round(hkd, 6),
             "latency_ms": latency_ms,
             "detail": "ok" if hkd > 0 else "无有效汇率",
-        },
-        {
-            "name": "CNY/CNY",
-            "code": "CNY",
-            "ok": cny > 0,
-            "rate": round(cny if cny > 0 else 1.0, 6),
-            "latency_ms": latency_ms,
-            "detail": "ok",
         },
     ]
     return {

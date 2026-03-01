@@ -806,6 +806,20 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json().get("error"), "Invalid provider_key")
 
+    def test_tencent_quote_code_for_us_symbols_has_no_dot(self):
+        self.assertEqual(admin_routes._to_tencent_quote_code("gb_aapl"), "usAAPL")
+        self.assertEqual(admin_routes._to_tencent_quote_code("gb_tsla"), "usTSLA")
+        self.assertEqual(admin_routes._to_tencent_quote_code("aapl"), "usAAPL")
+
+    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.12, "HKD": 0.91, "CNY": 1.0})
+    def test_forex_provider_returns_two_pairs_only(self, _mock_rates):
+        payload = admin_routes._run_forex_provider_test()
+        self.assertEqual(payload.get("provider_key"), "forex_rate")
+        items = payload.get("items") or []
+        self.assertEqual(len(items), 2)
+        self.assertEqual([item.get("code") for item in items], ["USD/CNY", "HKD/CNY"])
+        self.assertNotIn("CNY/CNY", [item.get("code") for item in items])
+
     def test_admin_policy_update_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.post(
