@@ -56,6 +56,14 @@ INVITE_ACQUIRE_IMAGE_URL = os.getenv(
     "INVITE_ACQUIRE_IMAGE_URL",
     "",
 ).strip()
+USER_GROUP_TEXT = os.getenv(
+    "USER_GROUP_TEXT",
+    "加入咔咔用户群",
+).strip() or "加入咔咔用户群"
+USER_GROUP_IMAGE_URL = os.getenv(
+    "USER_GROUP_IMAGE_URL",
+    "",
+).strip()
 
 # JWT 认证配置（必须显式配置，缺失即启动失败）
 JWT_SECRET = os.getenv("JWT_SECRET")

@@ -147,6 +147,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.invites.generate": "生成邀请码",
     "admin.invites.revoke": "作废邀请码",
     "admin.ops.invite_acquire.update": "更新运营配置（邀请码获取页）",
+    "admin.ops.user_group.update": "更新运营配置（用户群页）",
 }
 
 ERROR_LABELS: Dict[str, str] = {
@@ -207,6 +208,8 @@ _API_TEST_PROVIDER_LABELS: Dict[str, str] = {
 }
 OPS_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 OPS_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
+OPS_USER_GROUP_TEXT_KEY = "ops.user_group.text"
+OPS_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
 OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH = 200
 OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH = 2048
 
@@ -313,14 +316,39 @@ def _normalize_invite_acquire_image_url(raw: Any) -> str:
 
 
 def _load_invite_acquire_ops_config(db) -> Dict[str, str]:
-    text_raw = db.get_runtime_config(OPS_INVITE_ACQUIRE_TEXT_KEY)
-    image_url_raw = db.get_runtime_config(OPS_INVITE_ACQUIRE_IMAGE_URL_KEY)
+    return _load_ops_text_image_config(
+        db=db,
+        text_key=OPS_INVITE_ACQUIRE_TEXT_KEY,
+        image_url_key=OPS_INVITE_ACQUIRE_IMAGE_URL_KEY,
+        default_text=str(config.INVITE_ACQUIRE_TEXT).strip() or "小红书被限制了，进微信群领邀请码。",
+        default_image_url=str(config.INVITE_ACQUIRE_IMAGE_URL).strip(),
+    )
 
-    text = str(text_raw).strip() if text_raw is not None else str(config.INVITE_ACQUIRE_TEXT).strip()
+
+def _load_user_group_ops_config(db) -> Dict[str, str]:
+    return _load_ops_text_image_config(
+        db=db,
+        text_key=OPS_USER_GROUP_TEXT_KEY,
+        image_url_key=OPS_USER_GROUP_IMAGE_URL_KEY,
+        default_text=str(config.USER_GROUP_TEXT).strip() or "加入咔咔用户群",
+        default_image_url=str(config.USER_GROUP_IMAGE_URL).strip(),
+    )
+
+
+def _load_ops_text_image_config(
+    db,
+    *,
+    text_key: str,
+    image_url_key: str,
+    default_text: str,
+    default_image_url: str,
+) -> Dict[str, str]:
+    text_raw = db.get_runtime_config(text_key)
+    image_url_raw = db.get_runtime_config(image_url_key)
+    text = str(text_raw).strip() if text_raw is not None else default_text
     if not text:
-        text = str(config.INVITE_ACQUIRE_TEXT).strip() or "小红书被限制了，进微信群领邀请码。"
-
-    image_url = str(image_url_raw).strip() if image_url_raw is not None else str(config.INVITE_ACQUIRE_IMAGE_URL).strip()
+        text = default_text
+    image_url = str(image_url_raw).strip() if image_url_raw is not None else default_image_url
     return {"text": text, "image_url": image_url}
 
 
@@ -1794,6 +1822,27 @@ def create_admin_blueprint(db, admin_write_audit):
         updater = str(getattr(g, "user_id", "") or "")
         db.set_runtime_config(OPS_INVITE_ACQUIRE_TEXT_KEY, text, updated_by=updater)
         db.set_runtime_config(OPS_INVITE_ACQUIRE_IMAGE_URL_KEY, image_url, updated_by=updater)
+        return jsonify({"status": "ok", "text": text, "image_url": image_url})
+
+    @bp.route("/ops/user_group", methods=["GET"])
+    @admin_required
+    def admin_ops_user_group():
+        return jsonify(_load_user_group_ops_config(db))
+
+    @bp.route("/ops/user_group/update", methods=["POST"])
+    @admin_write_audit(action="admin.ops.user_group.update", target_type="ops_config")
+    @admin_required
+    def admin_ops_user_group_update():
+        data = _json_body()
+        try:
+            text = _normalize_invite_acquire_text(data.get("text"))
+            image_url = _normalize_invite_acquire_image_url(data.get("image_url"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        updater = str(getattr(g, "user_id", "") or "")
+        db.set_runtime_config(OPS_USER_GROUP_TEXT_KEY, text, updated_by=updater)
+        db.set_runtime_config(OPS_USER_GROUP_IMAGE_URL_KEY, image_url, updated_by=updater)
         return jsonify({"status": "ok", "text": text, "image_url": image_url})
 
     @bp.route("/data/snapshots", methods=["GET"])

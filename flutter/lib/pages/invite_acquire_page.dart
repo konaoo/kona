@@ -3,26 +3,54 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 
+enum InviteAcquireScene { invite, userGroup }
+
 class InviteAcquirePage extends StatefulWidget {
-  const InviteAcquirePage({super.key});
+  final InviteAcquireScene scene;
+
+  const InviteAcquirePage({super.key, this.scene = InviteAcquireScene.invite});
 
   @override
   State<InviteAcquirePage> createState() => _InviteAcquirePageState();
 }
 
 class _InviteAcquirePageState extends State<InviteAcquirePage> {
-  static const String _defaultText = '小红书被限制了，进微信群领邀请码。';
   static const String _fallbackAsset = 'assets/images/login_logo_light.png';
 
   final ApiService _api = ApiService();
 
   bool _loading = true;
-  String _text = _defaultText;
+  String _text = '';
   String _imageUrl = '';
+
+  String get _title =>
+      widget.scene == InviteAcquireScene.userGroup ? '咔咔用户群' : '获取邀请码';
+
+  String get _defaultText {
+    if (widget.scene == InviteAcquireScene.userGroup) {
+      return '加入咔咔用户群';
+    }
+    return '小红书被限制了，进微信群领邀请码。';
+  }
+
+  String get _textConfigKey {
+    if (widget.scene == InviteAcquireScene.userGroup) {
+      return 'user_group_text';
+    }
+    return 'invite_acquire_text';
+  }
+
+  String get _imageConfigKey {
+    if (widget.scene == InviteAcquireScene.userGroup) {
+      return 'user_group_image_url';
+    }
+    return 'invite_acquire_image_url';
+  }
 
   @override
   void initState() {
     super.initState();
+    _text = _defaultText;
     _loadConfig();
   }
 
@@ -31,11 +59,10 @@ class _InviteAcquirePageState extends State<InviteAcquirePage> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _text =
-          (payload?['invite_acquire_text']?.toString().trim() ?? '').isNotEmpty
-          ? payload!['invite_acquire_text'].toString().trim()
+      _text = (payload?[_textConfigKey]?.toString().trim() ?? '').isNotEmpty
+          ? payload![_textConfigKey].toString().trim()
           : _defaultText;
-      _imageUrl = payload?['invite_acquire_image_url']?.toString().trim() ?? '';
+      _imageUrl = payload?[_imageConfigKey]?.toString().trim() ?? '';
     });
   }
 
@@ -82,7 +109,7 @@ class _InviteAcquirePageState extends State<InviteAcquirePage> {
       backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
         title: Text(
-          '获取邀请码',
+          _title,
           style: TextStyle(
             color: AppTheme.textPrimary,
             fontSize: 18,

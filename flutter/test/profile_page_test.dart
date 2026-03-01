@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:tool/config/api_config.dart';
 import 'package:tool/models/app_version.dart';
@@ -97,6 +96,7 @@ void main() {
     expect(find.text('问题反馈'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('关于我们'), findsOneWidget);
+    expect(find.text('咔咔用户群'), findsOneWidget);
     expect(find.text('修改密码'), findsNothing);
     expect(find.text('生物识别登录'), findsNothing);
     expect(find.text('退出登录'), findsNothing);
@@ -118,9 +118,14 @@ void main() {
         .widgetList<Text>(settingTexts)
         .toList()
         .indexWhere((w) => w.data == '关于我们');
+    final userGroupIndex = tester
+        .widgetList<Text>(settingTexts)
+        .toList()
+        .indexWhere((w) => w.data == '咔咔用户群');
     expect(personalSettingIndex, lessThan(feedbackIndex));
     expect(feedbackIndex, lessThan(updateIndex));
     expect(updateIndex, lessThan(aboutIndex));
+    expect(aboutIndex, lessThan(userGroupIndex));
 
     await tester.tap(find.text('问题反馈'));
     await tester.pumpAndSettle();
@@ -140,5 +145,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('隐私协议'), findsOneWidget);
     expect(find.text('《第三方信息共享清单》'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('咔咔用户群'));
+    await tester.pumpAndSettle();
+    expect(find.text('咔咔用户群'), findsOneWidget);
   });
 }

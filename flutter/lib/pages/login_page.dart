@@ -321,9 +321,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Future<void> _openInviteAcquireLink() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const InviteAcquirePage()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            const InviteAcquirePage(scene: InviteAcquireScene.invite),
+      ),
+    );
   }
 
   SystemUiOverlayStyle _overlayStyle(bool isDark) {

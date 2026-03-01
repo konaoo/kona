@@ -10,10 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config/api_config.dart';
 import '../config/theme.dart';
 import '../models/app_version.dart';
-import '../services/api_service.dart';
 import 'app_settings_page.dart';
 import '../providers/app_state.dart';
 import 'about_page.dart';
+import 'invite_acquire_page.dart';
 
 /// 我的页面
 typedef ProfileUrlOpener = Future<bool> Function(Uri uri, LaunchMode mode);
@@ -76,9 +76,18 @@ class _ProfilePageState extends State<ProfilePage> {
     ).showSnackBar(const SnackBar(content: Text('无法打开反馈链接')));
   }
 
+  Future<void> _openUserGroupPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            const InviteAcquirePage(scene: InviteAcquireScene.userGroup),
+      ),
+    );
+  }
+
   Future<void> _checkUpdate() async {
     final messenger = ScaffoldMessenger.of(context);
-    
+
     // 显示 Loading
     showDialog(
       context: context,
@@ -89,7 +98,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final apiService = context.read<AppState>().apiService;
       final latestVersion = await apiService.getAppVersion();
-      
+
       final info = await PackageInfo.fromPlatform();
       final currentBuild = int.tryParse(info.buildNumber) ?? 0;
 
@@ -127,7 +136,10 @@ class _ProfilePageState extends State<ProfilePage> {
           backgroundColor: AppTheme.bgElevated,
           title: Text(
             '发现新版本 ${version.version}',
-            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -136,7 +148,10 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 Text(
                   '更新内容：',
-                  style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -150,20 +165,28 @@ class _ProfilePageState extends State<ProfilePage> {
             if (!version.forceUpdate)
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text('暂不更新', style: TextStyle(color: AppTheme.textTertiary)),
+                child: Text(
+                  '暂不更新',
+                  style: TextStyle(color: AppTheme.textTertiary),
+                ),
               ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               onPressed: () async {
                 if (!version.forceUpdate) {
                   Navigator.pop(context);
                 }
                 final uri = Uri.parse(version.downloadUrl);
-                var ok = await _openExternalUrl(uri, LaunchMode.inAppBrowserView);
+                var ok = await _openExternalUrl(
+                  uri,
+                  LaunchMode.inAppBrowserView,
+                );
                 if (!ok) {
                   await _openExternalUrl(uri, LaunchMode.externalApplication);
                 }
@@ -433,6 +456,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   MaterialPageRoute(builder: (context) => const AboutPage()),
                 );
               }),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(
+                Icons.groups_outlined,
+                '咔咔用户群',
+                _openUserGroupPage,
+              ),
             ],
           ),
         );

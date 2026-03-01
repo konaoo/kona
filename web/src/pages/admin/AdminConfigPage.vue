@@ -1,15 +1,15 @@
 <template>
-  <LegacyAdminShell title="运营配置" subtitle="邀请码获取页（App内）">
+  <LegacyAdminShell title="运营配置" subtitle="邀请码页与用户群页（App内）">
     <section class="panel panel-body">
       <div class="head">
-        <h3>页面内容</h3>
-        <button class="btn" :disabled="loading || saving" @click="load">刷新</button>
+        <h3>邀请码页面配置</h3>
+        <button class="btn" :disabled="loadingInvite || savingInvite" @click="loadInvite">刷新</button>
       </div>
 
       <label class="field">
         <span class="label">文案</span>
         <textarea
-          v-model.trim="form.text"
+          v-model.trim="inviteForm.text"
           class="input textarea"
           maxlength="200"
           placeholder="例如：小红书被限制了，进微信群领邀请码。"
@@ -19,7 +19,7 @@
       <label class="field">
         <span class="label">图片 URL</span>
         <input
-          v-model.trim="form.image_url"
+          v-model.trim="inviteForm.image_url"
           class="input"
           type="url"
           maxlength="2048"
@@ -28,28 +28,87 @@
       </label>
 
       <div class="actions">
-        <button class="btn primary" :disabled="loading || saving" @click="save">
-          {{ saving ? '保存中...' : '保存配置' }}
+        <button class="btn primary" :disabled="loadingInvite || savingInvite" @click="saveInvite">
+          {{ savingInvite ? '保存中...' : '保存邀请码配置' }}
         </button>
       </div>
 
-      <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
+      <p v-if="inviteMessage" :class="inviteOk ? 'up' : 'down'">{{ inviteMessage }}</p>
     </section>
 
     <section class="panel panel-body">
-      <h3>预览</h3>
-      <p class="preview-text">{{ previewText }}</p>
+      <h3>邀请码页面预览</h3>
+      <p class="preview-text">{{ invitePreviewText }}</p>
       <div class="preview-image-wrap">
         <img
-          v-if="showPreviewImage"
-          :src="normalizedImageUrl"
+          v-if="showInvitePreviewImage"
+          :src="inviteImageUrl"
           alt="邀请码页面图片预览"
           class="preview-image"
-          @error="imageLoadFailed = true"
-          @load="imageLoadFailed = false"
+          @error="inviteImageLoadFailed = true"
+          @load="inviteImageLoadFailed = false"
         />
         <div v-else class="preview-empty">
-          <span v-if="normalizedImageUrl && imageLoadFailed">图片加载失败，请检查 URL</span>
+          <span v-if="inviteImageUrl && inviteImageLoadFailed">图片加载失败，请检查 URL</span>
+          <span v-else>未配置图片 URL（App 将展示内置占位图）</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel-body">
+      <div class="head">
+        <h3>用户群页面配置</h3>
+        <button class="btn" :disabled="loadingUserGroup || savingUserGroup" @click="loadUserGroup">刷新</button>
+      </div>
+
+      <label class="field">
+        <span class="label">文案</span>
+        <textarea
+          v-model.trim="userGroupForm.text"
+          class="input textarea"
+          maxlength="200"
+          placeholder="例如：加入咔咔用户群"
+        />
+      </label>
+
+      <label class="field">
+        <span class="label">图片 URL</span>
+        <input
+          v-model.trim="userGroupForm.image_url"
+          class="input"
+          type="url"
+          maxlength="2048"
+          placeholder="https://example.com/user-group-qrcode.webp"
+        />
+      </label>
+
+      <div class="actions">
+        <button
+          class="btn primary"
+          :disabled="loadingUserGroup || savingUserGroup"
+          @click="saveUserGroup"
+        >
+          {{ savingUserGroup ? '保存中...' : '保存用户群配置' }}
+        </button>
+      </div>
+
+      <p v-if="userGroupMessage" :class="userGroupOk ? 'up' : 'down'">{{ userGroupMessage }}</p>
+    </section>
+
+    <section class="panel panel-body">
+      <h3>用户群页面预览</h3>
+      <p class="preview-text">{{ userGroupPreviewText }}</p>
+      <div class="preview-image-wrap">
+        <img
+          v-if="showUserGroupPreviewImage"
+          :src="userGroupImageUrl"
+          alt="用户群页面图片预览"
+          class="preview-image"
+          @error="userGroupImageLoadFailed = true"
+          @load="userGroupImageLoadFailed = false"
+        />
+        <div v-else class="preview-empty">
+          <span v-if="userGroupImageUrl && userGroupImageLoadFailed">图片加载失败，请检查 URL</span>
           <span v-else>未配置图片 URL（App 将展示内置占位图）</span>
         </div>
       </div>
@@ -62,67 +121,129 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import { api } from '../../shared/http'
 
-type InviteAcquireConfigPayload = {
+type OpsConfigPayload = {
   text?: string
   image_url?: string
 }
 
-const DEFAULT_TEXT = '小红书被限制了，进微信群领邀请码。'
+const DEFAULT_INVITE_TEXT = '小红书被限制了，进微信群领邀请码。'
+const DEFAULT_USER_GROUP_TEXT = '加入咔咔用户群'
 
-const loading = ref(false)
-const saving = ref(false)
-const message = ref('')
-const ok = ref(true)
-const imageLoadFailed = ref(false)
-const form = reactive<Required<InviteAcquireConfigPayload>>({
+const loadingInvite = ref(false)
+const savingInvite = ref(false)
+const inviteMessage = ref('')
+const inviteOk = ref(true)
+const inviteImageLoadFailed = ref(false)
+const inviteForm = reactive<Required<OpsConfigPayload>>({
   text: '',
   image_url: '',
 })
 
-const normalizedImageUrl = computed(() => String(form.image_url || '').trim())
-const previewText = computed(() => String(form.text || '').trim() || DEFAULT_TEXT)
-const showPreviewImage = computed(() => Boolean(normalizedImageUrl.value) && !imageLoadFailed.value)
+const loadingUserGroup = ref(false)
+const savingUserGroup = ref(false)
+const userGroupMessage = ref('')
+const userGroupOk = ref(true)
+const userGroupImageLoadFailed = ref(false)
+const userGroupForm = reactive<Required<OpsConfigPayload>>({
+  text: '',
+  image_url: '',
+})
 
-function flash(msg: string, success: boolean) {
-  message.value = msg
-  ok.value = success
+const inviteImageUrl = computed(() => String(inviteForm.image_url || '').trim())
+const invitePreviewText = computed(() => String(inviteForm.text || '').trim() || DEFAULT_INVITE_TEXT)
+const showInvitePreviewImage = computed(
+  () => Boolean(inviteImageUrl.value) && !inviteImageLoadFailed.value,
+)
+
+const userGroupImageUrl = computed(() => String(userGroupForm.image_url || '').trim())
+const userGroupPreviewText = computed(
+  () => String(userGroupForm.text || '').trim() || DEFAULT_USER_GROUP_TEXT,
+)
+const showUserGroupPreviewImage = computed(
+  () => Boolean(userGroupImageUrl.value) && !userGroupImageLoadFailed.value,
+)
+
+function flashInvite(msg: string, success: boolean) {
+  inviteMessage.value = msg
+  inviteOk.value = success
 }
 
-async function load() {
-  loading.value = true
-  message.value = ''
-  imageLoadFailed.value = false
+function flashUserGroup(msg: string, success: boolean) {
+  userGroupMessage.value = msg
+  userGroupOk.value = success
+}
+
+async function loadInvite() {
+  loadingInvite.value = true
+  inviteMessage.value = ''
+  inviteImageLoadFailed.value = false
   try {
-    const payload = await api.get<InviteAcquireConfigPayload>('/api/admin/ops/invite_acquire')
-    form.text = String(payload?.text || '')
-    form.image_url = String(payload?.image_url || '')
+    const payload = await api.get<OpsConfigPayload>('/api/admin/ops/invite_acquire')
+    inviteForm.text = String(payload?.text || '')
+    inviteForm.image_url = String(payload?.image_url || '')
   } catch (e) {
-    flash(e instanceof Error ? e.message : '读取配置失败', false)
+    flashInvite(e instanceof Error ? e.message : '读取邀请码配置失败', false)
   } finally {
-    loading.value = false
+    loadingInvite.value = false
   }
 }
 
-async function save() {
-  saving.value = true
-  message.value = ''
+async function saveInvite() {
+  savingInvite.value = true
+  inviteMessage.value = ''
   try {
-    const payload = await api.post<InviteAcquireConfigPayload>('/api/admin/ops/invite_acquire/update', {
-      text: form.text,
-      image_url: form.image_url,
+    const payload = await api.post<OpsConfigPayload>('/api/admin/ops/invite_acquire/update', {
+      text: inviteForm.text,
+      image_url: inviteForm.image_url,
     })
-    form.text = String(payload?.text || '')
-    form.image_url = String(payload?.image_url || '')
-    imageLoadFailed.value = false
-    flash('运营配置已保存', true)
+    inviteForm.text = String(payload?.text || '')
+    inviteForm.image_url = String(payload?.image_url || '')
+    inviteImageLoadFailed.value = false
+    flashInvite('邀请码配置已保存', true)
   } catch (e) {
-    flash(e instanceof Error ? e.message : '保存失败', false)
+    flashInvite(e instanceof Error ? e.message : '邀请码配置保存失败', false)
   } finally {
-    saving.value = false
+    savingInvite.value = false
   }
 }
 
-onMounted(load)
+async function loadUserGroup() {
+  loadingUserGroup.value = true
+  userGroupMessage.value = ''
+  userGroupImageLoadFailed.value = false
+  try {
+    const payload = await api.get<OpsConfigPayload>('/api/admin/ops/user_group')
+    userGroupForm.text = String(payload?.text || '')
+    userGroupForm.image_url = String(payload?.image_url || '')
+  } catch (e) {
+    flashUserGroup(e instanceof Error ? e.message : '读取用户群配置失败', false)
+  } finally {
+    loadingUserGroup.value = false
+  }
+}
+
+async function saveUserGroup() {
+  savingUserGroup.value = true
+  userGroupMessage.value = ''
+  try {
+    const payload = await api.post<OpsConfigPayload>('/api/admin/ops/user_group/update', {
+      text: userGroupForm.text,
+      image_url: userGroupForm.image_url,
+    })
+    userGroupForm.text = String(payload?.text || '')
+    userGroupForm.image_url = String(payload?.image_url || '')
+    userGroupImageLoadFailed.value = false
+    flashUserGroup('用户群配置已保存', true)
+  } catch (e) {
+    flashUserGroup(e instanceof Error ? e.message : '用户群配置保存失败', false)
+  } finally {
+    savingUserGroup.value = false
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadInvite(), loadUserGroup()])
+})
 </script>
 
 <style scoped>

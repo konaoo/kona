@@ -580,6 +580,70 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("image_url", str((resp.get_json() or {}).get("error", "")).lower())
 
+    def test_admin_ops_user_group_requires_auth_and_admin(self):
+        no_auth = self.client.get("/api/admin/ops/user_group")
+        self.assertEqual(no_auth.status_code, 401)
+
+        _seed_user("u_user", "normal_user", is_admin=0, status="active")
+        non_admin = self.client.get(
+            "/api/admin/ops/user_group",
+            headers=_auth_headers("u_user", "normal_user"),
+        )
+        self.assertEqual(non_admin.status_code, 403)
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+
+    def test_admin_ops_user_group_update_persists_and_writes_audit(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        payload = {
+            "text": "加入咔咔用户群",
+            "image_url": "https://example.com/user_group_qr.png",
+        }
+        update_resp = self.client.post(
+            "/api/admin/ops/user_group/update",
+            json=payload,
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        body = update_resp.get_json() or {}
+        self.assertEqual(body.get("status"), "ok")
+        self.assertEqual(body.get("text"), payload["text"])
+        self.assertEqual(body.get("image_url"), payload["image_url"])
+
+        get_resp = self.client.get(
+            "/api/admin/ops/user_group",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(get_resp.status_code, 200)
+        current = get_resp.get_json() or {}
+        self.assertEqual(current.get("text"), payload["text"])
+        self.assertEqual(current.get("image_url"), payload["image_url"])
+
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.user_group.text"),
+            payload["text"],
+        )
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.user_group.image_url"),
+            payload["image_url"],
+        )
+
+        row = self._latest_audit()
+        self.assertEqual(row["action"], "admin.ops.user_group.update")
+        self.assertEqual(row["status_code"], 200)
+
+    def test_admin_ops_user_group_update_rejects_invalid_image_url(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/ops/user_group/update",
+            json={
+                "text": "用户群文案",
+                "image_url": "ftp://example.com/a.png",
+            },
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("image_url", str((resp.get_json() or {}).get("error", "")).lower())
+
     def test_admin_cleanup_weekend_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         conn = app_module.db.get_connection()

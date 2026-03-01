@@ -113,6 +113,8 @@ _PASSWORD_CHANGE_ALLOWED_PATHS = {
 }
 _RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 _RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
+_RUNTIME_CFG_USER_GROUP_TEXT_KEY = "ops.user_group.text"
+_RUNTIME_CFG_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
 
 
 def _client_ip() -> str:
@@ -1040,6 +1042,14 @@ def get_web_config():
         _RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY,
         config.INVITE_ACQUIRE_IMAGE_URL,
     ).strip()
+    user_group_text = _read_runtime_config_or_default(
+        _RUNTIME_CFG_USER_GROUP_TEXT_KEY,
+        config.USER_GROUP_TEXT,
+    ).strip() or config.USER_GROUP_TEXT
+    user_group_image_url = _read_runtime_config_or_default(
+        _RUNTIME_CFG_USER_GROUP_IMAGE_URL_KEY,
+        config.USER_GROUP_IMAGE_URL,
+    ).strip()
     
     # 最后退化为检查本地是否存在apk文件
     if not apk_download_url and config.WEB_APK_LOCAL_PATH.exists():
@@ -1052,6 +1062,8 @@ def get_web_config():
             "app_version": APP_VERSION,
             "invite_acquire_text": invite_acquire_text,
             "invite_acquire_image_url": invite_acquire_image_url,
+            "user_group_text": user_group_text,
+            "user_group_image_url": user_group_image_url,
         }
     )
 

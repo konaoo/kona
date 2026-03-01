@@ -53,6 +53,8 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIn('apk_download_url', data)
         self.assertIn('invite_acquire_text', data)
         self.assertIn('invite_acquire_image_url', data)
+        self.assertIn('user_group_text', data)
+        self.assertIn('user_group_image_url', data)
 
     def test_web_config_fallbacks_to_local_apk_route(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,6 +86,19 @@ class ApiBaselineTests(unittest.TestCase):
         data = resp.get_json() or {}
         self.assertEqual(data.get("invite_acquire_text"), "进微信群领取邀请码")
         self.assertEqual(data.get("invite_acquire_image_url"), "https://example.com/invite.png")
+
+    def test_web_config_prefers_runtime_user_group_config(self):
+        app_module.db.set_runtime_config("ops.user_group.text", "加入咔咔用户群", updated_by="test")
+        app_module.db.set_runtime_config(
+            "ops.user_group.image_url",
+            "https://example.com/user_group.webp",
+            updated_by="test",
+        )
+        resp = self.client.get('/api/web/config')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertEqual(data.get("user_group_text"), "加入咔咔用户群")
+        self.assertEqual(data.get("user_group_image_url"), "https://example.com/user_group.webp")
 
     def test_download_apk_not_found(self):
         with tempfile.TemporaryDirectory() as tmp:
