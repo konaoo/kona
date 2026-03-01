@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,14 +13,22 @@ import 'app_settings_page.dart';
 import '../providers/app_state.dart';
 
 /// 我的页面
+typedef ProfileUrlOpener = Future<bool> Function(Uri uri, LaunchMode mode);
+typedef ProfileVersionLoader = Future<String> Function();
+typedef ProfileNowProvider = DateTime Function();
+
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
-  final Future<bool> Function(Uri uri)? externalUrlOpener;
+  final ProfileUrlOpener? externalUrlOpener;
+  final ProfileVersionLoader? versionLoader;
+  final ProfileNowProvider? nowProvider;
 
   const ProfilePage({
     super.key,
     required this.onLogout,
     this.externalUrlOpener,
+    this.versionLoader,
+    this.nowProvider,
   });
 
   @override
@@ -29,12 +38,23 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   bool _profileLoaded = false;
+  late final Future<String> _appVersionFuture = _loadAppVersion();
 
-  Future<bool> _openExternalUrl(Uri uri) {
+  Future<String> _loadAppVersion() async {
+    if (widget.versionLoader != null) return widget.versionLoader!();
+    final info = await PackageInfo.fromPlatform();
+    final version = info.version.trim();
+    final build = info.buildNumber.trim();
+    if (version.isEmpty) return '未知版本';
+    if (build.isEmpty) return 'v$version';
+    return 'v$version+$build';
+  }
+
+  Future<bool> _openExternalUrl(Uri uri, LaunchMode mode) {
     if (widget.externalUrlOpener != null) {
-      return widget.externalUrlOpener!(uri);
+      return widget.externalUrlOpener!(uri, mode);
     }
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+    return launchUrl(uri, mode: mode);
   }
 
   Future<void> _openFeedback() async {
@@ -46,11 +66,128 @@ class _ProfilePageState extends State<ProfilePage> {
       ).showSnackBar(const SnackBar(content: Text('反馈链接配置无效')));
       return;
     }
-    final ok = await _openExternalUrl(uri);
+    final ok = await _openExternalUrl(uri, LaunchMode.externalApplication);
     if (!mounted || ok) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('无法打开反馈链接')));
+  }
+
+  Future<void> _checkUpdate() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.parse(ApiConfig.apkDownloadUrl);
+    var ok = await _openExternalUrl(uri, LaunchMode.inAppBrowserView);
+    if (!ok) {
+      ok = await _openExternalUrl(uri, LaunchMode.externalApplication);
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(ok ? '已打开应用内下载页面，请按提示完成安装' : '无法打开下载链接，请稍后再试')),
+    );
+  }
+
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgElevated,
+        title: Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
+        content: FutureBuilder<String>(
+          future: _appVersionFuture,
+          builder: (context, snapshot) {
+            final versionText = snapshot.data ?? '读取版本中...';
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgCard,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.account_balance_wallet,
+                        size: 28,
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                    const SizedBox(width: Spacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '咔咔记账',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '当前版本：$versionText',
+                            style: TextStyle(color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Spacing.md),
+                Text(
+                  '咔咔记账是一个面向长期投资者的资产记录工具，帮助你把银行卡、A股/港股/美股、基金、房产和负债放到一个页面里统一管理。',
+                  style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+                ),
+                const SizedBox(height: Spacing.sm),
+                Text(
+                  '官网：kakawallet.fun',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '© 2026 KakaWallet',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('我知道了', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  DateTime? _parseCreatedAtAsBeijingDate(String? raw) {
+    final text = raw?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final noZonePattern = RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$');
+    final normalized = noZonePattern.hasMatch(text)
+        ? '${text.replaceFirst(' ', 'T')}Z'
+        : text;
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed == null) return null;
+    final beijing = parsed.toUtc().add(const Duration(hours: 8));
+    return DateTime(beijing.year, beijing.month, beijing.day);
+  }
+
+  int? _recordDaysTextValue(String? createdAtRaw) {
+    final registeredDate = _parseCreatedAtAsBeijingDate(createdAtRaw);
+    if (registeredDate == null) return null;
+    final now = widget.nowProvider?.call() ?? DateTime.now();
+    final nowBj = now.toUtc().add(const Duration(hours: 8));
+    final todayBjDate = DateTime(nowBj.year, nowBj.month, nowBj.day);
+    final days = todayBjDate.difference(registeredDate).inDays + 1;
+    return days < 1 ? 1 : days;
   }
 
   @override
@@ -233,6 +370,24 @@ class _ProfilePageState extends State<ProfilePage> {
                               color: AppTheme.textPrimary,
                             ),
                           ),
+                          Builder(
+                            builder: (context) {
+                              final days = _recordDaysTextValue(
+                                appState.createdAtRaw,
+                              );
+                              if (days == null) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  '已在咔咔记录 $days 天',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -247,7 +402,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: Spacing.lg),
 
               // 设置项
-              _buildSettingItem(Icons.settings, '系统设置', () {
+              _buildSettingItem(Icons.settings, '个人设置', () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) =>
@@ -257,6 +412,14 @@ class _ProfilePageState extends State<ProfilePage> {
               }),
               const SizedBox(height: Spacing.sm),
               _buildSettingItem(Icons.feedback_outlined, '问题反馈', _openFeedback),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(
+                Icons.system_update_outlined,
+                '检查更新',
+                _checkUpdate,
+              ),
+              const SizedBox(height: Spacing.sm),
+              _buildSettingItem(Icons.info_outline, '关于我们', _showAboutDialog),
             ],
           ),
         );

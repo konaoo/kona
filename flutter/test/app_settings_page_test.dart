@@ -26,7 +26,6 @@ void main() {
     );
 
     var loggedOut = false;
-
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
@@ -44,14 +43,10 @@ void main() {
     expect(find.text('切换主题'), findsOneWidget);
     expect(find.text('生物识别登录'), findsOneWidget);
     expect(find.text('修改密码'), findsOneWidget);
-    expect(find.text('检查更新'), findsOneWidget);
-    expect(find.text('关于我们'), findsOneWidget);
+    expect(find.text('检查更新'), findsNothing);
+    expect(find.text('关于我们'), findsNothing);
     expect(find.text('退出登录'), findsOneWidget);
     expect(find.text('问题反馈'), findsNothing);
-
-    await tester.tap(find.text('检查更新'));
-    await tester.pump();
-    expect(find.text('检查更新功能建设中，敬请期待'), findsOneWidget);
 
     await tester.tap(find.text('退出登录'));
     await tester.pumpAndSettle();

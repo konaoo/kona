@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 
@@ -81,61 +80,6 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(ok ? '密码修改成功' : '密码修改失败，请检查原密码')));
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('关于我们', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppTheme.bgCard,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                Icons.account_balance_wallet,
-                size: 32,
-                color: AppTheme.accent,
-              ),
-            ),
-            const SizedBox(height: Spacing.md),
-            Text(
-              '咔咔记账',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            Text('v1.0.0', style: TextStyle(color: AppTheme.textSecondary)),
-            const SizedBox(height: 10),
-            Text(
-              '专注于个人资产管理的极简应用。',
-              style: TextStyle(color: AppTheme.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '© 2026 Kona Tool',
-              style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('确定', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildSettingItem({
@@ -255,22 +199,6 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 icon: Icons.lock_reset,
                 title: '修改密码',
                 onTap: () => _changePassword(appState),
-              ),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(
-                icon: Icons.system_update_outlined,
-                title: '检查更新',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('检查更新功能建设中，敬请期待')),
-                  );
-                },
-              ),
-              const SizedBox(height: Spacing.sm),
-              _buildSettingItem(
-                icon: Icons.info_outline,
-                title: '关于我们',
-                onTap: _showAboutDialog,
               ),
               const SizedBox(height: 40),
               SizedBox(

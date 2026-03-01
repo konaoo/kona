@@ -90,6 +90,7 @@ class AppState extends ChangeNotifier {
   int? _userNumber;
   String? _nickname;
   String? _avatar;
+  String? _createdAtRaw;
   bool _biometricEnabled = false;
   String? _authErrorMessage;
   AuthLogoutMode _logoutMode = AuthLogoutMode.normal;
@@ -185,6 +186,7 @@ class AppState extends ChangeNotifier {
   int? get userNumber => _userNumber;
   String? get nickname => _nickname;
   String? get avatar => _avatar;
+  String? get createdAtRaw => _createdAtRaw;
   bool get biometricEnabled => _biometricEnabled;
   String? get authErrorMessage => _authErrorMessage;
   AuthLogoutMode get logoutMode => _logoutMode;
@@ -524,15 +526,16 @@ class AppState extends ChangeNotifier {
       'user_number': _userNumber,
       'nickname': _nickname ?? '',
       'avatar': _avatar ?? '',
+      'created_at': _createdAtRaw ?? '',
       'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
     };
-    final envelope = _buildEnvelope(
-      data: data,
-      staleAfter: _userProfileTtl,
-    );
+    final envelope = _buildEnvelope(data: data, staleAfter: _userProfileTtl);
 
     for (final scope in scopes) {
-      await _cache.setJson(_cacheKeyForScope(scope, _userProfileDomain), envelope);
+      await _cache.setJson(
+        _cacheKeyForScope(scope, _userProfileDomain),
+        envelope,
+      );
     }
   }
 
@@ -556,6 +559,7 @@ class AppState extends ChangeNotifier {
       final cachedUserId = _nullableTrimmedString(data['user_id']);
       final cachedNickname = _nullableTrimmedString(data['nickname']);
       final cachedAvatar = _nullableTrimmedString(data['avatar']);
+      final cachedCreatedAt = _nullableTrimmedString(data['created_at']);
       final userNumberRaw = data['user_number'];
       final cachedUserNumber = userNumberRaw is num
           ? userNumberRaw.toInt()
@@ -569,6 +573,7 @@ class AppState extends ChangeNotifier {
       }
       _nickname = cachedNickname;
       _avatar = cachedAvatar;
+      _createdAtRaw = cachedCreatedAt;
       _userNumber = cachedUserNumber;
       return;
     }
@@ -1030,9 +1035,10 @@ class AppState extends ChangeNotifier {
     _nickname = user.containsKey('nickname')
         ? user['nickname']?.toString()
         : _nickname;
-    _avatar = user.containsKey('avatar')
-        ? user['avatar']?.toString()
-        : _avatar;
+    _avatar = user.containsKey('avatar') ? user['avatar']?.toString() : _avatar;
+    _createdAtRaw = user.containsKey('created_at')
+        ? user['created_at']?.toString()
+        : _createdAtRaw;
     _api.setToken(accessToken);
     _sessionBootState = SessionBootState.authenticated;
     _logoutMode = AuthLogoutMode.normal;
@@ -1426,6 +1432,7 @@ class AppState extends ChangeNotifier {
       _username = profile['username']?.toString() ?? _username;
       _nickname = profile['nickname']?.toString();
       _avatar = profile['avatar']?.toString();
+      _createdAtRaw = profile['created_at']?.toString() ?? _createdAtRaw;
       await _persistUserProfileCache();
       notifyListeners();
       return true;
@@ -1440,6 +1447,7 @@ class AppState extends ChangeNotifier {
       _username = result['username']?.toString() ?? _username;
       _nickname = result['nickname']?.toString();
       _avatar = result['avatar']?.toString();
+      _createdAtRaw = result['created_at']?.toString() ?? _createdAtRaw;
       await _persistUserProfileCache();
       notifyListeners();
       return true;
@@ -1456,6 +1464,7 @@ class AppState extends ChangeNotifier {
     int? userNumber,
     String? nickname,
     String? avatar,
+    String? createdAtRaw,
   }) async {
     _isLoggedIn = true;
     _token = token;
@@ -1465,6 +1474,7 @@ class AppState extends ChangeNotifier {
     _userNumber = userNumber;
     _nickname = nickname;
     _avatar = avatar;
+    _createdAtRaw = createdAtRaw;
     _api.setToken(token);
     _sessionBootState = SessionBootState.authenticated;
     _logoutMode = AuthLogoutMode.normal;
@@ -1511,6 +1521,7 @@ class AppState extends ChangeNotifier {
     _userNumber = null;
     _nickname = null;
     _avatar = null;
+    _createdAtRaw = null;
     _api.clearToken();
     _portfolio = [];
     _prices = {};
@@ -1672,6 +1683,7 @@ class AppState extends ChangeNotifier {
     }
     _nickname = profile['nickname']?.toString();
     _avatar = profile['avatar']?.toString();
+    _createdAtRaw = profile['created_at']?.toString() ?? _createdAtRaw;
     await _persistUserProfileCache();
     _isLoggedIn = true;
     _sessionBootState = SessionBootState.authenticated;
@@ -1689,6 +1701,7 @@ class AppState extends ChangeNotifier {
     _userNumber = null;
     _nickname = null;
     _avatar = null;
+    _createdAtRaw = null;
     _logoutMode = AuthLogoutMode.normal;
     _sessionBootState = SessionBootState.unauthenticated;
     _api.clearToken();
@@ -2766,9 +2779,22 @@ class AppState extends ChangeNotifier {
     }
     if (cashAssetId == -999) {
       if (_portfolioIndexByCode(code) >= 0) {
-        return buyInvestment(code: code, price: price, qty: qty, awaitRefresh: awaitRefresh);
+        return buyInvestment(
+          code: code,
+          price: price,
+          qty: qty,
+          awaitRefresh: awaitRefresh,
+        );
       } else {
-        return addInvestment(code: code, name: name, price: price, qty: qty, curr: curr, assetType: assetType, awaitRefresh: awaitRefresh);
+        return addInvestment(
+          code: code,
+          name: name,
+          price: price,
+          qty: qty,
+          curr: curr,
+          assetType: assetType,
+          awaitRefresh: awaitRefresh,
+        );
       }
     }
     if (cashAssetId <= 0) {
@@ -2881,7 +2907,12 @@ class AppState extends ChangeNotifier {
     bool awaitRefresh = true,
   }) async {
     if (cashAssetId == -999) {
-      return sellInvestment(code: code, price: price, qty: qty, awaitRefresh: awaitRefresh);
+      return sellInvestment(
+        code: code,
+        price: price,
+        qty: qty,
+        awaitRefresh: awaitRefresh,
+      );
     }
     final index = _portfolioIndexByCode(code);
     if (index < 0) return const AssetActionResult.failure('未找到该持仓');
