@@ -1,6 +1,7 @@
 # 咔咔记账 Web（Vue3 + Vite）
 
 本目录是咔咔记账独立 Web 前端工程，包含三部分：
+> 当前生产入口仅 IP：`http://114.132.238.12`；域名 `kakawallet.fun` / `www.kakawallet.fun` 已临时禁用。
 
 - 门户页：`/`（公开主页）
 - 业务端：`/app/*`
@@ -179,8 +180,8 @@ scp -i ~/.ssh/tencent_kona_key \
 验证：
 
 ```bash
-curl -I https://kakawallet.fun/download/apk
-curl https://kakawallet.fun/api/web/config
+curl -I http://114.132.238.12/download/apk
+curl http://114.132.238.12/api/web/config
 ```
 
 ### 6.2 管理端（`/admin/*`）

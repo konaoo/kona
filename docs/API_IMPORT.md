@@ -1,6 +1,7 @@
 # Import OpenAPI to Postman / Apifox
 
 This project includes an OpenAPI file at:
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 ```
 docs/openapi.yaml
 ```

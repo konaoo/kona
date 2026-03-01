@@ -1,6 +1,7 @@
 # Deployment
 
 This project deploys the **backend** (kona_tool) via GitHub Actions.
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 
 > Current production (as of 2026-03-01): **Tencent Cloud Lighthouse**
 > - Public entry: `http://114.132.238.12`

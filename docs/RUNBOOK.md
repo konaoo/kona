@@ -1,6 +1,7 @@
 # Runbook (Local + Production Quick Checks)
 
 This guide covers how to run the backend and frontend locally, and common checks.
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 
 ---
 

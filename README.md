@@ -1,6 +1,7 @@
 # 咔咔记账（Kona）
 
 个人资产与投资管理系统，支持多资产类型管理、收益分析、后台运营与线上部署。
+> 当前生产入口仅 IP：`http://114.132.238.12`；域名 `kakawallet.fun` / `www.kakawallet.fun` 已临时禁用。
 
 ---
 
@@ -87,7 +88,7 @@ npm run build
 - IP 直连：`http://114.132.238.12/`
 - 业务端：`http://114.132.238.12/app/login`
 - 管理端：`http://114.132.238.12/admin/login`
-- 域名：`https://kakawallet.fun`（注意：若大陆接入未完成备案，可能出现拦截/握手失败）
+- 域名：已临时禁用（备案完成后再评估恢复）
 
 ---
 
@@ -134,7 +135,7 @@ Web 专项：
 4. 协作执行特例（Web + 管理后台 Admin）：默认“完成即直推 `main`”，推送后由你验收；Flutter 与非 Admin 后端改动仍按常规确认流程执行。
 5. APK 对外下载采用固定文件名覆盖发布，不改下载链接；固定路径：
    - 服务器：`/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk`
-   - 下载链接：`https://kakawallet.fun/download/apk`
+   - 下载链接：`http://114.132.238.12/download/apk`
 
 客户端版本号规范（新增）：
 
@@ -165,7 +166,7 @@ scp -i ~/.ssh/tencent_kona_key \
 上传后快速校验（建议每次都跑）：
 
 ```bash
-curl -I https://kakawallet.fun/download/apk
+curl -I http://114.132.238.12/download/apk
 ```
 
 `CHANGELOG.md` 条目模板：

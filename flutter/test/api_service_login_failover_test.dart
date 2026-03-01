@@ -18,14 +18,14 @@ void main() {
   test('resolveLoginBaseUrls removes duplicates and keeps primary first', () {
     final resolved = ApiService.resolveLoginBaseUrls(
       candidatesOverride: <String>[
-        'https://www.kakawallet.fun/',
-        'https://www.kakawallet.fun',
+        'http://114.132.238.12/',
+        'http://114.132.238.12',
       ],
     );
     expect(resolved.first, ApiConfig.baseUrl);
-    expect(resolved, contains('https://www.kakawallet.fun'));
-    // baseUrl (http://114.132.238.12) + deduplicated www = 2 entries
-    expect(resolved.length, 2);
+    expect(resolved, <String>['http://114.132.238.12']);
+    // baseUrl + deduplicated same ip = 1 entry
+    expect(resolved.length, 1);
   });
 
   test(
@@ -53,16 +53,16 @@ void main() {
         password: 'pw',
         baseUrlCandidatesOverride: const <String>[
           'http://114.132.238.12',
-          'https://www.kakawallet.fun',
-          'https://backup.kakawallet.fun',
+          'http://114.132.238.12:80',
+          'http://114.132.238.12:52345',
         ],
       );
 
       expect(result?['access_token'], 'access-ok');
       expect(calledEndpoints, <String>[
         ApiConfig.login,
-        'https://www.kakawallet.fun${ApiConfig.login}',
-        'https://backup.kakawallet.fun${ApiConfig.login}',
+        'http://114.132.238.12:80${ApiConfig.login}',
+        'http://114.132.238.12:52345${ApiConfig.login}',
       ]);
     },
   );
@@ -84,8 +84,8 @@ void main() {
         username: 'konae',
         password: 'bad',
         baseUrlCandidatesOverride: const <String>[
-          'https://kakawallet.fun',
-          'https://www.kakawallet.fun',
+          'http://114.132.238.12',
+          'http://114.132.238.12:80',
         ],
       ),
       throwsA(isA<ApiException>()),

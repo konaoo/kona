@@ -1,6 +1,7 @@
 # Project Overview (Quick Reference)
 
 This is a compact, durable summary of the project so a new machine or a fresh session can quickly recover context.
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 
 ---
 

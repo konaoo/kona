@@ -1,6 +1,7 @@
 # Frontend Setup (Flutter)
 
 This guide explains how to set up and run the Flutter frontend from a new computer.
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 
 ---
 
@@ -46,7 +47,7 @@ flutter/lib/config/api_config.dart
 
 For local development:
 ```
-http://127.0.0.1:5003
+http://127.0.0.1:52345
 ```
 
 For production (current):

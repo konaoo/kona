@@ -1,6 +1,7 @@
 # Maintenance Guide
 
 This guide covers routine maintenance, backups, and troubleshooting.
+> Current production entry uses IP only: `http://114.132.238.12`; domains `kakawallet.fun` / `www.kakawallet.fun` are temporarily disabled.
 
 ---
 
