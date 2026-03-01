@@ -589,6 +589,16 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> getWebConfig() async {
+    try {
+      final data = await _get(ApiConfig.webConfig);
+      return _ensureMapResponse(data, actionLabel: '读取Web配置');
+    } catch (e) {
+      debugPrint('获取 Web 配置失败: $e');
+      return null;
+    }
+  }
+
   // ============================================================
   // 资产相关
   // ============================================================

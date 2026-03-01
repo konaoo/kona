@@ -43,6 +43,7 @@ const nav = [
   { path: '/admin/overview', label: '概览' },
   { path: '/admin/users', label: '用户' },
   { path: '/admin/invites', label: '邀请码' },
+  { path: '/admin/config', label: '运营配置' },
   { path: '/admin/apis', label: '接口策略' },
   { path: '/admin/audit', label: '审计' },
 ]

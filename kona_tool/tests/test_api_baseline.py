@@ -35,6 +35,7 @@ class ApiBaselineTests(unittest.TestCase):
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM daily_snapshots")
+        cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
         conn.close()
 
@@ -50,12 +51,18 @@ class ApiBaselineTests(unittest.TestCase):
         data = resp.get_json() or {}
         self.assertIn('portal_title', data)
         self.assertIn('apk_download_url', data)
+        self.assertIn('invite_acquire_text', data)
+        self.assertIn('invite_acquire_image_url', data)
 
     def test_web_config_fallbacks_to_local_apk_route(self):
         with tempfile.TemporaryDirectory() as tmp:
             apk_path = Path(tmp) / "kaka-latest-release.apk"
             apk_path.write_bytes(b"apk")
             with patch.object(app_module.config, "WEB_APK_DOWNLOAD_URL", ""), patch.object(
+                app_module.config,
+                "CLIENT_APP_DOWNLOAD_URL",
+                "",
+            ), patch.object(
                 app_module.config,
                 "WEB_APK_LOCAL_PATH",
                 apk_path,
@@ -64,6 +71,19 @@ class ApiBaselineTests(unittest.TestCase):
                 self.assertEqual(resp.status_code, 200)
                 data = resp.get_json() or {}
                 self.assertEqual(data.get("apk_download_url"), "/download/apk")
+
+    def test_web_config_prefers_runtime_invite_acquire_config(self):
+        app_module.db.set_runtime_config("ops.invite_acquire.text", "进微信群领取邀请码", updated_by="test")
+        app_module.db.set_runtime_config(
+            "ops.invite_acquire.image_url",
+            "https://example.com/invite.png",
+            updated_by="test",
+        )
+        resp = self.client.get('/api/web/config')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertEqual(data.get("invite_acquire_text"), "进微信群领取邀请码")
+        self.assertEqual(data.get("invite_acquire_image_url"), "https://example.com/invite.png")
 
     def test_download_apk_not_found(self):
         with tempfile.TemporaryDirectory() as tmp:

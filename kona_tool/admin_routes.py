@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from flask import Blueprint, jsonify, request, g, current_app, make_response
 
@@ -145,6 +146,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.apis.policies.batch_update": "批量更新接口策略",
     "admin.invites.generate": "生成邀请码",
     "admin.invites.revoke": "作废邀请码",
+    "admin.ops.invite_acquire.update": "更新运营配置（邀请码获取页）",
 }
 
 ERROR_LABELS: Dict[str, str] = {
@@ -203,6 +205,10 @@ _API_TEST_PROVIDER_LABELS: Dict[str, str] = {
     "eastmoney_quote": "东方财富行情",
     "forex_rate": "汇率",
 }
+OPS_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
+OPS_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
+OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH = 200
+OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH = 2048
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -285,6 +291,37 @@ def _get_whitelist_configs() -> List[Dict[str, Any]]:
 def _json_body() -> Dict[str, Any]:
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else {}
+
+
+def _normalize_invite_acquire_text(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text or len(text) > OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH:
+        raise ValueError(f"text must be 1-{OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH} characters")
+    return text
+
+
+def _normalize_invite_acquire_image_url(raw: Any) -> str:
+    url = str(raw or "").strip()
+    if not url:
+        return ""
+    if len(url) > OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH:
+        raise ValueError(f"image_url must be <= {OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH} characters")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("image_url must start with http:// or https://")
+    return url
+
+
+def _load_invite_acquire_ops_config(db) -> Dict[str, str]:
+    text_raw = db.get_runtime_config(OPS_INVITE_ACQUIRE_TEXT_KEY)
+    image_url_raw = db.get_runtime_config(OPS_INVITE_ACQUIRE_IMAGE_URL_KEY)
+
+    text = str(text_raw).strip() if text_raw is not None else str(config.INVITE_ACQUIRE_TEXT).strip()
+    if not text:
+        text = str(config.INVITE_ACQUIRE_TEXT).strip() or "小红书被限制了，进微信群领邀请码。"
+
+    image_url = str(image_url_raw).strip() if image_url_raw is not None else str(config.INVITE_ACQUIRE_IMAGE_URL).strip()
+    return {"text": text, "image_url": image_url}
 
 
 def _admin_cache_ttl_seconds() -> int:
@@ -1737,6 +1774,27 @@ def create_admin_blueprint(db, admin_write_audit):
             _RUNTIME_CONFIG_OVERRIDES.pop(cfg_key, None)
             updated_items.append({"key": cfg_key, "value": default_value})
         return jsonify({"status": "ok", "updated": updated_items})
+
+    @bp.route("/ops/invite_acquire", methods=["GET"])
+    @admin_required
+    def admin_ops_invite_acquire():
+        return jsonify(_load_invite_acquire_ops_config(db))
+
+    @bp.route("/ops/invite_acquire/update", methods=["POST"])
+    @admin_write_audit(action="admin.ops.invite_acquire.update", target_type="ops_config")
+    @admin_required
+    def admin_ops_invite_acquire_update():
+        data = _json_body()
+        try:
+            text = _normalize_invite_acquire_text(data.get("text"))
+            image_url = _normalize_invite_acquire_image_url(data.get("image_url"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        updater = str(getattr(g, "user_id", "") or "")
+        db.set_runtime_config(OPS_INVITE_ACQUIRE_TEXT_KEY, text, updated_by=updater)
+        db.set_runtime_config(OPS_INVITE_ACQUIRE_IMAGE_URL_KEY, image_url, updated_by=updater)
+        return jsonify({"status": "ok", "text": text, "image_url": image_url})
 
     @bp.route("/data/snapshots", methods=["GET"])
     @admin_required

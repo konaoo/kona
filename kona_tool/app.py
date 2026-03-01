@@ -111,6 +111,8 @@ _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/logout",
     "/api/auth/me",
 }
+_RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
+_RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 
 
 def _client_ip() -> str:
@@ -133,6 +135,18 @@ def _resolve_ip_region(ip: str) -> str:
     except Exception as exc:
         logger.info("IP region lookup failed ip=%s error=%s", safe_ip, exc)
         return ""
+
+
+def _read_runtime_config_or_default(key: str, default_value: str) -> str:
+    """读取运行时配置，缺失时回退默认值。"""
+    try:
+        value = db.get_runtime_config(key)
+    except Exception as exc:
+        logger.warning("Failed to read runtime config key=%s error=%s", key, exc)
+        return str(default_value or "")
+    if value is None:
+        return str(default_value or "")
+    return str(value)
 
 
 def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -> Dict[str, str]:
@@ -1018,6 +1032,14 @@ def get_web_config():
     """公开 Web 门户配置（无需鉴权）。"""
     # 优先使用专门的WEB_APK_DOWNLOAD_URL，若无则使用与App检查更新一致的CLIENT_APP_DOWNLOAD_URL
     apk_download_url = config.WEB_APK_DOWNLOAD_URL or config.CLIENT_APP_DOWNLOAD_URL
+    invite_acquire_text = _read_runtime_config_or_default(
+        _RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY,
+        config.INVITE_ACQUIRE_TEXT,
+    ).strip() or config.INVITE_ACQUIRE_TEXT
+    invite_acquire_image_url = _read_runtime_config_or_default(
+        _RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY,
+        config.INVITE_ACQUIRE_IMAGE_URL,
+    ).strip()
     
     # 最后退化为检查本地是否存在apk文件
     if not apk_download_url and config.WEB_APK_LOCAL_PATH.exists():
@@ -1028,6 +1050,8 @@ def get_web_config():
             "portal_title": config.WEB_PORTAL_TITLE,
             "apk_download_url": apk_download_url,
             "app_version": APP_VERSION,
+            "invite_acquire_text": invite_acquire_text,
+            "invite_acquire_image_url": invite_acquire_image_url,
         }
     )
 

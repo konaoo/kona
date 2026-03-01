@@ -27,8 +27,8 @@ DEBUG = False
 APP_VERSION = "v12.0.0"  # 多用户版本
 
 # 客户端 App 更新配置 (Flutter端检查更新使用)
-CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.19").strip()
-CLIENT_APP_BUILD_NUMBER = int(os.getenv("CLIENT_APP_BUILD_NUMBER", "19"))
+CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.20").strip()
+CLIENT_APP_BUILD_NUMBER = int(os.getenv("CLIENT_APP_BUILD_NUMBER", "20"))
 CLIENT_APP_RELEASE_NOTES = os.getenv(
     "CLIENT_APP_RELEASE_NOTES",
     "1. 修复网络异常问题\n2. 优化升级流程"
@@ -48,6 +48,14 @@ WEB_APK_FILENAME = os.getenv("WEB_APK_FILENAME", "kaka-latest-release.apk").stri
 WEB_APK_LOCAL_PATH = BASE_DIR / "static" / "downloads" / WEB_APK_FILENAME
 WEB_PORTAL_TITLE = os.getenv("WEB_PORTAL_TITLE", "Kona Portfolio").strip() or "Kona Portfolio"
 WEB_ENABLE_LEGACY_REDIRECT = os.getenv("WEB_ENABLE_LEGACY_REDIRECT", "true").lower() != "false"
+INVITE_ACQUIRE_TEXT = os.getenv(
+    "INVITE_ACQUIRE_TEXT",
+    "小红书被限制了，进微信群领邀请码。",
+).strip() or "小红书被限制了，进微信群领邀请码。"
+INVITE_ACQUIRE_IMAGE_URL = os.getenv(
+    "INVITE_ACQUIRE_IMAGE_URL",
+    "",
+).strip()
 
 # JWT 认证配置（必须显式配置，缺失即启动失败）
 JWT_SECRET = os.getenv("JWT_SECRET")

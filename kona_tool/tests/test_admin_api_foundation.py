@@ -60,6 +60,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
+        cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
         conn.close()
 
@@ -514,6 +515,70 @@ class AdminApiFoundationTests(unittest.TestCase):
         row = self._latest_audit()
         self.assertEqual(row["action"], "admin.config.update")
         self.assertEqual(row["status_code"], 200)
+
+    def test_admin_ops_invite_acquire_requires_auth_and_admin(self):
+        no_auth = self.client.get("/api/admin/ops/invite_acquire")
+        self.assertEqual(no_auth.status_code, 401)
+
+        _seed_user("u_user", "normal_user", is_admin=0, status="active")
+        non_admin = self.client.get(
+            "/api/admin/ops/invite_acquire",
+            headers=_auth_headers("u_user", "normal_user"),
+        )
+        self.assertEqual(non_admin.status_code, 403)
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+
+    def test_admin_ops_invite_acquire_update_persists_and_writes_audit(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        payload = {
+            "text": "小红书被限制了，进微信群领邀请码。",
+            "image_url": "https://example.com/invite_qr.png",
+        }
+        update_resp = self.client.post(
+            "/api/admin/ops/invite_acquire/update",
+            json=payload,
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        body = update_resp.get_json() or {}
+        self.assertEqual(body.get("status"), "ok")
+        self.assertEqual(body.get("text"), payload["text"])
+        self.assertEqual(body.get("image_url"), payload["image_url"])
+
+        get_resp = self.client.get(
+            "/api/admin/ops/invite_acquire",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(get_resp.status_code, 200)
+        current = get_resp.get_json() or {}
+        self.assertEqual(current.get("text"), payload["text"])
+        self.assertEqual(current.get("image_url"), payload["image_url"])
+
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.invite_acquire.text"),
+            payload["text"],
+        )
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.invite_acquire.image_url"),
+            payload["image_url"],
+        )
+
+        row = self._latest_audit()
+        self.assertEqual(row["action"], "admin.ops.invite_acquire.update")
+        self.assertEqual(row["status_code"], 200)
+
+    def test_admin_ops_invite_acquire_update_rejects_invalid_image_url(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/ops/invite_acquire/update",
+            json={
+                "text": "文案正常",
+                "image_url": "ftp://example.com/a.png",
+            },
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("image_url", str((resp.get_json() or {}).get("error", "")).lower())
 
     def test_admin_cleanup_weekend_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

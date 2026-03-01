@@ -272,6 +272,18 @@ class DatabaseManager:
             )
         ''')
 
+        # 运行时配置表（用于后台可持久化运营配置）
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS runtime_configs (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_by TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+
         # 接口策略表（后台动态开关/限流）
         cursor.execute(
             """
@@ -385,6 +397,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_invite_codes_batch_id ON invite_codes(batch_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at ON auth_refresh_tokens(expires_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_runtime_configs_updated_at ON runtime_configs(updated_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_api_policies_scope_type ON admin_api_policies(scope_type)')
         cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
@@ -4614,6 +4627,56 @@ class DatabaseManager:
             logger.error(f"Failed to fix snapshot day_pnl: {e}")
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def get_runtime_config(self, key: str) -> Optional[str]:
+        """读取运行时配置值。"""
+        cfg_key = str(key or "").strip()
+        if not cfg_key:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT value
+                FROM runtime_configs
+                WHERE key = ?
+                LIMIT 1
+                """,
+                (cfg_key,),
+            )
+            row = cursor.fetchone()
+            return str(row["value"]) if row and row["value"] is not None else None
+        finally:
+            conn.close()
+
+    def set_runtime_config(self, key: str, value: str, updated_by: str = "") -> None:
+        """写入运行时配置值（持久化）。"""
+        cfg_key = str(key or "").strip()
+        if not cfg_key:
+            raise ValueError("Missing runtime config key")
+        cfg_value = str(value or "")
+        updater = str(updated_by or "").strip()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO runtime_configs (key, value, updated_by, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_by = excluded.updated_by,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (cfg_key, cfg_value, updater),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

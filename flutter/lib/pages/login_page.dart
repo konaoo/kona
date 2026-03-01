@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../config/api_config.dart';
 import '../config/theme.dart';
+import 'invite_acquire_page.dart';
 import '../providers/app_state.dart';
 
 /// 登录/注册页面
@@ -20,8 +19,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage>
-    with TickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
@@ -82,44 +80,41 @@ class _LoginPageState extends State<LoginPage>
       parent: _entranceController,
       curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
     );
-    _logoSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
+    _logoSlide = Tween<Offset>(begin: const Offset(0, -0.3), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceController,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
     _formFade = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.35, 1.0, curve: Curves.easeOut),
     );
-    _formSlide = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic),
-      ),
-    );
+    _formSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceController,
+            curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // A3: shake animation
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 480),
     );
-    _shakeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0, end: -8), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: 8, end: -6), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: -6, end: 6), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: 6, end: -3), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: -3, end: 0), weight: 1),
-    ]).animate(
-      CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
-    );
+    _shakeAnimation =
+        TweenSequence<double>([
+          TweenSequenceItem(tween: Tween(begin: 0, end: -8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 2),
+          TweenSequenceItem(tween: Tween(begin: 8, end: -6), weight: 2),
+          TweenSequenceItem(tween: Tween(begin: -6, end: 6), weight: 2),
+          TweenSequenceItem(tween: Tween(begin: 6, end: -3), weight: 2),
+          TweenSequenceItem(tween: Tween(begin: -3, end: 0), weight: 1),
+        ]).animate(
+          CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
+        );
 
     // A7: success animation
     _successController = AnimationController(
@@ -326,15 +321,9 @@ class _LoginPageState extends State<LoginPage>
   }
 
   Future<void> _openInviteAcquireLink() async {
-    final uri = Uri.tryParse(ApiConfig.inviteAcquireUrl);
-    if (uri == null || !uri.hasScheme) {
-      if (!mounted) return;
-      _setError('邀请码获取链接配置无效');
-      return;
-    }
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!mounted || launched) return;
-    _setError('无法打开邀请码获取链接');
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const InviteAcquirePage()));
   }
 
   SystemUiOverlayStyle _overlayStyle(bool isDark) {
@@ -465,17 +454,11 @@ class _LoginPageState extends State<LoginPage>
         decoration: BoxDecoration(
           color: AppTheme.danger.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: AppTheme.danger.withValues(alpha: 0.28),
-          ),
+          border: Border.all(color: AppTheme.danger.withValues(alpha: 0.28)),
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 16,
-              color: AppTheme.danger,
-            ),
+            Icon(Icons.error_outline_rounded, size: 16, color: AppTheme.danger),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -515,9 +498,7 @@ class _LoginPageState extends State<LoginPage>
           key: Key('toggle_${label}_visibility'),
           onPressed: onToggle,
           icon: Icon(
-            visible
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
+            visible ? Icons.visibility_outlined : Icons.visibility_off_outlined,
             size: 20,
             color: AppTheme.textSecondary,
           ),
@@ -614,13 +595,14 @@ class _LoginPageState extends State<LoginPage>
                                     const SizedBox(height: Spacing.sm),
                                     // A4: 切换文字平滑动画
                                     AnimatedSwitcher(
-                                      duration:
-                                          const Duration(milliseconds: 250),
+                                      duration: const Duration(
+                                        milliseconds: 250,
+                                      ),
                                       transitionBuilder: (child, animation) =>
                                           FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
+                                            opacity: animation,
+                                            child: child,
+                                          ),
                                       child: Text(
                                         _isRegister ? '创建账号' : '账号密码登录',
                                         key: ValueKey(_isRegister),
@@ -658,23 +640,23 @@ class _LoginPageState extends State<LoginPage>
                                       label: '密码',
                                       visible: _passwordVisible,
                                       onToggle: () => setState(
-                                        () =>
-                                            _passwordVisible = !_passwordVisible,
+                                        () => _passwordVisible =
+                                            !_passwordVisible,
                                       ),
                                       focusNode: _passwordFocus,
                                       textInputAction: _isRegister
                                           ? TextInputAction.next
                                           : TextInputAction.done,
                                       onSubmitted: _isRegister
-                                          ? () =>
-                                              _confirmFocus.requestFocus()
+                                          ? () => _confirmFocus.requestFocus()
                                           : _submit,
                                     ),
 
                                     // A4: 注册模式额外字段，AnimatedSize 平滑展开
                                     AnimatedSize(
-                                      duration:
-                                          const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       curve: Curves.easeInOut,
                                       child: _isRegister
                                           ? Column(
@@ -706,8 +688,7 @@ class _LoginPageState extends State<LoginPage>
                                                 ),
                                                 // A6: 邀请码防抖
                                                 TextField(
-                                                  controller:
-                                                      _inviteController,
+                                                  controller: _inviteController,
                                                   focusNode: _inviteFocus,
                                                   textInputAction:
                                                       TextInputAction.done,
@@ -730,8 +711,8 @@ class _LoginPageState extends State<LoginPage>
                                                                         .check_circle
                                                                   : Icons
                                                                         .error),
-                                                        color: _inviteValid ==
-                                                                null
+                                                        color:
+                                                            _inviteValid == null
                                                             ? AppTheme
                                                                   .textSecondary
                                                             : (_inviteValid!
@@ -758,10 +739,11 @@ class _LoginPageState extends State<LoginPage>
                                                     onPressed: _submitting
                                                         ? null
                                                         : _openInviteAcquireLink,
-                                                    style:
-                                                        TextButton.styleFrom(
-                                                      minimumSize:
-                                                          const Size(0, 0),
+                                                    style: TextButton.styleFrom(
+                                                      minimumSize: const Size(
+                                                        0,
+                                                        0,
+                                                      ),
                                                       tapTargetSize:
                                                           MaterialTapTargetSize
                                                               .shrinkWrap,
@@ -773,13 +755,14 @@ class _LoginPageState extends State<LoginPage>
                                                       '没有邀请码，点我获取',
                                                       style: TextStyle(
                                                         fontSize: FontSize.base,
-                                                        color:
-                                                            AppTheme.accentLight,
+                                                        color: AppTheme
+                                                            .accentLight,
                                                         decoration:
                                                             TextDecoration
                                                                 .underline,
                                                         decorationColor:
-                                                            AppTheme.accentLight,
+                                                            AppTheme
+                                                                .accentLight,
                                                         fontWeight:
                                                             FontWeight.w600,
                                                       ),
@@ -791,75 +774,71 @@ class _LoginPageState extends State<LoginPage>
                                           : const SizedBox.shrink(),
                                     ),
 
-                                     // A8+生物识别: 密码框下方紧凑行
-                                     if (!_isRegister && _rememberLoaded)
-                                       Padding(
-                                         padding: const EdgeInsets.only(
-                                           top: Spacing.sm,
-                                         ),
-                                         child: Row(
-                                           children: [
-                                             GestureDetector(
-                                               behavior:
-                                                   HitTestBehavior.opaque,
-                                               onTap: _submitting
-                                                   ? null
-                                                   : () => setState(
-                                                         () =>
-                                                             _rememberUsername =
-                                                                 !_rememberUsername,
-                                                       ),
-                                               child: Row(
-                                                 mainAxisSize:
-                                                     MainAxisSize.min,
-                                                 children: [
-                                                   SizedBox(
-                                                     width: 20,
-                                                     height: 20,
-                                                     child: Checkbox(
-                                                       key: const Key(
-                                                         'remember_username_checkbox',
-                                                       ),
-                                                       value: _rememberUsername,
-                                                       onChanged: _submitting
-                                                           ? null
-                                                           : (v) => setState(
-                                                                 () =>
-                                                                     _rememberUsername =
-                                                                         v ??
-                                                                         false,
-                                                               ),
-                                                       activeColor:
-                                                           AppTheme.accent,
-                                                       shape:
-                                                           RoundedRectangleBorder(
-                                                         borderRadius:
-                                                             BorderRadius
-                                                                 .circular(4),
-                                                       ),
-                                                       materialTapTargetSize:
-                                                           MaterialTapTargetSize
-                                                               .shrinkWrap,
-                                                       visualDensity:
-                                                           VisualDensity
-                                                               .compact,
-                                                     ),
-                                                   ),
-                                                   const SizedBox(width: 6),
-                                                   Text(
-                                                     '记住用户名',
-                                                     style: TextStyle(
-                                                       fontSize: FontSize.sm,
-                                                       color: AppTheme
-                                                           .textSecondary,
-                                                     ),
-                                                   ),
-                                                 ],
-                                               ),
-                                             ),
-                                           ],
-                                         ),
-                                       ),
+                                    // A8+生物识别: 密码框下方紧凑行
+                                    if (!_isRegister && _rememberLoaded)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: Spacing.sm,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: _submitting
+                                                  ? null
+                                                  : () => setState(
+                                                      () => _rememberUsername =
+                                                          !_rememberUsername,
+                                                    ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  SizedBox(
+                                                    width: 20,
+                                                    height: 20,
+                                                    child: Checkbox(
+                                                      key: const Key(
+                                                        'remember_username_checkbox',
+                                                      ),
+                                                      value: _rememberUsername,
+                                                      onChanged: _submitting
+                                                          ? null
+                                                          : (v) => setState(
+                                                              () =>
+                                                                  _rememberUsername =
+                                                                      v ??
+                                                                      false,
+                                                            ),
+                                                      activeColor:
+                                                          AppTheme.accent,
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                      ),
+                                                      materialTapTargetSize:
+                                                          MaterialTapTargetSize
+                                                              .shrinkWrap,
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    '记住用户名',
+                                                    style: TextStyle(
+                                                      fontSize: FontSize.sm,
+                                                      color: AppTheme
+                                                          .textSecondary,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
 
                                     // A3: 错误提示，带 shake 动画
                                     if (_errorMessage != null)
@@ -874,22 +853,22 @@ class _LoginPageState extends State<LoginPage>
                                       height: 50,
                                       child: _showSuccess
                                           ? Center(
-                                              child:
-                                                  _buildSuccessOverlay(),
+                                              child: _buildSuccessOverlay(),
                                             )
                                           : ElevatedButton(
-                                              onPressed:
-                                                  _submitting ? null : _submit,
+                                              onPressed: _submitting
+                                                  ? null
+                                                  : _submit,
                                               child: _submitting
                                                   ? SizedBox(
                                                       width: 24,
                                                       height: 24,
                                                       child:
                                                           CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color:
-                                                            AppTheme.textPrimary,
-                                                      ),
+                                                            strokeWidth: 2,
+                                                            color: AppTheme
+                                                                .textPrimary,
+                                                          ),
                                                     )
                                                   : Text(
                                                       _isRegister
@@ -902,43 +881,47 @@ class _LoginPageState extends State<LoginPage>
                                             ),
                                     ),
 
-                                     // 生物识别文字链接
-                                     if (showBiometric) ...[
-                                       const SizedBox(height: Spacing.xl), // 从 lg 加大到 xl
-                                       GestureDetector(
-                                         key: const Key('biometric_text_button'),
-                                         onTap: _submitting
-                                             ? null
-                                             : _tryBiometricLogin,
-                                         child: Center(
-                                           child: Opacity(
-                                             opacity: _submitting ? 0.4 : 1.0,
-                                             child: Row(
-                                               mainAxisSize: MainAxisSize.min,
-                                               children: [
-                                                 Icon(
-                                                   Icons.fingerprint_rounded,
-                                                   size: 26, // 图标进一步加大
-                                                   color: AppTheme.textSecondary,
-                                                 ),
-                                                 const SizedBox(width: 8),
-                                                 Text(
-                                                   '使用 Face ID / 指纹登录',
-                                                   style: TextStyle(
-                                                     fontSize: 18, // 进一步明确字号增大
-                                                     color:
-                                                         AppTheme.textSecondary,
-                                                   ),
-                                                 ),
-                                               ],
-                                             ),
-                                           ),
-                                         ),
-                                       ),
-                                       const SizedBox(height: Spacing.md), // 底部间距从 sm 加大到 md
-                                     ],
+                                    // 生物识别文字链接
+                                    if (showBiometric) ...[
+                                      const SizedBox(
+                                        height: Spacing.xl,
+                                      ), // 从 lg 加大到 xl
+                                      GestureDetector(
+                                        key: const Key('biometric_text_button'),
+                                        onTap: _submitting
+                                            ? null
+                                            : _tryBiometricLogin,
+                                        child: Center(
+                                          child: Opacity(
+                                            opacity: _submitting ? 0.4 : 1.0,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.fingerprint_rounded,
+                                                  size: 26, // 图标进一步加大
+                                                  color: AppTheme.textSecondary,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '使用 Face ID / 指纹登录',
+                                                  style: TextStyle(
+                                                    fontSize: 18, // 进一步明确字号增大
+                                                    color:
+                                                        AppTheme.textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(
+                                        height: Spacing.md,
+                                      ), // 底部间距从 sm 加大到 md
+                                    ],
 
-                                     const SizedBox(height: Spacing.xl),
+                                    const SizedBox(height: Spacing.xl),
                                     Row(
                                       children: [
                                         Expanded(
@@ -1001,9 +984,8 @@ class _LoginPageState extends State<LoginPage>
                                               horizontal: Spacing.sm,
                                             ),
                                             minimumSize: const Size(0, 0),
-                                            tapTargetSize:
-                                                MaterialTapTargetSize
-                                                    .shrinkWrap,
+                                            tapTargetSize: MaterialTapTargetSize
+                                                .shrinkWrap,
                                           ),
                                           child: Text(
                                             _isRegister ? '返回登录' : '立即注册',

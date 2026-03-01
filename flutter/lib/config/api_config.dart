@@ -16,6 +16,7 @@ class ApiConfig {
 
   /// API 端点
   static const String getAppVersion = '/api/app/version';
+  static const String webConfig = '/api/web/config';
   static const String login = '/api/auth/login';
   static const String register = '/api/auth/register';
   static const String refresh = '/api/auth/refresh';
