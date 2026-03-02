@@ -226,9 +226,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
   }
 
-  String _formatInputNumber(double value) {
-    final text = value.toStringAsFixed(3);
+  String _formatInputNumber(double value, {int decimals = 3}) {
+    final text = value.toStringAsFixed(decimals);
     return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  bool _isFundAsset({String? assetType, String? code}) {
+    final normalizedType = (assetType ?? '').trim().toLowerCase();
+    if (normalizedType == 'fund') return true;
+    final normalizedCode = (code ?? '').trim().toLowerCase();
+    return normalizedCode.startsWith('f_') || normalizedCode.startsWith('ft_');
   }
 
   void _syncDefaultCashAsset() {
@@ -573,7 +580,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final livePrice = appState.prices[item.code]?.price ?? 0;
     final defaultPrice = livePrice > 0 ? livePrice : item.price;
     if (defaultPrice > 0) {
-      _priceController.text = _formatInputNumber(defaultPrice);
+      final decimals = _isFundAsset(assetType: item.assetType, code: item.code)
+          ? 4
+          : 3;
+      _priceController.text = _formatInputNumber(defaultPrice, decimals: decimals);
     }
   }
 

@@ -389,9 +389,21 @@ class InvestPageState extends State<InvestPage> {
     );
   }
 
-  String _formatDisplayPrice(double value) {
+  String _formatDisplayPrice(double value, {dynamic item}) {
+    if (_isFundAsset(item)) {
+      final text = value.toStringAsFixed(4);
+      return text.replaceFirst(RegExp(r'\.?0+$'), '');
+    }
     final decimals = value.abs() < 10 ? 3 : 2;
     return value.toStringAsFixed(decimals);
+  }
+
+  bool _isFundAsset(dynamic item) {
+    if (item == null) return false;
+    final marketType = (item.marketType as String? ?? '').trim().toLowerCase();
+    if (marketType == 'fund') return true;
+    final code = (item.code as String? ?? '').trim().toLowerCase();
+    return code.startsWith('f_') || code.startsWith('ft_');
   }
 
   String _formatDisplayQty(double value) {
@@ -603,7 +615,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${_formatDisplayPrice(currentPrice)}${sessionLabel == null ? '' : '($sessionLabel)'}',
+                        '${item.currencySymbol}${_formatDisplayPrice(currentPrice, item: item)}${sessionLabel == null ? '' : '($sessionLabel)'}',
                         style: TextStyle(
                           fontSize: valueSize,
                           color: AppTheme.textPrimary,
@@ -614,7 +626,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${_formatDisplayPrice(item.price)}',
+                        '${item.currencySymbol}${_formatDisplayPrice(item.price, item: item)}',
                         style: TextStyle(
                           fontSize: subValueSize,
                           color: AppTheme.textTertiary,

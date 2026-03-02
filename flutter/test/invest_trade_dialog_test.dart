@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tool/models/asset_action_result.dart';
+import 'package:tool/models/portfolio.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/widgets/invest_trade_dialog.dart';
 
@@ -122,6 +123,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> prepareTradeDialogWithItem(
+    WidgetTester tester,
+    AppState appState, {
+    required PortfolioItem item,
+  }) async {
+    await appState.setLoggedIn(
+      token: 'token',
+      refreshToken: 'refresh',
+      username: 'kona',
+      userId: 'uid-trade',
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: MaterialApp(
+          home: Scaffold(body: InvestTradeDialog(mode: 'trade', item: item)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('Add mode shows 买入成本价 and accepts fractional qty', (
     WidgetTester tester,
   ) async {
@@ -171,5 +194,55 @@ void main() {
     expect(appState.buyWithCashCalls, 1);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('Trade mode fund prefill keeps 4 decimals', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    final item = PortfolioItem(
+      code: 'f_110017',
+      name: '易方达增强回报债券A',
+      qty: 1,
+      price: 1.23456,
+      curr: 'CNY',
+      assetType: 'fund',
+    );
+    await prepareTradeDialogWithItem(tester, appState, item: item);
+
+    final priceField = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '价格',
+      ),
+    );
+    expect(priceField.controller?.text, '1.2346');
+  });
+
+  testWidgets('Trade mode non-fund prefill keeps 3 decimals', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    final item = PortfolioItem(
+      code: 'gb_tsla',
+      name: 'Tesla',
+      qty: 1,
+      price: 1.23456,
+      curr: 'USD',
+      assetType: 'us',
+    );
+    await prepareTradeDialogWithItem(tester, appState, item: item);
+
+    final priceField = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '价格',
+      ),
+    );
+    expect(priceField.controller?.text, '1.235');
   });
 }
