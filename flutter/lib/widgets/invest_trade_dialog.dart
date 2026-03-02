@@ -17,8 +17,6 @@ class _SearchCacheEntry {
   const _SearchCacheEntry({required this.results, required this.savedAt});
 }
 
-enum _PadField { none, price, qty, adjustPrice, adjustAmount }
-
 class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
@@ -41,10 +39,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _qtyController = TextEditingController();
   final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
-  final _priceFocusNode = FocusNode();
-  final _qtyFocusNode = FocusNode();
-  final _adjustPriceFocusNode = FocusNode();
-  final _adjustFocusNode = FocusNode();
 
   bool _saving = false;
   bool _inlineClosed = false;
@@ -56,8 +50,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   String _tradeMode = 'buy';
   int? _selectedCashAssetId;
   int _searchSeq = 0;
-  bool _normalizingInput = false;
-  _PadField _activePadField = _PadField.none;
   final Map<String, _SearchCacheEntry> _searchCache =
       <String, _SearchCacheEntry>{};
   static const Duration _searchCacheTtl = Duration(seconds: 20);
@@ -82,14 +74,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _qtyController.addListener(_onInputControllerChanged);
     _adjustPriceController.addListener(_onInputControllerChanged);
     _adjustController.addListener(_onInputControllerChanged);
-    _priceFocusNode.addListener(() => _syncPadFieldByFocus(_PadField.price));
-    _qtyFocusNode.addListener(() => _syncPadFieldByFocus(_PadField.qty));
-    _adjustPriceFocusNode.addListener(
-      () => _syncPadFieldByFocus(_PadField.adjustPrice),
-    );
-    _adjustFocusNode.addListener(
-      () => _syncPadFieldByFocus(_PadField.adjustAmount),
-    );
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
@@ -119,15 +103,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _qtyController.dispose();
     _adjustPriceController.dispose();
     _adjustController.dispose();
-    _priceFocusNode.dispose();
-    _qtyFocusNode.dispose();
-    _adjustPriceFocusNode.dispose();
-    _adjustFocusNode.dispose();
     super.dispose();
   }
 
   void _onInputControllerChanged() {
-    if (!mounted || _normalizingInput) return;
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -270,65 +250,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
   }
 
-  TextEditingController? _controllerForField(_PadField field) {
-    switch (field) {
-      case _PadField.price:
-        return _priceController;
-      case _PadField.qty:
-        return _qtyController;
-      case _PadField.adjustPrice:
-        return _adjustPriceController;
-      case _PadField.adjustAmount:
-        return _adjustController;
-      case _PadField.none:
-        return null;
-    }
-  }
-
-  bool _fieldAllowsMinus(_PadField field) {
-    return field == _PadField.price ||
-        field == _PadField.adjustPrice ||
-        field == _PadField.adjustAmount;
-  }
-
-  int? _fieldMaxDecimals(_PadField field) {
-    if (field == _PadField.qty) return 2;
-    return null;
-  }
-
-  void _syncPadFieldByFocus(_PadField field) {
-    final hasFocus = switch (field) {
-      _PadField.price => _priceFocusNode.hasFocus,
-      _PadField.qty => _qtyFocusNode.hasFocus,
-      _PadField.adjustPrice => _adjustPriceFocusNode.hasFocus,
-      _PadField.adjustAmount => _adjustFocusNode.hasFocus,
-      _PadField.none => false,
-    };
-    if (hasFocus) {
-      _activatePadField(field);
-      return;
-    }
-    if (_activePadField == field &&
-        !_priceFocusNode.hasFocus &&
-        !_qtyFocusNode.hasFocus &&
-        !_adjustPriceFocusNode.hasFocus &&
-        !_adjustFocusNode.hasFocus) {
-      _activatePadField(_PadField.none);
-    }
-  }
-
-  void _activatePadField(_PadField field) {
-    if (_activePadField == field) return;
-    setState(() {
-      _activePadField = field;
-    });
-  }
-
-  void _dismissPad() {
-    FocusScope.of(context).unfocus();
-    _activatePadField(_PadField.none);
-  }
-
   void _closeDialog() {
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
@@ -337,280 +258,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     setState(() {
       _inlineClosed = true;
-      _activePadField = _PadField.none;
     });
-  }
-
-  String _normalizeNumericText(String raw, _PadField field) {
-    final allowsMinus = _fieldAllowsMinus(field);
-    final maxDecimals = _fieldMaxDecimals(field);
-    final buffer = StringBuffer();
-    var hasDot = false;
-    var minusAdded = false;
-    var decimals = 0;
-
-    for (var i = 0; i < raw.length; i++) {
-      final ch = raw[i];
-      final isDigit = ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
-      if (isDigit) {
-        if (hasDot && maxDecimals != null && decimals >= maxDecimals) {
-          continue;
-        }
-        buffer.write(ch);
-        if (hasDot) decimals += 1;
-        continue;
-      }
-      if (ch == '.') {
-        if (hasDot) continue;
-        hasDot = true;
-        if (buffer.isEmpty) {
-          buffer.write('0.');
-        } else if (buffer.toString() == '-') {
-          buffer.write('0.');
-        } else {
-          buffer.write('.');
-        }
-        continue;
-      }
-      if (ch == '-' && allowsMinus && !minusAdded && buffer.isEmpty) {
-        buffer.write('-');
-        minusAdded = true;
-      }
-    }
-    return buffer.toString();
-  }
-
-  void _normalizeControllerText(
-    TextEditingController controller,
-    _PadField field,
-  ) {
-    final normalized = _normalizeNumericText(controller.text, field);
-    if (normalized == controller.text) return;
-    _normalizingInput = true;
-    controller.value = TextEditingValue(
-      text: normalized,
-      selection: TextSelection.collapsed(offset: normalized.length),
-    );
-    _normalizingInput = false;
-  }
-
-  void _handleFieldChanged(TextEditingController controller, _PadField field) {
-    if (_normalizingInput) return;
-    final before = controller.text;
-    _normalizeControllerText(controller, field);
-    if (!mounted) return;
-    if (before != controller.text) {
-      setState(() {});
-      return;
-    }
-    // 即使文本未被规整改写，也要刷新按钮可用态（依赖 controller 文本）
-    setState(() {});
-  }
-
-  String _appendDigit(String text, String digit) {
-    if (text == '0') return digit;
-    if (text == '-0') return '-$digit';
-    return '$text$digit';
-  }
-
-  String _appendDecimalPoint(String text) {
-    if (text.contains('.')) return text;
-    if (text.isEmpty) return '0.';
-    if (text == '-') return '-0.';
-    return '$text.';
-  }
-
-  String _prependMinus(String text) {
-    if (text.startsWith('-')) return text;
-    return '-$text';
-  }
-
-  String _deleteLast(String text) {
-    if (text.isEmpty) return text;
-    return text.substring(0, text.length - 1);
-  }
-
-  void _applyPadInput(_PadField field, String key) {
-    final controller = _controllerForField(field);
-    if (controller == null) return;
-    var next = controller.text;
-
-    if (key == 'confirm') {
-      _dismissPad();
-      return;
-    }
-    if (key == 'clear') {
-      next = '';
-    } else if (key == 'backspace') {
-      next = _deleteLast(next);
-    } else if (key == '.') {
-      next = _appendDecimalPoint(next);
-    } else if (key == '-') {
-      if (!_fieldAllowsMinus(field)) return;
-      next = _prependMinus(next);
-    } else {
-      next = _appendDigit(next, key);
-    }
-
-    next = _normalizeNumericText(next, field);
-    if (next == controller.text) return;
-
-    _normalizingInput = true;
-    controller.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: next.length),
-    );
-    _normalizingInput = false;
-    setState(() {});
-  }
-
-  Widget _buildPadButton({
-    required String text,
-    required VoidCallback? onTap,
-    bool highlighted = false,
-  }) {
-    final disabled = onTap == null;
-    return SizedBox(
-      height: 44,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          foregroundColor: disabled
-              ? AppTheme.textTertiary
-              : (highlighted ? AppTheme.textPrimary : AppTheme.textSecondary),
-          backgroundColor: disabled
-              ? AppTheme.bgCard.withOpacity(0.4)
-              : (highlighted
-                    ? AppTheme.accent
-                    : AppTheme.bgElevated.withOpacity(
-                        AppTheme.isLight ? 0.95 : 0.45,
-                      )),
-          side: BorderSide(
-            color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.8 : 0.3),
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-        onPressed: onTap,
-        child: Text(
-          text,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNumericPad() {
-    if (_activePadField == _PadField.none) return const SizedBox.shrink();
-    final minusEnabled = _fieldAllowsMinus(_activePadField);
-
-    Widget row(List<Widget> children) {
-      return Row(
-        children: children
-            .map(
-              (child) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 3,
-                  ),
-                  child: child,
-                ),
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.8 : 0.3),
-        ),
-      ),
-      child: Column(
-        children: [
-          row([
-            _buildPadButton(
-              text: '1',
-              onTap: () => _applyPadInput(_activePadField, '1'),
-            ),
-            _buildPadButton(
-              text: '2',
-              onTap: () => _applyPadInput(_activePadField, '2'),
-            ),
-            _buildPadButton(
-              text: '3',
-              onTap: () => _applyPadInput(_activePadField, '3'),
-            ),
-          ]),
-          row([
-            _buildPadButton(
-              text: '4',
-              onTap: () => _applyPadInput(_activePadField, '4'),
-            ),
-            _buildPadButton(
-              text: '5',
-              onTap: () => _applyPadInput(_activePadField, '5'),
-            ),
-            _buildPadButton(
-              text: '6',
-              onTap: () => _applyPadInput(_activePadField, '6'),
-            ),
-          ]),
-          row([
-            _buildPadButton(
-              text: '7',
-              onTap: () => _applyPadInput(_activePadField, '7'),
-            ),
-            _buildPadButton(
-              text: '8',
-              onTap: () => _applyPadInput(_activePadField, '8'),
-            ),
-            _buildPadButton(
-              text: '9',
-              onTap: () => _applyPadInput(_activePadField, '9'),
-            ),
-          ]),
-          row([
-            _buildPadButton(
-              text: '.',
-              onTap: () => _applyPadInput(_activePadField, '.'),
-            ),
-            _buildPadButton(
-              text: '0',
-              onTap: () => _applyPadInput(_activePadField, '0'),
-            ),
-            _buildPadButton(
-              text: '-',
-              onTap: minusEnabled
-                  ? () => _applyPadInput(_activePadField, '-')
-                  : null,
-            ),
-          ]),
-          row([
-            _buildPadButton(
-              text: '清空',
-              onTap: () => _applyPadInput(_activePadField, 'clear'),
-            ),
-            _buildPadButton(
-              text: '删除',
-              onTap: () => _applyPadInput(_activePadField, 'backspace'),
-            ),
-            _buildPadButton(
-              text: '确认',
-              onTap: () => _applyPadInput(_activePadField, 'confirm'),
-              highlighted: true,
-            ),
-          ]),
-        ],
-      ),
-    );
   }
 
   String _formatInputNumber(double value, {int decimals = 3}) {
@@ -990,7 +638,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     FocusScope.of(context).unfocus();
     setState(() {
       _tradeMode = mode;
-      _activePadField = _PadField.none;
       _errorText = null;
       if (mode == 'adjust') {
         _adjustController.clear();
@@ -1792,15 +1439,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     if (_isTrade && _isAdjust) ...[
                       TextField(
                         controller: _adjustPriceController,
-                        focusNode: _adjustPriceFocusNode,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
-                        ),
-                        onTap: () => _activatePadField(_PadField.adjustPrice),
-                        onChanged: (_) => _handleFieldChanged(
-                          _adjustPriceController,
-                          _PadField.adjustPrice,
                         ),
                         style: TextStyle(color: AppTheme.textPrimary),
                         decoration: _compactDecoration('平均成本'),
@@ -1808,15 +1449,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       const SizedBox(height: Spacing.md),
                       TextField(
                         controller: _adjustController,
-                        focusNode: _adjustFocusNode,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
-                        ),
-                        onTap: () => _activatePadField(_PadField.adjustAmount),
-                        onChanged: (_) => _handleFieldChanged(
-                          _adjustController,
-                          _PadField.adjustAmount,
                         ),
                         style: TextStyle(color: AppTheme.textPrimary),
                         decoration: _compactDecoration('调整金额'),
@@ -1824,15 +1459,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ] else ...[
                       TextField(
                         controller: _priceController,
-                        focusNode: _priceFocusNode,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
-                        ),
-                        onTap: () => _activatePadField(_PadField.price),
-                        onChanged: (_) => _handleFieldChanged(
-                          _priceController,
-                          _PadField.price,
                         ),
                         style: TextStyle(color: AppTheme.textPrimary),
                         decoration: _compactDecoration(_isAdd ? '买入成本价' : '价格'),
@@ -1840,19 +1469,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       const SizedBox(height: Spacing.md),
                       TextField(
                         controller: _qtyController,
-                        focusNode: _qtyFocusNode,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
+                          signed: false,
                         ),
                         inputFormatters: _qtyInputFormatters,
-                        onTap: () => _activatePadField(_PadField.qty),
-                        onChanged: (_) =>
-                            _handleFieldChanged(_qtyController, _PadField.qty),
                         style: TextStyle(color: AppTheme.textPrimary),
                         decoration: _compactDecoration('数量'),
                       ),
                     ],
-                    _buildNumericPad(),
                     if (_errorText != null) ...[
                       const SizedBox(height: 8),
                       Text(

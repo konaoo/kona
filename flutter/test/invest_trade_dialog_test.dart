@@ -8,18 +8,6 @@ import 'package:tool/models/portfolio.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/widgets/invest_trade_dialog.dart';
 
-class _ThrowingSearchAppState extends AppState {
-  _ThrowingSearchAppState() : super(tokenLoader: () async => null);
-
-  int searchCalls = 0;
-
-  @override
-  Future<List<dynamic>> searchStocks(String query) async {
-    searchCalls += 1;
-    throw Exception('search failed');
-  }
-}
-
 class _RetrySearchAppState extends AppState {
   _RetrySearchAppState() : super(tokenLoader: () async => null);
 
@@ -399,59 +387,32 @@ void main() {
     expect(saveBtn.onPressed, isNull);
   });
 
-  testWidgets(
-    'Numeric pad blocks minus for qty and allows one minus for price',
-    (WidgetTester tester) async {
-      final appState = _SaveStateAppState(
-        result: const AssetActionResult.success(),
-      );
-      await prepareAddDialog(tester, appState, priceText: '', qtyText: '');
-
-      await tester.tap(_fieldByLabel('数量'));
-      await tester.pumpAndSettle();
-      var minusBtn = tester.widget<ElevatedButton>(
-        find.widgetWithText(ElevatedButton, '-'),
-      );
-      expect(minusBtn.onPressed, isNull);
-
-      await tester.tap(_fieldByLabel('买入成本价'));
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.widgetWithText(ElevatedButton, '-'));
-      await tester.tap(find.widgetWithText(ElevatedButton, '-'));
-      await tester.tap(find.widgetWithText(ElevatedButton, '-'));
-      await tester.ensureVisible(find.widgetWithText(ElevatedButton, '.'));
-      await tester.tap(find.widgetWithText(ElevatedButton, '.'));
-      await tester.tap(find.widgetWithText(ElevatedButton, '.'));
-      await tester.ensureVisible(find.widgetWithText(ElevatedButton, '1'));
-      await tester.tap(find.widgetWithText(ElevatedButton, '1'));
-      await tester.pumpAndSettle();
-
-      final priceField = tester.widget<TextField>(_fieldByLabel('买入成本价'));
-      expect(priceField.controller?.text, '-0.1');
-    },
-  );
-
-  testWidgets('Numeric pad enforces qty max 2 decimals', (
+  testWidgets('Trade dialog does not show numeric pad buttons', (
     WidgetTester tester,
   ) async {
+    await _ensureLargeViewport(tester);
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await prepareAddDialog(tester, appState, priceText: '', qtyText: '');
-
-    await tester.tap(_fieldByLabel('数量'));
+    await appState.setLoggedIn(
+      token: 'token',
+      refreshToken: 'refresh',
+      username: 'kona',
+      userId: 'uid-no-pad',
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: const MaterialApp(
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '1'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '1'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '.'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '2'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '3'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '4'));
-    await tester.pumpAndSettle();
 
-    final qtyField = tester.widget<TextField>(_fieldByLabel('数量'));
-    expect(qtyField.controller?.text, '1.23');
+    expect(find.widgetWithText(ElevatedButton, '清空'), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, '删除'), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, '确认'), findsNothing);
   });
 
   testWidgets('Add mode rejects non-positive price with clear message', (
@@ -462,15 +423,8 @@ void main() {
     );
     await prepareAddDialog(tester, appState, priceText: '', qtyText: '');
 
-    await tester.tap(_fieldByLabel('买入成本价'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '-'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '-'));
-    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '1'));
-    await tester.tap(find.widgetWithText(ElevatedButton, '1'));
-    await tester.tap(_fieldByLabel('数量'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ElevatedButton, '1'));
+    await tester.enterText(_fieldByLabel('买入成本价'), '-1');
+    await tester.enterText(_fieldByLabel('数量'), '1');
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.widgetWithText(ElevatedButton, '保存'));
@@ -527,85 +481,6 @@ void main() {
       ),
     );
     expect(priceField.controller?.text, '1.235');
-  });
-
-  testWidgets('Trade mode switch updates minus availability by focused field', (
-    WidgetTester tester,
-  ) async {
-    final appState = _SaveStateAppState(
-      result: const AssetActionResult.success(),
-    );
-    final item = PortfolioItem(
-      code: 'gb_tsla',
-      name: 'Tesla',
-      qty: 5,
-      price: 10,
-      curr: 'USD',
-      assetType: 'us',
-    );
-    await prepareTradeDialogWithItem(tester, appState, item: item);
-
-    await tester.tap(_fieldByLabel('数量'));
-    await tester.pumpAndSettle();
-    var minusBtn = tester.widget<ElevatedButton>(
-      find.widgetWithText(ElevatedButton, '-'),
-    );
-    expect(minusBtn.onPressed, isNull);
-
-    await tester.tap(find.text('调整'));
-    await tester.pumpAndSettle();
-    await tester.tap(_fieldByLabel('平均成本'));
-    await tester.pumpAndSettle();
-
-    minusBtn = tester.widget<ElevatedButton>(
-      find.widgetWithText(ElevatedButton, '-'),
-    );
-    expect(minusBtn.onPressed, isNotNull);
-  });
-
-  testWidgets('Close and reopen dialog resets numeric pad visibility', (
-    WidgetTester tester,
-  ) async {
-    await _ensureLargeViewport(tester);
-    final appState = _SaveStateAppState(
-      result: const AssetActionResult.success(),
-    );
-    await appState.setLoggedIn(
-      token: 'token',
-      refreshToken: 'refresh',
-      username: 'kona',
-      userId: 'uid-reopen',
-    );
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<AppState>.value(
-        value: appState,
-        child: const MaterialApp(
-          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(_fieldByLabel('买入成本价'));
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(ElevatedButton, '清空'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(TextButton, '取消'));
-    await tester.tap(find.widgetWithText(TextButton, '取消'));
-    await tester.pumpAndSettle();
-    expect(find.text('添加投资资产'), findsNothing);
-
-    await tester.pumpWidget(
-      ChangeNotifierProvider<AppState>.value(
-        value: appState,
-        child: const MaterialApp(
-          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(ElevatedButton, '清空'), findsNothing);
   });
 
   testWidgets('Trade adjust mode allows negative cost and calls modify', (
