@@ -1,20 +1,18 @@
 <template>
   <LegacyAdminShell title="运营配置" subtitle="邀请码页与用户群页（App内）">
-    <section class="panel panel-body">
-      <div class="section-head">
-        <div>
-          <h3 class="section-title">运营配置</h3>
-          <p class="section-sub">点击编辑后在弹窗内修改，保存后将立即生效。</p>
-        </div>
-        <button class="btn" :disabled="loadingAny" @click="refreshAll">
+    <AdminCard class="panel-body">
+      <AdminSectionHeader title="运营配置" subtitle="点击编辑后在弹窗内修改，保存后将立即生效。">
+        <template #actions>
+          <AdminButton :disabled="loadingAny" @click="refreshAll">
           {{ loadingAny ? '刷新中...' : '刷新' }}
-        </button>
-      </div>
+          </AdminButton>
+        </template>
+      </AdminSectionHeader>
 
       <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="page-message">{{ pageMessage }}</p>
 
       <div class="config-list">
-        <article v-for="scene in SCENES" :key="scene" class="config-item">
+        <AdminCard v-for="scene in SCENES" :key="scene" class="config-item" :padded="false">
           <div class="item-main">
             <div class="item-copy">
               <h4 class="item-title">{{ sceneTitle(scene) }}</h4>
@@ -35,13 +33,13 @@
           </div>
 
           <div class="item-actions">
-            <button class="btn primary" :disabled="loading[scene]" @click="openEditor(scene)">
+            <AdminButton variant="primary" :disabled="loading[scene]" @click="openEditor(scene)">
               编辑
-            </button>
+            </AdminButton>
           </div>
-        </article>
+        </AdminCard>
       </div>
-    </section>
+    </AdminCard>
 
     <OpsConfigEditorModal
       :visible="editor.visible"
@@ -63,6 +61,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
+import AdminCard from '../../components/admin/ui/AdminCard.vue'
+import AdminButton from '../../components/admin/ui/AdminButton.vue'
+import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
 
 type OpsConfigPayload = {
@@ -284,27 +285,6 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.section-title {
-  margin: 0;
-  color: #1f3f58;
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.section-sub {
-  margin: 6px 0 0;
-  color: #55708f;
-  font-size: 13px;
-}
-
 .page-message {
   margin: 0 0 12px;
   font-weight: 600;
@@ -405,10 +385,6 @@ onMounted(() => {
 }
 
 @media (max-width: 760px) {
-  .section-head {
-    flex-direction: column;
-  }
-
   .config-item {
     flex-direction: column;
     align-items: flex-start;
@@ -427,7 +403,7 @@ onMounted(() => {
     width: 100%;
   }
 
-  .item-actions .btn {
+  .item-actions :deep(.admin-btn) {
     width: 100%;
   }
 

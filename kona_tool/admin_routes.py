@@ -20,7 +20,7 @@ from flask import Blueprint, jsonify, request, g, current_app, make_response
 
 import config
 from core.auth import admin_required
-from core.price import get_price_runtime_metrics, get_price_source_health, get_forex_rates
+from core.price import batch_get_prices, get_price_runtime_metrics, get_price_source_health, get_forex_rates
 from core.fund import get_fund_eastmoney_f10
 from core.snapshot import take_snapshot
 from core.system import system_manager
@@ -29,6 +29,7 @@ from core.admin.policies import list_policies, update_policy, batch_update_polic
 from core.policy_runtime import invalidate_policy_cache
 from core.ip_region import normalize_region_text
 from core.utils import monitored_http_get, safe_float
+from core.asset_type import asset_type_label
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
@@ -192,6 +193,8 @@ _DEFAULT_CONFIG_VALUES: Dict[str, Any] = {
 }
 _ADMIN_READ_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_READ_CACHE_LOCK = threading.Lock()
+_ADMIN_PORTFOLIO_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_ADMIN_PORTFOLIO_CACHE_LOCK = threading.Lock()
 _API_TEST_CASES: List[Dict[str, str]] = [
     {"name": "工商银行", "code": "sh601398", "asset_type": "a"},
     {"name": "比亚迪", "code": "sz002594", "asset_type": "a"},
@@ -216,6 +219,7 @@ OPS_USER_GROUP_TEXT_KEY = "ops.user_group.text"
 OPS_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
 OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH = 200
 OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH = 2048
+ADMIN_PORTFOLIO_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -385,6 +389,8 @@ def _admin_cache_key(route_name: str, params: Dict[str, Any]) -> Tuple[str, str]
 def _admin_cache_clear() -> None:
     with _ADMIN_READ_CACHE_LOCK:
         _ADMIN_READ_CACHE.clear()
+    with _ADMIN_PORTFOLIO_CACHE_LOCK:
+        _ADMIN_PORTFOLIO_CACHE.clear()
 
 
 def _admin_cached_payload(
@@ -432,6 +438,92 @@ def _admin_log_read(route_name: str, cache_state: str, elapsed_ms: int, params_h
 def _admin_region_display(value: Any) -> str:
     normalized = normalize_region_text(value)
     return normalized or "未知"
+
+
+def _iso_utc(ts: datetime) -> str:
+    return ts.astimezone(timezone.utc).isoformat()
+
+
+def _to_cny(amount: Any, curr: Any, rates: Dict[str, Any]) -> float:
+    value = safe_float(amount)
+    if value == 0:
+        return 0.0
+    code = str(curr or "CNY").strip().upper() or "CNY"
+    if code == "CNY":
+        return float(value)
+    rate = safe_float((rates or {}).get(code, 0))
+    if rate <= 0:
+        return 0.0
+    return float(value * rate)
+
+
+def _build_admin_portfolio_payload(db, user_id: str) -> Dict[str, Any]:
+    portfolio = db.get_portfolio("all", user_id)
+    cash_assets = db.get_cash_assets(user_id)
+    other_assets = db.get_other_assets(user_id)
+    liabilities = db.get_liabilities(user_id)
+    rates = get_forex_rates() or {}
+
+    codes = [str(item.get("code", "")).strip() for item in portfolio if str(item.get("code", "")).strip()]
+    latest_prices = batch_get_prices(codes) if codes else {}
+
+    items: List[Dict[str, Any]] = []
+    for item in portfolio:
+        code = str(item.get("code", ""))
+        name = str(item.get("name", ""))
+        qty = float(item.get("qty") or 0.0)
+        cost_price = float(item.get("price") or 0.0)
+        adjustment = float(item.get("adjustment") or 0.0)
+        curr = str(item.get("curr", "") or "CNY")
+        asset_type = str(item.get("asset_type", "") or "a")
+
+        latest = latest_prices.get(code, (0, 0, 0, 0))
+        latest_price = safe_float(latest[0] if isinstance(latest, tuple) and len(latest) > 0 else 0)
+        effective_price = latest_price if latest_price > 0 else cost_price
+
+        cost_amount = cost_price * qty
+        current_amount = effective_price * qty
+        pnl_amount = current_amount - cost_amount + adjustment
+        pnl_rate = (pnl_amount / cost_amount * 100.0) if cost_amount > 0 else 0.0
+
+        items.append(
+            {
+                "code": code,
+                "name": name,
+                "qty": qty,
+                "price": cost_price,
+                "curr": curr,
+                "asset_type": asset_type,
+                "latest_price": round(float(effective_price), 6),
+                "pnl_cny": round(float(_to_cny(pnl_amount, curr, rates)), 2),
+                "pnl_rate": round(float(pnl_rate), 4),
+                "type_label": asset_type_label(asset_type),
+            }
+        )
+
+    cash_cny = round(sum(_to_cny(i.get("amount", 0), i.get("curr", "CNY"), rates) for i in cash_assets), 2)
+    other_cny = round(sum(_to_cny(i.get("amount", 0), i.get("curr", "CNY"), rates) for i in other_assets), 2)
+    liability_cny = round(sum(_to_cny(i.get("amount", 0), i.get("curr", "CNY"), rates) for i in liabilities), 2)
+
+    now_utc = datetime.now(timezone.utc)
+    expires_utc = now_utc + timedelta(seconds=ADMIN_PORTFOLIO_CACHE_TTL_SECONDS)
+    cached_at = _iso_utc(now_utc)
+    expires_at = _iso_utc(expires_utc)
+    return {
+        "user_id": user_id,
+        "total": len(items),
+        "summary": {
+            "cash_cny": cash_cny,
+            "other_cny": other_cny,
+            "liability_cny": liability_cny,
+            "as_of": cached_at,
+        },
+        "items": items,
+        "cache": {
+            "cached_at": cached_at,
+            "expires_at": expires_at,
+        },
+    }
 
 
 def _format_api_test_item(
@@ -1151,7 +1243,7 @@ def create_admin_blueprint(db, admin_write_audit):
                     "level": "medium",
                     "title": "今日存在失败操作",
                     "description": f"今日后台失败写操作 {failed_audits_today} 次。",
-                    "suggestion": "请进入“操作审计”查看失败原因并处理。",
+                    "suggestion": "请检查后台日志并及时处理失败原因。",
                 }
             )
         if disabled_users > 0:
@@ -1204,6 +1296,7 @@ def create_admin_blueprint(db, admin_write_audit):
         sort_expr_map = {
             "last_active_at": "COALESCE(bu.last_active_at, bu.last_login, bu.created_at, '')",
             "total_asset_cny": "COALESCE(bu.total_asset_cny, 0.0)",
+            "total_invest_cny": "COALESCE(bu.total_invest_cny, 0.0)",
             "created_at": "COALESCE(bu.created_at, '')",
         }
         if sort_by not in sort_expr_map:
@@ -1225,6 +1318,8 @@ def create_admin_blueprint(db, admin_write_audit):
         if status in {"active", "disabled"}:
             where.append("LOWER(COALESCE(NULLIF(bu.status, ''), 'active')) = ?")
             params.append(status)
+        elif status == "all":
+            where.append("COALESCE(bu.total_asset_cny, 0.0) > 0")
 
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         local_exists_sql = (
@@ -1498,6 +1593,10 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify({"error": "Missing user_id"}), 400
         if uid == "__local__":
             return jsonify({"error": "Local anonymous user is read-only"}), 400
+        try:
+            force = _admin_parse_force_arg()
+        except ValueError:
+            return jsonify({"error": "Invalid force"}), 400
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -1516,24 +1615,20 @@ def create_admin_blueprint(db, admin_write_audit):
         finally:
             conn.close()
 
-        portfolio = db.get_portfolio("all", uid)
-        return jsonify(
-            {
-                "user_id": uid,
-                "total": len(portfolio),
-                "items": [
-                    {
-                        "code": str(item.get("code", "")),
-                        "name": str(item.get("name", "")),
-                        "qty": float(item.get("qty") or 0.0),
-                        "price": float(item.get("price") or 0.0),
-                        "curr": str(item.get("curr", "")),
-                        "asset_type": str(item.get("asset_type", "")),
-                    }
-                    for item in portfolio
-                ],
-            }
-        )
+        if not force and ADMIN_PORTFOLIO_CACHE_TTL_SECONDS > 0:
+            now_ts = time.time()
+            with _ADMIN_PORTFOLIO_CACHE_LOCK:
+                cached = _ADMIN_PORTFOLIO_CACHE.get(uid)
+                if cached and cached[0] > now_ts:
+                    return jsonify(dict(cached[1]))
+                if cached:
+                    _ADMIN_PORTFOLIO_CACHE.pop(uid, None)
+
+        payload = _build_admin_portfolio_payload(db, uid)
+        expires_at_ts = time.time() + ADMIN_PORTFOLIO_CACHE_TTL_SECONDS
+        with _ADMIN_PORTFOLIO_CACHE_LOCK:
+            _ADMIN_PORTFOLIO_CACHE[uid] = (expires_at_ts, dict(payload))
+        return jsonify(payload)
 
     @bp.route("/users/status", methods=["POST"])
     @admin_write_audit(action="admin.users.status", target_type="user")
@@ -2426,211 +2521,5 @@ def create_admin_blueprint(db, admin_write_audit):
         if payload.get("error"):
             return jsonify(payload), 400
         return jsonify({"status": "ok", "result": payload})
-
-    @bp.route("/audit/logs", methods=["GET"])
-    @admin_required
-    def admin_audit_logs():
-        action = request.args.get("action", "").strip()
-        admin_user_id = request.args.get("admin_user_id", "").strip()
-        result_filter = request.args.get("result", "").strip().lower()
-        start_time = request.args.get("start_time", "").strip()
-        end_time = request.args.get("end_time", "").strip()
-        limit = max(1, min(request.args.get("limit", 100, type=int), 500))
-        offset = max(0, request.args.get("offset", 0, type=int))
-
-        where = []
-        params: List[Any] = []
-        if action:
-            where.append("a.action = ?")
-            params.append(action)
-        if admin_user_id:
-            where.append("a.admin_user_id = ?")
-            params.append(admin_user_id)
-        if result_filter in {"success", "failed"}:
-            where.append("LOWER(COALESCE(a.result, '')) = ?")
-            params.append(result_filter)
-        if start_time:
-            where.append("DATETIME(a.created_at) >= DATETIME(?)")
-            params.append(start_time)
-        if end_time:
-            where.append("DATETIME(a.created_at) <= DATETIME(?)")
-            params.append(end_time)
-        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
-        try:
-            force = _admin_parse_force_arg()
-        except ValueError:
-            return jsonify({"error": "Invalid force"}), 400
-
-        def _load_audit_payload() -> Dict[str, Any]:
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            try:
-                cursor.execute(
-                    f"""
-                    SELECT
-                        a.id,
-                        a.admin_user_id,
-                        COALESCE(u.username, '') AS admin_username,
-                        a.action,
-                        a.target_type,
-                        a.target_id,
-                        a.method,
-                        a.path,
-                        a.status_code,
-                        a.result,
-                        a.error,
-                        a.request_body,
-                        a.created_at,
-                        COUNT(1) OVER() AS __total_count
-                    FROM admin_audit_logs a
-                    LEFT JOIN users u ON u.id = a.admin_user_id
-                    {where_sql}
-                    ORDER BY a.id DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    tuple(params + [limit, offset]),
-                )
-                rows = cursor.fetchall()
-                total = 0
-                items: List[Dict[str, Any]] = []
-                for row in rows:
-                    item = dict(row)
-                    if total <= 0:
-                        total = int(item.get("__total_count") or 0)
-                    item.pop("__total_count", None)
-                    items.append(item)
-                if not rows:
-                    cursor.execute(
-                        f"""
-                        SELECT COUNT(1) AS c
-                        FROM admin_audit_logs a
-                        {where_sql}
-                        """,
-                        tuple(params),
-                    )
-                    total = int((cursor.fetchone() or {"c": 0})["c"] or 0)
-                return {"items": items, "limit": limit, "offset": offset, "total": total}
-            finally:
-                conn.close()
-
-        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
-            route_name="admin_audit_logs",
-            params={
-                "action": action,
-                "admin_user_id": admin_user_id,
-                "result": result_filter,
-                "start_time": start_time,
-                "end_time": end_time,
-                "limit": limit,
-                "offset": offset,
-                "force": request.args.get("force", ""),
-            },
-            force=force,
-            loader=_load_audit_payload,
-        )
-        _admin_log_read("admin_audit_logs", cache_state, elapsed_ms, params_hash)
-        return jsonify(payload)
-
-    @bp.route("/audit/export", methods=["GET"])
-    @admin_required
-    def admin_audit_export():
-        action = request.args.get("action", "").strip()
-        admin_user_id = request.args.get("admin_user_id", "").strip()
-        result_filter = request.args.get("result", "").strip().lower()
-        start_time = request.args.get("start_time", "").strip()
-        end_time = request.args.get("end_time", "").strip()
-
-        where = []
-        params: List[Any] = []
-        if action:
-            where.append("a.action = ?")
-            params.append(action)
-        if admin_user_id:
-            where.append("a.admin_user_id = ?")
-            params.append(admin_user_id)
-        if result_filter in {"success", "failed"}:
-            where.append("LOWER(COALESCE(a.result, '')) = ?")
-            params.append(result_filter)
-        if start_time:
-            where.append("DATETIME(a.created_at) >= DATETIME(?)")
-            params.append(start_time)
-        if end_time:
-            where.append("DATETIME(a.created_at) <= DATETIME(?)")
-            params.append(end_time)
-        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                f"""
-                SELECT
-                    a.id,
-                    a.created_at,
-                    a.admin_user_id,
-                    COALESCE(u.username, '') AS admin_username,
-                    a.action,
-                    a.target_type,
-                    a.target_id,
-                    a.method,
-                    a.path,
-                    a.status_code,
-                    a.result,
-                    a.error,
-                    a.request_body
-                FROM admin_audit_logs a
-                LEFT JOIN users u ON u.id = a.admin_user_id
-                {where_sql}
-                ORDER BY a.id DESC
-                LIMIT 10000
-                """,
-                tuple(params),
-            )
-            rows = [dict(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
-
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(
-            [
-                "时间",
-                "操作人",
-                "操作人内部ID",
-                "操作内容",
-                "对象类型",
-                "对象标识",
-                "结果",
-                "失败原因",
-                "请求方法",
-                "请求路径",
-                "状态码",
-                "请求体",
-            ]
-        )
-        for row in rows:
-            writer.writerow(
-                [
-                    row.get("created_at", ""),
-                    row.get("admin_username", ""),
-                    row.get("admin_user_id", ""),
-                    ACTION_LABELS.get(row.get("action", ""), row.get("action", "")),
-                    row.get("target_type", ""),
-                    row.get("target_id", ""),
-                    "成功" if str(row.get("result", "")).lower() == "success" else "失败",
-                    row.get("error", ""),
-                    row.get("method", ""),
-                    row.get("path", ""),
-                    row.get("status_code", ""),
-                    row.get("request_body", ""),
-                ]
-            )
-        resp = make_response(output.getvalue())
-        resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-        resp.headers["Content-Disposition"] = (
-            f"attachment; filename=audit-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
-        )
-        return resp
 
     return bp

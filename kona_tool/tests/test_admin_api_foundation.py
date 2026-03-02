@@ -310,6 +310,14 @@ class AdminApiFoundationTests(unittest.TestCase):
             "UPDATE users SET last_login_region = ? WHERE id = ?",
             ("广东省-深圳市", "u_target"),
         )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-02-28", 1.0, 1.0, 0, 0, 0, 0, 0, "u_target"),
+        )
         conn.commit()
         conn.close()
 
@@ -367,6 +375,68 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(payload_page2.get("total"), 3)
         self.assertEqual([str(i.get("id")) for i in items_page2], ["u_t1"])
 
+    def test_admin_users_status_all_only_returns_total_asset_gt_zero(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+        _seed_user("u_t2", "target_2", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-28", 100.0, 90.0, 0, 0, 0, 0, 0, "u_t1"),
+                ("2026-02-28", 0.0, 0.0, 0, 0, 0, 0, 0, "u_t2"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?include_local=0&status=all&sort_by=total_asset_cny&sort_dir=desc",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        items = (resp.get_json() or {}).get("items") or []
+        ids = [str(i.get("id")) for i in items]
+        self.assertIn("u_t1", ids)
+        self.assertNotIn("u_t2", ids)
+
+    def test_admin_users_support_sort_by_total_invest_desc(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_t1", "target_1", is_admin=0, status="active")
+        _seed_user("u_t2", "target_2", is_admin=0, status="active")
+        _seed_user("u_t3", "target_3", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-28", 10.0, 200.0, 0, 0, 0, 0, 0, "u_t1"),
+                ("2026-02-28", 10.0, 300.0, 0, 0, 0, 0, 0, "u_t2"),
+                ("2026-02-28", 10.0, 100.0, 0, 0, 0, 0, 0, "u_t3"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users?q=target&include_local=0&sort_by=total_invest_cny&sort_dir=desc&limit=10&offset=0",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        items = (resp.get_json() or {}).get("items") or []
+        self.assertEqual([str(i.get("id")) for i in items], ["u_t2", "u_t1", "u_t3"])
+
     def test_admin_users_support_sort_by_created_at_desc(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_t1", "target_1", is_admin=0, status="active")
@@ -378,6 +448,18 @@ class AdminApiFoundationTests(unittest.TestCase):
         cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-01 10:00:00", "u_t1"))
         cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-03 10:00:00", "u_t2"))
         cursor.execute("UPDATE users SET created_at = ? WHERE id = ?", ("2026-02-02 10:00:00", "u_t3"))
+        cursor.executemany(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t1"),
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t2"),
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t3"),
+            ],
+        )
         conn.commit()
         conn.close()
 
@@ -409,6 +491,18 @@ class AdminApiFoundationTests(unittest.TestCase):
             "UPDATE users SET created_at = ?, last_login = NULL, last_active_at = NULL WHERE id = ?",
             ("2026-02-22 10:00:00", "u_t3"),
         )
+        cursor.executemany(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t1"),
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t2"),
+                ("2026-02-28", 10.0, 9.0, 0, 0, 0, 0, 0, "u_t3"),
+            ],
+        )
         conn.commit()
         conn.close()
 
@@ -438,7 +532,9 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(bad_sort_dir.status_code, 400)
         self.assertEqual((bad_sort_dir.get_json() or {}).get("error"), "Invalid sort_dir")
 
-    def test_admin_user_portfolio_endpoint_returns_holdings(self):
+    @patch.object(admin_routes, "batch_get_prices", return_value={"gb_tsla": (240.5, 230.0, 0, 0)})
+    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.2, "HKD": 0.91, "CNY": 1.0})
+    def test_admin_user_portfolio_endpoint_returns_holdings(self, _mock_rates, _mock_prices):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_target", "target_user", is_admin=0, status="active")
 
@@ -450,6 +546,18 @@ class AdminApiFoundationTests(unittest.TestCase):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             ("gb_tsla", "特斯拉", 3, 220.5, "USD", 0, "us", "u_target"),
+        )
+        cursor.execute(
+            "INSERT INTO cash_assets (name, amount, curr, user_id) VALUES (?, ?, ?, ?)",
+            ("现金账户", 100.0, "USD", "u_target"),
+        )
+        cursor.execute(
+            "INSERT INTO other_assets (name, amount, curr, user_id) VALUES (?, ?, ?, ?)",
+            ("其他资产", 50.0, "CNY", "u_target"),
+        )
+        cursor.execute(
+            "INSERT INTO liabilities (name, amount, curr, user_id) VALUES (?, ?, ?, ?)",
+            ("信用卡", 10.0, "USD", "u_target"),
         )
         conn.commit()
         conn.close()
@@ -468,6 +576,32 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertAlmostEqual(float(item.get("qty") or 0), 3.0, places=3)
         self.assertAlmostEqual(float(item.get("price") or 0), 220.5, places=3)
         self.assertEqual(item.get("curr"), "USD")
+        self.assertIn("pnl_cny", item)
+        self.assertIn("pnl_rate", item)
+        self.assertEqual(item.get("type_label"), "美股")
+        self.assertIn("summary", payload)
+        self.assertAlmostEqual(float(payload.get("summary", {}).get("cash_cny") or 0), 720.0, places=2)
+        self.assertAlmostEqual(float(payload.get("summary", {}).get("other_cny") or 0), 50.0, places=2)
+        self.assertAlmostEqual(float(payload.get("summary", {}).get("liability_cny") or 0), 72.0, places=2)
+        self.assertIn("as_of", payload.get("summary", {}))
+        self.assertIn("cache", payload)
+        self.assertIn("cached_at", payload.get("cache", {}))
+        self.assertIn("expires_at", payload.get("cache", {}))
+
+    def test_admin_audit_endpoints_are_removed(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+
+        logs_resp = self.client.get(
+            "/api/admin/audit/logs",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(logs_resp.status_code, 404)
+
+        export_resp = self.client.get(
+            "/api/admin/audit/export",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(export_resp.status_code, 404)
 
     def test_disabled_user_cannot_login(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

@@ -1,26 +1,27 @@
 <template>
-  <LegacyAdminShell title="后台概览" subtitle="用户增长与留存">
+  <LegacyAdminShell title="数据概览" subtitle="用户增长与留存">
     <section class="kpi-grid">
-      <article class="panel kpi-card">
+      <AdminCard tone="soft" class="kpi-card">
         <div class="kpi-label">新增用户数（当日）</div>
         <div class="kpi-value">{{ overview.dashboard?.new_users_today ?? 0 }}</div>
-      </article>
-      <article class="panel kpi-card">
+      </AdminCard>
+      <AdminCard tone="soft" class="kpi-card">
         <div class="kpi-label">活跃用户数（当日）</div>
         <div class="kpi-value">{{ overview.dashboard?.active_users_today ?? 0 }}</div>
-      </article>
-      <article class="panel kpi-card">
+      </AdminCard>
+      <AdminCard tone="soft" class="kpi-card">
         <div class="kpi-label">累计用户数（历史）</div>
         <div class="kpi-value">{{ overview.dashboard?.total_users ?? 0 }}</div>
-      </article>
+      </AdminCard>
     </section>
 
-    <section class="panel retention-panel">
-      <div class="head">
-        <h3>用户增长与留存</h3>
-        <button class="btn" @click="load(true)">刷新</button>
-      </div>
-      <table class="table">
+    <AdminCard class="retention-panel">
+      <AdminSectionHeader title="用户增长与留存">
+        <template #actions>
+          <AdminButton @click="load(true)">刷新</AdminButton>
+        </template>
+      </AdminSectionHeader>
+      <AdminTable>
         <thead>
           <tr>
             <th>日期</th>
@@ -48,7 +49,7 @@
             <td colspan="8" class="empty">暂无数据</td>
           </tr>
         </tbody>
-      </table>
+      </AdminTable>
 
       <div class="pager-wrap">
         <div class="pager">
@@ -56,18 +57,22 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
-    </section>
+    </AdminCard>
   </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
+import AdminCard from '../../components/admin/ui/AdminCard.vue'
+import AdminButton from '../../components/admin/ui/AdminButton.vue'
+import AdminTable from '../../components/admin/ui/AdminTable.vue'
+import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
 
 const overview = reactive<Record<string, any>>({
@@ -134,9 +139,7 @@ onMounted(() => {
 }
 
 .kpi-card {
-  padding: 18px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-  border: 1px solid #d7e3f3;
+  min-height: 128px;
 }
 
 .kpi-label {
@@ -156,38 +159,6 @@ onMounted(() => {
 
 .retention-panel {
   padding: 16px;
-}
-
-.head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.head h3 {
-  color: #35597f;
-}
-
-.table th,
-.table td {
-  text-align: center;
-  vertical-align: middle;
-}
-
-.table th:first-child,
-.table td:first-child {
-  text-align: left;
-}
-
-.table th {
-  color: #42658b;
-  font-weight: 700;
-}
-
-.table td {
-  color: #233f61;
-  font-weight: 600;
 }
 
 .pager-wrap {
@@ -232,16 +203,6 @@ onMounted(() => {
   flex: 0 0 auto;
 }
 
-.pager-btn {
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.pager-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .empty {
   color: #5f7a98 !important;
   text-align: center;
@@ -258,15 +219,7 @@ onMounted(() => {
   }
 
   .kpi-value {
-    font-size: 30px;
-  }
-
-  .pager-wrap {
-    justify-content: flex-start;
-  }
-
-  .pager {
-    flex-wrap: wrap;
+    font-size: 32px;
   }
 }
 </style>

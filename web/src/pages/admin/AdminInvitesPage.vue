@@ -1,21 +1,21 @@
 <template>
   <LegacyAdminShell title="邀请码管理" subtitle="未使用/已使用查询">
-    <section class="panel" style="padding: 16px; margin-bottom: 16px;">
+    <AdminCard class="tool-card">
       <div class="toolbar">
         <input class="input" v-model.number="count" type="number" min="1" max="50" placeholder="生成数量" />
-        <button class="btn primary" @click="generate">生成邀请码</button>
-        <button class="btn" @click="load({ force: true })">刷新列表</button>
+        <AdminButton variant="primary" @click="generate">生成邀请码</AdminButton>
+        <AdminButton variant="ghost" @click="load({ force: true })">刷新列表</AdminButton>
       </div>
       <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
-    </section>
+    </AdminCard>
 
-    <section class="panel" style="padding: 16px;">
+    <AdminCard class="list-card">
       <div class="tabs">
         <button class="tab-btn" :class="{ active: inviteStatus === 'active' }" @click="switchTab('active')">未使用</button>
         <button class="tab-btn" :class="{ active: inviteStatus === 'used' }" @click="switchTab('used')">已使用</button>
       </div>
 
-      <table class="table">
+      <AdminTable>
         <thead v-if="inviteStatus === 'active'">
           <tr>
             <th>创建时间</th>
@@ -50,7 +50,7 @@
             <td colspan="3" class="empty">暂无已使用邀请码</td>
           </tr>
         </tbody>
-      </table>
+      </AdminTable>
 
       <div class="pager-wrap">
         <div class="pager">
@@ -58,18 +58,21 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
-    </section>
+    </AdminCard>
   </LegacyAdminShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
+import AdminCard from '../../components/admin/ui/AdminCard.vue'
+import AdminButton from '../../components/admin/ui/AdminButton.vue'
+import AdminTable from '../../components/admin/ui/AdminTable.vue'
 import { api } from '../../shared/http'
 import { shortDateTime } from '../../shared/format'
 
@@ -184,6 +187,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.tool-card {
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.list-card {
+  padding: 16px;
+}
+
 .toolbar {
   display: flex;
   gap: 8px;
@@ -261,16 +273,6 @@ onMounted(() => {
   color: #35557d;
   padding: 0 10px;
   flex: 0 0 auto;
-}
-
-.pager-btn {
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.pager-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .empty {

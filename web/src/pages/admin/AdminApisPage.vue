@@ -1,13 +1,8 @@
 <template>
-  <LegacyAdminShell title="接口策略" subtitle="接口测试">
-    <section class="panel block">
-      <div class="block-head">
-        <div>
-          <h3>接口测试</h3>
-        </div>
-      </div>
-
-      <table class="table provider-table">
+  <LegacyAdminShell title="接口管理" subtitle="接口测试">
+    <AdminCard class="block">
+      <AdminSectionHeader title="接口测试" subtitle="逐个接口测试，结果在弹窗里查看明细" />
+      <AdminTable>
         <thead>
           <tr>
             <th>接口名称</th>
@@ -18,35 +13,36 @@
           <tr v-for="provider in providers" :key="provider.key">
             <td>{{ provider.title }}</td>
             <td>
-              <button class="btn" :disabled="isTesting(provider.key)" @click="openTestModal(provider.key)">
+              <AdminButton :disabled="isTesting(provider.key)" @click="openTestModal(provider.key)">
                 {{ isTesting(provider.key) ? '测试中...' : '测试' }}
-              </button>
+              </AdminButton>
             </td>
           </tr>
         </tbody>
-      </table>
-    </section>
+      </AdminTable>
+    </AdminCard>
 
     <div v-if="modal.visible && currentProvider" class="detail-mask" @click.self="closeModal">
-      <section class="panel detail-panel">
+      <AdminCard class="detail-panel">
         <div class="detail-head">
           <h3>{{ currentProvider.title }} - 测试</h3>
           <div class="detail-actions">
-            <button
-              class="btn"
+            <AdminButton
               :disabled="isTesting(currentProvider.key)"
               @click="runProviderTest(currentProvider.key)"
             >
               {{ isTesting(currentProvider.key) ? '测试中...' : '重新测试' }}
-            </button>
-            <button class="btn ghost" :disabled="isTesting(currentProvider.key)" @click="closeModal">关闭</button>
+            </AdminButton>
+            <AdminButton variant="ghost" :disabled="isTesting(currentProvider.key)" @click="closeModal">
+              关闭
+            </AdminButton>
           </div>
         </div>
 
         <p v-if="testErrors[currentProvider.key]" class="down">{{ testErrors[currentProvider.key] }}</p>
 
-        <div v-if="testResults[currentProvider.key]" class="table-wrap">
-          <table class="table compact" v-if="currentProvider.kind === 'quote'">
+        <div v-if="testResults[currentProvider.key]">
+          <AdminTable compact v-if="currentProvider.kind === 'quote'">
             <thead>
               <tr>
                 <th>代码</th>
@@ -71,9 +67,9 @@
                 <td>{{ item.detail || '-' }}</td>
               </tr>
             </tbody>
-          </table>
+          </AdminTable>
 
-          <table class="table compact" v-else>
+          <AdminTable compact v-else>
             <thead>
               <tr>
                 <th>代码</th>
@@ -94,11 +90,11 @@
                 <td>{{ item.detail || '-' }}</td>
               </tr>
             </tbody>
-          </table>
+          </AdminTable>
         </div>
 
         <p v-else class="muted">{{ isTesting(currentProvider.key) ? '测试中...' : '暂无测试结果' }}</p>
-      </section>
+      </AdminCard>
     </div>
   </LegacyAdminShell>
 </template>
@@ -106,6 +102,10 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
+import AdminCard from '../../components/admin/ui/AdminCard.vue'
+import AdminButton from '../../components/admin/ui/AdminButton.vue'
+import AdminTable from '../../components/admin/ui/AdminTable.vue'
+import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
 
 type ProviderKey = 'sina_quote' | 'tencent_quote' | 'eastmoney_quote' | 'forex_rate'
@@ -221,37 +221,6 @@ function closeModal() {
   margin-bottom: 16px;
 }
 
-.block-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.block-head h3 {
-  margin: 0;
-  color: #264d73;
-}
-
-.provider-table td:last-child,
-.provider-table th:last-child {
-  width: 140px;
-}
-
-.table-wrap {
-  max-height: 480px;
-  overflow: auto;
-  border: 1px solid #e1eaf5;
-  border-radius: 10px;
-}
-
-.table.compact th,
-.table.compact td {
-  font-size: 12px;
-  padding: 8px;
-}
-
 .detail-mask {
   position: fixed;
   inset: 0;
@@ -287,13 +256,6 @@ function closeModal() {
   gap: 8px;
 }
 
-.btn.ghost {
-  background: transparent;
-  color: #35557d;
-  border: 1px solid #c8d6e7;
-  box-shadow: none;
-}
-
 .muted {
   margin: 0;
   color: #55708f;
@@ -316,10 +278,7 @@ function closeModal() {
 
   .detail-actions {
     width: 100%;
-  }
-
-  .detail-actions .btn {
-    width: 100%;
+    flex-wrap: wrap;
   }
 }
 </style>

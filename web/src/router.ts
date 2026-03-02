@@ -12,7 +12,6 @@ import AdminOverviewPage from './pages/admin/AdminOverviewPage.vue'
 import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
 import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
 import AdminApisPage from './pages/admin/AdminApisPage.vue'
-import AdminAuditPage from './pages/admin/AdminAuditPage.vue'
 import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
 import { useKonaStore } from './shared/store'
 
@@ -35,7 +34,6 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/users', component: AdminUsersPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/invites', component: AdminInvitesPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/apis', component: AdminApisPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/audit', component: AdminAuditPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/config', component: AdminConfigPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/data', redirect: '/admin/overview' },
 ]

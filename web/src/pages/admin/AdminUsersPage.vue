@@ -1,32 +1,43 @@
 <template>
   <LegacyAdminShell title="用户管理" subtitle="查询、封禁与资产明细">
-    <section class="panel" style="padding: 16px; margin-bottom: 16px;">
+    <AdminCard class="search-card">
+      <AdminSectionHeader title="用户管理" subtitle="当前仅展示总资产 > 0 的用户">
+        <template #actions>
+          <span class="all-chip">全部（总资产>0）</span>
+        </template>
+      </AdminSectionHeader>
       <div class="toolbar">
         <input class="input" v-model.trim="query" placeholder="搜索用户名/昵称/手机号" @keyup.enter="onSearch" />
-        <select class="input slim" v-model="status">
-          <option value="all">全部</option>
-          <option value="active">active</option>
-          <option value="disabled">disabled</option>
-        </select>
-        <select class="input slim" v-model="sortBy">
-          <option value="last_active_at">最近活跃时间（降序）</option>
-          <option value="total_asset_cny">总资产金额（降序）</option>
-          <option value="created_at">注册时间（降序）</option>
-        </select>
-        <button class="btn" @click="onSearch">查询</button>
+        <AdminButton variant="primary" @click="onSearch">查询</AdminButton>
       </div>
-    </section>
+    </AdminCard>
 
-    <section class="panel" style="padding: 16px;">
-      <table class="table">
+    <AdminCard class="list-card">
+      <AdminTable>
         <thead>
           <tr>
             <th>用户名</th>
             <th>用户昵称</th>
-            <th>总资产金额（￥）</th>
-            <th>投资资产金额（￥）</th>
-            <th>注册时间</th>
-            <th>最近活跃时间</th>
+            <th>
+              <button class="sort-btn" @click="toggleSort('total_asset_cny')">
+                总资产金额（￥）<span>{{ sortIcon('total_asset_cny') }}</span>
+              </button>
+            </th>
+            <th>
+              <button class="sort-btn" @click="toggleSort('total_invest_cny')">
+                投资资产金额（￥）<span>{{ sortIcon('total_invest_cny') }}</span>
+              </button>
+            </th>
+            <th>
+              <button class="sort-btn" @click="toggleSort('created_at')">
+                注册时间<span>{{ sortIcon('created_at') }}</span>
+              </button>
+            </th>
+            <th>
+              <button class="sort-btn" @click="toggleSort('last_active_at')">
+                最近活跃时间<span>{{ sortIcon('last_active_at') }}</span>
+              </button>
+            </th>
             <th>最近活跃地区</th>
             <th>操作</th>
           </tr>
@@ -41,15 +52,17 @@
             <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
             <td>{{ displayRegion(u.last_active_region || u.last_login_region) }}</td>
             <td class="actions">
-              <button class="btn" @click="openDetail(u)">详情</button>
-              <button class="btn" @click="toggleStatus(u)">{{ u.status === 'disabled' ? '解封' : '封禁' }}</button>
+              <AdminButton size="sm" variant="ghost" @click="openDetail(u)">详情</AdminButton>
+              <AdminButton size="sm" :variant="u.status === 'disabled' ? 'secondary' : 'danger'" @click="toggleStatus(u)">
+                {{ u.status === 'disabled' ? '解封' : '封禁' }}
+              </AdminButton>
             </td>
           </tr>
           <tr v-if="!(users.items || []).length">
             <td colspan="8" class="empty">暂无用户数据</td>
           </tr>
         </tbody>
-      </table>
+      </AdminTable>
 
       <div class="pager-wrap">
         <div class="pager">
@@ -57,48 +70,82 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <button class="btn pager-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <button class="btn pager-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
 
-      <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
-    </section>
+      <p v-if="message" :class="ok ? 'up' : 'down'" class="msg">{{ message }}</p>
+    </AdminCard>
 
     <div v-if="detail.visible" class="detail-mask" @click.self="closeDetail">
-      <section class="panel detail-panel">
+      <AdminCard class="detail-panel">
         <div class="detail-head">
-          <h3>持仓详情 · {{ detail.username || '-' }}</h3>
-          <button class="btn" @click="closeDetail">关闭</button>
+          <h3>资产详情 · {{ detail.username || '-' }}</h3>
+          <AdminButton variant="ghost" @click="closeDetail">关闭</AdminButton>
         </div>
 
         <div v-if="detail.loading" class="detail-loading">加载中...</div>
 
-        <table v-else class="table">
-          <thead>
-            <tr>
-              <th>代码</th>
-              <th>名称</th>
-              <th>数量</th>
-              <th>成本价</th>
-              <th>币种</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in detail.items" :key="item.code">
-              <td>{{ item.code }}</td>
-              <td>{{ item.name || '-' }}</td>
-              <td>{{ formatQty(item.qty) }}</td>
-              <td>{{ formatPrice(item.price) }}</td>
-              <td>{{ item.curr || '-' }}</td>
-            </tr>
-            <tr v-if="!detail.items.length">
-              <td colspan="5" class="empty">暂无持仓</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+        <template v-else>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <div class="summary-label">现金资产</div>
+              <div class="summary-value">{{ formatCny(detail.summary.cash_cny) }}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">其他资产</div>
+              <div class="summary-value">{{ formatCny(detail.summary.other_cny) }}</div>
+            </div>
+            <div class="summary-item">
+              <div class="summary-label">我的负债</div>
+              <div class="summary-value">{{ formatCny(detail.summary.liability_cny) }}</div>
+            </div>
+          </div>
+
+          <p v-if="detail.cache.cached_at" class="cache-tip">
+            数据时间：{{ shortDateTime(detail.cache.cached_at) }}
+          </p>
+
+          <div class="detail-sub-title">投资资产 · 持仓明细</div>
+          <AdminTable>
+            <thead>
+              <tr>
+                <th>资产名称/代码</th>
+                <th>数量</th>
+                <th>累计盈亏金额/率</th>
+                <th>类型</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in detail.items" :key="`${item.code}-${item.type_label}`">
+                <td>
+                  <div class="asset-cell">
+                    <strong>{{ item.name || '-' }}</strong>
+                    <span>{{ item.code || '-' }}</span>
+                  </div>
+                </td>
+                <td>{{ formatQty(item.qty) }}</td>
+                <td>
+                  <div class="pnl-cell">
+                    <span :class="Number(item.pnl_cny || 0) >= 0 ? 'up' : 'down'">
+                      {{ formatSignedCny(item.pnl_cny) }}
+                    </span>
+                    <small :class="Number(item.pnl_rate || 0) >= 0 ? 'up' : 'down'">
+                      {{ formatPct(item.pnl_rate) }}
+                    </small>
+                  </div>
+                </td>
+                <td>{{ item.type_label || '-' }}</td>
+              </tr>
+              <tr v-if="!detail.items.length">
+                <td colspan="4" class="empty">暂无持仓</td>
+              </tr>
+            </tbody>
+          </AdminTable>
+        </template>
+      </AdminCard>
     </div>
   </LegacyAdminShell>
 </template>
@@ -106,15 +153,18 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
+import AdminCard from '../../components/admin/ui/AdminCard.vue'
+import AdminButton from '../../components/admin/ui/AdminButton.vue'
+import AdminTable from '../../components/admin/ui/AdminTable.vue'
+import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
 import { money, shortDateTime } from '../../shared/format'
 
-type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'created_at'
+type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'total_invest_cny' | 'created_at'
 
 const query = ref('')
-const status = ref('all')
 const sortBy = ref<UserSortBy>('last_active_at')
-const sortDir = 'desc'
+const sortDir = ref<'asc' | 'desc'>('desc')
 const users = reactive<Record<string, any>>({ items: [], total: 0 })
 const message = ref('')
 const ok = ref(true)
@@ -135,12 +185,32 @@ const detail = reactive<{
   loading: boolean
   userId: string
   username: string
+  summary: {
+    cash_cny: number
+    other_cny: number
+    liability_cny: number
+    as_of: string
+  }
+  cache: {
+    cached_at: string
+    expires_at: string
+  }
   items: Array<Record<string, any>>
 }>({
   visible: false,
   loading: false,
   userId: '',
   username: '',
+  summary: {
+    cash_cny: 0,
+    other_cny: 0,
+    liability_cny: 0,
+    as_of: '',
+  },
+  cache: {
+    cached_at: '',
+    expires_at: '',
+  },
   items: [],
 })
 
@@ -154,9 +224,8 @@ async function load(options: { force?: boolean } = {}) {
   const offset = (currentPage.value - 1) * pageSize.value
   const key = [
     query.value,
-    status.value,
     sortBy.value,
-    sortDir,
+    sortDir.value,
     String(pageSize.value),
     String(offset),
     force ? '1' : '0',
@@ -167,10 +236,10 @@ async function load(options: { force?: boolean } = {}) {
   try {
     const params = new URLSearchParams({
       q: query.value,
-      status: status.value,
+      status: 'all',
       include_local: '0',
       sort_by: sortBy.value,
-      sort_dir: sortDir,
+      sort_dir: sortDir.value,
       limit: String(pageSize.value),
       offset: String(offset),
     })
@@ -185,6 +254,22 @@ async function load(options: { force?: boolean } = {}) {
 async function onSearch() {
   currentPage.value = 1
   await load({ force: true })
+}
+
+function toggleSort(field: UserSortBy) {
+  if (sortBy.value === field) {
+    sortDir.value = sortDir.value === 'desc' ? 'asc' : 'desc'
+  } else {
+    sortBy.value = field
+    sortDir.value = 'desc'
+  }
+  currentPage.value = 1
+  void load({ force: true })
+}
+
+function sortIcon(field: UserSortBy): string {
+  if (sortBy.value !== field) return '↕'
+  return sortDir.value === 'desc' ? '↓' : '↑'
 }
 
 function goToPage(page: number) {
@@ -222,11 +307,25 @@ async function openDetail(user: Record<string, any>) {
   detail.userId = String(user.id || '')
   detail.username = String(user.username || '')
   detail.items = []
+  detail.summary = { cash_cny: 0, other_cny: 0, liability_cny: 0, as_of: '' }
+  detail.cache = { cached_at: '', expires_at: '' }
   try {
     const payload = await api.get<Record<string, any>>(
       `/api/admin/users/${encodeURIComponent(detail.userId)}/portfolio`,
     )
     detail.items = Array.isArray(payload?.items) ? payload.items : []
+    const summary = payload?.summary || {}
+    detail.summary = {
+      cash_cny: Number(summary.cash_cny || 0),
+      other_cny: Number(summary.other_cny || 0),
+      liability_cny: Number(summary.liability_cny || 0),
+      as_of: String(summary.as_of || ''),
+    }
+    const cache = payload?.cache || {}
+    detail.cache = {
+      cached_at: String(cache.cached_at || detail.summary.as_of || ''),
+      expires_at: String(cache.expires_at || ''),
+    }
   } catch (e) {
     flash(e instanceof Error ? e.message : '加载详情失败', false)
     detail.items = []
@@ -248,14 +347,22 @@ function formatCny(value: unknown): string {
   return money(Number.isFinite(n) ? n : 0, 'CNY')
 }
 
+function formatSignedCny(value: unknown): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '￥0.00'
+  const abs = money(Math.abs(n), 'CNY')
+  return n >= 0 ? `+${abs}` : `-${abs}`
+}
+
 function formatQty(value: unknown): string {
   const n = Number(value)
   return Number.isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '-'
 }
 
-function formatPrice(value: unknown): string {
+function formatPct(value: unknown): string {
   const n = Number(value)
-  return Number.isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '-'
+  if (!Number.isFinite(n)) return '-'
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
 function displayRegion(value: unknown): string {
@@ -263,7 +370,7 @@ function displayRegion(value: unknown): string {
   return raw || '未知'
 }
 
-watch([status, sortBy, pageSize], async () => {
+watch(pageSize, async () => {
   currentPage.value = 1
   await load()
 })
@@ -274,14 +381,44 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.search-card {
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.all-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d2deeb;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #35567c;
+  background: #f4f8fd;
+}
+
 .toolbar {
+  margin-top: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 220px 80px;
+  grid-template-columns: minmax(0, 1fr) 90px;
   gap: 8px;
 }
 
-.slim {
-  width: 100%;
+.list-card {
+  padding: 16px;
+}
+
+.sort-btn {
+  border: 0;
+  background: transparent;
+  color: #55708f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .actions {
@@ -291,12 +428,6 @@ onMounted(() => {
   align-items: center;
   flex-wrap: nowrap;
   white-space: nowrap;
-  min-width: 170px;
-}
-
-.table th:last-child,
-.table td:last-child {
-  text-align: center;
 }
 
 .pager-wrap {
@@ -341,14 +472,14 @@ onMounted(() => {
   flex: 0 0 auto;
 }
 
-.pager-btn {
-  white-space: nowrap;
-  flex: 0 0 auto;
+.msg {
+  margin-top: 10px;
 }
 
-.pager-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.empty {
+  text-align: center;
+  color: #55708f;
+  font-weight: 600;
 }
 
 .up {
@@ -357,12 +488,6 @@ onMounted(() => {
 
 .down {
   color: var(--danger);
-}
-
-.empty {
-  text-align: center;
-  color: #55708f;
-  font-weight: 600;
 }
 
 .detail-mask {
@@ -376,8 +501,8 @@ onMounted(() => {
 }
 
 .detail-panel {
-  width: min(980px, 100%);
-  max-height: min(78vh, 760px);
+  width: min(1020px, 100%);
+  max-height: min(82vh, 820px);
   overflow: auto;
   padding: 14px;
 }
@@ -399,6 +524,70 @@ onMounted(() => {
   color: #46678f;
 }
 
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 20px;
+  row-gap: 14px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  border: 1px solid #d8e3f0;
+  border-radius: 12px;
+  background: #f9fbff;
+  padding: 12px;
+}
+
+.summary-label {
+  color: #55708f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary-value {
+  margin-top: 6px;
+  color: #1f3f58;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.cache-tip {
+  margin: 0 0 10px;
+  color: #55708f;
+  font-size: 12px;
+}
+
+.detail-sub-title {
+  margin: 0 0 10px;
+  color: #1f3f58;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.asset-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.asset-cell strong {
+  color: #10243e;
+}
+
+.asset-cell span {
+  color: #55708f;
+  font-size: 12px;
+}
+
+.pnl-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.pnl-cell small {
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .toolbar {
     grid-template-columns: 1fr;
@@ -414,6 +603,12 @@ onMounted(() => {
 
   .pager {
     flex-wrap: wrap;
+  }
+
+  .detail-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 }
 </style>

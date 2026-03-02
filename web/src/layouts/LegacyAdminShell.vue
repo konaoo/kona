@@ -3,21 +3,21 @@
     <aside class="admin-sidebar">
       <div class="brand">
         <div class="brand-title">管理后台</div>
-        <div class="brand-sub">Operations Console</div>
       </div>
 
       <div class="nav-group">
         <div class="nav-group-title">管理菜单</div>
         <nav class="nav">
           <RouterLink v-for="item in nav" :key="item.path" :to="item.path" active-class="active">
+            <AdminIcon :name="item.icon" :size="15" />
             {{ item.label }}
           </RouterLink>
         </nav>
       </div>
 
       <div class="side-actions">
-        <button class="btn-secondary" @click="goApp">去业务端</button>
-        <button class="btn-danger" @click="onLogout">退出登录</button>
+        <AdminButton variant="secondary" @click="goApp">去业务端</AdminButton>
+        <AdminButton variant="danger" @click="onLogout">退出登录</AdminButton>
       </div>
     </aside>
 
@@ -33,6 +33,8 @@
 <script setup lang="ts">
 import { RouterLink, useRouter } from 'vue-router'
 import { useKonaStore } from '../shared/store'
+import AdminButton from '../components/admin/ui/AdminButton.vue'
+import AdminIcon from '../components/admin/ui/AdminIcon.vue'
 
 defineProps<{ title: string; subtitle?: string }>()
 
@@ -40,12 +42,11 @@ const router = useRouter()
 const store = useKonaStore()
 
 const nav = [
-  { path: '/admin/overview', label: '概览' },
-  { path: '/admin/users', label: '用户' },
-  { path: '/admin/invites', label: '邀请码' },
-  { path: '/admin/config', label: '运营配置' },
-  { path: '/admin/apis', label: '接口策略' },
-  { path: '/admin/audit', label: '审计' },
+  { path: '/admin/overview', label: '数据概览', icon: 'dashboard' },
+  { path: '/admin/users', label: '用户管理', icon: 'users' },
+  { path: '/admin/invites', label: '邀请码管理', icon: 'invite' },
+  { path: '/admin/config', label: '运营配置', icon: 'ops' },
+  { path: '/admin/apis', label: '接口管理', icon: 'api' },
 ]
 
 async function onLogout() {
@@ -95,12 +96,6 @@ async function goApp() {
   letter-spacing: 0.5px;
 }
 
-.brand-sub {
-  margin-top: 4px;
-  color: #97b8d6;
-  font-size: calc(11px * var(--admin-font-scale));
-}
-
 .nav-group-title {
   margin: 0 calc(10px * var(--admin-space-scale)) calc(6px * var(--admin-space-scale));
   color: #7ba2c5;
@@ -110,7 +105,9 @@ async function goApp() {
 }
 
 .nav a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: calc(5px * var(--admin-space-scale));
   padding: calc(9px * var(--admin-space-scale)) calc(11px * var(--admin-space-scale));
   color: #d6e9ff;
@@ -135,27 +132,6 @@ async function goApp() {
   display: grid;
   gap: calc(7px * var(--admin-space-scale));
   padding: calc(8px * var(--admin-space-scale));
-}
-
-.btn-secondary,
-.btn-danger {
-  border: 0;
-  border-radius: 10px;
-  padding: calc(8px * var(--admin-control-scale)) calc(12px * var(--admin-control-scale));
-  font-size: calc(13px * var(--admin-font-scale));
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-secondary {
-  background: #e8eff7;
-  color: #1f3f58;
-  border: 1px solid #c8d6e7;
-}
-
-.btn-danger {
-  color: #fff;
-  background: linear-gradient(120deg, #b42318, #d92d20);
 }
 
 .admin-main {
