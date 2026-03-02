@@ -1,16 +1,16 @@
 <template>
   <div v-if="visible" class="editor-mask" @click.self="onClose">
-    <section class="panel editor-panel">
+    <section class="ops-editor-panel">
       <div class="editor-head">
         <h3>{{ title }}</h3>
-        <button class="btn ghost" :disabled="saving" @click="onClose">关闭</button>
+        <button class="ops-editor-btn ops-editor-btn-ghost" :disabled="saving" @click="onClose">关闭</button>
       </div>
 
       <label class="field">
         <span class="label">图片链接</span>
         <input
           :value="draft.image_url"
-          class="input"
+          class="ops-editor-input"
           type="url"
           maxlength="2048"
           placeholder="https://example.com/qrcode.webp"
@@ -22,7 +22,7 @@
         <span class="label">文案</span>
         <textarea
           :value="draft.text"
-          class="input textarea"
+          class="ops-editor-input textarea"
           maxlength="200"
           placeholder="请输入展示文案"
           @input="onTextInput"
@@ -50,10 +50,10 @@
       </p>
 
       <div class="actions">
-        <button class="btn primary" :disabled="saving" @click="onSave">
+        <button class="ops-editor-btn ops-editor-btn-primary" :disabled="saving" @click="onSave">
           {{ saving ? '保存中...' : '保存' }}
         </button>
-        <button class="btn secondary" :disabled="saving" @click="onClose">取消</button>
+        <button class="ops-editor-btn ops-editor-btn-secondary" :disabled="saving" @click="onClose">取消</button>
       </div>
     </section>
   </div>
@@ -134,11 +134,15 @@ function onSave() {
   background: rgba(7, 18, 33, 0.58);
 }
 
-.editor-panel {
+.ops-editor-panel {
   width: min(760px, 100%);
   max-height: min(88vh, 820px);
   overflow: auto;
   padding: 18px;
+  background: #ffffff;
+  border: 1px solid #d6e1ee;
+  border-radius: 16px;
+  box-shadow: 0 20px 54px rgba(7, 18, 33, 0.28);
 }
 
 .editor-head {
@@ -166,6 +170,23 @@ function onSave() {
   color: #55708f;
   font-size: 12px;
   font-weight: 700;
+}
+
+.ops-editor-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #c7d8ea;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #10243e;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.ops-editor-input:focus {
+  outline: none;
+  border-color: #7ea2cb;
+  box-shadow: 0 0 0 3px rgba(126, 162, 203, 0.2);
 }
 
 .textarea {
@@ -231,17 +252,42 @@ function onSave() {
   gap: 8px;
 }
 
-.btn.secondary {
-  background: #e8eff7;
-  color: #1f3f58;
+.ops-editor-btn {
+  min-height: 42px;
   border: 1px solid #c8d6e7;
+  border-radius: 999px;
+  padding: 0 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
-.btn.ghost {
+.ops-editor-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ops-editor-btn:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ops-editor-btn-primary {
+  border-color: #5f9fd7;
+  background: linear-gradient(140deg, #7ec2ff, #59a7ea);
+  color: #062749;
+}
+
+.ops-editor-btn-secondary {
+  background: #e8eff7;
+  color: #1f3f58;
+}
+
+.ops-editor-btn-ghost {
   background: transparent;
   color: #35557d;
-  border: 1px solid #c8d6e7;
-  box-shadow: none;
 }
 
 .up {
@@ -257,7 +303,7 @@ function onSave() {
     flex-direction: column-reverse;
   }
 
-  .actions .btn {
+  .actions .ops-editor-btn {
     width: 100%;
   }
 }
