@@ -8,6 +8,60 @@
 
 ---
 
+## v1.0.22 - 添加资产交互升级、收益日历回跳修复、B股币种全端修正
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Web | Backend | Docs
+
+### Summary
+- Flutter 添加资产弹窗升级为“手动触发搜索 + 自定义数字键盘”交互：不再输入即搜，数量/价格输入规则更稳。
+- 分析页收益日历修复“从历史月切换后无法回到当月”的问题（Web + Flutter + 后端可选周期口径联动）。
+- B股币种口径全端修复：
+  - `sh900xxx`/`900xxx` -> `USD`
+  - `sz200xxx`/`200xxx` -> `HKD`
+  - 其余 A 股仍 `CNY`
+- 增加 B股历史脏数据自动回填，避免老持仓继续显示人民币。
+
+### Added
+- Flutter `InvestTradeDialog` 新增自定义数字键盘输入流与字段级约束（负号、小数点、两位小数、删除/清空/确认）。
+- Flutter 测试补齐：
+  - 手动搜索触发/失败重试
+  - 数字键盘输入规则
+  - 负成本与模式切换行为
+- 后端新增 B股历史币种幂等回填：`_ensure_b_share_currency`。
+- 后端与端侧新增 B股币种识别回归测试。
+
+### Changed
+- `flutter/pubspec.yaml`：版本 `1.0.21` -> `1.0.22`。
+- `kona_tool/config.py`：
+  - `APP_VERSION` -> `v12.0.1`
+  - `CLIENT_APP_VERSION` 默认 -> `1.0.22`
+- Web `marketDisplayCurrency` 调整为优先信任合法 `curr`，再按 market 回退，避免 B股被 `market='a'` 覆盖成 CNY。
+- Flutter `normalizeInvestmentCurrency` 与后端币种归一规则对齐（B股优先）。
+
+### Fixed
+- 修复收益日历历史周期缓存后重建页面不回源导致 selectable 陈旧的问题。
+- 修复当月无快照时日历返回不可访问状态的问题（应允许进入当前月空视图）。
+- 修复 B股在持仓/分析展示中错误显示人民币的问题。
+- 修复老模板页手动输入代码时 B股请求币种推断错误的问题。
+
+### Data / Migration
+- 启动时自动执行 B股币种幂等回填：
+  - `portfolio.code LIKE 'sh900%'` -> `curr='USD'`
+  - `portfolio.code LIKE 'sz200%'` -> `curr='HKD'`
+- 仅修正不匹配记录，不改 schema，不影响非 B股数据。
+
+### Verification
+- `python3 -m unittest kona_tool/tests/test_market_code_normalization.py kona_tool/tests/test_api_baseline.py`
+- `flutter test test/app_state_smoke_test.dart`
+- `flutter test test/invest_trade_dialog_test.dart test/analysis_calendar_picker_test.dart`
+- `npm run build`（web）
+
+### Notes
+- B股仍归类在 `asset_type='a'`，本次仅修正币种，不拆分市场分类。
+
+---
+
 ## v1.0.21 - 登录与版本规则统一、投资页碎股支持
 - 发布状态：Released
 - 发布类型：Patch

@@ -16,20 +16,16 @@ export function money(value: number, curr = 'CNY'): string {
 }
 
 export function marketDisplayCurrency(market: unknown, curr?: unknown): 'CNY' | 'HKD' | 'USD' {
+  const explicitCurr = String(curr || '').toUpperCase()
+  if (explicitCurr === 'USD' || explicitCurr === 'HKD' || explicitCurr === 'CNY') {
+    return explicitCurr
+  }
   const marketCode = String(market || '').toLowerCase()
   if (marketCode === 'a') return 'CNY'
   if (marketCode === 'hk') return 'HKD'
   if (marketCode === 'us') return 'USD'
   if (marketCode === 'fund') {
-    const fundCurr = String(curr || '').toUpperCase()
-    if (fundCurr === 'USD' || fundCurr === 'HKD' || fundCurr === 'CNY') {
-      return fundCurr
-    }
     return 'CNY'
-  }
-  const fallbackCurr = String(curr || '').toUpperCase()
-  if (fallbackCurr === 'USD' || fallbackCurr === 'HKD') {
-    return fallbackCurr
   }
   return 'CNY'
 }

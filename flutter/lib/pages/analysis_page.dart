@@ -68,7 +68,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     super.dispose();
   }
 
-  Future<void> _loadData({bool force = false, bool showLoadingUi = true}) async {
+  Future<void> _loadData({
+    bool force = false,
+    bool showLoadingUi = true,
+  }) async {
     var renderedByCache = false;
     if (!force && !_overviewLoaded) {
       final cached = await _loadOverviewFromStorage();
@@ -168,11 +171,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
 
-    final shouldRefreshFromNetwork =
-        force || !renderedByCache || _isCurrentCalendarPeriod();
-    if (!shouldRefreshFromNetwork) {
-      return;
-    }
+    // 命中缓存后仍回源一次，避免跨月后 selectable 长期陈旧导致无法切回当期。
 
     if (!renderedByCache && showLoadingUi) {
       setState(() => _calendarLoading = true);
@@ -690,7 +689,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
     // 当天数据始终用实时日盈亏，确保与“今日盈亏”一致
     if (_calendarTimeType == 'day' &&
-        items.isNotEmpty &&
         dayYear == now.year &&
         dayMonth == now.month) {
       final todayKey = DateTime.now().day;
@@ -866,10 +864,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                           _formatCalendarPnl(pnl, appState),
                           maxLines: 1,
                           softWrap: false,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: textColor,
-                          ),
+                          style: TextStyle(fontSize: 11, color: textColor),
                         ),
                       ),
                     ] else ...[
@@ -1474,8 +1469,8 @@ class AnalysisRankAllPage extends StatelessWidget {
 class _RankItem {
   final String code;
   final String name;
-  final double pnl;      // 原始币种盈亏（用于显示）
-  final double pnlCny;   // 换算成人民币的盈亏（用于跨币种排序）
+  final double pnl; // 原始币种盈亏（用于显示）
+  final double pnlCny; // 换算成人民币的盈亏（用于跨币种排序）
   final double pnlRate;
   final String currencySymbol;
 

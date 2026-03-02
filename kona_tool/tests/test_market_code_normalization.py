@@ -28,6 +28,26 @@ class TestMarketCodeNormalization(unittest.TestCase):
         self.assertEqual(parsed["code"], "00700.HK")
         self.assertEqual(parsed["curr"], "HKD")
 
+    def test_parse_code_sh_b_share_uses_usd(self):
+        parsed = parse_code("900901", "")
+        self.assertEqual(parsed["code"], "sh900901")
+        self.assertEqual(parsed["curr"], "USD")
+
+    def test_parse_code_sz_b_share_uses_hkd(self):
+        parsed = parse_code("200002", "")
+        self.assertEqual(parsed["code"], "sz200002")
+        self.assertEqual(parsed["curr"], "HKD")
+
+    def test_parse_code_sh_b_share_forces_currency(self):
+        parsed = parse_code("sh900901", "CNY")
+        self.assertEqual(parsed["code"], "sh900901")
+        self.assertEqual(parsed["curr"], "USD")
+
+    def test_parse_code_sz_b_share_forces_currency(self):
+        parsed = parse_code("sz200002", "CNY")
+        self.assertEqual(parsed["code"], "sz200002")
+        self.assertEqual(parsed["curr"], "HKD")
+
     def test_infer_asset_type_numeric_5_is_hk(self):
         self.assertEqual(infer_asset_type("00700", "腾讯控股"), "hk")
 

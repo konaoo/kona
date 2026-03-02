@@ -893,6 +893,73 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'USD')
 
+    def test_portfolio_add_sh_b_share_forces_usd_currency(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh900901',
+            'name': '沪B样本',
+            'price': 1.0,
+            'qty': 2.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh900901'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('curr'), 'USD')
+
+    def test_portfolio_add_sz_b_share_forces_hkd_currency(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sz200002',
+            'name': '深B样本',
+            'price': 1.0,
+            'qty': 2.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sz200002'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('curr'), 'HKD')
+
+    def test_b_share_currency_backfill_on_db_init(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('sh900901', '沪B历史', 1.0, 1.0, 'CNY', 0.0, 'a', ''),
+        )
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('sz200002', '深B历史', 1.0, 1.0, 'CNY', 0.0, 'a', ''),
+        )
+        conn.commit()
+        conn.close()
+
+        # 启动流程会调用 init_database；这里显式触发以验证幂等回填。
+        app_module.db.init_database()
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        sh_target = next((item for item in items if item.get('code') == 'sh900901'), None)
+        sz_target = next((item for item in items if item.get('code') == 'sz200002'), None)
+        self.assertIsNotNone(sh_target)
+        self.assertIsNotNone(sz_target)
+        self.assertEqual(sh_target.get('curr'), 'USD')
+        self.assertEqual(sz_target.get('curr'), 'HKD')
+
     def test_portfolio_add_invalid_f_prefix_letters_normalizes_to_us(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'f_NUGT',

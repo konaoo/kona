@@ -1021,7 +1021,10 @@
             // 使用保存的货币，或根据代码推断
             let curr = savedCurrency || 'CNY';
             if (!savedCurrency) {
-                if (code.startsWith('gb_') || code.startsWith('ft_')) curr = 'USD';
+                const lowerCode = code.toLowerCase();
+                if (lowerCode.startsWith('sh900')) curr = 'USD';
+                else if (lowerCode.startsWith('sz200')) curr = 'HKD';
+                else if (lowerCode.startsWith('gb_') || lowerCode.startsWith('ft_')) curr = 'USD';
                 else if (code.toUpperCase().endsWith('.HK')) curr = 'HKD';
             }
             

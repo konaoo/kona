@@ -150,7 +150,7 @@
 import html2canvas from 'html2canvas'
 import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
-import { api } from '../../shared/http'
+import { api, type ApiError } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { usePrivacyMode } from '../../shared/privacyMode'
@@ -172,6 +172,7 @@ type CalendarItem = {
 }
 
 type CalendarPayload = {
+  code?: string
   title?: string
   items?: CalendarItem[]
   total_pnl?: number
@@ -190,6 +191,16 @@ type CalendarPayload = {
       years?: number[]
     }
   }
+}
+
+function invalidCalendarPeriodPayload(error: unknown): CalendarPayload | null {
+  const apiError = error as ApiError
+  if (!apiError || apiError.status !== 400) return null
+  const payload = apiError.payload
+  if (!payload || typeof payload !== 'object') return null
+  const data = payload as Record<string, unknown>
+  if (String(data.code || '') !== 'INVALID_CALENDAR_PERIOD') return null
+  return data as CalendarPayload
 }
 
 type RankItem = {
@@ -733,7 +744,7 @@ async function loadRates() {
   }
 }
 
-async function loadCalendar() {
+async function loadCalendar(recoverOnInvalid = true) {
   const requestId = ++calendarRequestId
 
   const params = new URLSearchParams({ type: calendarType.value })
@@ -750,19 +761,30 @@ async function loadCalendar() {
     }
   }
 
-  const payload = await api.get<CalendarPayload>(`/api/analysis/calendar?${params.toString()}`)
-  if (requestId !== calendarRequestId) return
+  try {
+    const payload = await api.get<CalendarPayload>(`/api/analysis/calendar?${params.toString()}`)
+    if (requestId !== calendarRequestId) return
 
-  applySelectable(payload)
-  applyPeriod(payload)
-  if (calendarType.value === 'day') ensureDaySelection()
-  if (calendarType.value === 'month') ensureMonthSelection()
+    applySelectable(payload)
+    applyPeriod(payload)
+    if (calendarType.value === 'day') ensureDaySelection()
+    if (calendarType.value === 'month') ensureMonthSelection()
 
-  calendarState.title = String(payload.title || '')
-  calendarState.items = Array.isArray(payload.items) ? payload.items : []
-  calendarState.totalPnl = toNum(payload.total_pnl)
-  calendarState.totalRate = toNum(payload.total_rate)
-  persistAnalysisCache()
+    calendarState.title = String(payload.title || '')
+    calendarState.items = Array.isArray(payload.items) ? payload.items : []
+    calendarState.totalPnl = toNum(payload.total_pnl)
+    calendarState.totalRate = toNum(payload.total_rate)
+    persistAnalysisCache()
+  } catch (error) {
+    if (requestId !== calendarRequestId) return
+    const invalidPayload = invalidCalendarPeriodPayload(error)
+    if (!recoverOnInvalid || !invalidPayload) throw error
+    applySelectable(invalidPayload)
+    applyPeriod(invalidPayload)
+    if (calendarType.value === 'day') ensureDaySelection()
+    if (calendarType.value === 'month') ensureMonthSelection()
+    await loadCalendar(false)
+  }
 }
 
 async function loadRank() {

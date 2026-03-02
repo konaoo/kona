@@ -403,6 +403,7 @@ class DatabaseManager:
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
+        self._ensure_b_share_currency(cursor)
         self._ensure_admin_api_policies_defaults(cursor)
 
         conn.commit()
@@ -1704,6 +1705,31 @@ class DatabaseManager:
                 logger.info(f"Backfilled asset_type for {len(rows)} records")
         except Exception as e:
             logger.warning(f"Failed to ensure asset_type column: {e}")
+
+    def _ensure_b_share_currency(self, cursor) -> None:
+        """修正历史B股币种：沪B=USD，深B=HKD。"""
+        try:
+            cursor.execute(
+                """
+                UPDATE portfolio
+                SET curr = 'USD'
+                WHERE lower(code) LIKE 'sh900%' AND upper(coalesce(curr, '')) != 'USD'
+                """
+            )
+            sh_updated = int(cursor.rowcount or 0)
+            cursor.execute(
+                """
+                UPDATE portfolio
+                SET curr = 'HKD'
+                WHERE lower(code) LIKE 'sz200%' AND upper(coalesce(curr, '')) != 'HKD'
+                """
+            )
+            sz_updated = int(cursor.rowcount or 0)
+            total = sh_updated + sz_updated
+            if total > 0:
+                logger.info("Backfilled B-share currency for %s records", total)
+        except Exception as e:
+            logger.warning(f"Failed to backfill B-share currency: {e}")
 
     def _ensure_daily_snapshots_schema(self, cursor) -> None:
         """
@@ -3850,6 +3876,8 @@ class DatabaseManager:
                 y = int(parts[0])
                 m = int(parts[1])
                 months_by_year.setdefault(y, set()).add(m)
+            # 当前年月始终可选：允许在无快照月份回到当期视图（返回空数据而非报错）。
+            months_by_year.setdefault(now.year, set()).add(now.month)
 
             selectable_years = sorted(months_by_year.keys())
             selectable_months_by_year = {

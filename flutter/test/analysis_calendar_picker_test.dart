@@ -225,7 +225,7 @@ void main() {
     expect(calls.last['month'], 3);
   });
 
-  testWidgets('历史周期命中持久缓存后重建页面无需再次请求网络', (tester) async {
+  testWidgets('历史周期命中持久缓存后重建页面会后台回源刷新', (tester) async {
     int firstLoaderCalls = 0;
     final historical = {
       'items': [
@@ -260,20 +260,21 @@ void main() {
     expect(firstLoaderCalls, 1);
     expect(find.text('2001年01月'), findsOneWidget);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
     int secondLoaderCalls = 0;
     await tester.pumpWidget(
       buildTestPage(
         calendarLoader: ({required timeType, year, month}) async {
           secondLoaderCalls += 1;
-          throw Exception(
-            'should not request network when persistent cache exists',
-          );
+          return historical;
         },
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(secondLoaderCalls, 0);
+    expect(secondLoaderCalls, 1);
     expect(find.text('2001年01月'), findsOneWidget);
   });
 

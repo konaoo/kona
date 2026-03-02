@@ -352,6 +352,8 @@ class AppState extends ChangeNotifier {
       final fallback = curr?.trim().toUpperCase();
       return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
     }
+    if (lower.startsWith('sh900')) return 'USD';
+    if (lower.startsWith('sz200')) return 'HKD';
     if (lower.startsWith('gb_') || lower.startsWith('ft_')) return 'USD';
     if (lower.endsWith('.hk') || lower.startsWith('hk')) return 'HKD';
     if (lower.startsWith('sh') ||

@@ -171,7 +171,11 @@ def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -
             lower = code.lower()
 
     # 强制市场币种，避免错币种写入
-    if lower.startswith(('gb_', 'ft_')):
+    if lower.startswith('sh900'):
+        curr = 'USD'
+    elif lower.startswith('sz200'):
+        curr = 'HKD'
+    elif lower.startswith(('gb_', 'ft_')):
         curr = 'USD'
     elif lower.startswith('f_') or lower.startswith(('sh', 'sz', 'bj')):
         curr = 'CNY'

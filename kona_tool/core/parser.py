@@ -14,6 +14,13 @@ def _forced_currency_by_code(code: str) -> Optional[str]:
     if not code:
         return None
     lower = code.lower()
+    # B股优先于通用 sh/sz 规则：
+    # - 沪B(sh900xxx) -> USD
+    # - 深B(sz200xxx) -> HKD
+    if lower.startswith('sh900'):
+        return 'USD'
+    if lower.startswith('sz200'):
+        return 'HKD'
     if lower.startswith(('gb_', 'ft_')):
         return 'USD'
     if lower.endswith('.hk') or lower.startswith('hk'):

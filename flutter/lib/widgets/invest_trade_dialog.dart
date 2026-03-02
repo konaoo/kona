@@ -17,6 +17,8 @@ class _SearchCacheEntry {
   const _SearchCacheEntry({required this.results, required this.savedAt});
 }
 
+enum _PadField { none, price, qty, adjustPrice, adjustAmount }
+
 class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
@@ -39,9 +41,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _qtyController = TextEditingController();
   final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
+  final _priceFocusNode = FocusNode();
+  final _qtyFocusNode = FocusNode();
+  final _adjustPriceFocusNode = FocusNode();
+  final _adjustFocusNode = FocusNode();
 
-  Timer? _debounce;
   bool _saving = false;
+  bool _inlineClosed = false;
   bool _searching = false;
   String? _errorText;
   String? _searchErrorText;
@@ -50,15 +56,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   String _tradeMode = 'buy';
   int? _selectedCashAssetId;
   int _searchSeq = 0;
+  bool _normalizingInput = false;
+  _PadField _activePadField = _PadField.none;
   final Map<String, _SearchCacheEntry> _searchCache =
       <String, _SearchCacheEntry>{};
   static const Duration _searchCacheTtl = Duration(seconds: 20);
-  static const Duration _searchDebounce = Duration(milliseconds: 280);
   static const int _maxRecentCashAssets = 5;
   static final List<int> _recentCashAssetIds = <int>[];
-  static final List<TextInputFormatter> _qtyInputFormatters = <TextInputFormatter>[
-    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
-  ];
+  static final List<TextInputFormatter> _qtyInputFormatters =
+      <TextInputFormatter>[
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
+      ];
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
@@ -69,6 +77,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   @override
   void initState() {
     super.initState();
+    _queryController.addListener(_onInputControllerChanged);
+    _priceController.addListener(_onInputControllerChanged);
+    _qtyController.addListener(_onInputControllerChanged);
+    _adjustPriceController.addListener(_onInputControllerChanged);
+    _adjustController.addListener(_onInputControllerChanged);
+    _priceFocusNode.addListener(() => _syncPadFieldByFocus(_PadField.price));
+    _qtyFocusNode.addListener(() => _syncPadFieldByFocus(_PadField.qty));
+    _adjustPriceFocusNode.addListener(
+      () => _syncPadFieldByFocus(_PadField.adjustPrice),
+    );
+    _adjustFocusNode.addListener(
+      () => _syncPadFieldByFocus(_PadField.adjustAmount),
+    );
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
@@ -88,13 +109,26 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   @override
   void dispose() {
+    _queryController.removeListener(_onInputControllerChanged);
+    _priceController.removeListener(_onInputControllerChanged);
+    _qtyController.removeListener(_onInputControllerChanged);
+    _adjustPriceController.removeListener(_onInputControllerChanged);
+    _adjustController.removeListener(_onInputControllerChanged);
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
     _adjustPriceController.dispose();
     _adjustController.dispose();
-    _debounce?.cancel();
+    _priceFocusNode.dispose();
+    _qtyFocusNode.dispose();
+    _adjustPriceFocusNode.dispose();
+    _adjustFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onInputControllerChanged() {
+    if (!mounted || _normalizingInput) return;
+    setState(() {});
   }
 
   String _formatDisplayCode(String code) {
@@ -159,26 +193,33 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   void _onQueryChanged(String value) {
-    if (value.trim().isEmpty) {
-      _debounce?.cancel();
+    final next = value.trim();
+    final selectedName = (_selected?['name']?.toString() ?? '').trim();
+    if (_selected != null && next.isNotEmpty && next == selectedName) {
+      return;
+    }
+    setState(() {
+      _selected = null;
+      _results = [];
+      _errorText = null;
+      _searchErrorText = null;
+      _searching = false;
+      _searchSeq += 1;
+    });
+  }
+
+  Future<void> _onSearchTap() async {
+    if (_searching) return;
+    final query = _queryController.text.trim();
+    if (query.isEmpty) {
       setState(() {
         _selected = null;
         _results = [];
-        _errorText = null;
-        _searchErrorText = null;
-        _searching = false;
-        _searchSeq += 1;
+        _searchErrorText = '请输入代码或名称后再搜索';
       });
       return;
     }
-    if (_selected != null && value == (_selected?['name'] ?? '')) {
-      return;
-    }
-    _selected = null;
-    _errorText = null;
-    _searchErrorText = null;
-    _debounce?.cancel();
-    _debounce = Timer(_searchDebounce, () => _search(value.trim()));
+    await _search(query);
   }
 
   Future<void> _search(String query) async {
@@ -229,6 +270,349 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
   }
 
+  TextEditingController? _controllerForField(_PadField field) {
+    switch (field) {
+      case _PadField.price:
+        return _priceController;
+      case _PadField.qty:
+        return _qtyController;
+      case _PadField.adjustPrice:
+        return _adjustPriceController;
+      case _PadField.adjustAmount:
+        return _adjustController;
+      case _PadField.none:
+        return null;
+    }
+  }
+
+  bool _fieldAllowsMinus(_PadField field) {
+    return field == _PadField.price ||
+        field == _PadField.adjustPrice ||
+        field == _PadField.adjustAmount;
+  }
+
+  int? _fieldMaxDecimals(_PadField field) {
+    if (field == _PadField.qty) return 2;
+    return null;
+  }
+
+  void _syncPadFieldByFocus(_PadField field) {
+    final hasFocus = switch (field) {
+      _PadField.price => _priceFocusNode.hasFocus,
+      _PadField.qty => _qtyFocusNode.hasFocus,
+      _PadField.adjustPrice => _adjustPriceFocusNode.hasFocus,
+      _PadField.adjustAmount => _adjustFocusNode.hasFocus,
+      _PadField.none => false,
+    };
+    if (hasFocus) {
+      _activatePadField(field);
+      return;
+    }
+    if (_activePadField == field &&
+        !_priceFocusNode.hasFocus &&
+        !_qtyFocusNode.hasFocus &&
+        !_adjustPriceFocusNode.hasFocus &&
+        !_adjustFocusNode.hasFocus) {
+      _activatePadField(_PadField.none);
+    }
+  }
+
+  void _activatePadField(_PadField field) {
+    if (_activePadField == field) return;
+    setState(() {
+      _activePadField = field;
+    });
+  }
+
+  void _dismissPad() {
+    FocusScope.of(context).unfocus();
+    _activatePadField(_PadField.none);
+  }
+
+  void _closeDialog() {
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    setState(() {
+      _inlineClosed = true;
+      _activePadField = _PadField.none;
+    });
+  }
+
+  String _normalizeNumericText(String raw, _PadField field) {
+    final allowsMinus = _fieldAllowsMinus(field);
+    final maxDecimals = _fieldMaxDecimals(field);
+    final buffer = StringBuffer();
+    var hasDot = false;
+    var minusAdded = false;
+    var decimals = 0;
+
+    for (var i = 0; i < raw.length; i++) {
+      final ch = raw[i];
+      final isDigit = ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
+      if (isDigit) {
+        if (hasDot && maxDecimals != null && decimals >= maxDecimals) {
+          continue;
+        }
+        buffer.write(ch);
+        if (hasDot) decimals += 1;
+        continue;
+      }
+      if (ch == '.') {
+        if (hasDot) continue;
+        hasDot = true;
+        if (buffer.isEmpty) {
+          buffer.write('0.');
+        } else if (buffer.toString() == '-') {
+          buffer.write('0.');
+        } else {
+          buffer.write('.');
+        }
+        continue;
+      }
+      if (ch == '-' && allowsMinus && !minusAdded && buffer.isEmpty) {
+        buffer.write('-');
+        minusAdded = true;
+      }
+    }
+    return buffer.toString();
+  }
+
+  void _normalizeControllerText(
+    TextEditingController controller,
+    _PadField field,
+  ) {
+    final normalized = _normalizeNumericText(controller.text, field);
+    if (normalized == controller.text) return;
+    _normalizingInput = true;
+    controller.value = TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: normalized.length),
+    );
+    _normalizingInput = false;
+  }
+
+  void _handleFieldChanged(TextEditingController controller, _PadField field) {
+    if (_normalizingInput) return;
+    final before = controller.text;
+    _normalizeControllerText(controller, field);
+    if (!mounted) return;
+    if (before != controller.text) {
+      setState(() {});
+      return;
+    }
+    // 即使文本未被规整改写，也要刷新按钮可用态（依赖 controller 文本）
+    setState(() {});
+  }
+
+  String _appendDigit(String text, String digit) {
+    if (text == '0') return digit;
+    if (text == '-0') return '-$digit';
+    return '$text$digit';
+  }
+
+  String _appendDecimalPoint(String text) {
+    if (text.contains('.')) return text;
+    if (text.isEmpty) return '0.';
+    if (text == '-') return '-0.';
+    return '$text.';
+  }
+
+  String _prependMinus(String text) {
+    if (text.startsWith('-')) return text;
+    return '-$text';
+  }
+
+  String _deleteLast(String text) {
+    if (text.isEmpty) return text;
+    return text.substring(0, text.length - 1);
+  }
+
+  void _applyPadInput(_PadField field, String key) {
+    final controller = _controllerForField(field);
+    if (controller == null) return;
+    var next = controller.text;
+
+    if (key == 'confirm') {
+      _dismissPad();
+      return;
+    }
+    if (key == 'clear') {
+      next = '';
+    } else if (key == 'backspace') {
+      next = _deleteLast(next);
+    } else if (key == '.') {
+      next = _appendDecimalPoint(next);
+    } else if (key == '-') {
+      if (!_fieldAllowsMinus(field)) return;
+      next = _prependMinus(next);
+    } else {
+      next = _appendDigit(next, key);
+    }
+
+    next = _normalizeNumericText(next, field);
+    if (next == controller.text) return;
+
+    _normalizingInput = true;
+    controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _normalizingInput = false;
+    setState(() {});
+  }
+
+  Widget _buildPadButton({
+    required String text,
+    required VoidCallback? onTap,
+    bool highlighted = false,
+  }) {
+    final disabled = onTap == null;
+    return SizedBox(
+      height: 44,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          foregroundColor: disabled
+              ? AppTheme.textTertiary
+              : (highlighted ? AppTheme.textPrimary : AppTheme.textSecondary),
+          backgroundColor: disabled
+              ? AppTheme.bgCard.withOpacity(0.4)
+              : (highlighted
+                    ? AppTheme.accent
+                    : AppTheme.bgElevated.withOpacity(
+                        AppTheme.isLight ? 0.95 : 0.45,
+                      )),
+          side: BorderSide(
+            color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.8 : 0.3),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        onPressed: onTap,
+        child: Text(
+          text,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNumericPad() {
+    if (_activePadField == _PadField.none) return const SizedBox.shrink();
+    final minusEnabled = _fieldAllowsMinus(_activePadField);
+
+    Widget row(List<Widget> children) {
+      return Row(
+        children: children
+            .map(
+              (child) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 3,
+                  ),
+                  child: child,
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard.withOpacity(AppTheme.isLight ? 0.98 : 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.8 : 0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          row([
+            _buildPadButton(
+              text: '1',
+              onTap: () => _applyPadInput(_activePadField, '1'),
+            ),
+            _buildPadButton(
+              text: '2',
+              onTap: () => _applyPadInput(_activePadField, '2'),
+            ),
+            _buildPadButton(
+              text: '3',
+              onTap: () => _applyPadInput(_activePadField, '3'),
+            ),
+          ]),
+          row([
+            _buildPadButton(
+              text: '4',
+              onTap: () => _applyPadInput(_activePadField, '4'),
+            ),
+            _buildPadButton(
+              text: '5',
+              onTap: () => _applyPadInput(_activePadField, '5'),
+            ),
+            _buildPadButton(
+              text: '6',
+              onTap: () => _applyPadInput(_activePadField, '6'),
+            ),
+          ]),
+          row([
+            _buildPadButton(
+              text: '7',
+              onTap: () => _applyPadInput(_activePadField, '7'),
+            ),
+            _buildPadButton(
+              text: '8',
+              onTap: () => _applyPadInput(_activePadField, '8'),
+            ),
+            _buildPadButton(
+              text: '9',
+              onTap: () => _applyPadInput(_activePadField, '9'),
+            ),
+          ]),
+          row([
+            _buildPadButton(
+              text: '.',
+              onTap: () => _applyPadInput(_activePadField, '.'),
+            ),
+            _buildPadButton(
+              text: '0',
+              onTap: () => _applyPadInput(_activePadField, '0'),
+            ),
+            _buildPadButton(
+              text: '-',
+              onTap: minusEnabled
+                  ? () => _applyPadInput(_activePadField, '-')
+                  : null,
+            ),
+          ]),
+          row([
+            _buildPadButton(
+              text: '清空',
+              onTap: () => _applyPadInput(_activePadField, 'clear'),
+            ),
+            _buildPadButton(
+              text: '删除',
+              onTap: () => _applyPadInput(_activePadField, 'backspace'),
+            ),
+            _buildPadButton(
+              text: '确认',
+              onTap: () => _applyPadInput(_activePadField, 'confirm'),
+              highlighted: true,
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   String _formatInputNumber(double value, {int decimals = 3}) {
     final text = value.toStringAsFixed(decimals);
     return text.replaceFirst(RegExp(r'\.?0+$'), '');
@@ -247,14 +631,18 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         .where((asset) => (asset.id ?? 0) > 0)
         .toList();
     if (_currentActionMode() != 'sell') {
-      cashOptions.insert(0, Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'));
+      cashOptions.insert(
+        0,
+        Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'),
+      );
     }
     if (cashOptions.isEmpty) {
       _selectedCashAssetId = null;
       return;
     }
     final selected = _selectedCashAssetId;
-    final exists = selected != null && cashOptions.any((asset) => asset.id == selected);
+    final exists =
+        selected != null && cashOptions.any((asset) => asset.id == selected);
     if (!exists) {
       _selectedCashAssetId = cashOptions.first.id;
     }
@@ -320,7 +708,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.55 : 0.22),
+              color: AppTheme.border.withOpacity(
+                AppTheme.isLight ? 0.55 : 0.22,
+              ),
               width: 1,
             ),
           ),
@@ -436,7 +826,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       top: Radius.circular(18),
                     ),
                     border: Border.all(
-                      color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.3),
+                      color: AppTheme.border.withOpacity(
+                        AppTheme.isLight ? 0.7 : 0.3,
+                      ),
                       width: 1,
                     ),
                   ),
@@ -586,23 +978,30 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       final decimals = _isFundAsset(assetType: item.assetType, code: item.code)
           ? 4
           : 3;
-      _priceController.text = _formatInputNumber(defaultPrice, decimals: decimals);
+      _priceController.text = _formatInputNumber(
+        defaultPrice,
+        decimals: decimals,
+      );
     }
   }
 
   void _setTradeMode(String mode) {
     if (_saving || _tradeMode == mode) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _tradeMode = mode;
+      _activePadField = _PadField.none;
       _errorText = null;
       if (mode == 'adjust') {
         _adjustController.clear();
         final item = widget.item;
         if (item != null) {
-          final decimals = _isFundAsset(assetType: item.assetType, code: item.code)
-              ? 4
-              : 3;
-          _adjustPriceController.text = _formatInputNumber(item.price, decimals: decimals);
+          final decimals =
+              _isFundAsset(assetType: item.assetType, code: item.code) ? 4 : 3;
+          _adjustPriceController.text = _formatInputNumber(
+            item.price,
+            decimals: decimals,
+          );
         } else {
           _adjustPriceController.clear();
         }
@@ -628,7 +1027,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
     late final Future<AssetActionResult> actionFuture;
     final needsCashSource = _requiresCashSource(mode);
-    if (needsCashSource && (_selectedCashAssetId == null || (_selectedCashAssetId! <= 0 && _selectedCashAssetId != -999))) {
+    if (needsCashSource &&
+        (_selectedCashAssetId == null ||
+            (_selectedCashAssetId! <= 0 && _selectedCashAssetId != -999))) {
       setState(() {
         _saving = false;
         _errorText = '请选择资金来源账户';
@@ -643,10 +1044,31 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       final qtyStr = _qtyController.text.trim();
       price = double.tryParse(priceStr);
       qty = double.tryParse(qtyStr);
-      if (price == null || price <= 0 || qty == null || qty <= 0) {
+      if (price == null) {
         setState(() {
           _saving = false;
-          _errorText = '请输入有效价格和数量';
+          _errorText = '请输入有效价格';
+        });
+        return;
+      }
+      if (qty == null) {
+        setState(() {
+          _saving = false;
+          _errorText = '请输入有效数量';
+        });
+        return;
+      }
+      if (qty <= 0) {
+        setState(() {
+          _saving = false;
+          _errorText = '数量必须大于 0';
+        });
+        return;
+      }
+      if (price <= 0) {
+        setState(() {
+          _saving = false;
+          _errorText = '价格必须大于 0';
         });
         return;
       }
@@ -719,10 +1141,31 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         final qtyStr = _qtyController.text.trim();
         price = double.tryParse(priceStr);
         qty = double.tryParse(qtyStr);
-        if (price == null || price <= 0 || qty == null || qty <= 0) {
+        if (price == null) {
           setState(() {
             _saving = false;
-            _errorText = '请输入有效价格和数量';
+            _errorText = '请输入有效价格';
+          });
+          return;
+        }
+        if (qty == null) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效数量';
+          });
+          return;
+        }
+        if (qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '数量必须大于 0';
+          });
+          return;
+        }
+        if (price <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '价格必须大于 0';
           });
           return;
         }
@@ -741,10 +1184,31 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         final qtyStr = _qtyController.text.trim();
         price = double.tryParse(priceStr);
         qty = double.tryParse(qtyStr);
-        if (price == null || price <= 0 || qty == null || qty <= 0) {
+        if (price == null) {
           setState(() {
             _saving = false;
-            _errorText = '请输入有效价格和数量';
+            _errorText = '请输入有效价格';
+          });
+          return;
+        }
+        if (qty == null) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效数量';
+          });
+          return;
+        }
+        if (qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '数量必须大于 0';
+          });
+          return;
+        }
+        if (price <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '价格必须大于 0';
           });
           return;
         }
@@ -770,7 +1234,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
 
     TopToast.showSuccess(toastContext, '已保存');
-    Navigator.pop(context);
+    _closeDialog();
 
     final undoToken = result.data?['undo_token']?.toString();
     if (undoToken != null && undoToken.isNotEmpty) {
@@ -780,7 +1244,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         actionLabel: '撤销',
         onAction: () {
           unawaited(() async {
-            final undoResult = await appState.undoInvestmentOperation(undoToken);
+            final undoResult = await appState.undoInvestmentOperation(
+              undoToken,
+            );
             if (!toastContext.mounted) return;
             if (undoResult.ok) {
               TopToast.showInfo(toastContext, '已撤销');
@@ -828,7 +1294,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     // ignore: use_build_context_synchronously
     final toastContext = widget.hostContext ?? context;
     // ignore: use_build_context_synchronously
-    Navigator.of(context).pop();
+    _closeDialog();
     // ignore: use_build_context_synchronously
     TopToast.showSuccess(toastContext, '已删除');
     unawaited(() async {
@@ -1015,15 +1481,33 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
+  bool _isSaveInputReady() {
+    final mode = _currentActionMode();
+    final priceReady = _priceController.text.trim().isNotEmpty;
+    final qtyReady = _qtyController.text.trim().isNotEmpty;
+    if (_isAdd) {
+      return _selected != null && priceReady && qtyReady;
+    }
+    if (mode == 'adjust') {
+      return _adjustController.text.trim().isNotEmpty &&
+          _adjustPriceController.text.trim().isNotEmpty;
+    }
+    return priceReady && qtyReady;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_inlineClosed) return const SizedBox.shrink();
     final appState = context.watch<AppState>();
     final cashOptions = appState.cashAssets
         .where((asset) => (asset.id ?? 0) > 0)
         .toList();
     final actionMode = _currentActionMode();
     if (actionMode != 'sell') {
-      cashOptions.insert(0, Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'));
+      cashOptions.insert(
+        0,
+        Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'),
+      );
     }
     if (_selectedCashAssetId != null &&
         cashOptions.every((asset) => asset.id != _selectedCashAssetId)) {
@@ -1048,7 +1532,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               : AppTheme.danger);
     final canSave =
         !_saving &&
-        (!_isAdd || _selected != null) &&
+        _isSaveInputReady() &&
         (!needsCashSource || _selectedCashAssetId != null);
 
     final maxDialogHeight = MediaQuery.of(context).size.height * 0.72;
@@ -1083,280 +1567,331 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 boxShadow: AppTheme.cardShadow,
               ),
               child: SingleChildScrollView(
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: FontSize.xxl,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (_isTrade)
-                      PopupMenuButton<String>(
-                        enabled: !_saving,
-                        onSelected: _onMoreMenuSelect,
-                        icon: Icon(
-                          Icons.more_horiz,
-                          color: AppTheme.textSecondary,
-                        ),
-                        itemBuilder: (menuContext) {
-                          return [
-                            PopupMenuItem<String>(
-                              value: 'corrective_delete',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.delete_outline,
-                                    size: 18,
-                                    color: AppTheme.danger,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '纠错删除（不回款）',
-                                    style: TextStyle(color: AppTheme.danger),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ];
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: Spacing.md),
-                if (_isAdd) ...[
-                  TextField(
-                    controller: _queryController,
-                    onChanged: _onQueryChanged,
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration(
-                      '股票代码/名称',
-                      hintText: '输入代码或名称搜索',
-                    ),
-                  ),
-                  if (_searching)
-                    Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Text(
-                        '搜索中...',
-                        style: TextStyle(color: AppTheme.textTertiary),
-                      ),
-                    ),
-                  _buildSearchResults(),
-                  if (_searchErrorText != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        _searchErrorText!,
-                        style: TextStyle(
-                          color: AppTheme.danger,
-                          fontSize: FontSize.sm,
-                        ),
-                      ),
-                    ),
-                  if (_selected != null) ...[
-                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        Text(
-                          '已选择：',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: FontSize.sm,
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: FontSize.xxl,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary,
+                            ),
                           ),
                         ),
-                        Text(
-                          '${_selected?['name']}  ',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: FontSize.sm,
+                        if (_isTrade)
+                          PopupMenuButton<String>(
+                            enabled: !_saving,
+                            onSelected: _onMoreMenuSelect,
+                            icon: Icon(
+                              Icons.more_horiz,
+                              color: AppTheme.textSecondary,
+                            ),
+                            itemBuilder: (menuContext) {
+                              return [
+                                PopupMenuItem<String>(
+                                  value: 'corrective_delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
+                                        color: AppTheme.danger,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '纠错删除（不回款）',
+                                        style: TextStyle(
+                                          color: AppTheme.danger,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ];
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: Spacing.md),
+                    if (_isAdd) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _queryController,
+                              onChanged: _onQueryChanged,
+                              style: TextStyle(color: AppTheme.textPrimary),
+                              decoration: _compactDecoration(
+                                '股票代码/名称',
+                                hintText: '输入代码或名称',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 42,
+                            child: ElevatedButton.icon(
+                              onPressed: _searching ? null : _onSearchTap,
+                              icon: const Icon(Icons.search, size: 16),
+                              label: Text(_searching ? '搜索中' : '搜索'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.accent,
+                                foregroundColor: AppTheme.textPrimary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '仅点击“搜索”后返回结果',
+                        style: TextStyle(
+                          color: AppTheme.textTertiary,
+                          fontSize: FontSize.xs,
+                        ),
+                      ),
+                      _buildSearchResults(),
+                      if (_searchErrorText != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            _searchErrorText!,
+                            style: TextStyle(
+                              color: AppTheme.danger,
+                              fontSize: FontSize.sm,
+                            ),
                           ),
                         ),
-                        _marketBadge(_selected?['type_name'] ?? ''),
-                        const SizedBox(width: 6),
+                      if (_selected != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Text(
+                              '已选择：',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: FontSize.sm,
+                              ),
+                            ),
+                            Text(
+                              '${_selected?['name']}  ',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: FontSize.sm,
+                              ),
+                            ),
+                            _marketBadge(_selected?['type_name'] ?? ''),
+                            const SizedBox(width: 6),
+                            Text(
+                              _formatDisplayCode(_selected?['code'] ?? ''),
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: FontSize.sm,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: Spacing.md),
+                    ] else ...[
+                      Text(
+                        '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: FontSize.base,
+                        ),
+                      ),
+                      const SizedBox(height: Spacing.md),
+                    ],
+                    _buildTradeToggle(),
+                    if (_isTrade) const SizedBox(height: Spacing.md),
+                    if (needsCashSource) ...[
+                      InkWell(
+                        onTap: _saving || cashOptions.isEmpty
+                            ? null
+                            : () => _openCashAssetPicker(
+                                actionMode: actionMode,
+                                cashOptions: cashOptions,
+                              ),
+                        borderRadius: BorderRadius.circular(10),
+                        child: InputDecorator(
+                          decoration: _compactDecoration(
+                            actionMode == 'sell' ? '回款账户' : '资金来源账户',
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    Asset? selected;
+                                    for (final asset in cashOptions) {
+                                      if (asset.id == _selectedCashAssetId) {
+                                        selected = asset;
+                                        break;
+                                      }
+                                    }
+                                    if (selected == null) {
+                                      return Text(
+                                        '请选择账户',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: AppTheme.textTertiary,
+                                        ),
+                                      );
+                                    }
+                                    final tail = selected.id == -999
+                                        ? '外部'
+                                        : '${selected.curr} ${_formatInputNumber(selected.amount)}';
+                                    return Text(
+                                      '${selected.name} · $tail',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 20,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (cashOptions.isEmpty) ...[
+                        const SizedBox(height: 8),
                         Text(
-                          _formatDisplayCode(_selected?['code'] ?? ''),
+                          actionMode == 'sell' ? '请先添加回款现金账户' : '请先添加现金资产账户',
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            color: AppTheme.danger,
                             fontSize: FontSize.sm,
                           ),
                         ),
                       ],
-                    ),
-                  ],
-                  const SizedBox(height: Spacing.md),
-                ] else ...[
-                  Text(
-                    '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: FontSize.base,
-                    ),
-                  ),
-                  const SizedBox(height: Spacing.md),
-                ],
-                _buildTradeToggle(),
-                if (_isTrade) const SizedBox(height: Spacing.md),
-                if (needsCashSource) ...[
-                  InkWell(
-                    onTap: _saving || cashOptions.isEmpty
-                        ? null
-                        : () => _openCashAssetPicker(
-                              actionMode: actionMode,
-                              cashOptions: cashOptions,
-                            ),
-                    borderRadius: BorderRadius.circular(10),
-                    child: InputDecorator(
-                      decoration: _compactDecoration(
-                        actionMode == 'sell' ? '回款账户' : '资金来源账户',
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Builder(
-                              builder: (context) {
-                                Asset? selected;
-                                for (final asset in cashOptions) {
-                                  if (asset.id == _selectedCashAssetId) {
-                                    selected = asset;
-                                    break;
-                                  }
-                                }
-                                if (selected == null) {
-                                  return Text(
-                                    '请选择账户',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: AppTheme.textTertiary,
-                                    ),
-                                  );
-                                }
-                                final tail = selected.id == -999
-                                    ? '外部'
-                                    : '${selected.curr} ${_formatInputNumber(selected.amount)}';
-                                return Text(
-                                  '${selected.name} · $tail',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 20,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (cashOptions.isEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      actionMode == 'sell' ? '请先添加回款现金账户' : '请先添加现金资产账户',
-                      style: TextStyle(
-                        color: AppTheme.danger,
-                        fontSize: FontSize.sm,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: Spacing.md),
-                ],
-                if (_isTrade && _isAdjust) ...[
-                  TextField(
-                    controller: _adjustPriceController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration('平均成本'),
-                  ),
-                  const SizedBox(height: Spacing.md),
-                  TextField(
-                    controller: _adjustController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration('调整金额'),
-                  ),
-                ] else ...[
-                  TextField(
-                    controller: _priceController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration(_isAdd ? '买入成本价' : '价格'),
-                  ),
-                  const SizedBox(height: Spacing.md),
-                  TextField(
-                    controller: _qtyController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: _qtyInputFormatters,
-                    style: TextStyle(color: AppTheme.textPrimary),
-                    decoration: _compactDecoration('数量'),
-                  ),
-                ],
-                if (_errorText != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _errorText!,
-                    style: TextStyle(
-                      color: AppTheme.danger,
-                      fontSize: FontSize.base,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: Spacing.lg),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: _saving
-                            ? null
-                            : () => Navigator.pop(context),
-                        child: Text('取消'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: actionColor,
+                      const SizedBox(height: Spacing.md),
+                    ],
+                    if (_isTrade && _isAdjust) ...[
+                      TextField(
+                        controller: _adjustPriceController,
+                        focusNode: _adjustPriceFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
                         ),
-                        onPressed: canSave ? _submit : null,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text('保存'),
+                        onTap: () => _activatePadField(_PadField.adjustPrice),
+                        onChanged: (_) => _handleFieldChanged(
+                          _adjustPriceController,
+                          _PadField.adjustPrice,
+                        ),
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: _compactDecoration('平均成本'),
                       ),
+                      const SizedBox(height: Spacing.md),
+                      TextField(
+                        controller: _adjustController,
+                        focusNode: _adjustFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        onTap: () => _activatePadField(_PadField.adjustAmount),
+                        onChanged: (_) => _handleFieldChanged(
+                          _adjustController,
+                          _PadField.adjustAmount,
+                        ),
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: _compactDecoration('调整金额'),
+                      ),
+                    ] else ...[
+                      TextField(
+                        controller: _priceController,
+                        focusNode: _priceFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        onTap: () => _activatePadField(_PadField.price),
+                        onChanged: (_) => _handleFieldChanged(
+                          _priceController,
+                          _PadField.price,
+                        ),
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: _compactDecoration(_isAdd ? '买入成本价' : '价格'),
+                      ),
+                      const SizedBox(height: Spacing.md),
+                      TextField(
+                        controller: _qtyController,
+                        focusNode: _qtyFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: _qtyInputFormatters,
+                        onTap: () => _activatePadField(_PadField.qty),
+                        onChanged: (_) =>
+                            _handleFieldChanged(_qtyController, _PadField.qty),
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: _compactDecoration('数量'),
+                      ),
+                    ],
+                    _buildNumericPad(),
+                    if (_errorText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorText!,
+                        style: TextStyle(
+                          color: AppTheme.danger,
+                          fontSize: FontSize.base,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: Spacing.lg),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: _saving ? null : _closeDialog,
+                            child: Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: actionColor,
+                            ),
+                            onPressed: canSave ? _submit : null,
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text('保存'),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
                   ],
                 ),
               ),

@@ -137,6 +137,14 @@ void main() {
       state.normalizeInvestmentCurrency(code: 'sh600000', curr: 'USD'),
       'CNY',
     );
+    expect(
+      state.normalizeInvestmentCurrency(code: 'sh900901', curr: 'CNY'),
+      'USD',
+    );
+    expect(
+      state.normalizeInvestmentCurrency(code: 'sz200002', curr: 'CNY'),
+      'HKD',
+    );
   });
 
   test('AppState applyOverviewMilestones overrides month/year by收益口径', () {
