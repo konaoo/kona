@@ -115,6 +115,8 @@ _RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 _RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 _RUNTIME_CFG_USER_GROUP_TEXT_KEY = "ops.user_group.text"
 _RUNTIME_CFG_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
+_RUNTIME_CFG_APP_UPDATE_TEXT_KEY = "ops.app_update.text"
+_RUNTIME_CFG_APP_UPDATE_DOWNLOAD_URL_KEY = "ops.app_update.download_url"
 
 
 def _client_ip() -> str:
@@ -800,11 +802,19 @@ def direct_test_page():
 @app.route('/api/app/version', methods=['GET'])
 def api_app_version():
     """获取最新版客户端应用配置"""
+    release_notes = _read_runtime_config_or_default(
+        _RUNTIME_CFG_APP_UPDATE_TEXT_KEY,
+        config.CLIENT_APP_RELEASE_NOTES,
+    ).strip() or config.CLIENT_APP_RELEASE_NOTES
+    download_url = _read_runtime_config_or_default(
+        _RUNTIME_CFG_APP_UPDATE_DOWNLOAD_URL_KEY,
+        config.CLIENT_APP_DOWNLOAD_URL,
+    ).strip() or config.CLIENT_APP_DOWNLOAD_URL
     return jsonify({
         "version": config.CLIENT_APP_VERSION,
         "buildNumber": config.CLIENT_APP_BUILD_NUMBER,
-        "releaseNotes": config.CLIENT_APP_RELEASE_NOTES,
-        "downloadUrl": config.CLIENT_APP_DOWNLOAD_URL,
+        "releaseNotes": release_notes,
+        "downloadUrl": download_url,
         "forceUpdate": config.CLIENT_APP_FORCE_UPDATE,
     })
 

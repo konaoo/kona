@@ -149,6 +149,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.invites.revoke": "作废邀请码",
     "admin.ops.invite_acquire.update": "更新运营配置（邀请码获取页）",
     "admin.ops.user_group.update": "更新运营配置（用户群页）",
+    "admin.ops.app_update.update": "更新运营配置（App检查更新）",
 }
 
 ERROR_LABELS: Dict[str, str] = {
@@ -217,8 +218,12 @@ OPS_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 OPS_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 OPS_USER_GROUP_TEXT_KEY = "ops.user_group.text"
 OPS_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
+OPS_APP_UPDATE_TEXT_KEY = "ops.app_update.text"
+OPS_APP_UPDATE_DOWNLOAD_URL_KEY = "ops.app_update.download_url"
 OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH = 200
 OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH = 2048
+OPS_APP_UPDATE_TEXT_MAX_LENGTH = 500
+OPS_APP_UPDATE_DOWNLOAD_URL_MAX_LENGTH = 2048
 ADMIN_PORTFOLIO_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
@@ -323,6 +328,27 @@ def _normalize_invite_acquire_image_url(raw: Any) -> str:
     return url
 
 
+def _normalize_app_update_text(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text or len(text) > OPS_APP_UPDATE_TEXT_MAX_LENGTH:
+        raise ValueError(f"text must be 1-{OPS_APP_UPDATE_TEXT_MAX_LENGTH} characters")
+    return text
+
+
+def _normalize_app_update_download_url(raw: Any) -> str:
+    url = str(raw or "").strip()
+    if not url:
+        return ""
+    if len(url) > OPS_APP_UPDATE_DOWNLOAD_URL_MAX_LENGTH:
+        raise ValueError(
+            f"download_url must be <= {OPS_APP_UPDATE_DOWNLOAD_URL_MAX_LENGTH} characters"
+        )
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("download_url must start with http:// or https://")
+    return url
+
+
 def _load_invite_acquire_ops_config(db) -> Dict[str, str]:
     return _load_ops_text_image_config(
         db=db,
@@ -341,6 +367,22 @@ def _load_user_group_ops_config(db) -> Dict[str, str]:
         default_text=str(config.USER_GROUP_TEXT).strip() or "加入咔咔用户群",
         default_image_url=str(config.USER_GROUP_IMAGE_URL).strip(),
     )
+
+
+def _load_app_update_ops_config(db) -> Dict[str, str]:
+    text_raw = db.get_runtime_config(OPS_APP_UPDATE_TEXT_KEY)
+    download_url_raw = db.get_runtime_config(OPS_APP_UPDATE_DOWNLOAD_URL_KEY)
+    default_text = str(config.CLIENT_APP_RELEASE_NOTES).strip() or "更新内容"
+    default_download_url = str(config.CLIENT_APP_DOWNLOAD_URL).strip()
+    text = str(text_raw).strip() if text_raw is not None else default_text
+    if not text:
+        text = default_text
+    download_url = (
+        str(download_url_raw).strip()
+        if download_url_raw is not None
+        else default_download_url
+    )
+    return {"text": text, "download_url": download_url}
 
 
 def _load_ops_text_image_config(
@@ -1938,6 +1980,31 @@ def create_admin_blueprint(db, admin_write_audit):
         db.set_runtime_config(OPS_USER_GROUP_TEXT_KEY, text, updated_by=updater)
         db.set_runtime_config(OPS_USER_GROUP_IMAGE_URL_KEY, image_url, updated_by=updater)
         return jsonify({"status": "ok", "text": text, "image_url": image_url})
+
+    @bp.route("/ops/app_update", methods=["GET"])
+    @admin_required
+    def admin_ops_app_update():
+        return jsonify(_load_app_update_ops_config(db))
+
+    @bp.route("/ops/app_update/update", methods=["POST"])
+    @admin_write_audit(action="admin.ops.app_update.update", target_type="ops_config")
+    @admin_required
+    def admin_ops_app_update_update():
+        data = _json_body()
+        try:
+            text = _normalize_app_update_text(data.get("text"))
+            download_url = _normalize_app_update_download_url(data.get("download_url"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        updater = str(getattr(g, "user_id", "") or "")
+        db.set_runtime_config(OPS_APP_UPDATE_TEXT_KEY, text, updated_by=updater)
+        db.set_runtime_config(
+            OPS_APP_UPDATE_DOWNLOAD_URL_KEY,
+            download_url,
+            updated_by=updater,
+        )
+        return jsonify({"status": "ok", "text": text, "download_url": download_url})
 
     @bp.route("/data/snapshots", methods=["GET"])
     @admin_required

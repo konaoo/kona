@@ -129,71 +129,135 @@ class _ProfilePageState extends State<ProfilePage> {
   void _showUpdateDialog(AppVersion version) {
     showDialog(
       context: context,
-      barrierDismissible: !version.forceUpdate,
-      builder: (context) => PopScope(
-        canPop: !version.forceUpdate,
-        child: AlertDialog(
-          backgroundColor: AppTheme.bgElevated,
-          title: Text(
-            '发现新版本 ${version.version}',
-            style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontWeight: FontWeight.bold,
-            ),
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 420),
+          decoration: BoxDecoration(
+            color: AppTheme.bgElevated,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x332D1E70),
+                blurRadius: 26,
+                offset: Offset(0, 12),
+              ),
+            ],
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '更新内容：',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.bold,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFFFD954), Color(0xFFFFC83D)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '发现新版本',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'v${version.version}',
+                        style: const TextStyle(
+                          color: Color(0xFFE63946),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  version.releaseNotes,
-                  style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '更新内容',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      version.releaseNotes.trim().isEmpty
+                          ? '修复已知问题，优化使用体验。'
+                          : version.releaseNotes,
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFC5B61),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final urlText = version.downloadUrl.trim();
+                          final uri = Uri.tryParse(urlText);
+                          if (uri == null ||
+                              uri.host.isEmpty ||
+                              !(uri.scheme == 'http' || uri.scheme == 'https')) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('下载链接不可用')),
+                            );
+                            return;
+                          }
+                          Navigator.of(dialogContext).pop();
+                          final ok = await _openExternalUrl(
+                            uri,
+                            LaunchMode.externalApplication,
+                          );
+                          if (!ok && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('无法打开下载链接')),
+                            );
+                          }
+                        },
+                        child: const Text(
+                          '更新',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          actions: [
-            if (!version.forceUpdate)
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  '暂不更新',
-                  style: TextStyle(color: AppTheme.textTertiary),
-                ),
-              ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: () async {
-                if (!version.forceUpdate) {
-                  Navigator.pop(context);
-                }
-                final uri = Uri.parse(version.downloadUrl);
-                var ok = await _openExternalUrl(
-                  uri,
-                  LaunchMode.inAppBrowserView,
-                );
-                if (!ok) {
-                  await _openExternalUrl(uri, LaunchMode.externalApplication);
-                }
-              },
-              child: const Text('立即下载'),
-            ),
-          ],
         ),
       ),
     );

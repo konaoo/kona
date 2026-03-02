@@ -4,7 +4,7 @@
       <AdminSectionHeader title="运营配置" subtitle="点击编辑后在弹窗内修改，保存后将立即生效。">
         <template #actions>
           <AdminButton variant="secondary" soft pill :disabled="loadingAny" @click="refreshAll">
-          {{ loadingAny ? '刷新中...' : '刷新' }}
+            {{ loadingAny ? '刷新中...' : '刷新' }}
           </AdminButton>
         </template>
       </AdminSectionHeader>
@@ -38,6 +38,22 @@
             </AdminButton>
           </div>
         </AdminCard>
+
+        <AdminCard class="config-item app-update-card" :padded="false" variant="surface">
+          <div class="item-main no-thumb">
+            <div class="item-copy">
+              <h4 class="item-title">{{ APP_UPDATE_META.title }}</h4>
+              <p class="item-text">{{ appUpdatePreviewText }}</p>
+              <span :class="['item-meta', appUpdateUrlMetaClass]">{{ appUpdateUrlMeta }}</span>
+            </div>
+          </div>
+
+          <div class="item-actions">
+            <AdminButton variant="primary" pill :disabled="loadingAppUpdate" @click="openAppUpdateEditor">
+              编辑
+            </AdminButton>
+          </div>
+        </AdminCard>
       </div>
     </AdminCard>
 
@@ -54,6 +70,21 @@
       @update:text="editor.draft.text = $event"
       @update:image-url="editor.draft.image_url = $event"
     />
+
+    <OpsAppUpdateEditorModal
+      :visible="appUpdateEditor.visible"
+      :title="APP_UPDATE_META.modalTitle"
+      :draft="appUpdateEditor.draft"
+      :default-text="APP_UPDATE_META.defaultText"
+      :default-download-url="APP_UPDATE_META.defaultDownloadUrl"
+      :saving="appUpdateEditor.saving"
+      :message="appUpdateEditor.message"
+      :ok="appUpdateEditor.ok"
+      @close="closeAppUpdateEditor"
+      @save="saveAppUpdateEditor"
+      @update:text="appUpdateEditor.draft.text = $event"
+      @update:download-url="appUpdateEditor.draft.download_url = $event"
+    />
   </LegacyAdminShell>
 </template>
 
@@ -61,6 +92,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
+import OpsAppUpdateEditorModal from '../../components/admin/OpsAppUpdateEditorModal.vue'
 import AdminCard from '../../components/admin/ui/AdminCard.vue'
 import AdminButton from '../../components/admin/ui/AdminButton.vue'
 import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
@@ -69,6 +101,11 @@ import { api } from '../../shared/http'
 type OpsConfigPayload = {
   text?: string
   image_url?: string
+}
+
+type OpsAppUpdatePayload = {
+  text?: string
+  download_url?: string
 }
 
 const SCENES = ['invite', 'user_group'] as const
@@ -109,6 +146,18 @@ const META: Record<
   },
 }
 
+const APP_UPDATE_META = {
+  title: '检查更新配置',
+  modalTitle: '检查更新配置',
+  defaultText: '1. 修复问题\n2. 优化体验',
+  defaultDownloadUrl: '',
+  loadPath: '/api/admin/ops/app_update',
+  savePath: '/api/admin/ops/app_update/update',
+  saveSuccess: '检查更新配置已保存',
+  loadError: '读取检查更新配置失败',
+  saveError: '检查更新配置保存失败',
+}
+
 const configForm = reactive<Record<ConfigScene, Required<OpsConfigPayload>>>({
   invite: { text: '', image_url: '' },
   user_group: { text: '', image_url: '' },
@@ -119,9 +168,16 @@ const loading = reactive<Record<ConfigScene, boolean>>({
   user_group: false,
 })
 
+const loadingAppUpdate = ref(false)
+
 const thumbLoadFailed = reactive<Record<ConfigScene, boolean>>({
   invite: false,
   user_group: false,
+})
+
+const appUpdateState = reactive<Required<OpsAppUpdatePayload>>({
+  text: '',
+  download_url: '',
 })
 
 const pageMessage = ref('')
@@ -146,8 +202,42 @@ const editor = reactive<{
   },
 })
 
-const loadingAny = computed(() => SCENES.some((scene) => loading[scene]))
+const appUpdateEditor = reactive<{
+  visible: boolean
+  saving: boolean
+  message: string
+  ok: boolean
+  draft: Required<OpsAppUpdatePayload>
+}>({
+  visible: false,
+  saving: false,
+  message: '',
+  ok: true,
+  draft: {
+    text: '',
+    download_url: '',
+  },
+})
+
+const loadingAny = computed(() => SCENES.some((scene) => loading[scene]) || loadingAppUpdate.value)
 const currentMeta = computed(() => META[editor.scene])
+const appUpdatePreviewText = computed(() => {
+  if (loadingAppUpdate.value) return '读取中...'
+  const text = String(appUpdateState.text || '').trim()
+  return text || APP_UPDATE_META.defaultText
+})
+const appUpdateUrlMeta = computed(() => {
+  if (loadingAppUpdate.value) return '下载链接读取中...'
+  const url = String(appUpdateState.download_url || '').trim()
+  if (!url) return '未配置下载链接'
+  if (!/^https?:\/\//i.test(url)) return '下载链接格式异常'
+  return '已配置下载链接'
+})
+const appUpdateUrlMetaClass = computed(() => {
+  const url = String(appUpdateState.download_url || '').trim()
+  if (!url) return ''
+  return /^https?:\/\//i.test(url) ? '' : 'is-error'
+})
 
 function normalizePayload(
   payload: OpsConfigPayload | null | undefined,
@@ -159,6 +249,16 @@ function normalizePayload(
   }
 }
 
+function normalizeAppUpdatePayload(
+  payload: OpsAppUpdatePayload | null | undefined,
+  fallback: Required<OpsAppUpdatePayload> = { text: '', download_url: '' },
+): Required<OpsAppUpdatePayload> {
+  return {
+    text: String(payload?.text ?? fallback.text ?? ''),
+    download_url: String(payload?.download_url ?? fallback.download_url ?? ''),
+  }
+}
+
 function flashPage(msg: string, success: boolean) {
   pageMessage.value = msg
   pageOk.value = success
@@ -167,6 +267,11 @@ function flashPage(msg: string, success: boolean) {
 function flashEditor(msg: string, success: boolean) {
   editor.message = msg
   editor.ok = success
+}
+
+function flashAppUpdateEditor(msg: string, success: boolean) {
+  appUpdateEditor.message = msg
+  appUpdateEditor.ok = success
 }
 
 function sceneTitle(scene: ConfigScene): string {
@@ -215,9 +320,23 @@ async function loadConfig(scene: ConfigScene) {
   }
 }
 
+async function loadAppUpdateConfig() {
+  loadingAppUpdate.value = true
+  try {
+    const payload = await api.get<OpsAppUpdatePayload>(APP_UPDATE_META.loadPath)
+    const normalized = normalizeAppUpdatePayload(payload)
+    appUpdateState.text = normalized.text
+    appUpdateState.download_url = normalized.download_url
+  } catch (e) {
+    flashPage(e instanceof Error ? e.message : APP_UPDATE_META.loadError, false)
+  } finally {
+    loadingAppUpdate.value = false
+  }
+}
+
 async function refreshAll() {
   pageMessage.value = ''
-  await Promise.all(SCENES.map((scene) => loadConfig(scene)))
+  await Promise.all([...SCENES.map((scene) => loadConfig(scene)), loadAppUpdateConfig()])
 }
 
 function openEditor(scene: ConfigScene) {
@@ -235,6 +354,20 @@ function closeEditor() {
   editor.message = ''
 }
 
+function openAppUpdateEditor() {
+  appUpdateEditor.visible = true
+  appUpdateEditor.saving = false
+  appUpdateEditor.message = ''
+  appUpdateEditor.ok = true
+  appUpdateEditor.draft = normalizeAppUpdatePayload(appUpdateState)
+}
+
+function closeAppUpdateEditor() {
+  if (appUpdateEditor.saving) return
+  appUpdateEditor.visible = false
+  appUpdateEditor.message = ''
+}
+
 function validateEditor(): string | null {
   const text = String(editor.draft.text || '').trim()
   const imageUrl = String(editor.draft.image_url || '').trim()
@@ -242,6 +375,18 @@ function validateEditor(): string | null {
   if (text.length < 1 || text.length > 200) return '文案长度需在 1 到 200 个字符之间'
   if (imageUrl.length > 2048) return '图片链接长度不能超过 2048 个字符'
   if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return '图片链接必须以 http:// 或 https:// 开头'
+  return null
+}
+
+function validateAppUpdateEditor(): string | null {
+  const text = String(appUpdateEditor.draft.text || '').trim()
+  const downloadUrl = String(appUpdateEditor.draft.download_url || '').trim()
+
+  if (text.length < 1 || text.length > 500) return '文案长度需在 1 到 500 个字符之间'
+  if (downloadUrl.length > 2048) return '下载链接长度不能超过 2048 个字符'
+  if (downloadUrl && !/^https?:\/\//i.test(downloadUrl)) {
+    return '下载链接必须以 http:// 或 https:// 开头'
+  }
   return null
 }
 
@@ -271,6 +416,33 @@ async function saveEditor() {
     flashEditor(e instanceof Error ? e.message : META[scene].saveError, false)
   } finally {
     editor.saving = false
+  }
+}
+
+async function saveAppUpdateEditor() {
+  const validation = validateAppUpdateEditor()
+  if (validation) {
+    flashAppUpdateEditor(validation, false)
+    return
+  }
+
+  const payloadToSave = normalizeAppUpdatePayload(appUpdateEditor.draft)
+  payloadToSave.text = payloadToSave.text.trim()
+  payloadToSave.download_url = payloadToSave.download_url.trim()
+
+  appUpdateEditor.saving = true
+  appUpdateEditor.message = ''
+  try {
+    const payload = await api.post<OpsAppUpdatePayload>(APP_UPDATE_META.savePath, payloadToSave)
+    const normalized = normalizeAppUpdatePayload(payload, payloadToSave)
+    appUpdateState.text = normalized.text
+    appUpdateState.download_url = normalized.download_url
+    flashPage(APP_UPDATE_META.saveSuccess, true)
+    closeAppUpdateEditor()
+  } catch (e) {
+    flashAppUpdateEditor(e instanceof Error ? e.message : APP_UPDATE_META.saveError, false)
+  } finally {
+    appUpdateEditor.saving = false
   }
 }
 
@@ -314,6 +486,10 @@ onMounted(() => {
   gap: 14px;
 }
 
+.item-main.no-thumb {
+  align-items: flex-start;
+}
+
 .item-copy {
   flex: 1;
   min-width: 0;
@@ -334,6 +510,7 @@ onMounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .item-meta {
@@ -406,6 +583,5 @@ onMounted(() => {
   .item-actions :deep(.admin-btn) {
     width: 100%;
   }
-
 }
 </style>

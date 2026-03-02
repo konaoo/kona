@@ -100,6 +100,26 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(data.get("user_group_text"), "加入咔咔用户群")
         self.assertEqual(data.get("user_group_image_url"), "https://example.com/user_group.webp")
 
+    def test_app_version_prefers_runtime_update_config(self):
+        app_module.db.set_runtime_config(
+            "ops.app_update.text",
+            "1. 修复问题\n2. 优化体验",
+            updated_by="test",
+        )
+        app_module.db.set_runtime_config(
+            "ops.app_update.download_url",
+            "https://example.com/new.apk",
+            updated_by="test",
+        )
+        resp = self.client.get('/api/app/version')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertEqual(data.get("releaseNotes"), "1. 修复问题\n2. 优化体验")
+        self.assertEqual(data.get("downloadUrl"), "https://example.com/new.apk")
+        self.assertIn("version", data)
+        self.assertIn("buildNumber", data)
+        self.assertIn("forceUpdate", data)
+
     def test_download_apk_not_found(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing_path = Path(tmp) / "not_exists.apk"

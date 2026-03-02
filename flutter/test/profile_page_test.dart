@@ -8,19 +8,26 @@ import 'package:tool/models/app_version.dart';
 import 'package:tool/pages/profile_page.dart';
 import 'package:tool/providers/app_state.dart';
 import 'package:tool/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MockApiService implements ApiService {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-  @override
-  Future<AppVersion?> getAppVersion() async {
-    return const AppVersion(
+  MockApiService({
+    this.appVersion = const AppVersion(
       version: '1.0.2',
       buildNumber: 2,
       releaseNotes: 'test notes',
       downloadUrl: 'http://test.com/app.apk',
       forceUpdate: false,
-    );
+    ),
+  });
+
+  final AppVersion appVersion;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  @override
+  Future<AppVersion?> getAppVersion() async {
+    return appVersion;
   }
 
   @override
@@ -55,6 +62,7 @@ void main() {
     WidgetTester tester,
   ) async {
     final mockApi = MockApiService();
+    final openCalls = <LaunchMode>[];
     final appState = AppState(tokenLoader: () async => null, api: mockApi);
     await appState.setLoggedIn(
       token: 't',
@@ -72,6 +80,10 @@ void main() {
           home: Scaffold(
             body: ProfilePage(
               onLogout: () {},
+              externalUrlOpener: (uri, mode) async {
+                openCalls.add(mode);
+                return true;
+              },
               versionLoader: () async => 'v1.0.17+17',
               nowProvider: () => DateTime.utc(2026, 3, 1, 0, 0, 0),
             ),
@@ -114,12 +126,17 @@ void main() {
 
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本 1.0.2'), findsOneWidget);
+    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.text('v1.0.2'), findsOneWidget);
     expect(find.text('test notes'), findsOneWidget);
+    expect(find.text('暂不更新'), findsNothing);
+    expect(find.text('更新'), findsOneWidget);
 
-    await tester.tap(find.text('暂不更新'));
+    await tester.tap(find.text('更新'));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本 1.0.2'), findsNothing);
+    expect(find.text('发现新版本'), findsNothing);
+    expect(openCalls, isNotEmpty);
+    expect(openCalls.single, LaunchMode.externalApplication);
 
     await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();
@@ -132,4 +149,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('咔咔用户群'), findsOneWidget);
   });
+
+  testWidgets('Check update shows latest message when version is up-to-date', (
+    WidgetTester tester,
+  ) async {
+    final mockApi = MockApiService(
+      appVersion: const AppVersion(
+        version: '1.0.1',
+        buildNumber: 1,
+        releaseNotes: 'latest',
+        downloadUrl: 'http://test.com/app.apk',
+        forceUpdate: false,
+      ),
+    );
+    final appState = AppState(tokenLoader: () async => null, api: mockApi);
+    await appState.setLoggedIn(
+      token: 't',
+      refreshToken: 'r',
+      username: 'kona',
+      userId: 'uid-2',
+      nickname: 'kona',
+      createdAtRaw: '2026-02-27 00:00:00',
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: MaterialApp(
+          home: Scaffold(body: ProfilePage(onLogout: _noop)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前已是最新版本'), findsOneWidget);
+  });
 }
+
+void _noop() {}

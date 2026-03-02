@@ -778,6 +778,70 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("image_url", str((resp.get_json() or {}).get("error", "")).lower())
 
+    def test_admin_ops_app_update_requires_auth_and_admin(self):
+        no_auth = self.client.get("/api/admin/ops/app_update")
+        self.assertEqual(no_auth.status_code, 401)
+
+        _seed_user("u_user", "normal_user", is_admin=0, status="active")
+        non_admin = self.client.get(
+            "/api/admin/ops/app_update",
+            headers=_auth_headers("u_user", "normal_user"),
+        )
+        self.assertEqual(non_admin.status_code, 403)
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+
+    def test_admin_ops_app_update_update_persists_and_writes_audit(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        payload = {
+            "text": "1. 修复已知问题\n2. 优化启动速度",
+            "download_url": "https://example.com/kaka-latest.apk",
+        }
+        update_resp = self.client.post(
+            "/api/admin/ops/app_update/update",
+            json=payload,
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        body = update_resp.get_json() or {}
+        self.assertEqual(body.get("status"), "ok")
+        self.assertEqual(body.get("text"), payload["text"])
+        self.assertEqual(body.get("download_url"), payload["download_url"])
+
+        get_resp = self.client.get(
+            "/api/admin/ops/app_update",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(get_resp.status_code, 200)
+        current = get_resp.get_json() or {}
+        self.assertEqual(current.get("text"), payload["text"])
+        self.assertEqual(current.get("download_url"), payload["download_url"])
+
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.app_update.text"),
+            payload["text"],
+        )
+        self.assertEqual(
+            app_module.db.get_runtime_config("ops.app_update.download_url"),
+            payload["download_url"],
+        )
+
+        row = self._latest_audit()
+        self.assertEqual(row["action"], "admin.ops.app_update.update")
+        self.assertEqual(row["status_code"], 200)
+
+    def test_admin_ops_app_update_update_rejects_invalid_download_url(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/ops/app_update/update",
+            json={
+                "text": "版本更新",
+                "download_url": "ftp://example.com/a.apk",
+            },
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("download_url", str((resp.get_json() or {}).get("error", "")).lower())
+
     def test_admin_cleanup_weekend_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         conn = app_module.db.get_connection()
