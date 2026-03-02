@@ -1,9 +1,9 @@
 <template>
   <LegacyAdminShell title="运营配置" subtitle="邀请码页与用户群页（App内）">
-    <AdminCard class="panel-body">
+    <AdminCard class="panel-body" variant="surface">
       <AdminSectionHeader title="运营配置" subtitle="点击编辑后在弹窗内修改，保存后将立即生效。">
         <template #actions>
-          <AdminButton :disabled="loadingAny" @click="refreshAll">
+          <AdminButton variant="secondary" soft pill :disabled="loadingAny" @click="refreshAll">
           {{ loadingAny ? '刷新中...' : '刷新' }}
           </AdminButton>
         </template>
@@ -12,7 +12,7 @@
       <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="page-message">{{ pageMessage }}</p>
 
       <div class="config-list">
-        <AdminCard v-for="scene in SCENES" :key="scene" class="config-item" :padded="false">
+        <AdminCard v-for="scene in SCENES" :key="scene" class="config-item" :padded="false" variant="surface">
           <div class="item-main">
             <div class="item-copy">
               <h4 class="item-title">{{ sceneTitle(scene) }}</h4>
@@ -33,7 +33,7 @@
           </div>
 
           <div class="item-actions">
-            <AdminButton variant="primary" :disabled="loading[scene]" @click="openEditor(scene)">
+            <AdminButton variant="primary" pill :disabled="loading[scene]" @click="openEditor(scene)">
               编辑
             </AdminButton>
           </div>
@@ -296,9 +296,9 @@ onMounted(() => {
 }
 
 .config-item {
-  border: 1px solid #d6e1ee;
+  border: 1px solid #dfe6ea;
   border-radius: 12px;
-  background: #fbfdff;
+  background: #fdfefe;
   padding: 14px;
   display: flex;
   justify-content: space-between;
@@ -321,14 +321,14 @@ onMounted(() => {
 
 .item-title {
   margin: 0;
-  color: #1f3f58;
+  color: #1f252b;
   font-size: 17px;
   font-weight: 700;
 }
 
 .item-text {
   margin: 8px 0 6px;
-  color: #10243e;
+  color: #2e3944;
   line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -337,7 +337,7 @@ onMounted(() => {
 }
 
 .item-meta {
-  color: #55708f;
+  color: #8a939c;
   font-size: 12px;
   font-weight: 600;
 }
@@ -350,7 +350,7 @@ onMounted(() => {
   width: 92px;
   height: 92px;
   border-radius: 10px;
-  border: 1px solid #c9d8e8;
+  border: 1px solid #d9e2e8;
   background: #fff;
   overflow: hidden;
   display: grid;

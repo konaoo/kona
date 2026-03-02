@@ -1,15 +1,15 @@
 <template>
   <LegacyAdminShell title="邀请码管理" subtitle="未使用/已使用查询">
-    <AdminCard class="tool-card">
+    <AdminCard class="tool-card" variant="surface">
       <div class="toolbar">
         <input class="input" v-model.number="count" type="number" min="1" max="50" placeholder="生成数量" />
-        <AdminButton variant="primary" @click="generate">生成邀请码</AdminButton>
-        <AdminButton variant="ghost" @click="load({ force: true })">刷新列表</AdminButton>
+        <AdminButton variant="primary" pill @click="generate">生成邀请码</AdminButton>
+        <AdminButton variant="secondary" soft pill @click="load({ force: true })">刷新列表</AdminButton>
       </div>
       <p v-if="message" :class="ok ? 'up' : 'down'">{{ message }}</p>
     </AdminCard>
 
-    <AdminCard class="list-card">
+    <AdminCard class="list-card" variant="surface">
       <div class="tabs">
         <button class="tab-btn" :class="{ active: inviteStatus === 'active' }" @click="switchTab('active')">未使用</button>
         <button class="tab-btn" :class="{ active: inviteStatus === 'used' }" @click="switchTab('used')">已使用</button>
@@ -58,9 +58,9 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
     </AdminCard>
@@ -207,16 +207,16 @@ onMounted(() => {
   gap: 8px;
   width: fit-content;
   padding: 4px;
-  border: 1px solid #d8e6f4;
+  border: 1px solid #dfe6ea;
   border-radius: 10px;
-  background: #f4f9ff;
+  background: #f6f9fa;
 }
 
 .tab-btn {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #36567d;
+  color: #5d6873;
   padding: 8px 16px;
   cursor: pointer;
   font-weight: 600;
@@ -224,13 +224,13 @@ onMounted(() => {
 }
 
 .tab-btn:hover {
-  background: #e8f2ff;
+  background: #edf3f6;
 }
 
 .tab-btn.active {
-  background: #1f8ea5;
-  border-color: #1f8ea5;
-  color: #fff;
+  background: #c7ea58;
+  border-color: rgba(176, 206, 76, 0.6);
+  color: #20261a;
 }
 
 .pager-wrap {
@@ -245,16 +245,16 @@ onMounted(() => {
   flex-wrap: nowrap;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid #d9e5f2;
+  border: 1px solid #dfe6ea;
   border-radius: 10px;
-  background: #f7fbff;
+  background: #f6f9fa;
   max-width: 100%;
   overflow-x: auto;
 }
 
 .pager-total,
 .pager-page {
-  color: #3f6086;
+  color: #5e6974;
   font-weight: 600;
   white-space: nowrap;
   word-break: keep-all;
@@ -267,17 +267,17 @@ onMounted(() => {
   max-width: 120px;
   min-width: 110px;
   height: 36px;
-  border: 1px solid #c7d7ea;
+  border: 1px solid #d3dce2;
   border-radius: 8px;
   background: #fff;
-  color: #35557d;
+  color: #404b56;
   padding: 0 10px;
   flex: 0 0 auto;
 }
 
 .empty {
   text-align: center;
-  color: #55708f;
+  color: #7d8893;
   font-weight: 600;
 }
 

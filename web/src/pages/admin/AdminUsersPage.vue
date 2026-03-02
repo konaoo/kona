@@ -1,6 +1,6 @@
 <template>
   <LegacyAdminShell title="用户管理" subtitle="查询、封禁与资产明细">
-    <AdminCard class="search-card">
+    <AdminCard class="search-card" variant="surface">
       <AdminSectionHeader title="用户管理" subtitle="当前仅展示总资产 > 0 的用户">
         <template #actions>
           <span class="all-chip">全部（总资产>0）</span>
@@ -8,11 +8,11 @@
       </AdminSectionHeader>
       <div class="toolbar">
         <input class="input" v-model.trim="query" placeholder="搜索用户名/昵称/手机号" @keyup.enter="onSearch" />
-        <AdminButton variant="primary" @click="onSearch">查询</AdminButton>
+        <AdminButton variant="primary" pill @click="onSearch">查询</AdminButton>
       </div>
     </AdminCard>
 
-    <AdminCard class="list-card">
+    <AdminCard class="list-card" variant="surface">
       <AdminTable>
         <thead>
           <tr>
@@ -52,8 +52,8 @@
             <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
             <td>{{ displayRegion(u.last_active_region || u.last_login_region) }}</td>
             <td class="actions">
-              <AdminButton size="sm" variant="ghost" @click="openDetail(u)">详情</AdminButton>
-              <AdminButton size="sm" :variant="u.status === 'disabled' ? 'secondary' : 'danger'" @click="toggleStatus(u)">
+              <AdminButton size="sm" variant="secondary" soft pill @click="openDetail(u)">详情</AdminButton>
+              <AdminButton size="sm" :variant="u.status === 'disabled' ? 'secondary' : 'danger'" :soft="u.status === 'disabled'" pill @click="toggleStatus(u)">
                 {{ u.status === 'disabled' ? '解封' : '封禁' }}
               </AdminButton>
             </td>
@@ -70,9 +70,9 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
 
@@ -80,10 +80,10 @@
     </AdminCard>
 
     <div v-if="detail.visible" class="detail-mask" @click.self="closeDetail">
-      <AdminCard class="detail-panel">
+      <AdminCard class="detail-panel" variant="surface">
         <div class="detail-head">
           <h3>资产详情 · {{ detail.username || '-' }}</h3>
-          <AdminButton variant="ghost" @click="closeDetail">关闭</AdminButton>
+          <AdminButton variant="secondary" soft pill @click="closeDetail">关闭</AdminButton>
         </div>
 
         <div v-if="detail.loading" class="detail-loading">加载中...</div>
@@ -389,13 +389,13 @@ onMounted(() => {
 .all-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #d2deeb;
+  border: 1px solid #d6e0e6;
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 700;
-  color: #35567c;
-  background: #f4f8fd;
+  color: #3f4a54;
+  background: #f6faf5;
 }
 
 .toolbar {
@@ -412,7 +412,7 @@ onMounted(() => {
 .sort-btn {
   border: 0;
   background: transparent;
-  color: #55708f;
+  color: #737f8a;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -442,16 +442,16 @@ onMounted(() => {
   flex-wrap: nowrap;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid #d9e5f2;
+  border: 1px solid #dfe6ea;
   border-radius: 10px;
-  background: #f7fbff;
+  background: #f6f9fa;
   max-width: 100%;
   overflow-x: auto;
 }
 
 .pager-total,
 .pager-page {
-  color: #3f6086;
+  color: #5e6974;
   font-weight: 600;
   white-space: nowrap;
   word-break: keep-all;
@@ -464,10 +464,10 @@ onMounted(() => {
   max-width: 120px;
   min-width: 110px;
   height: 36px;
-  border: 1px solid #c7d7ea;
+  border: 1px solid #d3dce2;
   border-radius: 8px;
   background: #fff;
-  color: #35557d;
+  color: #404b56;
   padding: 0 10px;
   flex: 0 0 auto;
 }
@@ -478,7 +478,7 @@ onMounted(() => {
 
 .empty {
   text-align: center;
-  color: #55708f;
+  color: #7d8893;
   font-weight: 600;
 }
 
@@ -521,7 +521,7 @@ onMounted(() => {
 
 .detail-loading {
   padding: 18px 4px;
-  color: #46678f;
+  color: #6e7984;
 }
 
 .summary-grid {
@@ -533,34 +533,34 @@ onMounted(() => {
 }
 
 .summary-item {
-  border: 1px solid #d8e3f0;
-  border-radius: 12px;
-  background: #f9fbff;
+  border: 1px solid #dfe6ea;
+  border-radius: 14px;
+  background: #f9fbf9;
   padding: 12px;
 }
 
 .summary-label {
-  color: #55708f;
+  color: #808a95;
   font-size: 12px;
   font-weight: 700;
 }
 
 .summary-value {
   margin-top: 6px;
-  color: #1f3f58;
+  color: #1f252b;
   font-size: 18px;
   font-weight: 800;
 }
 
 .cache-tip {
   margin: 0 0 10px;
-  color: #55708f;
+  color: #8a939c;
   font-size: 12px;
 }
 
 .detail-sub-title {
   margin: 0 0 10px;
-  color: #1f3f58;
+  color: #1f252b;
   font-size: 16px;
   font-weight: 700;
 }
@@ -575,7 +575,7 @@ onMounted(() => {
 }
 
 .asset-cell span {
-  color: #55708f;
+  color: #8a939c;
   font-size: 12px;
 }
 

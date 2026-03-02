@@ -1,6 +1,6 @@
 <template>
   <LegacyAdminShell title="接口管理" subtitle="接口测试">
-    <AdminCard class="block">
+    <AdminCard class="block" variant="surface">
       <AdminSectionHeader title="接口测试" subtitle="逐个接口测试，结果在弹窗里查看明细" />
       <AdminTable>
         <thead>
@@ -13,7 +13,7 @@
           <tr v-for="provider in providers" :key="provider.key">
             <td>{{ provider.title }}</td>
             <td>
-              <AdminButton :disabled="isTesting(provider.key)" @click="openTestModal(provider.key)">
+              <AdminButton :disabled="isTesting(provider.key)" pill @click="openTestModal(provider.key)">
                 {{ isTesting(provider.key) ? '测试中...' : '测试' }}
               </AdminButton>
             </td>
@@ -23,17 +23,18 @@
     </AdminCard>
 
     <div v-if="modal.visible && currentProvider" class="detail-mask" @click.self="closeModal">
-      <AdminCard class="detail-panel">
+      <AdminCard class="detail-panel" variant="surface">
         <div class="detail-head">
           <h3>{{ currentProvider.title }} - 测试</h3>
           <div class="detail-actions">
             <AdminButton
               :disabled="isTesting(currentProvider.key)"
+              pill
               @click="runProviderTest(currentProvider.key)"
             >
               {{ isTesting(currentProvider.key) ? '测试中...' : '重新测试' }}
             </AdminButton>
-            <AdminButton variant="ghost" :disabled="isTesting(currentProvider.key)" @click="closeModal">
+            <AdminButton variant="secondary" soft pill :disabled="isTesting(currentProvider.key)" @click="closeModal">
               关闭
             </AdminButton>
           </div>
@@ -248,7 +249,7 @@ function closeModal() {
 
 .detail-head h3 {
   margin: 0;
-  color: #24496e;
+  color: #1f252b;
 }
 
 .detail-actions {
@@ -258,7 +259,7 @@ function closeModal() {
 
 .muted {
   margin: 0;
-  color: #55708f;
+  color: #8a939c;
   font-size: 13px;
 }
 

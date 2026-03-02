@@ -1,15 +1,15 @@
 <template>
   <LegacyAdminShell title="数据概览" subtitle="用户增长与留存">
     <section class="kpi-grid">
-      <AdminCard tone="soft" class="kpi-card">
+      <AdminCard variant="kpi-purple" class="kpi-card">
         <div class="kpi-label">新增用户数（当日）</div>
         <div class="kpi-value">{{ overview.dashboard?.new_users_today ?? 0 }}</div>
       </AdminCard>
-      <AdminCard tone="soft" class="kpi-card">
+      <AdminCard variant="kpi-blue" class="kpi-card">
         <div class="kpi-label">活跃用户数（当日）</div>
         <div class="kpi-value">{{ overview.dashboard?.active_users_today ?? 0 }}</div>
       </AdminCard>
-      <AdminCard tone="soft" class="kpi-card">
+      <AdminCard variant="kpi-green" class="kpi-card">
         <div class="kpi-label">累计用户数（历史）</div>
         <div class="kpi-value">{{ overview.dashboard?.total_users ?? 0 }}</div>
       </AdminCard>
@@ -18,7 +18,7 @@
     <AdminCard class="retention-panel">
       <AdminSectionHeader title="用户增长与留存">
         <template #actions>
-          <AdminButton @click="load(true)">刷新</AdminButton>
+          <AdminButton pill @click="load(true)">刷新</AdminButton>
         </template>
       </AdminSectionHeader>
       <AdminTable>
@@ -57,9 +57,9 @@
           <select v-model.number="pageSize" class="pager-select">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
           </select>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
           <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <AdminButton size="sm" variant="ghost" :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
+          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
         </div>
       </div>
     </AdminCard>
@@ -143,15 +143,15 @@ onMounted(() => {
 }
 
 .kpi-label {
-  color: #46658b;
-  font-size: 20px;
+  color: rgba(26, 34, 42, 0.78);
+  font-size: 14px;
   font-weight: 700;
 }
 
 .kpi-value {
   margin-top: 8px;
-  color: #1f3d63;
-  font-size: 38px;
+  color: #1f252b;
+  font-size: 34px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: 0.5px;
@@ -173,16 +173,16 @@ onMounted(() => {
   flex-wrap: nowrap;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid #d9e5f2;
-  border-radius: 10px;
-  background: #f7fbff;
+  border: 1px solid #dfe6ea;
+  border-radius: 12px;
+  background: #f6f9fa;
   max-width: 100%;
   overflow-x: auto;
 }
 
 .pager-total,
 .pager-page {
-  color: #3f6086;
+  color: #5e6974;
   font-weight: 600;
   white-space: nowrap;
   word-break: keep-all;
@@ -195,16 +195,16 @@ onMounted(() => {
   max-width: 120px;
   min-width: 110px;
   height: 36px;
-  border: 1px solid #c7d7ea;
+  border: 1px solid #d3dce2;
   border-radius: 8px;
   background: #fff;
-  color: #35557d;
+  color: #404b56;
   padding: 0 10px;
   flex: 0 0 auto;
 }
 
 .empty {
-  color: #5f7a98 !important;
+  color: #7d8893 !important;
   text-align: center;
   font-weight: 600;
 }

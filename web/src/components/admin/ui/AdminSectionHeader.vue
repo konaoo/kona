@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-section-header">
+  <div class="admin-section-header" :class="{ tight }">
     <div class="copy">
       <h3 class="title">{{ title }}</h3>
       <p v-if="subtitle" class="subtitle">{{ subtitle }}</p>
@@ -11,10 +11,16 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  subtitle?: string
-}>()
+withDefaults(
+  defineProps<{
+    title: string
+    subtitle?: string
+    tight?: boolean
+  }>(),
+  {
+    tight: false,
+  },
+)
 </script>
 
 <style scoped>
@@ -23,6 +29,11 @@ defineProps<{
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-section-header.tight {
+  margin-bottom: 8px;
 }
 
 .copy {
@@ -31,15 +42,16 @@ defineProps<{
 
 .title {
   margin: 0;
-  color: #1f3f58;
-  font-size: 20px;
+  color: #1f252b;
+  font-size: 22px;
   font-weight: 800;
 }
 
 .subtitle {
   margin: 6px 0 0;
-  color: #55708f;
+  color: #8a939c;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .actions {
