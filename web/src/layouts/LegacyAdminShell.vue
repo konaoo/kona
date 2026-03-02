@@ -30,35 +30,12 @@
     </aside>
 
     <main class="admin-main">
-      <header class="topbar">
-        <div class="topbar-left">
-          <h1 class="topbar-main-title">{{ title }}</h1>
-          <p class="topbar-sub-title">{{ subtitle || todayLabel }}</p>
-        </div>
-
-        <div class="topbar-meta">
-          <button class="meta-icon-btn" type="button" aria-label="消息">
-            <AdminIcon name="message" :size="18" />
-          </button>
-          <button class="meta-icon-btn" type="button" aria-label="提醒">
-            <AdminIcon name="bell" :size="18" />
-          </button>
-          <div class="meta-user">
-            <div class="meta-avatar" />
-            <div>
-              <p class="meta-name">{{ store.state.user?.nickname || store.state.user?.username || 'Admin' }}</p>
-              <p class="meta-role">Operations Manager</p>
-            </div>
-          </div>
-        </div>
-      </header>
       <slot />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useKonaStore } from '../shared/store'
 import AdminButton from '../components/admin/ui/AdminButton.vue'
@@ -76,11 +53,6 @@ const nav = [
   { path: '/admin/config', label: '运营配置', icon: 'ops' },
   { path: '/admin/apis', label: '接口管理', icon: 'api' },
 ]
-
-const todayLabel = computed(() => {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-})
 
 async function onLogout() {
   await store.logout()
@@ -150,34 +122,7 @@ async function goApp() {
 
 .admin-main {
   min-width: 0;
-  padding: calc(18px * var(--admin-space-scale)) clamp(14px, 2vw, 28px) calc(24px * var(--admin-space-scale));
-}
-
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  margin-bottom: calc(14px * var(--admin-space-scale));
-  padding: calc(12px * var(--admin-space-scale)) calc(14px * var(--admin-space-scale));
-  border-radius: 16px;
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.topbar-left {
-  min-width: 0;
-}
-
-.topbar-main-title {
-  margin: 0;
-  line-height: 1.08;
-}
-
-.topbar-sub-title {
-  margin: 6px 0 0;
+  padding: calc(14px * var(--admin-space-scale)) clamp(14px, 2vw, 28px) calc(24px * var(--admin-space-scale));
 }
 
 .admin-main :deep(.panel) {
@@ -190,13 +135,6 @@ async function goApp() {
 
 .admin-main :deep(.down) {
   color: #dc2626;
-}
-
-@media (max-width: 1200px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 
 @media (max-width: 900px) {
