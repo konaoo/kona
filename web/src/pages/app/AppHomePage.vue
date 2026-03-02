@@ -281,7 +281,7 @@ const investTotal = computed(() => {
     const rowMv = toNumber(row.value) * rate
     const rowCost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     mv += rowMv
-    cost += rowCost
+    cost += Math.abs(rowCost)
     dayPnl += toNumber(row.dayPnlAggregate) * rate
     floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     totalPnl += toNumber(row.totalPnl) * rate
@@ -293,8 +293,8 @@ const investTotal = computed(() => {
     floatPnl,
     totalPnl,
     dayRate: mv - dayPnl > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0,
-    floatRate: cost > 0 ? (floatPnl / cost) * 100 : 0,
-    totalRate: cost > 0 ? (totalPnl / cost) * 100 : 0,
+    floatRate: Math.abs(cost) > 0 ? (floatPnl / Math.abs(cost)) * 100 : 0,
+    totalRate: Math.abs(cost) > 0 ? (totalPnl / Math.abs(cost)) * 100 : 0,
   }
 })
 
@@ -313,7 +313,7 @@ const marketCards = computed(() => {
     const mv = toNumber(row.value) * rate
     const cost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     stats.mv += mv
-    stats.cost += cost
+    stats.cost += Math.abs(cost)
     stats.dayPnl += toNumber(row.dayPnlAggregate) * rate
     stats.floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     stats.totalPnl += toNumber(row.totalPnl) * rate
@@ -327,8 +327,8 @@ const marketCards = computed(() => {
       icon: marketMeta[key].icon,
       ...stats,
       dayRate: stats.mv - stats.dayPnl > 0 ? (stats.dayPnl / (stats.mv - stats.dayPnl)) * 100 : 0,
-      floatRate: stats.cost > 0 ? (stats.floatPnl / stats.cost) * 100 : 0,
-      totalRate: stats.cost > 0 ? (stats.totalPnl / stats.cost) * 100 : 0,
+      floatRate: Math.abs(stats.cost) > 0 ? (stats.floatPnl / Math.abs(stats.cost)) * 100 : 0,
+      totalRate: Math.abs(stats.cost) > 0 ? (stats.totalPnl / Math.abs(stats.cost)) * 100 : 0,
     }
   })
 })

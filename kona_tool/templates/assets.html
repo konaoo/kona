@@ -713,11 +713,11 @@
                 const adj = parseFloat(s.adjustment) || 0;
                 const rate = FX[s.curr] || 1;
                 
-                let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : cost);
-                const ycloseRef = d.yclose || cost;
+                let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : (cost > 0 ? cost : 0));
+                const ycloseRef = d.yclose > 0 ? d.yclose : (cost > 0 ? cost : 0);
                 
                 const mv = curPrice * qty * rate;
-                const costVal = cost * qty * rate;
+                const costVal = Math.abs(cost * qty * rate);
                 const market = detectAssetMarket(s);
                 const marketOpen = !!((marketStatus[market] || {}).open);
                 const dayPnl = marketOpen ? ((curPrice - ycloseRef) * qty * rate) : 0;
@@ -748,7 +748,8 @@
             const fmt = (v) => isPrivacyMode ? '****' : `¥ ${v.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
             const fmtPnl = (v) => isPrivacyMode ? '****' : `${v >= 0 ? '+' : ''}${v.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
             const fmtRate = (v, base) => {
-                const r = base > 0 ? (v / base * 100) : 0;
+                const absBase = Math.abs(base);
+                const r = absBase > 0 ? (v / absBase * 100) : 0;
                 return `${r >= 0 ? '+' : ''}${r.toFixed(2)}%`;
             };
             const cls = (v) => v >= 0 ? 'up' : 'down';

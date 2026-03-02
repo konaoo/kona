@@ -37,6 +37,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _queryController = TextEditingController();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
+  final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
 
   Timer? _debounce;
@@ -74,6 +75,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (_isTrade) {
         _tradeMode = 'buy';
         _adjustController.clear();
+        _adjustPriceController.clear();
       }
     }
   }
@@ -89,6 +91,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
+    _adjustPriceController.dispose();
     _adjustController.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -594,6 +597,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _errorText = null;
       if (mode == 'adjust') {
         _adjustController.clear();
+        final item = widget.item;
+        if (item != null) {
+          final decimals = _isFundAsset(assetType: item.assetType, code: item.code)
+              ? 4
+              : 3;
+          _adjustPriceController.text = _formatInputNumber(item.price, decimals: decimals);
+        } else {
+          _adjustPriceController.clear();
+        }
       } else if (_priceController.text.trim().isEmpty) {
         _prefillPriceFromCurrent();
       }
@@ -670,7 +682,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       }
       if (mode == 'adjust') {
         final adjustStr = _adjustController.text.trim();
+        final adjustPriceStr = _adjustPriceController.text.trim();
         final adjustVal = double.tryParse(adjustStr);
+        final adjustPriceVal = double.tryParse(adjustPriceStr);
         if (adjustVal == null) {
           setState(() {
             _saving = false;
@@ -678,12 +692,25 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
+        if (adjustPriceVal == null) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效平均成本';
+          });
+          return;
+        }
         final qtyVal = widget.item?.qty ?? 0;
-        final priceVal = widget.item?.price ?? 0;
+        if (qtyVal <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '未找到有效持仓数量';
+          });
+          return;
+        }
         actionFuture = appState.modifyInvestment(
           code: code,
           qty: qtyVal,
-          price: priceVal,
+          price: adjustPriceVal,
           adjustment: adjustVal,
           awaitRefresh: false,
         );
@@ -1250,6 +1277,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                   const SizedBox(height: Spacing.md),
                 ],
                 if (_isTrade && _isAdjust) ...[
+                  TextField(
+                    controller: _adjustPriceController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    style: TextStyle(color: AppTheme.textPrimary),
+                    decoration: _compactDecoration('平均成本'),
+                  ),
+                  const SizedBox(height: Spacing.md),
                   TextField(
                     controller: _adjustController,
                     keyboardType: const TextInputType.numberWithOptions(

@@ -393,14 +393,15 @@
                     
                     portfolioData = rawPortfolio.map(s => {
                         const d = prices[s.code] || {price: 0};
-                        const curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : parseFloat(s.price));
+                        const rawCost = parseFloat(s.price);
+                        const curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : (rawCost > 0 ? rawCost : 0));
                         const cost = parseFloat(s.price);
                         const qty = parseFloat(s.qty);
                         const adj = parseFloat(s.adjustment) || 0;
                         const rate = FX[s.curr] || 1;
                         
                         const totalPnl = ((curPrice - cost) * qty + adj) * rate;
-                        const totalCost = cost * qty * rate;
+                        const totalCost = Math.abs(cost * qty * rate);
                         const totalPnlRate = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
                         
                         totalInvestmentCost += totalCost;
@@ -535,7 +536,7 @@
             
             const totalPnl = filtered.reduce((sum, p) => sum + p.totalPnl, 0);
             const totalCost = filtered.reduce((sum, p) => sum + p.totalCost, 0);
-            const totalRate = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+            const totalRate = Math.abs(totalCost) > 0 ? (totalPnl / Math.abs(totalCost) * 100) : 0;
             
             document.getElementById('marketPnl').innerText = `¥ ${totalPnl.toLocaleString('zh-CN', {maximumFractionDigits: 0})}`;
             document.getElementById('marketPnl').className = 'market-stat-value ' + (totalPnl >= 0 ? 'text-up' : 'text-down');

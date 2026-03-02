@@ -1191,9 +1191,9 @@
                     const market = detectAssetMarket(s);
                     const marketOpen = !!((marketStatus[market] || {}).open);
                     
-                    let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : cost);
+                    let curPrice = d.price > 0 ? d.price : (d.yclose > 0 ? d.yclose : (cost > 0 ? cost : 0));
                     const mv = curPrice * qty;
-                    const ycloseRef = d.yclose || cost;
+                    const ycloseRef = d.yclose > 0 ? d.yclose : (cost > 0 ? cost : 0);
                     const rawDay = (curPrice - ycloseRef) * qty;
                     const day = marketOpen ? rawDay : 0;
                     const dayPnlRate = marketOpen
@@ -1201,10 +1201,11 @@
                         : 0;
                     const totPnl = (curPrice - cost) * qty + adj;
                     const rate = FX[s.curr] || 1;
-                    const totPnlRate = cost * qty > 0 ? (totPnl / (cost * qty) * 100) : 0;
+                    const costBasis = Math.abs(cost * qty);
+                    const totPnlRate = costBasis > 0 ? (totPnl / costBasis * 100) : 0;
 
                     tMV += mv * rate;
-                    tCost += cost * qty * rate;
+                    tCost += Math.abs(cost * qty * rate);
                     tDay += day * rate;
                     gFloat += (mv - cost * qty) * rate;
                     gTotal += totPnl * rate;

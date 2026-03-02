@@ -379,7 +379,9 @@ class AppState extends ChangeNotifier {
     double total = 0;
     for (var item in _portfolio) {
       final priceInfo = resolvePriceInfo(item);
-      final currentPrice = priceInfo?.price ?? item.price;
+      final currentPrice = (priceInfo != null && priceInfo.price > 0)
+          ? priceInfo.price
+          : (item.price > 0 ? item.price : 0.0);
       final rate = _rateForCurrency(item.curr);
       total += currentPrice * item.qty * rate;
     }
@@ -425,7 +427,9 @@ class AppState extends ChangeNotifier {
     double total = 0;
     for (var item in _portfolio) {
       final priceInfo = resolvePriceInfo(item);
-      final currentPrice = priceInfo?.price ?? item.price;
+      final currentPrice = (priceInfo != null && priceInfo.price > 0)
+          ? priceInfo.price
+          : (item.price > 0 ? item.price : 0.0);
       final rate = _rateForCurrency(item.curr);
       final mv = currentPrice * item.qty * rate;
       final cost = item.price * item.qty * rate;
@@ -436,12 +440,12 @@ class AppState extends ChangeNotifier {
 
   /// 投资持仓盈亏率
   double get investHoldingPnlRate {
-    double totalCost = 0;
+    double totalCostAbs = 0;
     for (var item in _portfolio) {
       final rate = _rateForCurrency(item.curr);
-      totalCost += item.price * item.qty * rate;
+      totalCostAbs += (item.price * item.qty * rate).abs();
     }
-    return totalCost > 0 ? (investHoldingPnl / totalCost * 100) : 0;
+    return totalCostAbs > 0 ? (investHoldingPnl / totalCostAbs * 100) : 0;
   }
 
   // ============================================================
@@ -2731,6 +2735,9 @@ class AppState extends ChangeNotifier {
     String? assetType,
     bool awaitRefresh = true,
   }) async {
+    if (price <= 0 || qty <= 0) {
+      return const AssetActionResult.failure('请输入有效价格和数量');
+    }
     final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
     final snapshot = _capturePortfolioSnapshot();
     final changed = _optimisticAddInvestment(
@@ -3011,6 +3018,9 @@ class AppState extends ChangeNotifier {
     required double qty,
     bool awaitRefresh = true,
   }) async {
+    if (price <= 0 || qty <= 0) {
+      return const AssetActionResult.failure('请输入有效价格和数量');
+    }
     if (_portfolioIndexByCode(code) < 0) {
       return const AssetActionResult.failure('未找到该持仓');
     }
@@ -3043,6 +3053,9 @@ class AppState extends ChangeNotifier {
     required double qty,
     bool awaitRefresh = true,
   }) async {
+    if (price <= 0 || qty <= 0) {
+      return const AssetActionResult.failure('请输入有效价格和数量');
+    }
     final index = _portfolioIndexByCode(code);
     if (index < 0) return const AssetActionResult.failure('未找到该持仓');
     if (qty > _portfolio[index].qty + 1e-6) {
@@ -3078,6 +3091,9 @@ class AppState extends ChangeNotifier {
     required double adjustment,
     bool awaitRefresh = true,
   }) async {
+    if (qty <= 0 || !price.isFinite || !adjustment.isFinite) {
+      return const AssetActionResult.failure('请输入有效调整参数');
+    }
     if (_portfolioIndexByCode(code) < 0) {
       return const AssetActionResult.failure('未找到该持仓');
     }

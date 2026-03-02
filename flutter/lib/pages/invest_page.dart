@@ -484,12 +484,16 @@ class InvestPageState extends State<InvestPage> {
   ) {
     // 检查价格数据是否有效
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-    final currentPrice = hasValidPrice ? priceInfo.price : item.price;
+    final currentPrice = hasValidPrice
+        ? priceInfo.price
+        : (item.price > 0 ? item.price : 0.0);
     final sessionLabel = _priceSessionLabel(item, priceInfo);
     final mv = currentPrice * item.qty;
     final costTotal = item.price * item.qty;
     final holdingPnl = mv - costTotal + item.adjustment;
-    final holdingPnlPct = costTotal > 0 ? (holdingPnl / costTotal * 100) : 0.0;
+    final holdingPnlPct = costTotal.abs() > 0
+        ? (holdingPnl / costTotal.abs() * 100)
+        : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
     final rate = appState.getCurrencyRate(item.curr);
     final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(

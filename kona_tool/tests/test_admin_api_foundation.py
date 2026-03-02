@@ -588,6 +588,36 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertIn("cached_at", payload.get("cache", {}))
         self.assertIn("expires_at", payload.get("cache", {}))
 
+    @patch.object(admin_routes, "batch_get_prices", return_value={"gb_neg": (0.0, 0.0, 0, 0)})
+    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.0, "CNY": 1.0})
+    def test_admin_user_portfolio_negative_cost_uses_abs_rate_denominator(self, _mock_rates, _mock_prices):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "target_user", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("gb_neg", "负成本样本", 2.0, -5.0, "USD", 0.0, "us", "u_target"),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(
+            "/api/admin/users/u_target/portfolio",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get("items") or []
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertAlmostEqual(float(item.get("latest_price") or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(item.get("pnl_rate") or 0.0), 100.0, places=2)
+
     def test_admin_audit_endpoints_are_removed(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
 

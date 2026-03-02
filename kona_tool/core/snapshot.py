@@ -113,11 +113,21 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         cur_price = price_data[0]
         yclose = price_data[1]
         
-        # 如果获取失败或为0，使用成本价或昨收作为后备
+        # 如果获取失败或为0，优先昨收，其次仅允许正成本价兜底，避免负成本导致负行情
         if cur_price <= 0:
-            cur_price = yclose if yclose > 0 else cost
-        
-        yclose_ref = yclose if yclose > 0 else cost
+            if yclose > 0:
+                cur_price = yclose
+            elif cost > 0:
+                cur_price = cost
+            else:
+                cur_price = 0.0
+
+        if yclose > 0:
+            yclose_ref = yclose
+        elif cost > 0:
+            yclose_ref = cost
+        else:
+            yclose_ref = 0.0
         
         # 计算单项指标 (转换为CNY)
         item_mv = cur_price * qty * rate

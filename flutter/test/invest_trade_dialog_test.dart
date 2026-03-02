@@ -23,6 +23,11 @@ class _SaveStateAppState extends AppState {
 
   final AssetActionResult result;
   int buyWithCashCalls = 0;
+  int modifyCalls = 0;
+  String? lastModifyCode;
+  double? lastModifyQty;
+  double? lastModifyPrice;
+  double? lastModifyAdjustment;
 
   @override
   Future<List<dynamic>> searchStocks(String query) async {
@@ -49,6 +54,22 @@ class _SaveStateAppState extends AppState {
     bool awaitRefresh = true,
   }) async {
     buyWithCashCalls += 1;
+    return result;
+  }
+
+  @override
+  Future<AssetActionResult> modifyInvestment({
+    required String code,
+    required double qty,
+    required double price,
+    required double adjustment,
+    bool awaitRefresh = true,
+  }) async {
+    modifyCalls += 1;
+    lastModifyCode = code;
+    lastModifyQty = qty;
+    lastModifyPrice = price;
+    lastModifyAdjustment = adjustment;
     return result;
   }
 }
@@ -244,5 +265,50 @@ void main() {
       ),
     );
     expect(priceField.controller?.text, '1.235');
+  });
+
+  testWidgets('Trade adjust mode allows negative cost and calls modify', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    final item = PortfolioItem(
+      code: 'gb_tsla',
+      name: 'Tesla',
+      qty: 5,
+      price: 10,
+      curr: 'USD',
+      assetType: 'us',
+    );
+    await prepareTradeDialogWithItem(tester, appState, item: item);
+
+    await tester.tap(find.text('调整'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '平均成本',
+      ),
+      '-1.23',
+    );
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '调整金额',
+      ),
+      '8.5',
+    );
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(appState.modifyCalls, 1);
+    expect(appState.lastModifyCode, 'gb_tsla');
+    expect(appState.lastModifyQty, 5);
+    expect(appState.lastModifyPrice, -1.23);
+    expect(appState.lastModifyAdjustment, 8.5);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
   });
 }

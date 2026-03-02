@@ -451,7 +451,7 @@ const investStats = computed(() => {
     const rowMv = toNumber(row.value) * rate
     const rowCost = toNumber(row.costPrice) * toNumber(row.qty) * rate
     mv += rowMv
-    cost += rowCost
+    cost += Math.abs(rowCost)
     dayPnl += toNumber(row.dayPnlAggregate) * rate
     floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
     totalPnl += toNumber(row.totalPnl) * rate
@@ -462,8 +462,8 @@ const investStats = computed(() => {
     floatPnl,
     totalPnl,
     dayRate: mv - dayPnl > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0,
-    floatRate: cost > 0 ? (floatPnl / cost) * 100 : 0,
-    totalRate: cost > 0 ? (totalPnl / cost) * 100 : 0,
+    floatRate: Math.abs(cost) > 0 ? (floatPnl / Math.abs(cost)) * 100 : 0,
+    totalRate: Math.abs(cost) > 0 ? (totalPnl / Math.abs(cost)) * 100 : 0,
   }
 })
 
@@ -517,8 +517,22 @@ function ensureValidQty(): boolean {
   return false
 }
 
+function ensureValidPriceByMode(): boolean {
+  const price = Number(form.price)
+  if (!Number.isFinite(price)) {
+    alert('价格必须是有效数字')
+    return false
+  }
+  if (modal.type !== 'edit' && price <= 0) {
+    alert('成交价格必须大于 0')
+    return false
+  }
+  return true
+}
+
 async function submitModal() {
   if (!ensureValidQty()) return
+  if (!ensureValidPriceByMode()) return
 
   if (modal.type === 'add') {
     await api.post('/api/portfolio/add', {
@@ -533,9 +547,12 @@ async function submitModal() {
   } else if (modal.type === 'sell') {
     await api.post('/api/portfolio/sell', { code: modal.code, qty: form.qty, price: form.price })
   } else {
-    await api.post('/api/portfolio/update', { code: modal.code, field: 'qty', val: form.qty })
-    await api.post('/api/portfolio/update', { code: modal.code, field: 'price', val: form.price })
-    await api.post('/api/portfolio/update', { code: modal.code, field: 'adjustment', val: form.adjustment })
+    await api.post('/api/portfolio/modify', {
+      code: modal.code,
+      qty: form.qty,
+      price: form.price,
+      adjustment: form.adjustment,
+    })
   }
   closeModal()
   await refresh('force')

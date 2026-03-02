@@ -521,12 +521,21 @@ def _build_admin_portfolio_payload(db, user_id: str) -> Dict[str, Any]:
 
         latest = latest_prices.get(code, (0, 0, 0, 0))
         latest_price = safe_float(latest[0] if isinstance(latest, tuple) and len(latest) > 0 else 0)
-        effective_price = latest_price if latest_price > 0 else cost_price
+        yclose = safe_float(latest[1] if isinstance(latest, tuple) and len(latest) > 1 else 0)
+        if latest_price > 0:
+            effective_price = latest_price
+        elif yclose > 0:
+            effective_price = yclose
+        elif cost_price > 0:
+            effective_price = cost_price
+        else:
+            effective_price = 0.0
 
         cost_amount = cost_price * qty
         current_amount = effective_price * qty
         pnl_amount = current_amount - cost_amount + adjustment
-        pnl_rate = (pnl_amount / cost_amount * 100.0) if cost_amount > 0 else 0.0
+        cost_amount_abs = abs(cost_amount)
+        pnl_rate = (pnl_amount / cost_amount_abs * 100.0) if cost_amount_abs > 0 else 0.0
 
         items.append(
             {

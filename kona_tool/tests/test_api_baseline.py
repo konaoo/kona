@@ -789,6 +789,92 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target['qty']), 15.0)
 
+    def test_portfolio_modify_allows_negative_cost_price(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600002',
+            'name': '测试负成本',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600002',
+            'qty': 5.0,
+            'price': -1.23,
+            'adjustment': 3.0,
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+        self.assertEqual((modify_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600002'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('price') or 0.0), -1.23, places=6)
+
+    def test_add_buy_sell_reject_non_positive_price(self):
+        bad_add = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600003',
+            'name': '非法新增',
+            'price': 0.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(bad_add.status_code, 400)
+        self.assertEqual((bad_add.get_json() or {}).get('code'), 'INVALID_VALUE')
+
+        add_ok = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600003',
+            'name': '合法新增',
+            'price': 10.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(add_ok.status_code, 200)
+
+        bad_buy = self.client.post('/api/portfolio/buy', json={
+            'code': 'sh600003',
+            'price': -1.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(bad_buy.status_code, 400)
+        self.assertEqual((bad_buy.get_json() or {}).get('code'), 'INVALID_VALUE')
+
+        bad_sell = self.client.post('/api/portfolio/sell', json={
+            'code': 'sh600003',
+            'price': 0.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(bad_sell.status_code, 400)
+        self.assertEqual((bad_sell.get_json() or {}).get('code'), 'INVALID_VALUE')
+
+    def test_analysis_rank_uses_absolute_cost_for_pnl_rate(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600004',
+            'name': '排行负成本',
+            'price': 5.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600004',
+            'qty': 10.0,
+            'price': -2.0,
+            'adjustment': 0.0,
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600004': (0.0, 0.0, 0.0, 0.0)}):
+            rank_resp = self.client.get('/api/analysis/rank?type=all')
+        self.assertEqual(rank_resp.status_code, 200)
+        payload = rank_resp.get_json() or {}
+        items = (payload.get('gain') or []) + (payload.get('loss') or [])
+        target = next((item for item in items if item.get('code') == 'sh600004'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('pnl') or 0.0), 20.0, places=2)
+        self.assertAlmostEqual(float(target.get('pnl_rate') or 0.0), 100.0, places=2)
+
     def test_portfolio_add_us_code_forces_usd_currency(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'goog',

@@ -342,6 +342,7 @@ function firstPositiveNumber(...values: unknown[]): number {
       return n
     }
   }
+  // Missing quote fallback must stay non-negative; negative cost should not become a market price.
   return 0
 }
 
@@ -378,7 +379,7 @@ const rows = computed(() => {
     const dayPnlRateDisplay = dayPnlDisplayEnabled ? ((currentPrice - yclose) / yclose) * 100 : 0
     const dayPnlAggregate = dayPnlAggregateEnabled ? dayPnlDisplay : 0
     const dayPnlRateAggregate = dayPnlAggregateEnabled ? dayPnlRateDisplay : 0
-    const totalPnlRate = cost > 0 ? (totalPnl / cost) * 100 : 0
+    const totalPnlRate = Math.abs(cost) > 0 ? (totalPnl / Math.abs(cost)) * 100 : 0
 
     return {
       ...item,
@@ -411,12 +412,12 @@ const summary = computed(() => {
   const totalValue = rows.value.reduce((sum, row) => sum + row.value, 0)
   const totalPnl = rows.value.reduce((sum, row) => sum + row.totalPnl, 0)
   const todayPnl = rows.value.reduce((sum, row) => sum + row.dayPnlAggregate, 0)
-  const totalCost = rows.value.reduce((sum, row) => sum + row.costPrice * row.qty, 0)
+  const totalCostAbs = rows.value.reduce((sum, row) => sum + Math.abs(row.costPrice * row.qty), 0)
   return {
     totalValue,
     totalPnl,
     todayPnl,
-    totalRate: totalCost > 0 ? (totalPnl / totalCost) * 100 : 0,
+    totalRate: totalCostAbs > 0 ? (totalPnl / totalCostAbs) * 100 : 0,
   }
 })
 

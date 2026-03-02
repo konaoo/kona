@@ -9,6 +9,7 @@ import time
 import secrets
 import json
 import hashlib
+import math
 from functools import wraps
 from collections import defaultdict
 from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
@@ -947,10 +948,43 @@ def add_asset():
         data.get('curr', ''),
         data.get('name', ''),
     )
+
+    try:
+        qty = float(data.get('qty'))
+        price = float(data.get('price'))
+        adjustment = float(data.get('adjustment', 0.0))
+    except (TypeError, ValueError):
+        return _idempotent_response(
+            'portfolio_add',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
+
+    if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
+        return _idempotent_response(
+            'portfolio_add',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
+    if qty <= 0 or price <= 0:
+        return _idempotent_response(
+            'portfolio_add',
+            user_id,
+            request_id,
+            {"error": "Invalid value", "code": "INVALID_VALUE"},
+            400,
+        )
+
     data['code'] = normalized['code']
     data['curr'] = normalized['curr']
     data['name'] = normalized['name']
-    data['adjustment'] = data.get('adjustment', 0.0)
+    data['qty'] = qty
+    data['price'] = price
+    data['adjustment'] = adjustment
     data['asset_type'] = normalized['asset_type']
     
     success = db.add_asset(data, user_id)
@@ -985,6 +1019,31 @@ def update_asset():
     
     try:
         val = float(data['val'])
+        if not math.isfinite(val):
+            return _idempotent_response(
+                'portfolio_update',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+        field = str(data.get('field') or '').strip()
+        if field == 'price' and val <= 0:
+            return _idempotent_response(
+                'portfolio_update',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+        if field == 'qty' and val <= 0:
+            return _idempotent_response(
+                'portfolio_update',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
         success = db.update_asset(data['code'], data['field'], val, user_id)
         
         if success:
@@ -1188,6 +1247,22 @@ def modify_asset():
         qty = float(data['qty'])
         price = float(data['price'])
         adjustment = float(data['adjustment'])
+        if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
+            return _idempotent_response(
+                'portfolio_modify',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+        if qty <= 0:
+            return _idempotent_response(
+                'portfolio_modify',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
         detail = db.modify_asset(
             data['code'],
             qty,
@@ -1393,6 +1468,14 @@ def buy_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
+        if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
+            return _idempotent_response(
+                'portfolio_buy',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
         detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True)
 
         if detail and detail.get('ok'):
@@ -1575,6 +1658,14 @@ def sell_asset():
     try:
         price = float(data['price'])
         qty = float(data['qty'])
+        if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
+            return _idempotent_response(
+                'portfolio_sell',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
         detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True)
 
         if detail and detail.get('ok'):
@@ -2523,14 +2614,25 @@ def analysis_rank():
     for item in portfolio_data:
         code = item['code']
         price_info = prices.get(code, (0, 0, 0, 0))
-        current_price = price_info[0] if price_info[0] else item['cost_price']
+        current_price_raw = float(price_info[0] or 0.0)
+        yclose = float(price_info[1] or 0.0)
+        cost_price = float(item['cost_price'] or 0.0)
+        if current_price_raw > 0:
+            current_price = current_price_raw
+        elif yclose > 0:
+            current_price = yclose
+        elif cost_price > 0:
+            current_price = cost_price
+        else:
+            current_price = 0.0
         
         # 计算盈亏
-        qty = item['qty']
-        cost = item['cost_price'] * qty
+        qty = float(item['qty'] or 0.0)
+        cost = cost_price * qty
         current_value = current_price * qty
         pnl = current_value - cost + item['adjustment']
-        pnl_rate = (pnl / cost * 100) if cost > 0 else 0
+        cost_abs = abs(cost)
+        pnl_rate = (pnl / cost_abs * 100) if cost_abs > 0 else 0
         
         result_items.append({
             'code': code,
