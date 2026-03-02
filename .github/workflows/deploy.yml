@@ -137,14 +137,51 @@ jobs:
           name: web-dist
           path: .
 
-      - name: Upload Web artifact to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: root
-          key: ${{ secrets.SSH_KEY }}
-          source: web-dist.tar.gz
-          target: /tmp
+      - name: Upload Web artifact to server (with retries)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          set -eu
+
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "Missing SSH_HOST or SSH_KEY secret."
+            exit 1
+          fi
+
+          KEY_FILE="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+
+          SSH_OPTS="-i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+
+          WARMUP_OK=0
+          for attempt in 1 2 3; do
+            echo "SSH warmup attempt $attempt ..."
+            if ssh $SSH_OPTS root@"$SSH_HOST" "echo warmup-ok" >/dev/null 2>&1; then
+              WARMUP_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$WARMUP_OK" -ne 1 ]; then
+            echo "SSH warmup failed after retries."
+            exit 1
+          fi
+
+          SCP_OK=0
+          for attempt in 1 2 3 4 5; do
+            echo "SCP attempt $attempt ..."
+            if scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":/tmp/web-dist.tar.gz; then
+              SCP_OK=1
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          if [ "$SCP_OK" -ne 1 ]; then
+            echo "SCP upload failed after retries."
+            exit 1
+          fi
 
       - name: SSH and deploy
         uses: appleboy/ssh-action@v1.0.3
