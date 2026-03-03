@@ -166,6 +166,31 @@ class SearchTimeoutTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get("name"), "二倍做多金矿指数ETF-Direxion")
 
+    def test_search_fund_maps_exchange_qdii_to_sz_or_sh_code(self):
+        class _Resp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "Datas": [
+                        {
+                            "CODE": "159687",
+                            "NAME": "南方东英富时亚太低碳精选ETF(QDII)",
+                        }
+                    ]
+                }
+
+        with mock.patch.object(price_module, "monitored_http_get", return_value=_Resp()), mock.patch.object(
+            price_module,
+            "get_stock_price",
+            side_effect=lambda code: (1.7, 1.6, 0.1, 6.2) if code == "sz159687" else (0.0, 0.0, 0.0, 0.0),
+        ):
+            results = price_module._search_fund("159687")
+
+        self.assertTrue(results)
+        self.assertEqual(results[0].get("code"), "sz159687")
+
 
 if __name__ == "__main__":
     unittest.main()

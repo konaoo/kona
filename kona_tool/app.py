@@ -107,6 +107,9 @@ _policy_rate_counters = defaultdict(int)
 _activity_touch_lock = threading.Lock()
 _activity_touch_last_ts: Dict[str, float] = {}
 _ACTIVITY_TOUCH_INTERVAL_SECONDS = 30.0
+_EXCHANGE_FUND_PROBE_TTL_SECONDS = 300.0
+_exchange_fund_probe_lock = threading.Lock()
+_exchange_fund_probe_cache: Dict[str, Dict[str, Any]] = {}
 _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/password/change",
     "/api/auth/logout",
@@ -164,11 +167,17 @@ def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -
     lower = code.lower()
     if lower.startswith('f_'):
         suffix = code[2:].strip()
-        # f_ 仅保留纯数字场外基金；字母型统一纠正为美股代码
+        # f_ 字母型统一纠正为美股代码
         if suffix and not suffix.isdigit() and re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', suffix):
             code = f"gb_{suffix.lower()}"
             curr = 'USD'
             lower = code.lower()
+        else:
+            # 场内 QDII/ETF（如 159xxx / 52xxxx）若被误标为 f_，纠正到交易所代码。
+            resolved_code = _resolve_exchange_tradable_fund_code(code)
+            if resolved_code != code:
+                code = resolved_code
+                lower = code.lower()
 
     # 强制市场币种，避免错币种写入
     if lower.startswith('sh900'):
@@ -191,6 +200,59 @@ def _normalize_portfolio_identity(raw_code: str, raw_curr: str, raw_name: str) -
         'name': name,
         'asset_type': asset_type,
     }
+
+
+def _exchange_fund_candidates(code: str) -> list[str]:
+    lower = str(code or '').strip().lower()
+    if not lower.startswith('f_'):
+        return []
+    suffix = lower[2:].strip()
+    if not re.fullmatch(r'\d{6}', suffix):
+        return []
+    # 11xxxx 明确保留为场外基金
+    if suffix.startswith('11'):
+        return []
+    # 交易所基金常见代码段：
+    # - 深市 ETF/LOF: 15xxxx / 16xxxx / 18xxxx
+    # - 沪市 ETF: 50xxxx / 51xxxx / 52xxxx / 56xxxx / 58xxxx
+    if suffix.startswith(('15', '16', '18')):
+        return [f"sz{suffix}"]
+    if suffix.startswith(('50', '51', '52', '56', '58')):
+        return [f"sh{suffix}"]
+    return []
+
+
+def _resolve_exchange_tradable_fund_code(code: str) -> str:
+    candidates = _exchange_fund_candidates(code)
+    if not candidates:
+        return code
+
+    now = time.time()
+    cache_key = str(code or '').strip().lower()
+    with _exchange_fund_probe_lock:
+        cached = _exchange_fund_probe_cache.get(cache_key)
+        if cached and (now - float(cached.get('ts') or 0.0)) <= _EXCHANGE_FUND_PROBE_TTL_SECONDS:
+            resolved = str(cached.get('code') or '').strip()
+            return resolved or code
+
+    resolved_code = code
+    try:
+        quotes = batch_get_prices(candidates)
+        for candidate in candidates:
+            quote = quotes.get(candidate) or (0.0, 0.0, 0.0, 0.0)
+            try:
+                price = float(quote[0] or 0.0)
+            except Exception:
+                price = 0.0
+            if price > 0:
+                resolved_code = candidate
+                break
+    except Exception as exc:
+        logger.info("exchange fund probe failed code=%s error=%s", code, exc)
+
+    with _exchange_fund_probe_lock:
+        _exchange_fund_probe_cache[cache_key] = {'code': resolved_code, 'ts': now}
+    return resolved_code
 
 
 def _rate_limit_key() -> str:

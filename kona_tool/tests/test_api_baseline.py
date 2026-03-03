@@ -901,6 +901,43 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'USD')
 
+    def test_portfolio_add_qdii_exchange_fund_code_normalizes_to_exchange_code(self):
+        with patch.object(app_module, 'batch_get_prices', return_value={'sz159687': (1.7, 1.6, 0.1, 6.2)}):
+            add_resp = self.client.post('/api/portfolio/add', json={
+                'code': 'f_159687',
+                'name': '南方东英富时亚太低碳精选ETF(QDII)',
+                'price': 1.70,
+                'qty': 10.0,
+                'curr': 'CNY',
+            })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sz159687'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('curr'), 'CNY')
+        self.assertEqual(target.get('asset_type'), 'a')
+
+    def test_portfolio_add_otc_fund_code_keeps_f_prefix(self):
+        with patch.object(app_module, 'batch_get_prices', return_value={}):
+            add_resp = self.client.post('/api/portfolio/add', json={
+                'code': 'f_110017',
+                'name': '易方达增强回报债券A',
+                'price': 1.23,
+                'qty': 20.0,
+                'curr': 'CNY',
+            })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'f_110017'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('asset_type'), 'fund')
+
     def test_portfolio_add_sh_b_share_forces_usd_currency(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh900901',

@@ -112,6 +112,38 @@ def get_price_source_health() -> Dict[str, Dict[str, Any]]:
     return source_health.snapshot()
 
 
+def _exchange_fund_candidates(code: str) -> List[str]:
+    lower = str(code or "").strip().lower()
+    if not lower.startswith("f_"):
+        return []
+    suffix = lower[2:].strip()
+    if not re.fullmatch(r"\d{6}", suffix):
+        return []
+    # 11xxxx 明确保留场外基金路径
+    if suffix.startswith("11"):
+        return []
+    if suffix.startswith(("15", "16", "18")):
+        return [f"sz{suffix}"]
+    if suffix.startswith(("50", "51", "52", "56", "58")):
+        return [f"sh{suffix}"]
+    return []
+
+
+def _map_fund_code_to_exchange_if_tradable(code: str) -> str:
+    candidates = _exchange_fund_candidates(code)
+    if not candidates:
+        return str(code or "")
+    for candidate in candidates:
+        try:
+            price_data = get_stock_price(candidate)
+        except Exception as exc:
+            logger.debug("fund exchange probe failed code=%s candidate=%s error=%s", code, candidate, exc)
+            continue
+        if price_data and float(price_data[0] or 0.0) > 0:
+            return candidate
+    return str(code or "")
+
+
 def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, float]:
     """
     统一的价格获取接口（自动判断类型并缓存）
@@ -149,6 +181,13 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
 
     if code.startswith('f_'):
         price_data = get_fund_price(code)
+        if not price_data or float(price_data[0] or 0.0) <= 0:
+            # 场内 QDII/ETF 误标为 f_ 时，回退到交易所行情链路，避免长期显示无价。
+            for candidate in _exchange_fund_candidates(code):
+                exchange_price = get_stock_price(candidate)
+                if exchange_price and float(exchange_price[0] or 0.0) > 0:
+                    price_data = exchange_price
+                    break
     
     # 其他（股票、指数等）
     else:
@@ -415,8 +454,10 @@ def _search_fund(query: str) -> List[dict]:
                     code = 'f_' + fund.get('CODE', '')
                     name = fund.get('NAME', '')
                     if code and name:
+                        mapped = _map_fund_code_to_exchange_if_tradable(code)
+                        result_code = mapped or code
                         results.append({
-                            'code': code,
+                            'code': result_code,
                             'name': name,
                             'type_name': '基金',
                             'currency': 'CNY'

@@ -46,7 +46,26 @@ class TestPriceResilience(unittest.TestCase):
         self.assertIn("timeout", snap["test_source"])
         self.assertIn("latency_avg_ms", snap["test_source"])
 
+    def test_f_prefix_exchange_fund_falls_back_to_stock_quote(self):
+        with patch("core.price.get_fund_price", return_value=(0.0, 0.0, 0.0, 0.0)), patch(
+            "core.price.get_stock_price",
+            side_effect=lambda code: (1.719, 1.756, -0.037, -2.1) if code == "sz159687" else (0.0, 0.0, 0.0, 0.0),
+        ):
+            got = price.get_price("f_159687", use_cache=False)
+
+        self.assertGreater(got[0], 0.0)
+        self.assertAlmostEqual(got[0], 1.719, places=3)
+
+    def test_otc_fund_stays_on_fund_quote_path(self):
+        with patch("core.price.get_fund_price", return_value=(1.2345, 1.2300, 0.0045, 0.36)), patch(
+            "core.price.get_stock_price",
+            return_value=(0.0, 0.0, 0.0, 0.0),
+        ) as stock_mock:
+            got = price.get_price("f_110017", use_cache=False)
+
+        self.assertAlmostEqual(got[0], 1.2345, places=4)
+        stock_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
-
