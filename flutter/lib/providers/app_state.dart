@@ -2275,13 +2275,16 @@ class AppState extends ChangeNotifier {
     required String type,
     required String name,
     required double amount,
+    String? curr,
   }) {
+    final normalizedCurr = _normalizeAssetCurrency(curr);
     switch (type) {
       case 'cash':
         final tempAsset = Asset(
           id: _nextTempAssetId--,
           name: name,
           amount: amount,
+          curr: normalizedCurr,
         );
         _cashAssets = [..._cashAssets, tempAsset];
         return true;
@@ -2330,7 +2333,9 @@ class AppState extends ChangeNotifier {
     required int id,
     required String name,
     required double amount,
+    String? curr,
   }) {
+    final normalizedCurr = _normalizeAssetCurrency(curr);
     bool updated = false;
     List<Asset> updateList(List<Asset> source) {
       return source.map((asset) {
@@ -2340,7 +2345,7 @@ class AppState extends ChangeNotifier {
           id: asset.id,
           name: name,
           amount: amount,
-          curr: asset.curr,
+          curr: type == 'cash' ? normalizedCurr : asset.curr,
         );
       }).toList();
     }
@@ -2365,15 +2370,22 @@ class AppState extends ChangeNotifier {
     required String type,
     required String name,
     required double amount,
+    String? curr,
     bool awaitRefresh = true,
   }) async {
     final snapshot = _captureAssetSnapshot();
-    final changed = _optimisticAddAsset(type: type, name: name, amount: amount);
+    final changed = _optimisticAddAsset(
+      type: type,
+      name: name,
+      amount: amount,
+      curr: curr,
+    );
     if (!changed) return const AssetActionResult.failure('不支持的资产类型');
     _recalculateAssetTotals();
+    final normalizedCurr = _normalizeAssetCurrency(curr);
 
     final result = switch (type) {
-      'cash' => await _api.addCashAsset(name, amount),
+      'cash' => await _api.addCashAsset(name, amount, curr: normalizedCurr),
       'other' => await _api.addOtherAsset(name, amount),
       'liability' => await _api.addLiability(name, amount),
       _ => const AssetActionResult.failure('不支持的资产类型'),
@@ -2437,17 +2449,20 @@ class AppState extends ChangeNotifier {
     required int id,
     required String name,
     required double amount,
+    String? curr,
     bool awaitRefresh = true,
   }) async {
     if (id <= 0) {
       return const AssetActionResult.failure('操作失败，请稍后重试');
     }
+    final normalizedCurr = _normalizeAssetCurrency(curr);
     final snapshot = _captureAssetSnapshot();
     final changed = _optimisticUpdateAsset(
       type: type,
       id: id,
       name: name,
       amount: amount,
+      curr: normalizedCurr,
     );
     if (changed) {
       _recalculateAssetTotals();
@@ -2457,7 +2472,12 @@ class AppState extends ChangeNotifier {
 
     AssetActionResult result;
     if (type == 'cash') {
-      result = await _api.updateCashAsset(id, name, amount);
+      result = await _api.updateCashAsset(
+        id,
+        name,
+        amount,
+        curr: normalizedCurr,
+      );
     } else if (type == 'other') {
       result = await _api.updateOtherAsset(id, name, amount);
     } else if (type == 'liability') {
@@ -2477,6 +2497,12 @@ class AppState extends ChangeNotifier {
       unawaited(refreshHomeData());
     }
     return const AssetActionResult.success();
+  }
+
+  String _normalizeAssetCurrency(String? curr) {
+    final code = (curr ?? '').trim().toUpperCase();
+    if (code == 'USD' || code == 'HKD') return code;
+    return 'CNY';
   }
 
   _PortfolioSnapshot _capturePortfolioSnapshot() {
@@ -2836,6 +2862,16 @@ class AppState extends ChangeNotifier {
     }
     final cashAsset = _cashAssets[cashIndex];
     final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
+    final normalizedCashCurr = _normalizeAssetCurrency(cashAsset.curr);
+    if (normalizedCashCurr != _normalizeAssetCurrency(normalizedCurr)) {
+      return AssetActionResult.failure(
+        '资金账户币种不匹配：需要${_normalizeAssetCurrency(normalizedCurr)}账户',
+        data: {
+          'asset_curr': _normalizeAssetCurrency(normalizedCurr),
+          'cash_curr': normalizedCashCurr,
+        },
+      );
+    }
     final investAmount = price * qty;
     final cashDeductAmount = _convertAmountByCurrency(
       amount: investAmount,
@@ -2960,6 +2996,17 @@ class AppState extends ChangeNotifier {
       return const AssetActionResult.failure('未找到回款账户');
     }
     final cashAsset = _cashAssets[cashIndex];
+    final normalizedAssetCurr = _normalizeAssetCurrency(current.curr);
+    final normalizedCashCurr = _normalizeAssetCurrency(cashAsset.curr);
+    if (normalizedAssetCurr != normalizedCashCurr) {
+      return AssetActionResult.failure(
+        '回款账户币种不匹配：需要$normalizedAssetCurr账户',
+        data: {
+          'asset_curr': normalizedAssetCurr,
+          'cash_curr': normalizedCashCurr,
+        },
+      );
+    }
     final sellAmount = price * qty;
     final cashCreditAmount = _convertAmountByCurrency(
       amount: sellAmount,

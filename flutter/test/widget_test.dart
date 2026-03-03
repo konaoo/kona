@@ -69,4 +69,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AddAssetDialog), findsOneWidget);
   });
+
+  testWidgets('Cash asset dialog shows currency selector with CNY default', (
+    WidgetTester tester,
+  ) async {
+    final appState = AppState(tokenLoader: () async => null);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => AddAssetDialog(hostContext: context),
+                    );
+                  },
+                  child: const Text('open-dialog'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open-dialog'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('人民币 (CNY)'), findsOneWidget);
+
+    await tester.tap(find.text('其他资产'));
+    await tester.pumpAndSettle();
+    expect(find.text('币种'), findsNothing);
+
+    await tester.tap(find.text('现金资产'));
+    await tester.pumpAndSettle();
+    expect(find.text('币种'), findsOneWidget);
+  });
 }

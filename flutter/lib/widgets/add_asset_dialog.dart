@@ -24,10 +24,17 @@ class AddAssetDialog extends StatefulWidget {
 }
 
 class _AddAssetDialogState extends State<AddAssetDialog> {
+  static const List<String> _supportedCashCurrencies = <String>[
+    'CNY',
+    'USD',
+    'HKD',
+  ];
+
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
 
   String _assetType = 'cash';
+  String _cashCurrency = 'CNY';
   bool _saving = false;
   String? _errorText;
   bool get _isEdit => widget.editingAsset != null;
@@ -41,6 +48,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     if (widget.editingAsset != null) {
       _nameController.text = widget.editingAsset!.name;
       _amountController.text = _formatAmountInput(widget.editingAsset!.amount);
+      final curr = widget.editingAsset!.curr.trim().toUpperCase();
+      if (_supportedCashCurrencies.contains(curr)) {
+        _cashCurrency = curr;
+      }
     }
   }
 
@@ -70,6 +81,17 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
       return rounded.toStringAsFixed(0);
     }
     return amount.toString();
+  }
+
+  String _currencyLabel(String curr) {
+    switch (curr) {
+      case 'USD':
+        return '美元 (USD)';
+      case 'HKD':
+        return '港元 (HKD)';
+      default:
+        return '人民币 (CNY)';
+    }
   }
 
   Future<void> _save(AppState appState) async {
@@ -107,12 +129,14 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
             id: widget.editingAsset!.id!,
             name: name,
             amount: amount,
+            curr: _assetType == 'cash' ? _cashCurrency : null,
             awaitRefresh: false,
           )
         : appState.addAsset(
             type: _assetType,
             name: name,
             amount: amount,
+            curr: _assetType == 'cash' ? _cashCurrency : null,
             awaitRefresh: false,
           );
 
@@ -252,6 +276,32 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                     hintText: '请输入金额（正数）',
                   ),
                 ),
+                if (_assetType == 'cash') ...[
+                  const SizedBox(height: Spacing.lg),
+                  DropdownButtonFormField<String>(
+                    value: _cashCurrency,
+                    items: _supportedCashCurrencies
+                        .map(
+                          (curr) => DropdownMenuItem<String>(
+                            value: curr,
+                            child: Text(_currencyLabel(curr)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _saving
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            setState(() => _cashCurrency = value);
+                          },
+                    decoration: const InputDecoration(
+                      labelText: '币种',
+                      hintText: '选择现金账户币种',
+                    ),
+                    dropdownColor: AppTheme.bgCard,
+                    style: TextStyle(color: AppTheme.textPrimary),
+                  ),
+                ],
                 if (_errorText != null) ...[
                   const SizedBox(height: 8),
                   Text(

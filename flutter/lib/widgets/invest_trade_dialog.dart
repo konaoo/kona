@@ -42,6 +42,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _adjustController = TextEditingController();
 
   bool _saving = false;
+  bool _creatingCashAccount = false;
   bool _inlineClosed = false;
   bool _searching = false;
   bool _navLoading = false;
@@ -58,6 +59,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final Map<String, _SearchCacheEntry> _searchCache =
       <String, _SearchCacheEntry>{};
   static const Duration _searchCacheTtl = Duration(seconds: 20);
+  static const double _autoCreateCashSeedAmount = 0.0;
   static const int _maxRecentCashAssets = 5;
   static final List<int> _recentCashAssetIds = <int>[];
   static final List<TextInputFormatter> _qtyInputFormatters =
@@ -366,15 +368,95 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
   }
 
+  String _normalizeCurrencyCode(String? curr) {
+    final code = (curr ?? '').trim().toUpperCase();
+    if (code == 'USD' || code == 'HKD' || code == 'CNY') return code;
+    return 'CNY';
+  }
+
+  String _targetCashCurrency(AppState appState, String actionMode) {
+    if (_isAdd) {
+      final selectedCode = _selected?['code']?.toString() ?? '';
+      final selectedCurr = _selected?['currency']?.toString();
+      if (selectedCode.isNotEmpty) {
+        return _normalizeCurrencyCode(
+          appState.normalizeInvestmentCurrency(
+            code: selectedCode,
+            curr: selectedCurr,
+          ),
+        );
+      }
+      return _normalizeCurrencyCode(selectedCurr);
+    }
+    final item = widget.item;
+    if (item != null) {
+      return _normalizeCurrencyCode(
+        appState.normalizeInvestmentCurrency(code: item.code, curr: item.curr),
+      );
+    }
+    if (actionMode == 'sell') return 'CNY';
+    return 'CNY';
+  }
+
+  Future<void> _quickCreateCashAccount({
+    required AppState appState,
+    required String actionMode,
+    required String targetCurrency,
+  }) async {
+    if (_saving || _creatingCashAccount) return;
+    setState(() {
+      _creatingCashAccount = true;
+      _errorText = null;
+    });
+
+    final accountName = actionMode == 'sell' ? '资产回款账户' : '资产资金账户';
+    final result = await appState.addAsset(
+      type: 'cash',
+      name: accountName,
+      amount: _autoCreateCashSeedAmount,
+      curr: targetCurrency,
+      awaitRefresh: true,
+    );
+
+    if (!mounted) return;
+    if (!result.ok) {
+      setState(() {
+        _creatingCashAccount = false;
+        _errorText = result.message ?? '创建账户失败，请稍后重试';
+      });
+      return;
+    }
+
+    final matched =
+        appState.cashAssets
+            .where(
+              (asset) =>
+                  (asset.id ?? 0) > 0 &&
+                  _normalizeCurrencyCode(asset.curr) == targetCurrency,
+            )
+            .toList()
+          ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+
+    setState(() {
+      _creatingCashAccount = false;
+      if (matched.isNotEmpty) {
+        _selectedCashAssetId = matched.first.id;
+      }
+    });
+  }
+
   void _syncDefaultCashAsset() {
     final appState = context.read<AppState>();
+    final actionMode = _currentActionMode();
+    final targetCurrency = _targetCashCurrency(appState, actionMode);
     final cashOptions = appState.cashAssets
         .where((asset) => (asset.id ?? 0) > 0)
+        .where((asset) => _normalizeCurrencyCode(asset.curr) == targetCurrency)
         .toList();
-    if (_currentActionMode() != 'sell') {
+    if (actionMode != 'sell') {
       cashOptions.insert(
         0,
-        Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'),
+        Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: targetCurrency),
       );
     }
     if (cashOptions.isEmpty) {
@@ -1481,14 +1563,25 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   Widget build(BuildContext context) {
     if (_inlineClosed) return const SizedBox.shrink();
     final appState = context.watch<AppState>();
-    final cashOptions = appState.cashAssets
-        .where((asset) => (asset.id ?? 0) > 0)
-        .toList();
     final actionMode = _currentActionMode();
+    final targetCashCurrency = _targetCashCurrency(appState, actionMode);
+    final matchedCashOptions = appState.cashAssets
+        .where((asset) => (asset.id ?? 0) > 0)
+        .where(
+          (asset) => _normalizeCurrencyCode(asset.curr) == targetCashCurrency,
+        )
+        .toList();
+    final hasMatchingCashAccount = matchedCashOptions.isNotEmpty;
+    final cashOptions = <Asset>[...matchedCashOptions];
     if (actionMode != 'sell') {
       cashOptions.insert(
         0,
-        Asset(id: -999, name: '外部资金/初始转入', amount: 0.0, curr: 'CNY'),
+        Asset(
+          id: -999,
+          name: '外部资金/初始转入',
+          amount: 0.0,
+          curr: targetCashCurrency,
+        ),
       );
     }
     if (_selectedCashAssetId != null &&
@@ -1759,13 +1852,71 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           ),
                         ),
                       ),
-                      if (cashOptions.isEmpty) ...[
+                      if (!hasMatchingCashAccount) ...[
                         const SizedBox(height: 8),
-                        Text(
-                          actionMode == 'sell' ? '请先添加回款现金账户' : '请先添加现金资产账户',
-                          style: TextStyle(
-                            color: AppTheme.danger,
-                            fontSize: FontSize.sm,
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.danger.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.danger.withOpacity(0.45),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                actionMode == 'sell'
+                                    ? '未找到 $targetCashCurrency 回款账户'
+                                    : '未找到 $targetCashCurrency 现金账户',
+                                style: TextStyle(
+                                  color: AppTheme.danger,
+                                  fontSize: FontSize.sm,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                height: 34,
+                                child: OutlinedButton.icon(
+                                  onPressed: _creatingCashAccount
+                                      ? null
+                                      : () => _quickCreateCashAccount(
+                                          appState: appState,
+                                          actionMode: actionMode,
+                                          targetCurrency: targetCashCurrency,
+                                        ),
+                                  icon: Icon(
+                                    Icons.add_circle_outline,
+                                    size: 16,
+                                    color: AppTheme.danger,
+                                  ),
+                                  label: Text(
+                                    _creatingCashAccount
+                                        ? '创建中...'
+                                        : '一键创建${targetCashCurrency}账户',
+                                    style: TextStyle(
+                                      color: AppTheme.danger,
+                                      fontSize: FontSize.sm,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    side: BorderSide(
+                                      color: AppTheme.danger.withOpacity(0.65),
+                                      width: 1,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],

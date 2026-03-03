@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tool/models/asset.dart';
 import 'package:tool/models/asset_action_result.dart';
 import 'package:tool/models/portfolio.dart';
 import 'package:tool/providers/app_state.dart';
@@ -115,6 +116,51 @@ class _SaveStateAppState extends AppState {
     lastModifyPrice = price;
     lastModifyAdjustment = adjustment;
     return result;
+  }
+}
+
+class _CashAccountStateAppState extends _SaveStateAppState {
+  _CashAccountStateAppState({
+    required super.result,
+    required List<Asset> cashAssets,
+  }) : _cashAssets = List<Asset>.from(cashAssets);
+
+  final List<Asset> _cashAssets;
+  int addAssetCalls = 0;
+  String? lastAddedCurr;
+
+  @override
+  List<Asset> get cashAssets => List<Asset>.from(_cashAssets);
+
+  @override
+  Future<AssetActionResult> addAsset({
+    required String type,
+    required String name,
+    required double amount,
+    String? curr,
+    bool awaitRefresh = true,
+  }) async {
+    addAssetCalls += 1;
+    lastAddedCurr = curr;
+    if (type != 'cash') {
+      return const AssetActionResult.failure('unexpected type');
+    }
+    final nextId = _cashAssets.isEmpty
+        ? 1
+        : (_cashAssets
+                  .map((asset) => asset.id ?? 0)
+                  .reduce((a, b) => a > b ? a : b) +
+              1);
+    _cashAssets.add(
+      Asset(
+        id: nextId,
+        name: name,
+        amount: amount,
+        curr: (curr ?? 'CNY').toUpperCase(),
+      ),
+    );
+    notifyListeners();
+    return const AssetActionResult.success();
   }
 }
 
@@ -552,6 +598,40 @@ void main() {
     expect(appState.lastModifyAdjustment, 8.5);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('Sell mode quick creates same-currency payout cash account', (
+    WidgetTester tester,
+  ) async {
+    final appState = _CashAccountStateAppState(
+      result: const AssetActionResult.success(),
+      cashAssets: <Asset>[
+        Asset(id: 1, name: '人民币账户', amount: 1000, curr: 'CNY'),
+      ],
+    );
+    final item = PortfolioItem(
+      code: 'gb_tsla',
+      name: 'Tesla',
+      qty: 5,
+      price: 10,
+      curr: 'USD',
+      assetType: 'us',
+    );
+    await prepareTradeDialogWithItem(tester, appState, item: item);
+
+    await tester.tap(find.text('卖出'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未找到 USD 回款账户'), findsOneWidget);
+    expect(find.text('一键创建USD账户'), findsOneWidget);
+
+    await tester.tap(find.text('一键创建USD账户'));
+    await tester.pumpAndSettle();
+
+    expect(appState.addAssetCalls, 1);
+    expect(appState.lastAddedCurr, 'USD');
+    expect(find.text('未找到 USD 回款账户'), findsNothing);
+    expect(find.textContaining('资产回款账户'), findsOneWidget);
   });
 
   testWidgets('Fund add defaults to amount mode and submits derived qty', (

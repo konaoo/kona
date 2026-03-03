@@ -159,10 +159,10 @@ Web 专项：
 
 客户端版本号规范（新增）：
 
-1. 对外版本号固定使用 `1.0.x`，不再使用 `+build`（示例：`1.0.21`、`1.0.22`）。
+1. 对外版本号固定使用 `1.0.x`，不再使用 `+build`（示例：`1.0.22`、`1.0.23`）。
 2. 安卓内部安装序号（`versionCode`）由 `versionName` 的 patch 段自动映射：
-   - `1.0.21 -> 21`
    - `1.0.22 -> 22`
+   - `1.0.23 -> 23`
 3. 后端 `/api/app/version` 继续返回 `buildNumber` 兼容旧端；默认与 `version` 的 patch 段对齐。
 4. 版本展示统一为 `v1.0.x`，不再展示 `+build`。
 
@@ -211,6 +211,7 @@ curl -I http://114.132.238.12/download/apk
 
 ## 7. 最近版本摘要
 
+- `v1.0.23`：Flutter 现金资产弹窗新增币种选择（默认 CNY）；交易弹窗改为同币种账户过滤并支持“缺账户一键创建”；后端现金资产金额校验放宽为 `>=0`（其他资产/负债仍 `>0`），版本升级到 `1.0.23`。
 - `v1.0.22`：Flutter 添加资产弹窗改为“输入后手动点搜索”并引入自定义数字键盘（数量两位小数、负号规则按字段限制）；分析页收益日历修复历史月份切换后无法回到当月问题；B股币种全端修复（`sh900* -> USD`、`sz200* -> HKD`）并增加后端历史数据自动回填。
 - `v1.0.21`：登录错误提示统一为“用户名/密码错误，请重试”；邀请码页/用户群页文案默认左对齐；我的页面移除“问题反馈”；版本号规范切换为无 `+build`（安卓内部序号自动映射 patch）。
 - `v1.0.19`：修复 Clash/TUN 代理导致 App 登录 TLS 握手失败；Caddy 新增 HTTP 直连入口，Flutter 端临时切换 IP 直连；构建环境升级 Gradle 8.13 + JDK 21。
@@ -227,7 +228,73 @@ curl -I http://114.132.238.12/download/apk
 
 ---
 
-## 8. 完整历史入口
+## 8. v1.0.23 详细改动说明（本次）
+
+范围说明：
+
+1. 本次只落地 `Flutter + Backend + Docs`，Web 按当前决策未改动。
+2. 目标是“降低多币种交易误操作”，并减少新建外币账户的操作成本。
+
+Flutter 交互改造：
+
+1. 现金资产弹窗（`AddAssetDialog`）新增币种下拉：
+   - 可选：`CNY / USD / HKD`
+   - 默认：`CNY`
+   - 编辑时会回填原币种
+2. 交易弹窗（`InvestTradeDialog`）资金账户选择改为“按交易目标币种过滤”：
+   - 买入/卖出时只显示同币种现金账户
+   - 非卖出模式仍保留“外部资金/初始转入”选项
+3. 卖出/买入缺少同币种账户时，弹窗内新增“一键创建XXX账户”：
+   - 卖出：创建 `资产回款账户`
+   - 买入：创建 `资产资金账户`
+   - 创建成功后自动选中新账户
+4. 一键创建账户初始金额调整为 `0.0`（与后端新校验一致）。
+
+AppState 行为收口：
+
+1. `addAsset/updateAsset` 增加 `curr` 参数透传，现金资产不再丢币种。
+2. 买入/卖出到现金账户时增加同币种强校验：
+   - 币种不匹配直接拦截并提示
+   - 防止错误走跨币种隐式换算
+
+后端规则调整：
+
+1. 现金资产接口（add/update）金额校验由 `> 0` 放宽为 `>= 0`。
+2. 其他资产/负债保持原规则：金额必须 `> 0`。
+3. 负数金额仍统一拦截（返回 `INVALID_AMOUNT` / `INVALID_VALUE`）。
+
+版本信息：
+
+1. Flutter 客户端版本：`1.0.23`
+2. 后端默认客户端版本（`/api/app/version` 默认）：`1.0.23`
+
+验收清单（建议逐条勾选）：
+
+1. 添加/编辑现金资产时，币种默认 `CNY`，可切换 `USD/HKD`。
+2. 添加“其他资产/负债”时，不出现币种下拉。
+3. 现金资产 `amount=0` 可新增、可更新。
+4. 现金资产负数金额被后端拒绝。
+5. 卖出外币持仓时，若无对应币种回款账户，出现“一键创建USD/HKD账户”。
+6. 一键创建后账户自动可选，交易可继续提交。
+7. 买入/卖出若账户币种不匹配，前端会被拦截并显示明确错误。
+
+验证命令（本次已执行）：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/flutter
+flutter test test/invest_trade_dialog_test.dart test/widget_test.dart
+```
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
+JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_cash_asset_amount_allows_zero
+JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_cash_asset_negative_amount_rejected
+JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_liability_invalid_amount_has_code
+```
+
+---
+
+## 9. 完整历史入口
 
 历史“按日期”记录已全量迁移为版本化记录，统一维护在：
 

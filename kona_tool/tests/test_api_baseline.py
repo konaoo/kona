@@ -745,6 +745,40 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(delete_resp.status_code, 200)
         self.assertEqual(delete_resp.get_json().get('status'), 'ok')
 
+    def test_cash_asset_amount_allows_zero(self):
+        add_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '零余额现金',
+            'amount': 0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        self.assertEqual((add_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('name') == '零余额现金'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('amount', 0)), 0.0)
+
+        update_resp = self.client.post('/api/cash_assets/update', json={
+            'id': target['id'],
+            'name': '零余额现金-更新',
+            'amount': 0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(update_resp.status_code, 200)
+        self.assertEqual((update_resp.get_json() or {}).get('status'), 'ok')
+
+    def test_cash_asset_negative_amount_rejected(self):
+        add_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '负余额现金',
+            'amount': -1,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 400)
+        self.assertEqual((add_resp.get_json() or {}).get('code'), 'INVALID_AMOUNT')
+
     def test_other_asset_missing_required_fields_has_code(self):
         resp = self.client.post('/api/other_assets/add', json={'name': '缺少金额'})
         self.assertEqual(resp.status_code, 400)

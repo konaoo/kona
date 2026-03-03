@@ -1955,7 +1955,8 @@ def _handle_asset_add(add_func, asset_type, user_id=None):
             data.get('curr', 'CNY'),
         )
         amount = float(data['amount'])
-        if amount <= 0:
+        allow_zero = asset_type == "cash asset"
+        if amount < 0 or (not allow_zero and amount <= 0):
             logger.warning(
                 "[asset_add_invalid_amount] type=%s user_id=%s amount=%s",
                 asset_type,
@@ -2060,7 +2061,8 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
     try:
         asset_id = int(data['id'])
         amount = float(data['amount'])
-        if amount <= 0:
+        allow_zero = asset_type == "cash asset"
+        if amount < 0 or (not allow_zero and amount <= 0):
             logger.warning(
                 "[asset_update_invalid_amount] type=%s user_id=%s id=%s amount=%s",
                 asset_type,

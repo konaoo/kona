@@ -8,6 +8,67 @@
 
 ---
 
+## v1.0.23 - 现金账户币种完善、交易同币种结算收敛、零余额账户支持
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Backend | Docs
+
+### Summary
+- Flutter 现金资产弹窗新增币种选择，默认 `CNY`，支持 `CNY/USD/HKD`，并透传到后端。
+- 交易弹窗（添加/买入/卖出）改为按目标交易币种过滤资金账户，避免错币种账户误选。
+- 卖出缺少同币种回款账户时新增“一键创建账户”入口，创建后自动选中。
+- 后端现金资产金额校验放宽为 `>= 0`（其他资产/负债仍 `> 0`），支持零余额现金账户。
+- 版本号升级为 `1.0.23`，并补齐 README 详细验收说明。
+
+### Added
+- Flutter `InvestTradeDialog` 新增目标币种推导与账户过滤逻辑：
+  - 仅展示同币种现金账户；
+  - 无匹配账户时展示一键创建入口；
+  - 创建后自动刷新并选中新账户。
+- Flutter 测试新增卖出场景回归：
+  - `Sell mode quick creates same-currency payout cash account`。
+- 后端测试新增：
+  - `test_cash_asset_amount_allows_zero`
+  - `test_cash_asset_negative_amount_rejected`
+
+### Changed
+- `flutter/pubspec.yaml`：版本 `1.0.22` -> `1.0.23`。
+- `kona_tool/config.py`：`CLIENT_APP_VERSION` 默认 `1.0.22` -> `1.0.23`。
+- `flutter/lib/widgets/add_asset_dialog.dart`：
+  - 现金资产新增币种下拉；
+  - 默认 `CNY`；
+  - 编辑场景回填已有币种。
+- `flutter/lib/providers/app_state.dart`：
+  - `addAsset/updateAsset` 增加 `curr` 入参透传；
+  - 现金资产 optimistic 数据带 `curr`；
+  - 买入/卖出现金账户增加同币种强校验（不匹配直接拦截）。
+- `flutter/lib/widgets/invest_trade_dialog.dart`：
+  - 账户列表按交易币种过滤；
+  - 一键创建账户初始金额调整为 `0.0`。
+- `kona_tool/app.py`：
+  - 现金资产 add/update 金额校验改为允许 `0`；
+  - 负数继续拦截。
+
+### Fixed
+- 修复“现金账户只支持人民币默认值”导致外币账户录入成本高的问题。
+- 修复“卖出外币资产时无回款账户只能手工绕行”的操作断点。
+- 修复一键建户初始金额必须为正导致业务语义不一致的问题（现支持 0）。
+
+### Verification
+- Flutter：
+  - `flutter test test/invest_trade_dialog_test.dart test/widget_test.dart`
+- Backend：
+  - `JWT_SECRET=dummy python3 -m unittest` 定向执行：
+    - `test_cash_asset_amount_allows_zero`
+    - `test_cash_asset_negative_amount_rejected`
+    - `test_liability_invalid_amount_has_code`
+
+### Notes
+- 本次仅落地 Flutter + 后端，Web 端按你的要求暂不处理。
+- 资金同币种规则在 Flutter 端已强制，后端后续可继续补齐 `buy_with_cash/sell_to_cash` 的同币种服务端硬约束以彻底收口。
+
+---
+
 ## v1.0.22 - 添加资产交互升级、收益日历回跳修复、B股币种全端修正
 - 发布状态：Released
 - 发布类型：Patch
