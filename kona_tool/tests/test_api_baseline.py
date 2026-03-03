@@ -1246,6 +1246,37 @@ class ApiBaselineTests(unittest.TestCase):
         portfolio_items = portfolio_resp.get_json() or []
         self.assertFalse(any(item.get('code') == 'sh600000' for item in portfolio_items))
 
+    def test_buy_with_cash_supports_fund_decimal_qty(self):
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '支付宝',
+            'amount': 1000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': 'f_110017',
+            'name': '易方达增强回报债券A',
+            'price': 1.2345,
+            'qty': 81.0044,
+            'cash_asset_id': cash_id,
+            'request_id': 'req-buy-fund-decimal-qty',
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+        self.assertEqual((buy_resp.get_json() or {}).get('status'), 'ok')
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        target = next((item for item in portfolio_items if item.get('code') == 'f_110017'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('qty') or 0.0), 81.0044, places=4)
+
 
 if __name__ == '__main__':
     unittest.main()

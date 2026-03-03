@@ -32,11 +32,29 @@ class _RetrySearchAppState extends AppState {
 }
 
 class _SaveStateAppState extends AppState {
-  _SaveStateAppState({required this.result, this.searchDelay = Duration.zero})
-    : super(tokenLoader: () async => null);
+  _SaveStateAppState({
+    required this.result,
+    this.searchDelay = Duration.zero,
+    List<dynamic>? searchResults,
+    Map<String, double?>? latestPriceByCode,
+  }) : _searchResults =
+           searchResults ??
+           <dynamic>[
+             <String, dynamic>{
+               'code': 'gb_tsla',
+               'name': 'Tesla',
+               'type_name': '美股',
+               'currency': 'USD',
+               'asset_type': 'us',
+             },
+           ],
+       _latestPriceByCode = latestPriceByCode ?? <String, double?>{},
+       super(tokenLoader: () async => null);
 
   final AssetActionResult result;
   final Duration searchDelay;
+  final List<dynamic> _searchResults;
+  final Map<String, double?> _latestPriceByCode;
   int buyWithCashCalls = 0;
   int modifyCalls = 0;
   int searchCalls = 0;
@@ -44,6 +62,9 @@ class _SaveStateAppState extends AppState {
   double? lastModifyQty;
   double? lastModifyPrice;
   double? lastModifyAdjustment;
+  String? lastBuyCode;
+  double? lastBuyPrice;
+  double? lastBuyQty;
 
   @override
   Future<List<dynamic>> searchStocks(String query) async {
@@ -51,15 +72,7 @@ class _SaveStateAppState extends AppState {
     if (searchDelay > Duration.zero) {
       await Future<void>.delayed(searchDelay);
     }
-    return <dynamic>[
-      <String, dynamic>{
-        'code': 'gb_tsla',
-        'name': 'Tesla',
-        'type_name': '美股',
-        'currency': 'USD',
-        'asset_type': 'us',
-      },
-    ];
+    return _searchResults;
   }
 
   @override
@@ -74,7 +87,18 @@ class _SaveStateAppState extends AppState {
     bool awaitRefresh = true,
   }) async {
     buyWithCashCalls += 1;
+    lastBuyCode = code;
+    lastBuyPrice = price;
+    lastBuyQty = qty;
     return result;
+  }
+
+  @override
+  Future<double?> fetchLatestPriceForCode(String code) async {
+    if (_latestPriceByCode.containsKey(code)) {
+      return _latestPriceByCode[code];
+    }
+    return null;
   }
 
   @override
@@ -453,7 +477,7 @@ void main() {
 
     final priceField = tester.widget<TextField>(
       find.byWidgetPredicate(
-        (widget) => widget is TextField && widget.decoration?.labelText == '价格',
+        (widget) => widget is TextField && widget.decoration?.labelText == '净值',
       ),
     );
     expect(priceField.controller?.text, '1.2346');
@@ -528,5 +552,203 @@ void main() {
     expect(appState.lastModifyAdjustment, 8.5);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('Fund add defaults to amount mode and submits derived qty', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+      searchResults: <dynamic>[
+        <String, dynamic>{
+          'code': 'f_110017',
+          'name': '易方达增强回报债券A',
+          'type_name': '基金',
+          'currency': 'CNY',
+          'asset_type': 'fund',
+        },
+      ],
+      latestPriceByCode: <String, double?>{'f_110017': 1.2345},
+    );
+    await _ensureLargeViewport(tester);
+    await appState.setLoggedIn(
+      token: 'token',
+      refreshToken: 'refresh',
+      username: 'kona',
+      userId: 'uid-fund-add',
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: const MaterialApp(
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '110017');
+    await tester.tap(find.widgetWithText(ElevatedButton, '搜索'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('易方达增强回报债券A').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('按金额'), findsOneWidget);
+    expect(_fieldByLabel('买入金额'), findsOneWidget);
+    expect(_fieldByLabel('数量'), findsNothing);
+
+    await tester.enterText(_fieldByLabel('买入金额'), '100');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(appState.buyWithCashCalls, 1);
+    expect(appState.lastBuyCode, 'f_110017');
+    expect(appState.lastBuyPrice, closeTo(1.2345, 0.000001));
+    expect(appState.lastBuyQty, closeTo(81.0044, 0.000001));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Fund trade-buy mode submits amount-derived qty', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+      latestPriceByCode: <String, double?>{'f_110017': 1.25},
+    );
+    final item = PortfolioItem(
+      code: 'f_110017',
+      name: '易方达增强回报债券A',
+      qty: 10,
+      price: 1.2,
+      curr: 'CNY',
+      assetType: 'fund',
+    );
+    await prepareTradeDialogWithItem(tester, appState, item: item);
+
+    expect(find.text('按金额'), findsOneWidget);
+    expect(_fieldByLabel('买入金额'), findsOneWidget);
+    await tester.enterText(_fieldByLabel('买入金额'), '50');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(appState.buyWithCashCalls, 1);
+    expect(appState.lastBuyCode, 'f_110017');
+    expect(appState.lastBuyQty, closeTo(40.0, 0.000001));
+    expect(appState.lastBuyPrice, closeTo(1.25, 0.000001));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Fund amount mode allows manual nav when fetch failed', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+      searchResults: <dynamic>[
+        <String, dynamic>{
+          'code': 'f_110017',
+          'name': '易方达增强回报债券A',
+          'type_name': '基金',
+          'currency': 'CNY',
+          'asset_type': 'fund',
+        },
+      ],
+      latestPriceByCode: <String, double?>{'f_110017': null},
+    );
+    await _ensureLargeViewport(tester);
+    await appState.setLoggedIn(
+      token: 'token',
+      refreshToken: 'refresh',
+      username: 'kona',
+      userId: 'uid-fund-nav-fallback',
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: const MaterialApp(
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '110017');
+    await tester.tap(find.widgetWithText(ElevatedButton, '搜索'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('易方达增强回报债券A').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('净值获取失败，可手动输入'), findsOneWidget);
+    await tester.enterText(_fieldByLabel('净值'), '1.1');
+    await tester.enterText(_fieldByLabel('买入金额'), '22');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+    expect(appState.buyWithCashCalls, 1);
+    expect(appState.lastBuyQty, closeTo(20.0, 0.000001));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Fund amount mode rejects too-small amount', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+      searchResults: <dynamic>[
+        <String, dynamic>{
+          'code': 'f_110017',
+          'name': '易方达增强回报债券A',
+          'type_name': '基金',
+          'currency': 'CNY',
+          'asset_type': 'fund',
+        },
+      ],
+      latestPriceByCode: <String, double?>{'f_110017': 100},
+    );
+    await _ensureLargeViewport(tester);
+    await appState.setLoggedIn(
+      token: 'token',
+      refreshToken: 'refresh',
+      username: 'kona',
+      userId: 'uid-fund-small-amount',
+    );
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: appState,
+        child: const MaterialApp(
+          home: Scaffold(body: InvestTradeDialog(mode: 'add')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '110017');
+    await tester.tap(find.widgetWithText(ElevatedButton, '搜索'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('易方达增强回报债券A').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(_fieldByLabel('买入金额'), '0.001');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.tap(find.widgetWithText(ElevatedButton, '保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('金额过小，按当前净值不足以买入最小份额（0.0001）'), findsOneWidget);
+    expect(appState.buyWithCashCalls, 0);
+  });
+
+  testWidgets('Non-fund add does not show fund amount mode controls', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    await prepareAddDialog(tester, appState, priceText: '100', qtyText: '1');
+    expect(find.text('按金额'), findsNothing);
+    expect(_fieldByLabel('买入金额'), findsNothing);
   });
 }

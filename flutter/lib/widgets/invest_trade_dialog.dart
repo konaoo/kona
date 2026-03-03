@@ -37,19 +37,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _queryController = TextEditingController();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
+  final _amountController = TextEditingController();
   final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
 
   bool _saving = false;
   bool _inlineClosed = false;
   bool _searching = false;
+  bool _navLoading = false;
   String? _errorText;
   String? _searchErrorText;
+  String? _navErrorText;
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
   String _tradeMode = 'buy';
+  String _fundInputMode = 'qty';
   int? _selectedCashAssetId;
   int _searchSeq = 0;
+  int _navFetchSeq = 0;
   final Map<String, _SearchCacheEntry> _searchCache =
       <String, _SearchCacheEntry>{};
   static const Duration _searchCacheTtl = Duration(seconds: 20);
@@ -58,6 +63,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   static final List<TextInputFormatter> _qtyInputFormatters =
       <TextInputFormatter>[
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
+      ];
+  static final List<TextInputFormatter> _fundQtyInputFormatters =
+      <TextInputFormatter>[
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
       ];
 
   bool get _isAdd => widget.mode == 'add';
@@ -72,6 +81,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _queryController.addListener(_onInputControllerChanged);
     _priceController.addListener(_onInputControllerChanged);
     _qtyController.addListener(_onInputControllerChanged);
+    _amountController.addListener(_onInputControllerChanged);
     _adjustPriceController.addListener(_onInputControllerChanged);
     _adjustController.addListener(_onInputControllerChanged);
     _syncDefaultCashAsset();
@@ -81,6 +91,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         _tradeMode = 'buy';
         _adjustController.clear();
         _adjustPriceController.clear();
+        if (_isCurrentFundTarget()) {
+          _fundInputMode = 'amount';
+          unawaited(_prefillFundNavForCode(widget.item!.code));
+        }
       }
     }
   }
@@ -96,11 +110,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _queryController.removeListener(_onInputControllerChanged);
     _priceController.removeListener(_onInputControllerChanged);
     _qtyController.removeListener(_onInputControllerChanged);
+    _amountController.removeListener(_onInputControllerChanged);
     _adjustPriceController.removeListener(_onInputControllerChanged);
     _adjustController.removeListener(_onInputControllerChanged);
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
+    _amountController.dispose();
     _adjustPriceController.dispose();
     _adjustController.dispose();
     super.dispose();
@@ -183,8 +199,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _results = [];
       _errorText = null;
       _searchErrorText = null;
+      _navErrorText = null;
+      _navLoading = false;
+      _fundInputMode = 'qty';
+      _amountController.clear();
       _searching = false;
       _searchSeq += 1;
+      _navFetchSeq += 1;
     });
   }
 
@@ -271,6 +292,78 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (normalizedType == 'fund') return true;
     final normalizedCode = (code ?? '').trim().toLowerCase();
     return normalizedCode.startsWith('f_') || normalizedCode.startsWith('ft_');
+  }
+
+  bool _isCurrentFundTarget() {
+    final mode = _currentActionMode();
+    if (mode == 'sell' || mode == 'adjust') return false;
+    if (_isAdd) {
+      return _isFundAsset(
+        assetType: _selected?['asset_type']?.toString(),
+        code: _selected?['code']?.toString(),
+      );
+    }
+    final item = widget.item;
+    if (item == null) return false;
+    return _isFundAsset(assetType: item.assetType, code: item.code);
+  }
+
+  bool _isFundAmountMode() {
+    return _isCurrentFundTarget() && _fundInputMode == 'amount';
+  }
+
+  void _setFundInputMode(String mode) {
+    if (_fundInputMode == mode) return;
+    setState(() {
+      _fundInputMode = mode;
+      _errorText = null;
+      _navErrorText = null;
+    });
+    if (mode == 'amount' && _isCurrentFundTarget()) {
+      final code = _isAdd
+          ? (_selected?['code']?.toString() ?? '')
+          : (widget.item?.code ?? '');
+      if (code.isNotEmpty) {
+        unawaited(_prefillFundNavForCode(code));
+      }
+    }
+  }
+
+  double? _deriveFundQtyFromAmountNav() {
+    final amount = double.tryParse(_amountController.text.trim());
+    final nav = double.tryParse(_priceController.text.trim());
+    if (amount == null || nav == null || amount <= 0 || nav <= 0) return null;
+    final rawQty = amount / nav;
+    final qty = (rawQty * 10000).floor() / 10000;
+    if (qty <= 0) return null;
+    return qty;
+  }
+
+  String _formatQtyDisplay(double value) {
+    final text = value.toStringAsFixed(4);
+    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  Future<void> _prefillFundNavForCode(String code) async {
+    final normalizedCode = code.trim();
+    if (normalizedCode.isEmpty) return;
+    final seq = ++_navFetchSeq;
+    setState(() {
+      _navLoading = true;
+      _navErrorText = null;
+    });
+    final appState = context.read<AppState>();
+    final nav = await appState.fetchLatestPriceForCode(normalizedCode);
+    if (!mounted || seq != _navFetchSeq) return;
+    setState(() {
+      _navLoading = false;
+      if (nav != null && nav > 0) {
+        _priceController.text = _formatInputNumber(nav, decimals: 4);
+        _navErrorText = null;
+      } else {
+        _navErrorText = '净值获取失败，可手动输入';
+      }
+    });
   }
 
   void _syncDefaultCashAsset() {
@@ -639,6 +732,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     setState(() {
       _tradeMode = mode;
       _errorText = null;
+      _navErrorText = null;
+      _navLoading = false;
       if (mode == 'adjust') {
         _adjustController.clear();
         final item = widget.item;
@@ -655,7 +750,21 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       } else if (_priceController.text.trim().isEmpty) {
         _prefillPriceFromCurrent();
       }
+      if (mode != 'buy') {
+        _fundInputMode = 'qty';
+        _amountController.clear();
+        _navFetchSeq += 1;
+      } else if (_isCurrentFundTarget()) {
+        _fundInputMode = 'amount';
+        _amountController.clear();
+      }
     });
+    if (mode == 'buy' && _isCurrentFundTarget()) {
+      final code = widget.item?.code ?? '';
+      if (code.isNotEmpty) {
+        unawaited(_prefillFundNavForCode(code));
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -688,27 +797,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     if (_isAdd) {
       final priceStr = _priceController.text.trim();
-      final qtyStr = _qtyController.text.trim();
       price = double.tryParse(priceStr);
-      qty = double.tryParse(qtyStr);
       if (price == null) {
         setState(() {
           _saving = false;
           _errorText = '请输入有效价格';
-        });
-        return;
-      }
-      if (qty == null) {
-        setState(() {
-          _saving = false;
-          _errorText = '请输入有效数量';
-        });
-        return;
-      }
-      if (qty <= 0) {
-        setState(() {
-          _saving = false;
-          _errorText = '数量必须大于 0';
         });
         return;
       }
@@ -725,6 +818,42 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           _errorText = '必须从下拉列表选择资产';
         });
         return;
+      }
+      final isFund = _isCurrentFundTarget();
+      if (isFund && _isFundAmountMode()) {
+        final amount = double.tryParse(_amountController.text.trim());
+        if (amount == null || amount <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效买入金额';
+          });
+          return;
+        }
+        qty = _deriveFundQtyFromAmountNav();
+        if (qty == null || qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '金额过小，按当前净值不足以买入最小份额（0.0001）';
+          });
+          return;
+        }
+      } else {
+        final qtyStr = _qtyController.text.trim();
+        qty = double.tryParse(qtyStr);
+        if (qty == null) {
+          setState(() {
+            _saving = false;
+            _errorText = '请输入有效数量';
+          });
+          return;
+        }
+        if (qty <= 0) {
+          setState(() {
+            _saving = false;
+            _errorText = '数量必须大于 0';
+          });
+          return;
+        }
       }
       final code = _selected?['code'] ?? '';
       final name = _selected?['name'] ?? '';
@@ -785,27 +914,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         );
       } else if (mode == 'buy') {
         final priceStr = _priceController.text.trim();
-        final qtyStr = _qtyController.text.trim();
         price = double.tryParse(priceStr);
-        qty = double.tryParse(qtyStr);
         if (price == null) {
           setState(() {
             _saving = false;
             _errorText = '请输入有效价格';
-          });
-          return;
-        }
-        if (qty == null) {
-          setState(() {
-            _saving = false;
-            _errorText = '请输入有效数量';
-          });
-          return;
-        }
-        if (qty <= 0) {
-          setState(() {
-            _saving = false;
-            _errorText = '数量必须大于 0';
           });
           return;
         }
@@ -815,6 +928,42 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             _errorText = '价格必须大于 0';
           });
           return;
+        }
+        final isFund = _isCurrentFundTarget();
+        if (isFund && _isFundAmountMode()) {
+          final amount = double.tryParse(_amountController.text.trim());
+          if (amount == null || amount <= 0) {
+            setState(() {
+              _saving = false;
+              _errorText = '请输入有效买入金额';
+            });
+            return;
+          }
+          qty = _deriveFundQtyFromAmountNav();
+          if (qty == null || qty <= 0) {
+            setState(() {
+              _saving = false;
+              _errorText = '金额过小，按当前净值不足以买入最小份额（0.0001）';
+            });
+            return;
+          }
+        } else {
+          final qtyStr = _qtyController.text.trim();
+          qty = double.tryParse(qtyStr);
+          if (qty == null) {
+            setState(() {
+              _saving = false;
+              _errorText = '请输入有效数量';
+            });
+            return;
+          }
+          if (qty <= 0) {
+            setState(() {
+              _saving = false;
+              _errorText = '数量必须大于 0';
+            });
+            return;
+          }
         }
         actionFuture = appState.buyInvestmentWithCash(
           code: code,
@@ -984,11 +1133,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           final code = _formatDisplayCode(item['code'] ?? '');
           return InkWell(
             onTap: () {
+              final codeRaw = item['code']?.toString() ?? '';
+              final isFund = _isFundAsset(
+                assetType: item['asset_type']?.toString(),
+                code: codeRaw,
+              );
               setState(() {
                 _selected = item;
                 _queryController.text = name;
                 _results = [];
+                _errorText = null;
+                _fundInputMode = isFund ? 'amount' : 'qty';
+                _amountController.clear();
+                _navErrorText = null;
+                _navLoading = false;
               });
+              if (isFund) {
+                unawaited(_prefillFundNavForCode(codeRaw));
+              }
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1128,16 +1290,189 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
+  Widget _buildFundInputModeToggle() {
+    if (!_isCurrentFundTarget()) return const SizedBox.shrink();
+    final isAmountMode = _isFundAmountMode();
+    Widget item(String value, String label) {
+      final selected = _fundInputMode == value;
+      return Expanded(
+        child: InkWell(
+          onTap: _saving ? null : () => _setFundInputMode(value),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? AppTheme.accent : AppTheme.border,
+                width: 1,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected ? AppTheme.textPrimary : AppTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '基金买入方式',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: FontSize.sm,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            item('qty', '按份额'),
+            const SizedBox(width: 8),
+            item('amount', '按金额'),
+          ],
+        ),
+        if (isAmountMode && _navLoading)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '正在获取最新净值…',
+              style: TextStyle(
+                color: AppTheme.textTertiary,
+                fontSize: FontSize.xs,
+              ),
+            ),
+          ),
+        if (isAmountMode && _navErrorText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _navErrorText!,
+              style: TextStyle(color: AppTheme.danger, fontSize: FontSize.xs),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTradeInputFields() {
+    if (_isTrade && _isAdjust) {
+      return Column(
+        children: [
+          TextField(
+            controller: _adjustPriceController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: _compactDecoration('平均成本'),
+          ),
+          const SizedBox(height: Spacing.md),
+          TextField(
+            controller: _adjustController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: _compactDecoration('调整金额'),
+          ),
+        ],
+      );
+    }
+
+    final showFundMode = _isCurrentFundTarget();
+    final amountMode = _isFundAmountMode();
+
+    return Column(
+      children: [
+        if (showFundMode) ...[
+          _buildFundInputModeToggle(),
+          const SizedBox(height: Spacing.md),
+        ],
+        TextField(
+          controller: _priceController,
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+            signed: true,
+          ),
+          style: TextStyle(color: AppTheme.textPrimary),
+          decoration: _compactDecoration(
+            amountMode ? '净值' : (_isAdd ? '买入成本价' : '价格'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        if (amountMode) ...[
+          TextField(
+            controller: _amountController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: false,
+            ),
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: _compactDecoration('买入金额'),
+          ),
+          const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final qty = _deriveFundQtyFromAmountNav();
+              final text = qty == null ? '--' : _formatQtyDisplay(qty);
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '预计份额：$text',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: FontSize.sm,
+                  ),
+                ),
+              );
+            },
+          ),
+        ] else ...[
+          TextField(
+            controller: _qtyController,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: false,
+            ),
+            inputFormatters: showFundMode
+                ? _fundQtyInputFormatters
+                : _qtyInputFormatters,
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: _compactDecoration('数量'),
+          ),
+        ],
+      ],
+    );
+  }
+
   bool _isSaveInputReady() {
     final mode = _currentActionMode();
     final priceReady = _priceController.text.trim().isNotEmpty;
     final qtyReady = _qtyController.text.trim().isNotEmpty;
+    final amountReady = _amountController.text.trim().isNotEmpty;
     if (_isAdd) {
+      if (_isFundAmountMode()) {
+        return _selected != null && amountReady && priceReady;
+      }
       return _selected != null && priceReady && qtyReady;
     }
     if (mode == 'adjust') {
       return _adjustController.text.trim().isNotEmpty &&
           _adjustPriceController.text.trim().isNotEmpty;
+    }
+    if (mode == 'buy' && _isFundAmountMode()) {
+      return amountReady && priceReady;
     }
     return priceReady && qtyReady;
   }
@@ -1436,48 +1771,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       ],
                       const SizedBox(height: Spacing.md),
                     ],
-                    if (_isTrade && _isAdjust) ...[
-                      TextField(
-                        controller: _adjustPriceController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        style: TextStyle(color: AppTheme.textPrimary),
-                        decoration: _compactDecoration('平均成本'),
-                      ),
-                      const SizedBox(height: Spacing.md),
-                      TextField(
-                        controller: _adjustController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        style: TextStyle(color: AppTheme.textPrimary),
-                        decoration: _compactDecoration('调整金额'),
-                      ),
-                    ] else ...[
-                      TextField(
-                        controller: _priceController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: true,
-                        ),
-                        style: TextStyle(color: AppTheme.textPrimary),
-                        decoration: _compactDecoration(_isAdd ? '买入成本价' : '价格'),
-                      ),
-                      const SizedBox(height: Spacing.md),
-                      TextField(
-                        controller: _qtyController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                          signed: false,
-                        ),
-                        inputFormatters: _qtyInputFormatters,
-                        style: TextStyle(color: AppTheme.textPrimary),
-                        decoration: _compactDecoration('数量'),
-                      ),
-                    ],
+                    _buildTradeInputFields(),
                     if (_errorText != null) ...[
                       const SizedBox(height: 8),
                       Text(

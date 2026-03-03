@@ -102,7 +102,7 @@
                 <div class="name-primary" :title="String(row.name || '-')">{{ truncateAssetName(row.name) }}</div>
                 <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
               </td>
-              <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty) }}</td>
+              <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty, row) }}</td>
               <td class="td-price">
                 <div class="price-cell">
                   <span class="price-line cost">{{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
@@ -158,13 +158,34 @@
             <label class="input-label">资产名称</label>
             <input v-model.trim="form.name" class="modal-input" placeholder="资产名称（可留空）" />
           </div>
-          <div class="input-group">
-            <label class="input-label">{{ modal.type === 'edit' ? '数量' : '交易数量' }}</label>
-            <input v-model.number="form.qty" type="number" min="1" step="1" class="modal-input" required />
+          <div v-if="showFundInputMode" class="input-group">
+            <label class="input-label">基金买入方式</label>
+            <div class="fund-mode-switch">
+              <button type="button" class="fund-mode-btn" :class="{ active: form.fundInputMode === 'qty' }" @click="form.fundInputMode = 'qty'">按份额</button>
+              <button type="button" class="fund-mode-btn" :class="{ active: form.fundInputMode === 'amount' }" @click="form.fundInputMode = 'amount'">按金额</button>
+            </div>
+            <div v-if="isFundAmountMode && form.navLoading" class="fund-mode-hint">正在获取最新净值…</div>
+            <div v-if="isFundAmountMode && form.navError" class="fund-mode-error">{{ form.navError }}</div>
           </div>
           <div class="input-group">
-            <label class="input-label">{{ modal.type === 'edit' ? '平均成本' : '成交价格' }}</label>
+            <label class="input-label">{{ modal.type === 'edit' ? '平均成本' : (isFundAmountMode ? '净值' : '成交价格') }}</label>
             <input v-model.number="form.price" type="number" step="0.0001" class="modal-input" required />
+          </div>
+          <div v-if="isFundAmountMode" class="input-group">
+            <label class="input-label">买入金额</label>
+            <input v-model.number="form.amount" type="number" min="0" step="0.01" class="modal-input" required />
+            <div class="fund-mode-hint">预计份额：{{ derivedFundQty() > 0 ? formatFundQty(derivedFundQty()) : '--' }}</div>
+          </div>
+          <div v-if="!isFundAmountMode" class="input-group">
+            <label class="input-label">{{ modal.type === 'edit' ? '数量' : '交易数量' }}</label>
+            <input
+              v-model.number="form.qty"
+              type="number"
+              :min="showFundInputMode ? 0.0001 : 1"
+              :step="showFundInputMode ? 0.0001 : 1"
+              class="modal-input"
+              required
+            />
           </div>
           <div class="input-group" v-if="modal.type === 'edit'">
             <label class="input-label">累计盈亏校准 (调整值)</label>
@@ -180,7 +201,7 @@
 
 <script setup lang="ts">
 import html2canvas from 'html2canvas'
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
@@ -244,11 +265,18 @@ const form = reactive({
   name: '',
   qty: 0,
   price: 0,
+  amount: 0,
   curr: 'CNY',
+  market: 'a',
+  fundInputMode: 'qty',
+  navLoading: false,
+  navError: '',
   adjustment: 0,
 })
 let refreshInflight: Promise<void> | null = null
 let staticRefreshTimer: number | null = null
+let navPrefillTimer: number | null = null
+let navFetchSeq = 0
 
 function cacheUserId(): string {
   return String(store.state.user?.id || 'guest')
@@ -412,13 +440,77 @@ function rowCurrency(row: Record<string, unknown>): 'CNY' | 'HKD' | 'USD' {
   return marketDisplayCurrency(row.market, row.curr)
 }
 
-function formatHoldingQty(qty: unknown): string {
-  const n = Math.abs(Math.round(toNumber(qty)))
-  return n.toLocaleString('zh-CN')
+function isFundCode(code: unknown): boolean {
+  const text = String(code || '').trim().toLowerCase()
+  if (!text) return false
+  if (text.startsWith('f_') || text.startsWith('ft_')) return true
+  if (/^\d+$/.test(text) && text.startsWith('11')) return true
+  return false
+}
+
+function inferMarketType(row?: Record<string, unknown>): 'a' | 'hk' | 'us' | 'fund' {
+  const market = String(row?.market || row?.asset_type || '').trim().toLowerCase()
+  if (market === 'a' || market === 'hk' || market === 'us' || market === 'fund') {
+    return market
+  }
+  return isFundCode(row?.code) ? 'fund' : 'a'
+}
+
+function normalizeCodeForSubmit(rawCode: string): string {
+  const input = String(rawCode || '').trim()
+  if (!input) return ''
+  if (/^\d+$/.test(input)) {
+    if (input.startsWith('11')) return `f_${input}`
+    if (input.startsWith('6') || input.startsWith('5') || input.startsWith('9')) return `sh${input}`
+    if (input.startsWith('0') || input.startsWith('3') || input.startsWith('1') || input.startsWith('2')) return `sz${input}`
+    if (input.startsWith('4') || input.startsWith('8')) return `bj${input}`
+  }
+  if (input.toUpperCase().endsWith('.HK')) return input.toUpperCase()
+  if (/^[a-zA-Z]+$/.test(input)) return `gb_${input.toLowerCase()}`
+  return input
+}
+
+const showFundInputMode = computed(() => {
+  if (modal.type !== 'add' && modal.type !== 'buy') return false
+  if (modal.type === 'buy') {
+    return form.market === 'fund' || isFundCode(modal.code)
+  }
+  return form.market === 'fund' || isFundCode(form.code)
+})
+
+const isFundAmountMode = computed(() => showFundInputMode.value && form.fundInputMode === 'amount')
+
+function derivedFundQty(): number {
+  const amount = toNumber(form.amount)
+  const nav = toNumber(form.price)
+  if (amount <= 0 || nav <= 0) return 0
+  const rawQty = amount / nav
+  return Math.floor(rawQty * 10000) / 10000
+}
+
+function formatFundQty(value: number): string {
+  const text = value.toFixed(4)
+  return text.replace(/\.?0+$/, '')
+}
+
+function formatHoldingQty(qty: unknown, row?: Record<string, unknown>): string {
+  const n = Math.abs(toNumber(qty))
+  if (!Number.isFinite(n)) return '0'
+  const market = String(row?.market || row?.asset_type || '').toLowerCase()
+  if (market === 'fund' || isFundCode(row?.code)) {
+    return formatFundQty(n)
+  }
+  return Math.round(n).toLocaleString('zh-CN')
 }
 
 function validatePositiveIntegerQty(qty: number): boolean {
   return Number.isInteger(qty) && qty > 0
+}
+
+function validatePositiveFundQty(qty: number): boolean {
+  if (!Number.isFinite(qty) || qty <= 0) return false
+  const scaled = Math.round(qty * 10000)
+  return Math.abs(scaled - qty * 10000) < 1e-6
 }
 
 function showClosedHint(row: Record<string, unknown>): boolean {
@@ -483,11 +575,20 @@ function openModal(type: ModalType, row?: Record<string, unknown>) {
   form.name = String(row?.name || '')
   form.qty = toNumber(row?.qty, 0)
   form.price = toNumber(row?.costPrice ?? row?.price, 0)
+  form.amount = 0
   form.curr = String(row?.curr || 'CNY')
+  form.market = inferMarketType(row)
+  form.fundInputMode = 'qty'
+  form.navLoading = false
+  form.navError = ''
   form.adjustment = toNumber(row?.adjustment, 0)
   if (type === 'buy' || type === 'sell') {
     form.qty = 0
     form.price = toNumber(row?.currentPrice ?? row?.price, 0)
+  }
+  if ((type === 'add' || type === 'buy') && showFundInputMode.value) {
+    form.fundInputMode = 'amount'
+    scheduleFundNavPrefill()
   }
 }
 
@@ -497,6 +598,11 @@ function openAction(type: Exclude<ModalType, 'add'>, row: Record<string, unknown
 
 function closeModal() {
   modal.visible = false
+  navFetchSeq += 1
+  if (navPrefillTimer !== null) {
+    window.clearTimeout(navPrefillTimer)
+    navPrefillTimer = null
+  }
 }
 
 function toggleActionMenu(code: string) {
@@ -512,6 +618,13 @@ function closeActionMenu() {
 }
 
 function ensureValidQty(): boolean {
+  if (isFundAmountMode.value) return true
+  const qty = toNumber(form.qty)
+  if (showFundInputMode.value) {
+    if (validatePositiveFundQty(qty)) return true
+    alert('基金份额必须大于 0，且最多 4 位小数')
+    return false
+  }
   if (validatePositiveIntegerQty(toNumber(form.qty))) return true
   alert('数量必须是正整数')
   return false
@@ -530,25 +643,79 @@ function ensureValidPriceByMode(): boolean {
   return true
 }
 
+function scheduleFundNavPrefill() {
+  if (navPrefillTimer !== null) {
+    window.clearTimeout(navPrefillTimer)
+    navPrefillTimer = null
+  }
+  if (!modal.visible || !isFundAmountMode.value) return
+  navPrefillTimer = window.setTimeout(() => {
+    navPrefillTimer = null
+    void prefillFundNav()
+  }, 300)
+}
+
+async function prefillFundNav() {
+  if (!modal.visible || !isFundAmountMode.value) return
+  const code = modal.type === 'add' ? normalizeCodeForSubmit(form.code) : normalizeCodeForSubmit(modal.code || form.code)
+  if (!code) return
+  const apiCode = code.startsWith('gb_') ? code.slice(3) : code
+  const seq = ++navFetchSeq
+  form.navLoading = true
+  form.navError = ''
+  try {
+    const prices = await api.post<Record<string, { price?: number; yclose?: number }>>('/api/prices/batch', { codes: [apiCode] })
+    if (seq !== navFetchSeq) return
+    const quote = prices[apiCode] || {}
+    const nav = toNumber(quote.price, 0) > 0 ? toNumber(quote.price, 0) : toNumber(quote.yclose, 0)
+    if (nav > 0) {
+      form.price = Number(nav.toFixed(4))
+      form.navError = ''
+    } else {
+      form.navError = '净值获取失败，可手动输入'
+    }
+  } catch {
+    if (seq !== navFetchSeq) return
+    form.navError = '净值获取失败，可手动输入'
+  } finally {
+    if (seq === navFetchSeq) {
+      form.navLoading = false
+    }
+  }
+}
+
 async function submitModal() {
   if (!ensureValidQty()) return
   if (!ensureValidPriceByMode()) return
 
+  const submitCode = normalizeCodeForSubmit(modal.type === 'add' ? form.code : modal.code)
+  const submitQty = isFundAmountMode.value ? derivedFundQty() : toNumber(form.qty)
+  if (isFundAmountMode.value) {
+    if (toNumber(form.amount) <= 0) {
+      alert('买入金额必须大于 0')
+      return
+    }
+    if (submitQty <= 0) {
+      alert('金额过小，按当前净值不足以买入最小份额（0.0001）')
+      return
+    }
+  }
+
   if (modal.type === 'add') {
     await api.post('/api/portfolio/add', {
-      code: form.code,
-      name: form.name || form.code,
-      qty: form.qty,
+      code: submitCode,
+      name: form.name || submitCode,
+      qty: submitQty,
       price: form.price,
       curr: form.curr || 'CNY',
     })
   } else if (modal.type === 'buy') {
-    await api.post('/api/portfolio/buy', { code: modal.code, qty: form.qty, price: form.price })
+    await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
   } else if (modal.type === 'sell') {
-    await api.post('/api/portfolio/sell', { code: modal.code, qty: form.qty, price: form.price })
+    await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
   } else {
     await api.post('/api/portfolio/modify', {
-      code: modal.code,
+      code: submitCode,
       qty: form.qty,
       price: form.price,
       adjustment: form.adjustment,
@@ -557,6 +724,15 @@ async function submitModal() {
   closeModal()
   await refresh('force')
 }
+
+watch(
+  () => [modal.visible, modal.type, form.code, form.fundInputMode, form.market] as const,
+  () => {
+    if (showFundInputMode.value && isFundAmountMode.value) {
+      scheduleFundNavPrefill()
+    }
+  },
+)
 
 async function remove(code: string) {
   closeActionMenu()
@@ -641,6 +817,10 @@ onBeforeUnmount(() => {
   if (staticRefreshTimer) {
     window.clearInterval(staticRefreshTimer)
     staticRefreshTimer = null
+  }
+  if (navPrefillTimer !== null) {
+    window.clearTimeout(navPrefillTimer)
+    navPrefillTimer = null
   }
   store.stopAutoRefresh()
   document.removeEventListener('click', handleDocumentClick)
@@ -1125,6 +1305,40 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   color: var(--legacy-input-text);
   padding: calc(10px * var(--legacy-density-space-scale));
+}
+
+.fund-mode-switch {
+  display: flex;
+  gap: 8px;
+}
+
+.fund-mode-btn {
+  flex: 1;
+  border: 1px solid var(--legacy-border);
+  border-radius: 10px;
+  background: var(--legacy-input-bg);
+  color: var(--legacy-text-primary);
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.fund-mode-btn.active {
+  background: var(--legacy-accent, #3b82f6);
+  color: #fff;
+  border-color: var(--legacy-accent, #3b82f6);
+}
+
+.fund-mode-hint {
+  margin-top: 6px;
+  color: var(--legacy-text-secondary);
+  font-size: 12px;
+}
+
+.fund-mode-error {
+  margin-top: 6px;
+  color: #ef4444;
+  font-size: 12px;
 }
 .btn-primary.full {
   width: 100%;

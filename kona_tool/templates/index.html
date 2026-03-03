@@ -917,29 +917,55 @@
                         <div id="suggest"></div>
                     </div>
                 </div>
-                <div class="input-group">
-                    <label class="input-label">价格</label>
-                    <input type="number" id="mPrice" class="modal-input" placeholder="0.00">
-                </div>
-                <div class="input-group">
-                    <label class="input-label">数量</label>
-                    <input type="number" id="mQty" class="modal-input" placeholder="0">
-                </div>
-                <button class="btn-primary" onclick="saveAsset()" style="width: 100%;">确认保存</button>
+            <div class="input-group">
+                <label class="input-label">价格</label>
+                <input type="number" id="mPrice" class="modal-input" placeholder="0.00">
             </div>
-            <div id="tradeForm" style="display: none;">
-                <input type="hidden" id="tCode">
-                <p id="tNameDisplay" style="margin-bottom: 20px; color: var(--text-secondary); font-weight: 500;"></p>
-                <div class="input-group">
-                    <label class="input-label">成交价格</label>
-                    <input type="number" id="tPrice" class="modal-input" placeholder="0.00">
+            <div class="input-group" id="mFundModeWrap" style="display: none;">
+                <label class="input-label">基金买入方式</label>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" id="mFundModeQty" class="btn-secondary" style="flex:1;" onclick="setAddFundMode('qty')">按份额</button>
+                    <button type="button" id="mFundModeAmount" class="btn-secondary" style="flex:1;" onclick="setAddFundMode('amount')">按金额</button>
                 </div>
-                <div class="input-group">
-                    <label class="input-label">交易数量</label>
-                    <input type="number" id="tQty" class="modal-input" placeholder="0">
-                </div>
-                <button id="tradeSubmitBtn" class="btn-primary" style="width: 100%;">确认</button>
+                <div id="mNavStatus" style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);"></div>
             </div>
+            <div class="input-group">
+                <label class="input-label">数量</label>
+                <input type="number" id="mQty" class="modal-input" placeholder="0">
+            </div>
+            <div class="input-group" id="mAmountGroup" style="display: none;">
+                <label class="input-label">买入金额</label>
+                <input type="number" id="mAmount" class="modal-input" placeholder="0.00">
+                <div id="mDerivedQty" style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">预计份额：--</div>
+            </div>
+            <button class="btn-primary" onclick="saveAsset()" style="width: 100%;">确认保存</button>
+        </div>
+        <div id="tradeForm" style="display: none;">
+            <input type="hidden" id="tCode">
+            <p id="tNameDisplay" style="margin-bottom: 20px; color: var(--text-secondary); font-weight: 500;"></p>
+            <div class="input-group" id="tFundModeWrap" style="display: none;">
+                <label class="input-label">基金买入方式</label>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" id="tFundModeQty" class="btn-secondary" style="flex:1;" onclick="setTradeFundMode('qty')">按份额</button>
+                    <button type="button" id="tFundModeAmount" class="btn-secondary" style="flex:1;" onclick="setTradeFundMode('amount')">按金额</button>
+                </div>
+                <div id="tNavStatus" style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);"></div>
+            </div>
+            <div class="input-group">
+                <label class="input-label">成交价格</label>
+                <input type="number" id="tPrice" class="modal-input" placeholder="0.00">
+            </div>
+            <div class="input-group">
+                <label class="input-label">交易数量</label>
+                <input type="number" id="tQty" class="modal-input" placeholder="0">
+            </div>
+            <div class="input-group" id="tAmountGroup" style="display: none;">
+                <label class="input-label">买入金额</label>
+                <input type="number" id="tAmount" class="modal-input" placeholder="0.00">
+                <div id="tDerivedQty" style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">预计份额：--</div>
+            </div>
+            <button id="tradeSubmitBtn" class="btn-primary" style="width: 100%;">确认</button>
+        </div>
             
             <div id="editForm" style="display: none;">
                 <input type="hidden" id="eCode">
@@ -979,6 +1005,145 @@
             us: { open: false, reason: 'unavailable' },
             fund: { open: false, reason: 'unavailable' }
         };
+        let addFundInputMode = 'qty';
+        let tradeFundInputMode = 'qty';
+        let currentTradeType = 'buy';
+        let navFetchSeq = 0;
+
+        function isFundCode(code) {
+            const lower = String(code || '').trim().toLowerCase();
+            if (!lower) return false;
+            if (lower.startsWith('f_') || lower.startsWith('ft_')) return true;
+            return /^\d+$/.test(lower) && lower.startsWith('11');
+        }
+
+        function normalizeCodeForSubmit(rawCode) {
+            const code = String(rawCode || '').trim();
+            if (!code) return '';
+            if (/^\d+$/.test(code)) {
+                if (code.startsWith('11')) return 'f_' + code;
+                if (code.startsWith('6') || code.startsWith('5') || code.startsWith('9')) return 'sh' + code;
+                if (code.startsWith('0') || code.startsWith('3') || code.startsWith('1') || code.startsWith('2')) return 'sz' + code;
+                if (code.startsWith('4') || code.startsWith('8')) return 'bj' + code;
+            } else if (code.toUpperCase().endsWith('.HK')) {
+                return code.toUpperCase();
+            } else if (/^[a-zA-Z]+$/.test(code)) {
+                return 'gb_' + code.toLowerCase();
+            }
+            return code;
+        }
+
+        function floorQty4(value) {
+            return Math.floor(value * 10000) / 10000;
+        }
+
+        function formatQty4(value) {
+            const n = Number(value || 0);
+            if (!Number.isFinite(n)) return '0';
+            return n.toFixed(4).replace(/\.?0+$/, '');
+        }
+
+        function getDerivedQty(amount, nav) {
+            const amountVal = parseFloat(amount);
+            const navVal = parseFloat(nav);
+            if (!(amountVal > 0) || !(navVal > 0)) return 0;
+            return floorQty4(amountVal / navVal);
+        }
+
+        function formatHoldingQty(value, asset) {
+            if (asset && isFundCode(asset.code)) return formatQty4(value);
+            const n = Number(value || 0);
+            return Number.isFinite(n) ? n.toLocaleString() : '0';
+        }
+
+        function updateFundDerived(scope) {
+            const amountEl = document.getElementById(scope === 'add' ? 'mAmount' : 'tAmount');
+            const navEl = document.getElementById(scope === 'add' ? 'mPrice' : 'tPrice');
+            const outputEl = document.getElementById(scope === 'add' ? 'mDerivedQty' : 'tDerivedQty');
+            if (!amountEl || !navEl || !outputEl) return;
+            const qty = getDerivedQty(amountEl.value, navEl.value);
+            outputEl.innerText = `预计份额：${qty > 0 ? formatQty4(qty) : '--'}`;
+        }
+
+        function updateFundModeUI(scope) {
+            const isAdd = scope === 'add';
+            const mode = isAdd ? addFundInputMode : tradeFundInputMode;
+            const code = isAdd
+                ? normalizeCodeForSubmit(document.getElementById('mRealCode').value || document.getElementById('mCode').value)
+                : document.getElementById('tCode').value;
+            const isFund = isFundCode(code);
+            const modeWrap = document.getElementById(isAdd ? 'mFundModeWrap' : 'tFundModeWrap');
+            const amountGroup = document.getElementById(isAdd ? 'mAmountGroup' : 'tAmountGroup');
+            const priceInput = document.getElementById(isAdd ? 'mPrice' : 'tPrice');
+            const qtyInput = document.getElementById(isAdd ? 'mQty' : 'tQty');
+            const qtyLabel = qtyInput ? qtyInput.parentElement.querySelector('label') : null;
+            const priceLabel = priceInput ? priceInput.parentElement.querySelector('label') : null;
+            const qtyBtn = document.getElementById(isAdd ? 'mFundModeQty' : 'tFundModeQty');
+            const amountBtn = document.getElementById(isAdd ? 'mFundModeAmount' : 'tFundModeAmount');
+
+            if (modeWrap) modeWrap.style.display = (isFund && (isAdd || currentTradeType === 'buy')) ? 'block' : 'none';
+            if (amountGroup) amountGroup.style.display = (isFund && mode === 'amount' && (isAdd || currentTradeType === 'buy')) ? 'block' : 'none';
+            if (qtyInput) qtyInput.parentElement.style.display = (isFund && mode === 'amount' && (isAdd || currentTradeType === 'buy')) ? 'none' : 'block';
+            if (qtyLabel) qtyLabel.textContent = isFund ? '交易份额' : '交易数量';
+            if (priceLabel) priceLabel.textContent = (isFund && mode === 'amount' && (isAdd || currentTradeType === 'buy')) ? '净值' : (isAdd ? '价格' : '成交价格');
+            if (qtyBtn) qtyBtn.classList.toggle('btn-primary', mode === 'qty');
+            if (amountBtn) amountBtn.classList.toggle('btn-primary', mode === 'amount');
+            if (qtyBtn) qtyBtn.classList.toggle('btn-secondary', mode !== 'qty');
+            if (amountBtn) amountBtn.classList.toggle('btn-secondary', mode !== 'amount');
+            updateFundDerived(scope);
+        }
+
+        async function prefillFundNav(scope, codeRaw) {
+            const code = normalizeCodeForSubmit(codeRaw);
+            if (!isFundCode(code)) return;
+            const seq = ++navFetchSeq;
+            const statusEl = document.getElementById(scope === 'add' ? 'mNavStatus' : 'tNavStatus');
+            const priceEl = document.getElementById(scope === 'add' ? 'mPrice' : 'tPrice');
+            if (!priceEl) return;
+            if (statusEl) {
+                statusEl.style.color = 'var(--text-secondary)';
+                statusEl.innerText = '正在获取最新净值…';
+            }
+            try {
+                const apiCode = code.startsWith('gb_') ? code.slice(3) : code;
+                const prices = await (await fetch(`/api/prices/batch?t=${Date.now()}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({codes: [apiCode]})
+                })).json();
+                if (seq !== navFetchSeq) return;
+                const quote = prices[apiCode] || {};
+                const nav = Number(quote.price || 0) > 0 ? Number(quote.price || 0) : Number(quote.yclose || 0);
+                if (nav > 0) {
+                    priceEl.value = nav.toFixed(4).replace(/\.?0+$/, '');
+                    if (statusEl) statusEl.innerText = '';
+                } else if (statusEl) {
+                    statusEl.style.color = 'var(--red)';
+                    statusEl.innerText = '净值获取失败，可手动输入';
+                }
+            } catch (e) {
+                if (seq !== navFetchSeq) return;
+                if (statusEl) {
+                    statusEl.style.color = 'var(--red)';
+                    statusEl.innerText = '净值获取失败，可手动输入';
+                }
+            }
+            updateFundDerived(scope);
+        }
+
+        function setAddFundMode(mode) {
+            addFundInputMode = mode === 'amount' ? 'amount' : 'qty';
+            updateFundModeUI('add');
+            if (addFundInputMode === 'amount') prefillFundNav('add', document.getElementById('mCode').value);
+        }
+
+        function setTradeFundMode(mode) {
+            tradeFundInputMode = mode === 'amount' ? 'amount' : 'qty';
+            updateFundModeUI('trade');
+            if (tradeFundInputMode === 'amount' && currentTradeType === 'buy') {
+                prefillFundNav('trade', document.getElementById('tCode').value);
+            }
+        }
 
         function normalizeMarket(market) {
             const m = String(market || '').toLowerCase().trim();
@@ -1286,7 +1451,7 @@
                 tr.innerHTML = `
                     <td class="code-cell">${displayCode}</td>
                     <td class="name-cell" title="${s.name}">${s.name}</td>
-                    <td>${isPrivacyMode ? '****' : qty.toLocaleString()}</td>
+                    <td>${isPrivacyMode ? '****' : formatHoldingQty(qty, s)}</td>
                     <td>${priceCell}</td>
                     <td>${isPrivacyMode ? '****' : (syms[s.curr] || '') + mv.toFixed(2)}</td>
                     <td>${dayPnlCell}</td>
@@ -1321,7 +1486,7 @@
                 const cells = tr.querySelectorAll('td');
                 
                 // 持有数量
-                cells[2].innerText = isPrivacyMode ? '****' : qty.toLocaleString();
+                cells[2].innerText = isPrivacyMode ? '****' : formatHoldingQty(qty, s);
 
                 // 价格 (始终显示)
                 cells[3].innerHTML = `<div class="price-cell">
@@ -1403,6 +1568,11 @@
             document.getElementById('mCode').value = ''; 
             document.getElementById('mPrice').value = ''; 
             document.getElementById('mQty').value = ''; 
+            document.getElementById('mAmount').value = '';
+            document.getElementById('mDerivedQty').innerText = '预计份额：--';
+            document.getElementById('mNavStatus').innerText = '';
+            addFundInputMode = 'qty';
+            updateFundModeUI('add');
             document.getElementById('suggest').style.display = 'none'; 
         }
         
@@ -1412,10 +1582,17 @@
             document.getElementById('tradeForm').style.display = 'block'; 
             document.getElementById('editForm').style.display = 'none';
             document.getElementById('modalTitle').innerText = type === 'buy' ? '加仓' : '减仓';
+            currentTradeType = type;
             document.getElementById('tCode').value = c; 
             document.getElementById('tNameDisplay').innerText = `${n} ${type === 'buy' ? '加仓' : '减仓'}`; 
             document.getElementById('tPrice').value = p; 
             document.getElementById('tQty').value = ''; 
+            document.getElementById('tAmount').value = '';
+            document.getElementById('tDerivedQty').innerText = '预计份额：--';
+            document.getElementById('tNavStatus').innerText = '';
+            tradeFundInputMode = (type === 'buy' && isFundCode(c)) ? 'amount' : 'qty';
+            updateFundModeUI('trade');
+            if (tradeFundInputMode === 'amount') prefillFundNav('trade', c);
             const btn = document.getElementById('tradeSubmitBtn'); 
             btn.innerText = type === 'buy' ? '确认加仓' : '确认卖出'; 
             btn.style.background = type === 'buy' ? 'var(--red)' : 'var(--green)';
@@ -1428,7 +1605,8 @@
             const savedName = document.getElementById('mName').value.trim();
             let code = document.getElementById('mCode').value.trim();
             const price = document.getElementById('mPrice').value;
-            const qty = document.getElementById('mQty').value;
+            const qtyInput = document.getElementById('mQty').value;
+            const amountInput = document.getElementById('mAmount').value;
             
             // 如果有从搜索结果选中的代码，直接使用
             if (realCode) {
@@ -1461,6 +1639,25 @@
             // 使用保存的名称，或使用代码
             const name = savedName || code;
             
+            const isFund = isFundCode(code);
+            let qty = qtyInput;
+            if (isFund && addFundInputMode === 'amount') {
+                const derivedQty = getDerivedQty(amountInput, price);
+                if (!(parseFloat(amountInput) > 0)) {
+                    alert('买入金额必须大于 0');
+                    return;
+                }
+                if (!(parseFloat(price) > 0)) {
+                    alert('净值必须大于 0');
+                    return;
+                }
+                if (!(derivedQty > 0)) {
+                    alert('金额过小，按当前净值不足以买入最小份额（0.0001）');
+                    return;
+                }
+                qty = String(derivedQty);
+            }
+
             await fetch(`/api/portfolio/add?t=${Date.now()}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1471,19 +1668,39 @@
             document.getElementById('mRealCode').value = '';
             document.getElementById('mCurrency').value = '';
             document.getElementById('mName').value = '';
+            addFundInputMode = 'qty';
             refreshAll();
         }
 
         async function confirmTrade(type) { 
             const code = document.getElementById('tCode').value;
             const price = document.getElementById('tPrice').value;
-            const qty = document.getElementById('tQty').value;
+            const qtyInput = document.getElementById('tQty').value;
+            const amountInput = document.getElementById('tAmount').value;
+            let qty = qtyInput;
+            if (type === 'buy' && isFundCode(code) && tradeFundInputMode === 'amount') {
+                const derivedQty = getDerivedQty(amountInput, price);
+                if (!(parseFloat(amountInput) > 0)) {
+                    alert('买入金额必须大于 0');
+                    return;
+                }
+                if (!(parseFloat(price) > 0)) {
+                    alert('净值必须大于 0');
+                    return;
+                }
+                if (!(derivedQty > 0)) {
+                    alert('金额过小，按当前净值不足以买入最小份额（0.0001）');
+                    return;
+                }
+                qty = String(derivedQty);
+            }
             await fetch(`/api/portfolio/${type}?t=${Date.now()}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({code, price, qty})
             }); 
             document.getElementById('overlay').style.display = 'none'; 
+            tradeFundInputMode = 'qty';
             refreshAll(); 
         }
         
@@ -1560,6 +1777,13 @@
         
         let searchTimeout;
         document.getElementById('mCode').addEventListener('input', (e) => { 
+            document.getElementById('mRealCode').value = '';
+            document.getElementById('mCurrency').value = '';
+            document.getElementById('mName').value = '';
+            updateFundModeUI('add');
+            if (addFundInputMode === 'amount' && isFundCode(normalizeCodeForSubmit(e.target.value))) {
+                prefillFundNav('add', e.target.value);
+            }
             clearTimeout(searchTimeout);
             const v = e.target.value.trim(); 
             const box = document.getElementById('suggest'); 
@@ -1609,6 +1833,10 @@
                 }
             }, 300);
         });
+        document.getElementById('mPrice').addEventListener('input', () => updateFundDerived('add'));
+        document.getElementById('mAmount').addEventListener('input', () => updateFundDerived('add'));
+        document.getElementById('tPrice').addEventListener('input', () => updateFundDerived('trade'));
+        document.getElementById('tAmount').addEventListener('input', () => updateFundDerived('trade'));
 
         function pick(c, n, cur) {
             document.getElementById('mCode').value = n;
@@ -1616,6 +1844,14 @@
             document.getElementById('mCurrency').value = cur;
             document.getElementById('mName').value = n;
             document.getElementById('suggest').style.display = 'none';
+            if (isFundCode(c)) {
+                addFundInputMode = 'amount';
+                updateFundModeUI('add');
+                prefillFundNav('add', c);
+            } else {
+                addFundInputMode = 'qty';
+                updateFundModeUI('add');
+            }
         }
         
         function saveAsImage() {

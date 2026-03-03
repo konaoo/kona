@@ -368,6 +368,23 @@ class AppState extends ChangeNotifier {
     return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
   }
 
+  Future<double?> fetchLatestPriceForCode(String code) async {
+    final raw = code.trim();
+    if (raw.isEmpty) return null;
+    final apiCode = raw.startsWith('gb_') ? raw.substring(3) : raw;
+    try {
+      final prices = await _api.getPricesBatch(<String>[apiCode]);
+      final payload = prices[apiCode];
+      if (payload is! Map<String, dynamic>) return null;
+      final info = PriceInfo.fromJson(payload);
+      if (info.price > 0) return info.price;
+      if (info.yclose > 0) return info.yclose;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
     if (_currentCategory == 'all') return _portfolio;
