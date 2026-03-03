@@ -2293,6 +2293,7 @@ class AppState extends ChangeNotifier {
           id: _nextTempAssetId--,
           name: name,
           amount: amount,
+          curr: normalizedCurr,
         );
         _otherAssets = [..._otherAssets, tempAsset];
         return true;
@@ -2301,6 +2302,7 @@ class AppState extends ChangeNotifier {
           id: _nextTempAssetId--,
           name: name,
           amount: amount,
+          curr: normalizedCurr,
         );
         _liabilities = [..._liabilities, tempAsset];
         return true;
@@ -2345,7 +2347,7 @@ class AppState extends ChangeNotifier {
           id: asset.id,
           name: name,
           amount: amount,
-          curr: type == 'cash' ? normalizedCurr : asset.curr,
+          curr: normalizedCurr,
         );
       }).toList();
     }
@@ -2386,8 +2388,12 @@ class AppState extends ChangeNotifier {
 
     final result = switch (type) {
       'cash' => await _api.addCashAsset(name, amount, curr: normalizedCurr),
-      'other' => await _api.addOtherAsset(name, amount),
-      'liability' => await _api.addLiability(name, amount),
+      'other' => await _api.addOtherAsset(name, amount, curr: normalizedCurr),
+      'liability' => await _api.addLiability(
+        name,
+        amount,
+        curr: normalizedCurr,
+      ),
       _ => const AssetActionResult.failure('不支持的资产类型'),
     };
     if (!result.ok) {
@@ -2479,9 +2485,19 @@ class AppState extends ChangeNotifier {
         curr: normalizedCurr,
       );
     } else if (type == 'other') {
-      result = await _api.updateOtherAsset(id, name, amount);
+      result = await _api.updateOtherAsset(
+        id,
+        name,
+        amount,
+        curr: normalizedCurr,
+      );
     } else if (type == 'liability') {
-      result = await _api.updateLiability(id, name, amount);
+      result = await _api.updateLiability(
+        id,
+        name,
+        amount,
+        curr: normalizedCurr,
+      );
     } else {
       return const AssetActionResult.failure('不支持的资产类型');
     }

@@ -8,6 +8,7 @@ import {
   readRefreshToken,
   readStoredUser,
 } from './auth'
+import { computeDisplayCostPrice } from './costBasis'
 import { toNumber } from './format'
 
 export type MarketCode = 'a' | 'hk' | 'us' | 'fund'
@@ -350,7 +351,7 @@ const rows = computed(() => {
   return state.portfolio.map((item) => {
     const quote = state.quotes[item.code] || {}
     const qty = toNumber(item.qty)
-    const costPrice = toNumber(item.price)
+    const rawCostPrice = toNumber(item.price)
     const yclose = toNumber(quote.yclose)
     const currentPrice = firstPositiveNumber(
       quote.price,
@@ -358,7 +359,7 @@ const rows = computed(() => {
       quote.premarket_price,
       quote.after_hours_price,
       yclose,
-      costPrice,
+      rawCostPrice,
     )
     const adjustment = toNumber(item.adjustment)
     const market = inferMarket(item)
@@ -373,7 +374,8 @@ const rows = computed(() => {
     const dayPnlAggregateEnabled = dayPnlDisplayEnabled && (marketTradingDay || usExtendedActive)
 
     const value = currentPrice * qty
-    const cost = costPrice * qty
+    const cost = rawCostPrice * qty
+    const displayCostPrice = computeDisplayCostPrice(rawCostPrice, qty, adjustment)
     const totalPnl = value - cost + adjustment
     const dayPnlDisplay = dayPnlDisplayEnabled ? (currentPrice - yclose) * qty : 0
     const dayPnlRateDisplay = dayPnlDisplayEnabled ? ((currentPrice - yclose) / yclose) * 100 : 0
@@ -385,7 +387,9 @@ const rows = computed(() => {
       ...item,
       market,
       qty,
-      costPrice,
+      costPrice: rawCostPrice,
+      rawCostPrice,
+      displayCostPrice,
       currentPrice,
       yclose,
       value,

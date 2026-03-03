@@ -1,8 +1,7 @@
-import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../config/theme.dart';
+
 import '../models/asset.dart';
 import '../providers/app_state.dart';
 import 'top_toast.dart';
@@ -11,12 +10,20 @@ class AddAssetDialog extends StatefulWidget {
   final String? fixedAssetType; // cash | other | liability
   final Asset? editingAsset;
   final BuildContext? hostContext;
+  final Set<String>? allowedAssetTypes;
+  final String? initialCashCurrency;
+  final bool lockCashCurrency;
+  final bool returnCreatedAssetId;
 
   const AddAssetDialog({
     super.key,
     this.fixedAssetType,
     this.editingAsset,
     this.hostContext,
+    this.allowedAssetTypes,
+    this.initialCashCurrency,
+    this.lockCashCurrency = false,
+    this.returnCreatedAssetId = false,
   });
 
   @override
@@ -24,42 +31,86 @@ class AddAssetDialog extends StatefulWidget {
 }
 
 class _AddAssetDialogState extends State<AddAssetDialog> {
-  static const List<String> _supportedCashCurrencies = <String>[
-    'CNY',
-    'USD',
-    'HKD',
+  static const Key nameFieldKey = Key('add_asset_name_field');
+  static const Key amountFieldKey = Key('add_asset_amount_field');
+  static const Key currencyTriggerKey = Key('add_asset_currency_trigger');
+  static const Key submitButtonKey = Key('add_asset_submit_button');
+  static const Key cancelButtonKey = Key('add_asset_cancel_button');
+
+  static const _typeOrder = <String>['cash', 'other', 'liability'];
+  static const _currencies = <({String code, String name, String flag})>[
+    (code: 'CNY', name: '人民币', flag: '🇨🇳'),
+    (code: 'USD', name: '美元', flag: '🇺🇸'),
+    (code: 'HKD', name: '港币', flag: '🇭🇰'),
   ];
 
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
+  final _nameFocusNode = FocusNode();
+  final _amountFocusNode = FocusNode();
+  final LayerLink _currencyLink = LayerLink();
+  final GlobalKey _currencyTargetKey = GlobalKey();
 
+  OverlayEntry? _currencyOverlayEntry;
+
+  late final Set<String> _allowedTypes;
   String _assetType = 'cash';
   String _cashCurrency = 'CNY';
+
   bool _saving = false;
+
+  String? _nameError;
+  String? _amountError;
   String? _errorText;
+
   bool get _isEdit => widget.editingAsset != null;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.fixedAssetType != null) {
-      _assetType = widget.fixedAssetType!;
-    }
-    if (widget.editingAsset != null) {
-      _nameController.text = widget.editingAsset!.name;
-      _amountController.text = _formatAmountInput(widget.editingAsset!.amount);
-      final curr = widget.editingAsset!.curr.trim().toUpperCase();
-      if (_supportedCashCurrencies.contains(curr)) {
-        _cashCurrency = curr;
-      }
-    }
+  Color get _kSurface => const Color(0xFF13151B);
+  Color get _kSurface2 => const Color(0xFF1A1D25);
+  Color get _kSurface3 => const Color(0xFF20242E);
+  Color get _kBorder => const Color(0x12FFFFFF);
+  Color get _kBorderActive => const Color(0x73D4AF64);
+  Color get _kGold => const Color(0xFFD4AF64);
+  Color get _kGoldDim => const Color(0x1FD4AF64);
+  Color get _kText => const Color(0xFFE4E5EA);
+  Color get _kTextMuted => const Color(0xFF575D6E);
+  Color get _kGreen => const Color(0xFF3ECF82);
+  Color get _kRed => const Color(0xFFF05A55);
+  Color get _kBlueStart => const Color(0xFF5B8DEF);
+  Color get _kBlueEnd => const Color(0xFF4A7BE0);
+
+  LinearGradient get _blueGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [_kBlueStart, _kBlueEnd],
+  );
+
+  TextStyle _dm({double? size, FontWeight? weight, Color? color}) {
+    return GoogleFonts.dmSans(fontSize: size, fontWeight: weight, color: color);
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _amountController.dispose();
-    super.dispose();
+  TextStyle _mono({double? size, FontWeight? weight, Color? color}) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+    );
+  }
+
+  String _normalizeCurrency(String? raw) {
+    final code = (raw ?? '').trim().toUpperCase();
+    if (code == 'USD' || code == 'HKD' || code == 'CNY') {
+      return code;
+    }
+    return 'CNY';
+  }
+
+  String _formatAmountInput(double amount) {
+    final rounded = amount.roundToDouble();
+    if (rounded == amount) {
+      return rounded.toStringAsFixed(0);
+    }
+    return amount.toString();
   }
 
   String _typeLabel(String type) {
@@ -75,272 +126,805 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     }
   }
 
-  String _formatAmountInput(double amount) {
-    final rounded = amount.roundToDouble();
-    if (rounded == amount) {
-      return rounded.toStringAsFixed(0);
-    }
-    return amount.toString();
-  }
-
-  String _currencyLabel(String curr) {
-    switch (curr) {
-      case 'USD':
-        return '美元 (USD)';
-      case 'HKD':
-        return '港元 (HKD)';
+  ({String id, String label, Color color}) _typeOption(String type) {
+    switch (type) {
+      case 'cash':
+        return (id: 'cash', label: '💰 现金资产', color: _kGreen);
+      case 'other':
+        return (id: 'other', label: '📦 其他资产', color: _kBlueStart);
+      case 'liability':
       default:
-        return '人民币 (CNY)';
+        return (id: 'liability', label: '💳 我的负债', color: _kRed);
     }
   }
 
-  Future<void> _save(AppState appState) async {
+  List<String> get _orderedAllowedTypes {
+    return _typeOrder.where(_allowedTypes.contains).toList(growable: false);
+  }
+
+  bool get _showTypeTabs {
+    if (widget.fixedAssetType != null) return false;
+    return _orderedAllowedTypes.length > 1;
+  }
+
+  bool get _canChangeCurrency {
+    return !widget.lockCashCurrency;
+  }
+
+  List<Asset> _assetsByType(AppState appState, String type) {
+    switch (type) {
+      case 'cash':
+        return appState.cashAssets;
+      case 'other':
+        return appState.otherAssets;
+      case 'liability':
+        return appState.liabilities;
+      default:
+        return const <Asset>[];
+    }
+  }
+
+  Set<int> _assetIdsByType(AppState appState, String type) {
+    return _assetsByType(
+      appState,
+      type,
+    ).map((asset) => asset.id ?? 0).where((id) => id > 0).toSet();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final normalizedAllowed =
+        (widget.allowedAssetTypes ?? const {'cash', 'other', 'liability'})
+            .map((item) => item.trim())
+            .where((item) => _typeOrder.contains(item))
+            .toSet();
+
+    _allowedTypes = normalizedAllowed.isEmpty
+        ? <String>{'cash', 'other', 'liability'}
+        : normalizedAllowed;
+
+    if (widget.fixedAssetType != null &&
+        _typeOrder.contains(widget.fixedAssetType)) {
+      _allowedTypes.add(widget.fixedAssetType!);
+      _assetType = widget.fixedAssetType!;
+    } else {
+      _assetType = _orderedAllowedTypes.first;
+    }
+
+    _cashCurrency = _normalizeCurrency(widget.initialCashCurrency);
+
+    if (widget.editingAsset != null) {
+      _nameController.text = widget.editingAsset!.name;
+      _amountController.text = _formatAmountInput(widget.editingAsset!.amount);
+      final curr = _normalizeCurrency(widget.editingAsset!.curr);
+      _cashCurrency = curr;
+    }
+
+    _nameFocusNode.addListener(_onFocusChanged);
+    _amountFocusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _hideCurrencyOverlay(updateState: false);
+    _nameFocusNode.removeListener(_onFocusChanged);
+    _amountFocusNode.removeListener(_onFocusChanged);
+    _nameController.dispose();
+    _amountController.dispose();
+    _nameFocusNode.dispose();
+    _amountFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Size _targetSize(GlobalKey key) {
+    final targetContext = key.currentContext;
+    if (targetContext == null) return const Size(280, 40);
+    final box = targetContext.findRenderObject();
+    if (box is! RenderBox) return const Size(280, 40);
+    return box.size;
+  }
+
+  void _hideCurrencyOverlay({bool updateState = true}) {
+    _currencyOverlayEntry?.remove();
+    _currencyOverlayEntry = null;
+    if (!mounted) return;
+    if (updateState) {
+      setState(() {});
+    }
+  }
+
+  void _showCurrencyOverlay() {
+    if (_saving || !_canChangeCurrency) return;
+    if (_currencyOverlayEntry != null) {
+      _currencyOverlayEntry?.markNeedsBuild();
+      return;
+    }
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _currencyOverlayEntry = OverlayEntry(
+      builder: (_) {
+        final width = _targetSize(_currencyTargetKey).width;
+        final offset = Offset(0, _targetSize(_currencyTargetKey).height + 6);
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _hideCurrencyOverlay,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _currencyLink,
+              showWhenUnlinked: false,
+              offset: offset,
+              child: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: width,
+                  child: _buildCurrencyOverlayCard(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    overlay.insert(_currencyOverlayEntry!);
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildCurrencyOverlayCard() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        final opacity = value.clamp(0.0, 1.0).toDouble();
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - opacity) * -5),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: _kSurface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _kBorderActive, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.55),
+              blurRadius: 36,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          child: ListView.separated(
+            padding: EdgeInsets.zero,
+            primary: false,
+            shrinkWrap: true,
+            itemCount: _currencies.length,
+            separatorBuilder: (_, __) => Divider(height: 1, color: _kBorder),
+            itemBuilder: (context, index) {
+              final option = _currencies[index];
+              final selected = option.code == _cashCurrency;
+              return InkWell(
+                onTap: () {
+                  setState(() => _cashCurrency = option.code);
+                  _hideCurrencyOverlay();
+                },
+                child: Container(
+                  color: selected ? _kGoldDim : Colors.transparent,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(option.flag, style: _mono(size: 16, color: _kText)),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          option.code,
+                          style: _mono(
+                            size: 13,
+                            weight: FontWeight.w600,
+                            color: _kText,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          option.name,
+                          style: _dm(size: 12, color: _kTextMuted),
+                        ),
+                      ),
+                      if (selected) Icon(Icons.check, size: 13, color: _kGold),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+
     final name = _nameController.text.trim();
-    final amountStr = _amountController.text.trim();
-
-    if (name.isEmpty || amountStr.isEmpty) {
-      setState(() => _errorText = '请填写名称和金额');
-      return;
-    }
-
-    final amount = double.tryParse(amountStr);
-    if (amount == null || amount <= 0) {
-      setState(() => _errorText = '请输入有效金额');
-      return;
-    }
+    final amountText = _amountController.text.trim();
+    final amount = double.tryParse(amountText);
 
     setState(() {
-      _saving = true;
+      _nameError = null;
+      _amountError = null;
       _errorText = null;
     });
 
+    var valid = true;
+    if (name.isEmpty) {
+      _nameError = '请输入账户名称';
+      valid = false;
+    }
+    if (amount == null || amount <= 0) {
+      _amountError = '请输入有效金额';
+      valid = false;
+    }
+    if (!valid) {
+      setState(() {});
+      return;
+    }
+
+    final appState = context.read<AppState>();
+    final toastContext = widget.hostContext ?? context;
+
     if (_isEdit && widget.editingAsset?.id == null) {
       setState(() {
-        _saving = false;
         _errorText = '资产ID无效，无法保存';
       });
       return;
     }
 
-    final toastContext = widget.hostContext ?? context;
-    final actionFuture = _isEdit
-        ? appState.updateAsset(
+    final beforeIds = _assetIdsByType(appState, _assetType);
+
+    setState(() {
+      _saving = true;
+    });
+
+    final result = _isEdit
+        ? await appState.updateAsset(
             type: _assetType,
             id: widget.editingAsset!.id!,
             name: name,
-            amount: amount,
-            curr: _assetType == 'cash' ? _cashCurrency : null,
-            awaitRefresh: false,
+            amount: amount!,
+            curr: _cashCurrency,
+            awaitRefresh: true,
           )
-        : appState.addAsset(
+        : await appState.addAsset(
             type: _assetType,
             name: name,
-            amount: amount,
-            curr: _assetType == 'cash' ? _cashCurrency : null,
-            awaitRefresh: false,
+            amount: amount!,
+            curr: _cashCurrency,
+            awaitRefresh: true,
           );
 
-    TopToast.showSuccess(toastContext, '已保存');
-    if (context.mounted) {
-      Navigator.pop(context);
+    if (!mounted) return;
+
+    if (!result.ok) {
+      setState(() {
+        _saving = false;
+        _errorText = result.message ?? '保存失败，请稍后重试';
+      });
+      if (toastContext.mounted) {
+        TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
+      }
+      return;
     }
 
-    unawaited(() async {
-      try {
-        final result = await actionFuture;
-        if (!toastContext.mounted) return;
-        if (!result.ok) {
-          TopToast.showError(toastContext, result.message ?? '保存失败，请稍后重试');
-          return;
+    int? createdId;
+    if (!_isEdit) {
+      final afterAssets = _assetsByType(
+        appState,
+        _assetType,
+      ).where((asset) => (asset.id ?? 0) > 0).toList();
+      final fresh =
+          afterAssets
+              .where((asset) => !beforeIds.contains(asset.id ?? 0))
+              .toList()
+            ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+
+      if (fresh.isNotEmpty) {
+        createdId = fresh.first.id;
+      } else {
+        final byName =
+            afterAssets.where((asset) => asset.name.trim() == name).toList()
+              ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+        if (byName.isNotEmpty) {
+          createdId = byName.first.id;
         }
-        TopToast.showSuccess(toastContext, '已保存');
-      } catch (e) {
-        if (!toastContext.mounted) return;
-        TopToast.showError(toastContext, '保存失败，请稍后重试');
       }
-    }());
+    }
+
+    if (toastContext.mounted) {
+      TopToast.showSuccess(toastContext, _isEdit ? '已保存' : '已创建');
+    }
+
+    if (widget.returnCreatedAssetId && !_isEdit) {
+      Navigator.of(context).pop(createdId);
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
-  Widget _buildTypeChips() {
-    final options = [
-      {'value': 'cash', 'label': '现金资产'},
-      {'value': 'other', 'label': '其他资产'},
-      {'value': 'liability', 'label': '我的负债'},
-    ];
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: options.map((opt) {
-        final isSelected = _assetType == opt['value'];
-        return ChoiceChip(
-          label: Text(opt['label']!),
-          selected: isSelected,
-          onSelected: (_) => setState(() => _assetType = opt['value']!),
-          selectedColor: AppTheme.accent.withOpacity(0.25),
-          backgroundColor: AppTheme.bgCard,
-          labelStyle: TextStyle(
-            color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
-            fontSize: FontSize.base,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: BorderSide(
-              color: isSelected ? AppTheme.accent : AppTheme.border,
-              width: 1,
+  Widget _buildTypeTabs() {
+    final options = _orderedAllowedTypes
+        .map(_typeOption)
+        .toList(growable: false);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _kSurface2,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          for (final option in options)
+            Expanded(
+              child: GestureDetector(
+                onTap: _saving
+                    ? null
+                    : () {
+                        setState(() {
+                          _assetType = option.id;
+                          _hideCurrencyOverlay(updateState: false);
+                        });
+                      },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _assetType == option.id
+                        ? _kSurface3
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
+                    boxShadow: _assetType == option.id
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    option.label,
+                    style: _dm(
+                      size: 12,
+                      weight: FontWeight.w500,
+                      color: _assetType == option.id
+                          ? option.color
+                          : _kTextMuted,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        );
-      }).toList(),
+        ],
+      ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final appState = context.read<AppState>();
-    final title = _isEdit
-        ? '编辑${_typeLabel(_assetType)}'
-        : (widget.fixedAssetType == null
-              ? '记一笔'
-              : '添加${_typeLabel(_assetType)}');
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+  Widget _buildCurrencySelector() {
+    final selected = _currencies.firstWhere(
+      (item) => item.code == _cashCurrency,
+    );
+    final isOverlayOpen = _currencyOverlayEntry != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('币种', style: _dm(size: 11, color: _kTextMuted)),
+        const SizedBox(height: 5),
+        CompositedTransformTarget(
+          link: _currencyLink,
           child: Container(
-            padding: const EdgeInsets.all(20),
+            key: _currencyTargetKey,
+            height: 38,
             decoration: BoxDecoration(
-              color: AppTheme.bgCard.withOpacity(
-                AppTheme.isLight ? 0.98 : 0.88,
-              ),
-              borderRadius: BorderRadius.circular(18),
+              color: _kSurface2,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: AppTheme.isLight
-                    ? AppTheme.border.withOpacity(0.7)
-                    : Colors.white.withOpacity(0.08),
+                color: isOverlayOpen ? _kBorderActive : _kBorder,
                 width: 1,
               ),
-              gradient: LinearGradient(
-                colors: AppTheme.dialogGradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: AppTheme.cardShadow,
+              boxShadow: isOverlayOpen
+                  ? [
+                      BoxShadow(
+                        color: const Color(0x12D4AF64),
+                        blurRadius: 8,
+                        spreadRadius: 3,
+                      ),
+                    ]
+                  : null,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: FontSize.xxl,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: Spacing.lg),
-                if (widget.fixedAssetType == null) ...[
-                  Text(
-                    '资产类型',
-                    style: TextStyle(
-                      fontSize: FontSize.base,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTypeChips(),
-                  const SizedBox(height: Spacing.lg),
-                ],
-                TextField(
-                  controller: _nameController,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: '名称',
-                    hintText: '例如：工资 / 现金 / 车贷',
-                  ),
-                ),
-                const SizedBox(height: Spacing.lg),
-                TextField(
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: '金额',
-                    hintText: '请输入金额（正数）',
-                  ),
-                ),
-                if (_assetType == 'cash') ...[
-                  const SizedBox(height: Spacing.lg),
-                  DropdownButtonFormField<String>(
-                    value: _cashCurrency,
-                    items: _supportedCashCurrencies
-                        .map(
-                          (curr) => DropdownMenuItem<String>(
-                            value: curr,
-                            child: Text(_currencyLabel(curr)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _saving
-                        ? null
-                        : (value) {
-                            if (value == null) return;
-                            setState(() => _cashCurrency = value);
-                          },
-                    decoration: const InputDecoration(
-                      labelText: '币种',
-                      hintText: '选择现金账户币种',
-                    ),
-                    dropdownColor: AppTheme.bgCard,
-                    style: TextStyle(color: AppTheme.textPrimary),
-                  ),
-                ],
-                if (_errorText != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _errorText!,
-                    style: TextStyle(
-                      color: AppTheme.danger,
-                      fontSize: FontSize.base,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: Spacing.xl),
-                Row(
+            child: InkWell(
+              key: currencyTriggerKey,
+              onTap: (_saving || !_canChangeCurrency)
+                  ? null
+                  : () {
+                      if (_currencyOverlayEntry != null) {
+                        _hideCurrencyOverlay();
+                      } else {
+                        _showCurrencyOverlay();
+                      }
+                    },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
+                child: Row(
                   children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: _saving
-                            ? null
-                            : () => Navigator.pop(context),
-                        child: Text('取消'),
+                    Text(selected.flag, style: _mono(size: 16, color: _kText)),
+                    const SizedBox(width: 8),
+                    Text(
+                      selected.code,
+                      style: _mono(
+                        size: 13,
+                        weight: FontWeight.w600,
+                        color: _kText,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                     Expanded(
-                      child: ElevatedButton(
-                        onPressed: _saving ? null : () => _save(appState),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text('保存'),
+                      child: Text(
+                        selected.name,
+                        style: _dm(size: 12, color: _kTextMuted),
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: isOverlayOpen ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_down,
+                        size: 18,
+                        color: _kTextMuted,
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRequiredLabel(String text) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 4,
+          decoration: const BoxDecoration(
+            color: Color(0xFF5B8DEF),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(text, style: _dm(size: 11, color: _kTextMuted)),
+      ],
+    );
+  }
+
+  Widget _buildFieldContainer({
+    required Widget child,
+    required bool active,
+    required bool hasError,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _kSurface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: hasError
+              ? _kRed.withOpacity(0.6)
+              : active
+              ? const Color(0x8C5B8DEF)
+              : _kBorder,
+          width: 1,
+        ),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: const Color(0x145B8DEF),
+                  blurRadius: 8,
+                  spreadRadius: 3,
+                ),
+              ]
+            : null,
+      ),
+      child: child,
+    );
+  }
+
+  String _dialogTitle() {
+    if (_isEdit) return '编辑${_typeLabel(_assetType)}';
+    if (widget.fixedAssetType != null) return '添加${_typeLabel(_assetType)}';
+    return '记一笔';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSubmit = !_saving;
+    final suffixCurrency = _cashCurrency;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: _kSurface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _kBorder),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0xB3000000),
+                    blurRadius: 64,
+                    offset: Offset(0, 24),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _dialogTitle(),
+                                style: _dm(
+                                  size: 14,
+                                  weight: FontWeight.w600,
+                                  color: _kText,
+                                ),
+                              ),
+                              Text(
+                                '账户名称和金额为必填项',
+                                style: _dm(size: 11, color: _kTextMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _saving
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: _kSurface2,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close,
+                              size: 10,
+                              color: _kTextMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_showTypeTabs) ...[
+                          _buildTypeTabs(),
+                          const SizedBox(height: 14),
+                        ],
+                        _buildCurrencySelector(),
+                        const SizedBox(height: 14),
+                        _buildRequiredLabel('账户名称'),
+                        const SizedBox(height: 5),
+                        _buildFieldContainer(
+                          active: _nameFocusNode.hasFocus,
+                          hasError: _nameError != null,
+                          child: TextField(
+                            key: nameFieldKey,
+                            controller: _nameController,
+                            focusNode: _nameFocusNode,
+                            enabled: !_saving,
+                            style: _dm(size: 13, color: _kText),
+                            decoration: InputDecoration(
+                              hintText: '如：招商银行储蓄卡',
+                              hintStyle: _dm(size: 12, color: _kTextMuted),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 9,
+                              ),
+                              border: InputBorder.none,
+                            ),
+                            onChanged: (_) {
+                              if (_nameError != null) {
+                                setState(() => _nameError = null);
+                              }
+                            },
+                          ),
+                        ),
+                        if (_nameError != null) ...[
+                          const SizedBox(height: 4),
+                          Text(_nameError!, style: _dm(size: 10, color: _kRed)),
+                        ],
+                        const SizedBox(height: 12),
+                        _buildRequiredLabel('金额'),
+                        const SizedBox(height: 5),
+                        _buildFieldContainer(
+                          active: _amountFocusNode.hasFocus,
+                          hasError: _amountError != null,
+                          child: TextField(
+                            key: amountFieldKey,
+                            controller: _amountController,
+                            focusNode: _amountFocusNode,
+                            enabled: !_saving,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            style: _mono(size: 13, color: _kText),
+                            decoration: InputDecoration(
+                              hintText: '请输入金额',
+                              hintStyle: _dm(size: 12, color: _kTextMuted),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 9,
+                              ),
+                              border: InputBorder.none,
+                              suffixIcon: suffixCurrency == null
+                                  ? null
+                                  : Padding(
+                                      padding: const EdgeInsets.only(right: 10),
+                                      child: Text(
+                                        suffixCurrency,
+                                        style: _dm(
+                                          size: 11,
+                                          color: _kTextMuted,
+                                        ),
+                                      ),
+                                    ),
+                              suffixIconConstraints: const BoxConstraints(
+                                minHeight: 24,
+                              ),
+                            ),
+                            onChanged: (_) {
+                              if (_amountError != null) {
+                                setState(() => _amountError = null);
+                              }
+                            },
+                          ),
+                        ),
+                        if (_amountError != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _amountError!,
+                            style: _dm(size: 10, color: _kRed),
+                          ),
+                        ],
+                        if (_errorText != null) ...[
+                          const SizedBox(height: 8),
+                          Text(_errorText!, style: _dm(size: 11, color: _kRed)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 44,
+                            child: OutlinedButton(
+                              key: cancelButtonKey,
+                              onPressed: _saving
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: _kSurface2,
+                                side: BorderSide(color: _kBorder, width: 1),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                '取消',
+                                style: _dm(
+                                  size: 13,
+                                  weight: FontWeight.w600,
+                                  color: _kTextMuted,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SizedBox(
+                            height: 44,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: _blueGrad,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: ElevatedButton(
+                                key: submitButtonKey,
+                                onPressed: canSubmit ? _submit : null,
+                                style: ElevatedButton.styleFrom(
+                                  elevation: 0,
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                    : Text(
+                                        _isEdit ? '保存' : '创建账户',
+                                        style: _dm(
+                                          size: 13,
+                                          weight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

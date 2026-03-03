@@ -399,7 +399,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           now.difference(_lastResumeAt!) > const Duration(seconds: 15);
       _lastResumeAt = now;
       _startPriceTimer(immediate: shouldImmediate);
-      _startSyncTimer(immediate: false); // Resume triggers manual check below, timer starts for future
+      _startSyncTimer(
+        immediate: false,
+      ); // Resume triggers manual check below, timer starts for future
 
       final pausedAt = _lastPausedAt;
       if (pausedAt != null) {
@@ -456,7 +458,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   Future<void> _runDataSync() async {
     if (!mounted) return;
     // 静默增量刷新核心业务数据（不强制拉行情以免和 priceTimer 冲突）
-    await context.read<AppState>().refreshByVersion(force: false, refreshQuotes: false);
+    await context.read<AppState>().refreshByVersion(
+      force: false,
+      refreshQuotes: false,
+    );
   }
 
   void _scheduleNextSyncTimer() {
@@ -539,12 +544,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   }
 
   void _showAddInvestment() {
-    showDialog(
+    showInvestTradeSheet(
       context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (dialogContext) =>
-          InvestTradeDialog(hostContext: context, mode: 'add'),
+      mode: 'add',
+      hostContext: context,
+      presentation: InvestTradeDialogPresentation.centered,
     );
   }
 

@@ -8,6 +8,66 @@
 
 ---
 
+## v1.0.24 - 投资弹窗 UI v2 统一、摊薄成本展示、资金账户规则收口
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Web | Backend | Docs
+
+### Summary
+- 投资页（Flutter + Web）成本位改为“卖出后摊薄成本”展示，编辑/修正仍使用原始录入成本，保持会计口径不变。
+- Flutter `InvestTradeDialog` 全面升级为 v2 视觉与交互：统一居中弹窗、搜索框内嵌按钮、账户下拉简化、模式交互统一。
+- 卖出场景资金账户规则收口：仅允许同币种现金账户回款；缺账户时通过下拉内 `+ 添加现金账户` 即地补建并自动选中。
+- `AddAssetDialog` 重构为全局复用的新 UI 组件（新增/编辑统一），并支持资金账户场景的现金-only包装调用。
+- 修复“其他资产/我的负债币种不可选”和“币种下拉偏移重叠”问题，币种选择与后端入参全链路打通。
+- 客户端版本升级为 `1.0.24`，后端默认客户端版本同步 `1.0.24`。
+
+### Added
+- Web 新增摊薄成本计算模块：`web/src/shared/costBasis.ts`。
+- Web 新增单测：`web/tests/costBasis.test.ts`（覆盖正值、负值、`qty=0` 回退）。
+- Flutter 新增资金账户创建包装弹窗：`flutter/lib/widgets/add_funding_account_dialog.dart`（复用 `AddAssetDialog`）。
+- Flutter 投资页新增摊薄成本回归测试：`flutter/test/invest_page_diluted_cost_test.dart`。
+
+### Changed
+- 成本展示口径：
+  - Flutter `invest_page.dart` 成本位显示 `displayCostPrice = (qty*price-adjustment)/qty`；
+  - Web `store.ts` 增加 `rawCostPrice/displayCostPrice` 双字段，列表显示使用 `displayCostPrice`；
+  - Web 编辑弹窗默认值改为 `rawCostPrice`（原始均价），避免误把展示值写回。
+- 投资弹窗交互（Flutter）：
+  - 入口统一 `showInvestTradeSheet`，并在首页/投资页交易入口切为 `presentation: centered`；
+  - 搜索结果仅在点击“搜索”后显示；输入/聚焦阶段不自动下拉；
+  - 搜索按钮改为输入框内嵌 suffix，去掉外置拼接按钮；
+  - 账户下拉去掉搜索与币种筛选 UI，仅保留选择列表（可滚动）；
+  - `add/buy` 允许 `外部资金/初始转入`，并仅展示同币种现金账户；
+  - `sell` 仅允许同币种现金账户，缺账户时下拉内引导 `+ 添加现金账户`。
+- 统一资产弹窗（Flutter）：
+  - `AddAssetDialog` 升级为新 UI，首页添加资产、资产详情新增/编辑、资金账户补建全部复用；
+  - 币种展示改为 emoji 国旗（`🇨🇳/🇺🇸/🇭🇰`）；
+  - 现金/其他/负债三类均可选择币种并透传。
+- `AppState` 资产链路：
+  - `addAsset/updateAsset` 对 `other/liability` 也传递 `curr`；
+  - optimistic add/update 对三类资产统一保留 `curr`。
+
+### Fixed
+- 修复卖出无同币种账户时主界面冗余红色告警卡片问题（改为下拉内引导，不打断主流程）。
+- 修复搜索未触发前出现下拉结果的问题（严格改为“点击搜索触发”）。
+- 修复币种下拉 Overlay 锚点偏移导致与触发框重叠的问题（锚点改绑触发框本体）。
+- 修复“其他资产/我的负债”选择币种后未真正持久化的问题（前端状态层已透传 API）。
+
+### Verification
+- Flutter：
+  - `flutter test test/widget_test.dart test/invest_trade_dialog_test.dart test/invest_page_diluted_cost_test.dart`
+- Web：
+  - `cd web && npm run test`
+  - `cd web && npm run build`
+- 真机：
+  - 无线调试验收多轮通过（投资弹窗交互、资金账户规则、下拉布局）。
+
+### Notes
+- 本次仅改展示口径，不改后端投资会计入账字段：`price` 仍为原始均价，`adjustment` 仍为累计调整值。
+- 卖出回款同币种约束仍在前端执行；后续可补后端硬校验进一步收口。
+
+---
+
 ## v1.0.23 - 现金账户币种完善、交易同币种结算收敛、零余额账户支持
 - 发布状态：Released
 - 发布类型：Patch

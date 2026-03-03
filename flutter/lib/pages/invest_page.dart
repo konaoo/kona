@@ -482,15 +482,22 @@ class InvestPageState extends State<InvestPage> {
     AppState appState,
     bool isCompact,
   ) {
+    final qty = (item.qty as num?)?.toDouble() ?? 0.0;
+    final rawCostPrice = (item.price as num?)?.toDouble() ?? 0.0;
+    final adjustment = (item.adjustment as num?)?.toDouble() ?? 0.0;
+    final displayCostPrice = qty.abs() > 1e-9
+        ? ((rawCostPrice * qty) - adjustment) / qty
+        : rawCostPrice;
+
     // 检查价格数据是否有效
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
     final currentPrice = hasValidPrice
         ? priceInfo.price
-        : (item.price > 0 ? item.price : 0.0);
+        : (rawCostPrice > 0 ? rawCostPrice : 0.0);
     final sessionLabel = _priceSessionLabel(item, priceInfo);
-    final mv = currentPrice * item.qty;
-    final costTotal = item.price * item.qty;
-    final holdingPnl = mv - costTotal + item.adjustment;
+    final mv = currentPrice * qty;
+    final costTotal = rawCostPrice * qty;
+    final holdingPnl = mv - costTotal + adjustment;
     final holdingPnlPct = costTotal.abs() > 0
         ? (holdingPnl / costTotal.abs() * 100)
         : 0.0;
@@ -501,10 +508,10 @@ class InvestPageState extends State<InvestPage> {
       priceInfo: priceInfo,
     );
     final dailyPnl = (dayPnlEnabled && hasValidPrice)
-        ? priceInfo.change * item.qty * rate
+        ? priceInfo.change * qty * rate
         : 0.0;
     final dailyBase = (dayPnlEnabled && hasValidPrice && priceInfo.yclose > 0)
-        ? priceInfo.yclose * item.qty * rate
+        ? priceInfo.yclose * qty * rate
         : 0.0;
     final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
     final dailyColor = AppState.getPnlColor(dailyPnl);
@@ -523,15 +530,12 @@ class InvestPageState extends State<InvestPage> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => showDialog(
+        onTap: () => showInvestTradeSheet(
           context: context,
-          barrierDismissible: false,
-          barrierColor: Colors.black.withOpacity(0.5),
-          builder: (_) => InvestTradeDialog(
-            mode: 'trade',
-            item: item,
-            hostContext: context,
-          ),
+          mode: 'trade',
+          item: item,
+          hostContext: context,
+          presentation: InvestTradeDialogPresentation.centered,
         ),
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
@@ -600,7 +604,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        _formatDisplayQty(item.qty),
+                        _formatDisplayQty(qty),
                         style: TextStyle(
                           fontSize: subValueSize,
                           color: AppTheme.textTertiary,
@@ -630,7 +634,7 @@ class InvestPageState extends State<InvestPage> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${item.currencySymbol}${_formatDisplayPrice(item.price, item: item)}',
+                        '${item.currencySymbol}${_formatDisplayPrice(displayCostPrice, item: item)}',
                         style: TextStyle(
                           fontSize: subValueSize,
                           color: AppTheme.textTertiary,

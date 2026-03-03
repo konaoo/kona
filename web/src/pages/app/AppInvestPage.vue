@@ -105,7 +105,7 @@
               <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty, row) }}</td>
               <td class="td-price">
                 <div class="price-cell">
-                  <span class="price-line cost">{{ formatMoney(row.costPrice, rowCurrency(row)) }}</span>
+                  <span class="price-line cost">{{ formatMoney(row.displayCostPrice ?? row.costPrice, rowCurrency(row)) }}</span>
                   <span class="price-line current">{{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
                 </div>
               </td>
@@ -574,7 +574,7 @@ function openModal(type: ModalType, row?: Record<string, unknown>) {
   form.code = String(row?.code || '')
   form.name = String(row?.name || '')
   form.qty = toNumber(row?.qty, 0)
-  form.price = toNumber(row?.costPrice ?? row?.price, 0)
+  form.price = toNumber(row?.rawCostPrice ?? row?.costPrice ?? row?.price, 0)
   form.amount = 0
   form.curr = String(row?.curr || 'CNY')
   form.market = inferMarketType(row)

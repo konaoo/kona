@@ -118,6 +118,7 @@ npm run build
 - [`docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md`](./docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md)
 - [`docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md`](./docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md)
 - [`docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`](./docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md)
+- [`docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md`](./docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md)
 
 Web 专项：
 
@@ -159,10 +160,11 @@ Web 专项：
 
 客户端版本号规范（新增）：
 
-1. 对外版本号固定使用 `1.0.x`，不再使用 `+build`（示例：`1.0.22`、`1.0.23`）。
+1. 对外版本号固定使用 `1.0.x`，不再使用 `+build`（示例：`1.0.22`、`1.0.23`、`1.0.24`）。
 2. 安卓内部安装序号（`versionCode`）由 `versionName` 的 patch 段自动映射：
    - `1.0.22 -> 22`
    - `1.0.23 -> 23`
+   - `1.0.24 -> 24`
 3. 后端 `/api/app/version` 继续返回 `buildNumber` 兼容旧端；默认与 `version` 的 patch 段对齐。
 4. 版本展示统一为 `v1.0.x`，不再展示 `+build`。
 
@@ -211,6 +213,7 @@ curl -I http://114.132.238.12/download/apk
 
 ## 7. 最近版本摘要
 
+- `v1.0.24`：投资页成本位升级为“摊薄成本”展示（Flutter + Web）；`InvestTradeDialog` 升级为 v2 居中弹窗与新交互；卖出缺同币种账户时下拉内补建现金账户；统一 `AddAssetDialog` 新 UI 并修复 other/liability 币种透传与下拉定位问题。
 - `v1.0.23`：Flutter 现金资产弹窗新增币种选择（默认 CNY）；交易弹窗改为同币种账户过滤并支持“缺账户一键创建”；后端现金资产金额校验放宽为 `>=0`（其他资产/负债仍 `>0`），版本升级到 `1.0.23`。
 - `v1.0.22`：Flutter 添加资产弹窗改为“输入后手动点搜索”并引入自定义数字键盘（数量两位小数、负号规则按字段限制）；分析页收益日历修复历史月份切换后无法回到当月问题；B股币种全端修复（`sh900* -> USD`、`sz200* -> HKD`）并增加后端历史数据自动回填。
 - `v1.0.21`：登录错误提示统一为“用户名/密码错误，请重试”；邀请码页/用户群页文案默认左对齐；我的页面移除“问题反馈”；版本号规范切换为无 `+build`（安卓内部序号自动映射 patch）。
@@ -228,69 +231,69 @@ curl -I http://114.132.238.12/download/apk
 
 ---
 
-## 8. v1.0.23 详细改动说明（本次）
+## 8. v1.0.24 详细改动说明（本次）
 
 范围说明：
 
-1. 本次只落地 `Flutter + Backend + Docs`，Web 按当前决策未改动。
-2. 目标是“降低多币种交易误操作”，并减少新建外币账户的操作成本。
+1. 本次落地 `Flutter + Web + Backend(版本号) + Docs`。
+2. 目标是“统一投资弹窗新 UI + 收口资金账户规则 + 成本位切换为摊薄展示”。
 
-Flutter 交互改造：
+核心改动：
 
-1. 现金资产弹窗（`AddAssetDialog`）新增币种下拉：
-   - 可选：`CNY / USD / HKD`
-   - 默认：`CNY`
-   - 编辑时会回填原币种
-2. 交易弹窗（`InvestTradeDialog`）资金账户选择改为“按交易目标币种过滤”：
-   - 买入/卖出时只显示同币种现金账户
-   - 非卖出模式仍保留“外部资金/初始转入”选项
-3. 卖出/买入缺少同币种账户时，弹窗内新增“一键创建XXX账户”：
-   - 卖出：创建 `资产回款账户`
-   - 买入：创建 `资产资金账户`
-   - 创建成功后自动选中新账户
-4. 一键创建账户初始金额调整为 `0.0`（与后端新校验一致）。
-
-AppState 行为收口：
-
-1. `addAsset/updateAsset` 增加 `curr` 参数透传，现金资产不再丢币种。
-2. 买入/卖出到现金账户时增加同币种强校验：
-   - 币种不匹配直接拦截并提示
-   - 防止错误走跨币种隐式换算
-
-后端规则调整：
-
-1. 现金资产接口（add/update）金额校验由 `> 0` 放宽为 `>= 0`。
-2. 其他资产/负债保持原规则：金额必须 `> 0`。
-3. 负数金额仍统一拦截（返回 `INVALID_AMOUNT` / `INVALID_VALUE`）。
+1. 投资页“成本/现价”中的成本改为摊薄成本展示：
+   - `displayCostPrice = (qty * price - adjustment) / qty`
+   - `qty <= 0` 回退原始 `price`
+   - 允许负数展示，不截断
+2. Flutter 与 Web 编辑弹窗默认“平均成本”仍使用原始 `price`，不回写摊薄展示值。
+3. `InvestTradeDialog` 升级：
+   - 首页添加投资 + 持仓点击入口统一居中弹窗
+   - 搜索结果仅点击搜索后展示（输入/聚焦不自动下拉）
+   - 搜索按钮内嵌输入框（suffix）
+   - 资金账户下拉去搜索化，仅可滚动选择
+4. 资金账户规则：
+   - `add/buy`：允许 `外部资金/初始转入` + 同币种现金账户
+   - `sell`：仅同币种现金账户；缺账户时在下拉内 `+ 添加现金账户` 补建
+   - 主界面移除“未找到 HKD 资金账户”红色提示卡片
+5. 统一新增/编辑资产弹窗 `AddAssetDialog` 为新 UI 组件：
+   - 首页添加资产、资产详情新增/编辑、资金账户补建均复用
+   - 币种展示改为 emoji 国旗：`🇨🇳/🇺🇸/🇭🇰`
+6. 修复 other/liability 币种链路：
+   - UI 可选币种
+   - `AppState` add/update + optimistic 全部透传 `curr`
+   - 后端 API 入参全链路生效
 
 版本信息：
 
-1. Flutter 客户端版本：`1.0.23`
-2. 后端默认客户端版本（`/api/app/version` 默认）：`1.0.23`
+1. Flutter 客户端版本：`1.0.24`
+2. 后端默认客户端版本（`/api/app/version` 默认）：`1.0.24`
 
 验收清单（建议逐条勾选）：
 
-1. 添加/编辑现金资产时，币种默认 `CNY`，可切换 `USD/HKD`。
-2. 添加“其他资产/负债”时，不出现币种下拉。
-3. 现金资产 `amount=0` 可新增、可更新。
-4. 现金资产负数金额被后端拒绝。
-5. 卖出外币持仓时，若无对应币种回款账户，出现“一键创建USD/HKD账户”。
-6. 一键创建后账户自动可选，交易可继续提交。
-7. 买入/卖出若账户币种不匹配，前端会被拦截并显示明确错误。
+1. 投资页成本位显示为摊薄值；卖出后成本可下降（含负数场景）。
+2. 编辑弹窗平均成本默认值仍是原始录入成本，不是摊薄值。
+3. 添加资产与持仓交易弹窗均居中显示。
+4. 搜索仅在点击搜索按钮后展示下拉，且按钮在输入框内部。
+5. `add/buy` 无同币种现金账户时可选择外部资金，且不展示非目标币种账户。
+6. `sell` 无同币种现金账户时，下拉内可补建现金账户，成功后自动选中。
+7. `其他资产/我的负债` 也可选择币种，且保存后币种正确落库。
+8. 币种下拉框位置正常，无顶部/重叠偏移。
 
 验证命令（本次已执行）：
 
 ```bash
 cd /Users/kona/Desktop/kaka/kona_repo/flutter
-flutter test test/invest_trade_dialog_test.dart test/widget_test.dart
+flutter test test/widget_test.dart test/invest_trade_dialog_test.dart test/invest_page_diluted_cost_test.dart
 ```
 
 ```bash
-cd /Users/kona/Desktop/kaka/kona_repo/kona_tool
-JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_cash_asset_amount_allows_zero
-JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_cash_asset_negative_amount_rejected
-JWT_SECRET=dummy python3 -m unittest tests.test_api_baseline.ApiBaselineTests.test_liability_invalid_amount_has_code
+cd /Users/kona/Desktop/kaka/kona_repo/web
+npm run test
+npm run build
 ```
+
+详细交接文档见：
+
+- [`docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md`](./docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md)
 
 ---
 

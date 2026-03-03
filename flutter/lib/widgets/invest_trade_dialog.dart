@@ -1,14 +1,112 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../models/asset_action_result.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
+import 'add_funding_account_dialog.dart';
 import 'top_toast.dart';
+
+enum InvestTradeDialogPresentation { sheet, centered }
+
+Future<T?> showInvestTradeSheet<T>({
+  required BuildContext context,
+  required String mode,
+  PortfolioItem? item,
+  BuildContext? hostContext,
+  InvestTradeDialogPresentation presentation =
+      InvestTradeDialogPresentation.sheet,
+}) {
+  if (presentation == InvestTradeDialogPresentation.centered) {
+    return showDialog<T>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x8C000000),
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: InvestTradeDialog(
+          mode: mode,
+          item: item,
+          hostContext: hostContext,
+          presentation: presentation,
+        ),
+      ),
+    );
+  }
+
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x8C000000),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: InvestTradeDialog(
+        mode: mode,
+        item: item,
+        hostContext: hostContext,
+        presentation: presentation,
+      ),
+    ),
+  );
+}
+
+class _InvestSheetTokens {
+  final Color bg;
+  final Color surface;
+  final Color surface2;
+  final Color surface3;
+  final Color border;
+  final Color borderActive;
+  final Color gold;
+  final Color goldDim;
+  final Color goldGlow;
+  final Color text;
+  final Color textMuted;
+  final Color textSub;
+  final Color green;
+  final Color red;
+  final Color blueStart;
+  final Color blueEnd;
+  final Color divider;
+
+  const _InvestSheetTokens({
+    required this.bg,
+    required this.surface,
+    required this.surface2,
+    required this.surface3,
+    required this.border,
+    required this.borderActive,
+    required this.gold,
+    required this.goldDim,
+    required this.goldGlow,
+    required this.text,
+    required this.textMuted,
+    required this.textSub,
+    required this.green,
+    required this.red,
+    required this.blueStart,
+    required this.blueEnd,
+    required this.divider,
+  });
+
+  LinearGradient get blueGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [blueStart, blueEnd],
+  );
+}
 
 class _SearchCacheEntry {
   final List<dynamic> results;
@@ -21,12 +119,14 @@ class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
   final BuildContext? hostContext;
+  final InvestTradeDialogPresentation presentation;
 
   const InvestTradeDialog({
     super.key,
     required this.mode,
     this.item,
     this.hostContext,
+    this.presentation = InvestTradeDialogPresentation.sheet,
   });
 
   @override
@@ -35,14 +135,20 @@ class InvestTradeDialog extends StatefulWidget {
 
 class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _queryController = TextEditingController();
+  final _queryFocusNode = FocusNode();
+  final _qtyFocusNode = FocusNode();
+  final _amountFocusNode = FocusNode();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
   final _amountController = TextEditingController();
   final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
+  final LayerLink _searchFieldLink = LayerLink();
+  final LayerLink _cashFieldLink = LayerLink();
+  final GlobalKey _searchTargetKey = GlobalKey();
+  final GlobalKey _cashTargetKey = GlobalKey();
 
   bool _saving = false;
-  bool _creatingCashAccount = false;
   bool _inlineClosed = false;
   bool _searching = false;
   bool _navLoading = false;
@@ -56,10 +162,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   int? _selectedCashAssetId;
   int _searchSeq = 0;
   int _navFetchSeq = 0;
+  OverlayEntry? _searchOverlayEntry;
+  OverlayEntry? _cashOverlayEntry;
+  bool _searchOverlayVisible = false;
+  bool _cashOverlayVisible = false;
+  bool _searchTriggered = false;
+  bool _syncingAmountQty = false;
   final Map<String, _SearchCacheEntry> _searchCache =
       <String, _SearchCacheEntry>{};
   static const Duration _searchCacheTtl = Duration(seconds: 20);
-  static const double _autoCreateCashSeedAmount = 0.0;
   static const int _maxRecentCashAssets = 5;
   static final List<int> _recentCashAssetIds = <int>[];
   static final List<TextInputFormatter> _qtyInputFormatters =
@@ -70,6 +181,18 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       <TextInputFormatter>[
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
       ];
+  static const Key _sheetRootKey = Key('invest_sheet_root');
+  static const Key _sheetHandleKey = Key('invest_sheet_handle');
+  static const Key _searchFieldKey = Key('invest_search_field');
+  static const Key _searchButtonKey = Key('invest_search_button');
+  static const Key _cashTriggerKey = Key('invest_cash_trigger');
+  static const Key _priceFieldKey = Key('invest_price_field');
+  static const Key _qtyFieldKey = Key('invest_qty_field');
+  static const Key _amountFieldKey = Key('invest_amount_field');
+  static const Key _adjustPriceFieldKey = Key('invest_adjust_price_field');
+  static const Key _adjustAmountFieldKey = Key('invest_adjust_amount_field');
+  static const Key _submitButtonKey = Key('invest_submit_button');
+  static const Key _cancelButtonKey = Key('invest_cancel_button');
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
@@ -77,15 +200,87 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isTrade => widget.mode == 'trade';
   bool get _isAdjust => _tradeMode == 'adjust';
 
+  _InvestSheetTokens get _tokens {
+    if (AppTheme.isLight) {
+      return const _InvestSheetTokens(
+        bg: Color(0xFFF5F2ED),
+        surface: Color(0xFFFFFFFF),
+        surface2: Color(0xFFF4F6FA),
+        surface3: Color(0xFFE9EDF5),
+        border: Color(0x140E1628),
+        borderActive: Color(0x73D4AF64),
+        gold: Color(0xFFD4AF64),
+        goldDim: Color(0x1FD4AF64),
+        goldGlow: Color(0x12D4AF64),
+        text: Color(0xFF1F2A37),
+        textMuted: Color(0xFF7B8494),
+        textSub: Color(0xFF8C94A4),
+        green: Color(0xFF16A34A),
+        red: Color(0xFFE45656),
+        blueStart: Color(0xFF5B8DEF),
+        blueEnd: Color(0xFF4A7BE0),
+        divider: Color(0x140E1628),
+      );
+    }
+    return const _InvestSheetTokens(
+      bg: Color(0xFF0D0E12),
+      surface: Color(0xFF13151B),
+      surface2: Color(0xFF1A1D25),
+      surface3: Color(0xFF20242E),
+      border: Color(0x12FFFFFF),
+      borderActive: Color(0x73D4AF64),
+      gold: Color(0xFFD4AF64),
+      goldDim: Color(0x1FD4AF64),
+      goldGlow: Color(0x12D4AF64),
+      text: Color(0xFFE4E5EA),
+      textMuted: Color(0xFF575D6E),
+      textSub: Color(0xFF888FA0),
+      green: Color(0xFF3ECF82),
+      red: Color(0xFFF05A55),
+      blueStart: Color(0xFF5B8DEF),
+      blueEnd: Color(0xFF4A7BE0),
+      divider: Color(0x1CFFFFFF),
+    );
+  }
+
+  TextStyle _dm({
+    double? size,
+    FontWeight? weight,
+    Color? color,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.dmSans(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
+  }
+
+  TextStyle _mono({
+    double? size,
+    FontWeight? weight,
+    Color? color,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _queryController.addListener(_onInputControllerChanged);
-    _priceController.addListener(_onInputControllerChanged);
-    _qtyController.addListener(_onInputControllerChanged);
-    _amountController.addListener(_onInputControllerChanged);
+    _priceController.addListener(_onPriceChanged);
+    _qtyController.addListener(_onQtyChanged);
+    _amountController.addListener(_onAmountChanged);
     _adjustPriceController.addListener(_onInputControllerChanged);
     _adjustController.addListener(_onInputControllerChanged);
+    _queryFocusNode.addListener(_onQueryFocusChanged);
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
@@ -110,11 +305,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   @override
   void dispose() {
     _queryController.removeListener(_onInputControllerChanged);
-    _priceController.removeListener(_onInputControllerChanged);
-    _qtyController.removeListener(_onInputControllerChanged);
-    _amountController.removeListener(_onInputControllerChanged);
+    _priceController.removeListener(_onPriceChanged);
+    _qtyController.removeListener(_onQtyChanged);
+    _amountController.removeListener(_onAmountChanged);
     _adjustPriceController.removeListener(_onInputControllerChanged);
     _adjustController.removeListener(_onInputControllerChanged);
+    _queryFocusNode.removeListener(_onQueryFocusChanged);
+    _hideSearchOverlay(updateState: false);
+    _hideCashOverlay(updateState: false);
+    _queryFocusNode.dispose();
+    _qtyFocusNode.dispose();
+    _amountFocusNode.dispose();
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
@@ -127,6 +328,83 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   void _onInputControllerChanged() {
     if (!mounted) return;
     setState(() {});
+    _markOverlaysNeedsBuild();
+  }
+
+  void _setControllerText(TextEditingController controller, String nextText) {
+    if (controller.text == nextText) return;
+    controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+  }
+
+  double? _parsePositive(String text) {
+    final value = double.tryParse(text.trim());
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  void _syncAmountFromPriceQty() {
+    if (_syncingAmountQty || _isAdjust || _isFundAmountMode()) return;
+    final price = _parsePositive(_priceController.text);
+    final qty = _parsePositive(_qtyController.text);
+    if (price == null || qty == null) {
+      if (_amountController.text.isNotEmpty) {
+        _syncingAmountQty = true;
+        _setControllerText(_amountController, '');
+        _syncingAmountQty = false;
+      }
+      return;
+    }
+    final amount = price * qty;
+    final decimals = _isCurrentFundTarget() ? 4 : 2;
+    final text = _formatInputNumber(amount, decimals: decimals);
+    _syncingAmountQty = true;
+    _setControllerText(_amountController, text);
+    _syncingAmountQty = false;
+  }
+
+  void _syncQtyFromAmount() {
+    if (_syncingAmountQty || _isAdjust || _isFundAmountMode()) return;
+    final price = _parsePositive(_priceController.text);
+    final amount = _parsePositive(_amountController.text);
+    if (price == null || amount == null) return;
+    final rawQty = amount / price;
+    if (rawQty <= 0) return;
+    final isFund = _isCurrentFundTarget();
+    final qty = isFund
+        ? (rawQty * 10000).floor() / 10000
+        : rawQty.floorToDouble();
+    final nextQty = isFund ? _formatQtyDisplay(qty) : qty.toStringAsFixed(0);
+    _syncingAmountQty = true;
+    _setControllerText(_qtyController, nextQty);
+    _syncingAmountQty = false;
+  }
+
+  void _onPriceChanged() {
+    if (_syncingAmountQty) return;
+    _syncAmountFromPriceQty();
+    _onInputControllerChanged();
+  }
+
+  void _onQtyChanged() {
+    if (_syncingAmountQty) return;
+    _syncAmountFromPriceQty();
+    _onInputControllerChanged();
+  }
+
+  void _onAmountChanged() {
+    if (_syncingAmountQty) return;
+    if (_amountFocusNode.hasFocus) {
+      _syncQtyFromAmount();
+    }
+    _onInputControllerChanged();
+  }
+
+  void _onQueryFocusChanged() {
+    if (!_queryFocusNode.hasFocus || !_isAdd || _selected != null) return;
+    _hideSearchOverlay();
   }
 
   String _formatDisplayCode(String code) {
@@ -198,7 +476,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     setState(() {
       _selected = null;
-      _results = [];
       _errorText = null;
       _searchErrorText = null;
       _navErrorText = null;
@@ -208,7 +485,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _searching = false;
       _searchSeq += 1;
       _navFetchSeq += 1;
+      _searchTriggered = false;
+      _results = [];
     });
+    _hideSearchOverlay();
+    if (next.isEmpty) return;
   }
 
   Future<void> _onSearchTap() async {
@@ -216,13 +497,21 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final query = _queryController.text.trim();
     if (query.isEmpty) {
       setState(() {
-        _selected = null;
-        _results = [];
-        _searchErrorText = '请输入代码或名称后再搜索';
+        _searchErrorText = '请输入代码或名称';
+        _searchTriggered = false;
       });
+      _hideSearchOverlay();
       return;
     }
     await _search(query);
+    if (!mounted) return;
+    if ((_searchErrorText ?? '').isNotEmpty) {
+      setState(() => _searchTriggered = false);
+      _hideSearchOverlay();
+      return;
+    }
+    setState(() => _searchTriggered = true);
+    _showSearchOverlay();
   }
 
   Future<void> _search(String query) async {
@@ -236,6 +525,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         _searching = false;
         _searchErrorText = null;
       });
+      _markOverlaysNeedsBuild();
       return;
     }
 
@@ -250,20 +540,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       results = await appState.searchStocks(query);
     } catch (_) {
       if (!mounted || seq != _searchSeq) return;
-      if (_queryController.text.trim() != query) return;
       setState(() {
         _searching = false;
         _searchErrorText = '搜索失败，请稍后重试';
       });
+      _markOverlaysNeedsBuild();
       return;
     }
     if (!mounted) return;
     if (seq != _searchSeq) return;
-
-    // 放弃过期的结果（如用户已清空或改变了搜索词）
-    if (_queryController.text.trim() != query) {
-      return;
-    }
 
     _searchCache[key] = _SearchCacheEntry(results: results, savedAt: now);
     setState(() {
@@ -271,9 +556,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _searching = false;
       _searchErrorText = null;
     });
+    _markOverlaysNeedsBuild();
   }
 
   void _closeDialog() {
+    _hideSearchOverlay();
+    _hideCashOverlay();
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
       navigator.pop();
@@ -398,51 +686,23 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return 'CNY';
   }
 
-  Future<void> _quickCreateCashAccount({
-    required AppState appState,
-    required String actionMode,
+  Future<void> _openAddFundingAccountDialog({
     required String targetCurrency,
   }) async {
-    if (_saving || _creatingCashAccount) return;
+    if (_saving) return;
+    final createdId = await showAddFundingAccountDialog(
+      context: context,
+      hostContext: widget.hostContext ?? context,
+      initialCurrency: targetCurrency,
+      lockCurrency: true,
+      forceAssetTypeCash: true,
+    );
+    if (!mounted || createdId == null) return;
     setState(() {
-      _creatingCashAccount = true;
+      _selectedCashAssetId = createdId;
       _errorText = null;
     });
-
-    final accountName = actionMode == 'sell' ? '资产回款账户' : '资产资金账户';
-    final result = await appState.addAsset(
-      type: 'cash',
-      name: accountName,
-      amount: _autoCreateCashSeedAmount,
-      curr: targetCurrency,
-      awaitRefresh: true,
-    );
-
-    if (!mounted) return;
-    if (!result.ok) {
-      setState(() {
-        _creatingCashAccount = false;
-        _errorText = result.message ?? '创建账户失败，请稍后重试';
-      });
-      return;
-    }
-
-    final matched =
-        appState.cashAssets
-            .where(
-              (asset) =>
-                  (asset.id ?? 0) > 0 &&
-                  _normalizeCurrencyCode(asset.curr) == targetCurrency,
-            )
-            .toList()
-          ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
-
-    setState(() {
-      _creatingCashAccount = false;
-      if (matched.isNotEmpty) {
-        _selectedCashAssetId = matched.first.id;
-      }
-    });
+    _rememberCashAsset(createdId);
   }
 
   void _syncDefaultCashAsset() {
@@ -810,6 +1070,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   void _setTradeMode(String mode) {
     if (_saving || _tradeMode == mode) return;
+    _hideSearchOverlay();
+    _hideCashOverlay();
     FocusScope.of(context).unfocus();
     setState(() {
       _tradeMode = mode;
@@ -870,7 +1132,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             (_selectedCashAssetId! <= 0 && _selectedCashAssetId != -999))) {
       setState(() {
         _saving = false;
-        _errorText = '请选择资金来源账户';
+        _errorText = '请选择资金账户';
       });
       return;
     }
@@ -1195,208 +1457,883 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
   }
 
-  Widget _buildSearchResults() {
-    if (_results.isEmpty) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxHeight: 200),
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border, width: 1),
+  void _markOverlaysNeedsBuild() {
+    _searchOverlayEntry?.markNeedsBuild();
+    _cashOverlayEntry?.markNeedsBuild();
+  }
+
+  Size _targetSize(GlobalKey key) {
+    final targetContext = key.currentContext;
+    if (targetContext == null) return const Size(280, 40);
+    final box = targetContext.findRenderObject();
+    if (box is! RenderBox) return const Size(280, 40);
+    return box.size;
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value == null) return null;
+    return double.tryParse(value.toString().replaceAll(',', ''));
+  }
+
+  double? _firstValidNumber(
+    Map<String, dynamic> item,
+    List<String> keys, {
+    bool allowZero = false,
+  }) {
+    for (final key in keys) {
+      final value = _asDouble(item[key]);
+      if (value == null) continue;
+      if (!allowZero && value == 0) continue;
+      return value;
+    }
+    return null;
+  }
+
+  double? _searchResultPrice(Map<String, dynamic> item, AppState appState) {
+    final direct = _firstValidNumber(item, const [
+      'price',
+      'latest',
+      'latest_price',
+      'current_price',
+      'last_price',
+      'close',
+    ]);
+    if (direct != null && direct > 0) return direct;
+    final code = item['code']?.toString() ?? '';
+    if (code.isEmpty) return null;
+    final info = appState.resolvePriceInfoByCode(code);
+    if (info != null && info.price > 0) {
+      return info.price;
+    }
+    return null;
+  }
+
+  double? _searchResultChangePct(Map<String, dynamic> item, AppState appState) {
+    final pct = _firstValidNumber(item, const [
+      'changePct',
+      'change_pct',
+      'chg',
+      'pct',
+      'change_percent',
+    ], allowZero: true);
+    if (pct != null) return pct;
+
+    final code = item['code']?.toString() ?? '';
+    if (code.isNotEmpty) {
+      final info = appState.resolvePriceInfoByCode(code);
+      if (info != null) return info.changePct;
+    }
+
+    final amt = _firstValidNumber(item, const [
+      'change',
+      'amt',
+      'delta',
+    ], allowZero: true);
+    final yclose = _firstValidNumber(item, const [
+      'yclose',
+      'pre_close',
+      'prev_close',
+    ], allowZero: false);
+    if (amt != null && yclose != null && yclose != 0) {
+      return amt / yclose * 100;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _filteredSearchResults() {
+    final query = _queryController.text.trim().toLowerCase();
+    return _results.whereType<Map<String, dynamic>>().where((item) {
+      if (query.isEmpty) return true;
+      final name = (item['name']?.toString() ?? '').toLowerCase();
+      final code = (item['code']?.toString() ?? '').toLowerCase();
+      return name.contains(query) || code.contains(query);
+    }).toList();
+  }
+
+  void _hideSearchOverlay({bool updateState = true}) {
+    _searchOverlayEntry?.remove();
+    _searchOverlayEntry = null;
+    if (updateState && mounted) {
+      setState(() => _searchOverlayVisible = false);
+    } else {
+      _searchOverlayVisible = false;
+    }
+  }
+
+  void _hideCashOverlay({bool updateState = true}) {
+    _cashOverlayEntry?.remove();
+    _cashOverlayEntry = null;
+    if (updateState && mounted) {
+      setState(() => _cashOverlayVisible = false);
+    } else {
+      _cashOverlayVisible = false;
+    }
+  }
+
+  void _showSearchOverlay() {
+    if (!_isAdd || _selected != null) return;
+    if (!_searchTriggered) return;
+    if (_queryController.text.trim().isEmpty) return;
+    _hideCashOverlay();
+    if (_searchOverlayEntry != null) {
+      _markOverlaysNeedsBuild();
+      return;
+    }
+    final overlay = Overlay.of(context, rootOverlay: true);
+    if (mounted) {
+      setState(() => _searchOverlayVisible = true);
+    } else {
+      _searchOverlayVisible = true;
+    }
+    _searchOverlayEntry = OverlayEntry(
+      builder: (overlayContext) => Stack(
+        children: [
+          CompositedTransformFollower(
+            link: _searchFieldLink,
+            showWhenUnlinked: false,
+            offset: Offset(0, _targetSize(_searchTargetKey).height + 6),
+            child: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: _targetSize(_searchTargetKey).width,
+                child: _buildSearchOverlayCard(),
+              ),
+            ),
+          ),
+        ],
       ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        itemCount: _results.length,
-        itemBuilder: (context, index) {
-          final item = _results[index] as Map<String, dynamic>;
-          final name = item['name'] ?? '';
-          final typeName = item['type_name'] ?? '';
-          final code = _formatDisplayCode(item['code'] ?? '');
-          return InkWell(
-            onTap: () {
-              final codeRaw = item['code']?.toString() ?? '';
-              final isFund = _isFundAsset(
-                assetType: item['asset_type']?.toString(),
-                code: codeRaw,
-              );
-              setState(() {
-                _selected = item;
-                _queryController.text = name;
-                _results = [];
-                _errorText = null;
-                _fundInputMode = isFund ? 'amount' : 'qty';
-                _amountController.clear();
-                _navErrorText = null;
-                _navLoading = false;
-              });
-              if (isFund) {
-                unawaited(_prefillFundNavForCode(codeRaw));
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: FontSize.base,
-                    ),
+    );
+    overlay.insert(_searchOverlayEntry!);
+  }
+
+  void _showCashOverlay({
+    required List<Asset> cashOptions,
+    required String targetCurrency,
+    required bool showAddCashAction,
+  }) {
+    if (_saving) return;
+    if (cashOptions.isEmpty && !showAddCashAction) return;
+    _hideSearchOverlay();
+    if (_cashOverlayEntry != null) {
+      _markOverlaysNeedsBuild();
+      return;
+    }
+    final overlay = Overlay.of(context, rootOverlay: true);
+    if (mounted) {
+      setState(() => _cashOverlayVisible = true);
+    } else {
+      _cashOverlayVisible = true;
+    }
+    _cashOverlayEntry = OverlayEntry(
+      builder: (overlayContext) => Stack(
+        children: [
+          CompositedTransformFollower(
+            link: _cashFieldLink,
+            showWhenUnlinked: false,
+            offset: Offset(0, _targetSize(_cashTargetKey).height + 6),
+            child: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: _targetSize(_cashTargetKey).width,
+                child: _buildCashOverlayCard(
+                  options: cashOptions,
+                  targetCurrency: targetCurrency,
+                  showAddCashAction: showAddCashAction,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    overlay.insert(_cashOverlayEntry!);
+  }
+
+  void _selectSearchResult(Map<String, dynamic> item) {
+    final codeRaw = item['code']?.toString() ?? '';
+    final isFund = _isFundAsset(
+      assetType: item['asset_type']?.toString(),
+      code: codeRaw,
+    );
+    setState(() {
+      _selected = item;
+      _queryController.text = item['name']?.toString() ?? '';
+      _errorText = null;
+      _searchErrorText = null;
+      _fundInputMode = isFund ? 'amount' : 'qty';
+      _priceController.clear();
+      _qtyController.clear();
+      _amountController.clear();
+      _navErrorText = null;
+      _navLoading = false;
+    });
+    _hideSearchOverlay();
+    FocusScope.of(context).unfocus();
+    if (isFund) {
+      unawaited(_prefillFundNavForCode(codeRaw));
+    }
+  }
+
+  void _clearSelectedAsset() {
+    setState(() {
+      _selected = null;
+      _queryController.clear();
+      _priceController.clear();
+      _qtyController.clear();
+      _amountController.clear();
+      _errorText = null;
+      _searchErrorText = null;
+      _results = [];
+      _fundInputMode = 'qty';
+      _navLoading = false;
+      _navErrorText = null;
+      _searchTriggered = false;
+    });
+    _hideSearchOverlay();
+    _queryFocusNode.requestFocus();
+  }
+
+  Widget _buildMarketTag(String typeName) {
+    final mapping = <String, ({Color fg, Color bg})>{
+      '港股': (fg: const Color(0xFFE06B3A), bg: const Color(0x1FE06B3A)),
+      '美股': (fg: const Color(0xFF5B8DEF), bg: const Color(0x1F5B8DEF)),
+      'A股': (fg: const Color(0xFF3ECF82), bg: const Color(0x1F3ECF82)),
+      '基金': (fg: const Color(0xFFB57ADB), bg: const Color(0x1FB57ADB)),
+    };
+    final style = mapping[typeName] ?? mapping['A股']!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: style.bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        typeName.isEmpty ? 'A股' : typeName,
+        style: _dm(
+          size: 10,
+          weight: FontWeight.w600,
+          color: style.fg,
+          letterSpacing: 0.03,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchOverlayCard() {
+    final appState = context.read<AppState>();
+    final rows = _filteredSearchResults();
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        final opacity = value.clamp(0.0, 1.0).toDouble();
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - opacity) * -5),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 280),
+        decoration: BoxDecoration(
+          color: _tokens.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _tokens.border, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.55),
+              blurRadius: 36,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: _searching
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '搜索中...',
+                    style: _dm(size: 12, color: _tokens.textSub),
                   ),
-                  const SizedBox(height: 2),
-                  Row(
+                ),
+              )
+            : rows.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '暂无匹配结果',
+                    style: _dm(size: 12, color: _tokens.textSub),
+                  ),
+                ),
+              )
+            : ListView.separated(
+                padding: EdgeInsets.zero,
+                primary: false,
+                shrinkWrap: true,
+                itemCount: rows.length,
+                separatorBuilder: (_, __) =>
+                    Divider(height: 1, color: _tokens.border),
+                itemBuilder: (context, index) {
+                  final item = rows[index];
+                  final codeRaw = item['code']?.toString() ?? '';
+                  final name = item['name']?.toString() ?? '';
+                  final typeName = item['type_name']?.toString() ?? 'A股';
+                  final code = _formatDisplayCode(codeRaw);
+                  final isFund = _isFundAsset(
+                    assetType: item['asset_type']?.toString(),
+                    code: codeRaw,
+                  );
+                  final price = _searchResultPrice(item, appState);
+                  final changePct = _searchResultChangePct(item, appState);
+                  final selectedCode = _selected?['code']?.toString() ?? '';
+                  final selected =
+                      selectedCode == codeRaw && selectedCode.isNotEmpty;
+                  return InkWell(
+                    onTap: () => _selectSearchResult(item),
+                    child: Container(
+                      color: selected ? _tokens.goldDim : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name,
+                                  style: _dm(
+                                    size: 13,
+                                    weight: FontWeight.w500,
+                                    color: _tokens.text,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    _buildMarketTag(typeName),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      code,
+                                      style: _mono(
+                                        size: 11,
+                                        color: _tokens.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                price == null
+                                    ? '--'
+                                    : _formatInputNumber(
+                                        price,
+                                        decimals: isFund ? 4 : 2,
+                                      ),
+                                style: _mono(size: 13, color: _tokens.text),
+                              ),
+                              Text(
+                                changePct == null
+                                    ? '--'
+                                    : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
+                                style: _dm(
+                                  size: 10,
+                                  weight: FontWeight.w500,
+                                  color: (changePct ?? 0) >= 0
+                                      ? _tokens.green
+                                      : _tokens.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (selected) ...[
+                            const SizedBox(width: 8),
+                            Icon(Icons.check, size: 12, color: _tokens.gold),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedPill() {
+    final item = _selected ?? <String, dynamic>{};
+    final appState = context.read<AppState>();
+    final codeRaw = item['code']?.toString() ?? '';
+    final code = _formatDisplayCode(item['code']?.toString() ?? '');
+    final name = item['name']?.toString() ?? '';
+    final typeName = item['type_name']?.toString() ?? 'A股';
+    final isFund = _isFundAsset(
+      assetType: item['asset_type']?.toString(),
+      code: codeRaw,
+    );
+    final price = _searchResultPrice(item, appState);
+    final changePct = _searchResultChangePct(item, appState);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: _tokens.goldDim,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _tokens.gold.withOpacity(0.2), width: 1),
+      ),
+      child: Row(
+        children: [
+          _buildMarketTag(typeName),
+          const SizedBox(width: 8),
+          Text(code, style: _mono(size: 12, color: _tokens.text)),
+          const SizedBox(width: 6),
+          Container(width: 1, height: 12, color: _tokens.border),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _dm(
+                size: 12,
+                weight: FontWeight.w500,
+                color: _tokens.text,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            price == null
+                ? '--'
+                : _formatInputNumber(price, decimals: isFund ? 4 : 2),
+            style: _mono(size: 12, color: _tokens.text),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            changePct == null
+                ? '--'
+                : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
+            style: _dm(
+              size: 10,
+              weight: FontWeight.w600,
+              color: (changePct ?? 0) >= 0 ? _tokens.green : _tokens.red,
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _clearSelectedAsset,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 17,
+              height: 17,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.07),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.close, size: 8, color: _tokens.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    final focused = _queryFocusNode.hasFocus || _searchOverlayVisible;
+    final field = Container(
+      key: _searchTargetKey,
+      decoration: BoxDecoration(
+        color: _tokens.surface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: focused ? const Color(0x996395EB) : _tokens.border,
+          width: 1,
+        ),
+        boxShadow: focused
+            ? [
+                BoxShadow(
+                  color: const Color(0x146395EB),
+                  blurRadius: 8,
+                  spreadRadius: 3,
+                ),
+              ]
+            : null,
+      ),
+      child: TextField(
+        key: _searchFieldKey,
+        controller: _queryController,
+        focusNode: _queryFocusNode,
+        textCapitalization: TextCapitalization.characters,
+        onChanged: _onQueryChanged,
+        style: _mono(size: 13, color: _tokens.text),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: '输入代码或名称',
+          hintStyle: _dm(size: 12, color: _tokens.textMuted),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 9,
+          ),
+          suffixIconConstraints: const BoxConstraints(minHeight: 30),
+          suffixIcon: Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: _tokens.blueGrad,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: InkWell(
+                key: _searchButtonKey,
+                onTap: _searching ? null : _onSearchTap,
+                borderRadius: BorderRadius.circular(5),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 6,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _marketBadge(typeName),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.search, size: 13, color: Colors.white),
+                      const SizedBox(width: 4),
                       Text(
-                        code,
-                        style: TextStyle(
-                          color: AppTheme.textTertiary,
-                          fontSize: FontSize.sm,
+                        _searching ? '搜索中' : '搜索',
+                        style: _dm(
+                          size: 11,
+                          weight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return CompositedTransformTarget(
+      link: _searchFieldLink,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.03),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
             ),
           );
         },
+        child: _selected == null
+            ? field
+            : KeyedSubtree(
+                key: const ValueKey<String>('selected-pill'),
+                child: _buildSelectedPill(),
+              ),
+      ),
+    );
+  }
+
+  String _accountEmoji(Asset asset) {
+    if (asset.id == -999) return '↗';
+    final lower = asset.name.toLowerCase();
+    if (lower.contains('微信')) return '💬';
+    if (lower.contains('支付')) return '💙';
+    return '🏦';
+  }
+
+  Color _accountBgColor(Asset asset) {
+    if (asset.id == -999) return const Color(0x1F5B8DEF);
+    final lower = asset.name.toLowerCase();
+    if (lower.contains('微信')) return const Color(0x1F3ECF82);
+    if (lower.contains('支付')) return const Color(0x1F5B8DEF);
+    return const Color(0x1FE74C3C);
+  }
+
+  Widget _buildCashOverlayCard({
+    required List<Asset> options,
+    required String targetCurrency,
+    required bool showAddCashAction,
+  }) {
+    final rows = options;
+    const itemHeight = 52.0;
+    final visibleRows = rows.length > 5 ? 5 : rows.length;
+    final listHeight = (visibleRows <= 0 ? 1 : visibleRows) * itemHeight;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        final opacity = value.clamp(0.0, 1.0).toDouble();
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - opacity) * -5),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 320),
+        decoration: BoxDecoration(
+          color: _tokens.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _tokens.border, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.55),
+              blurRadius: 36,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (rows.isEmpty && !showAddCashAction)
+              SizedBox(
+                height: 96,
+                child: Center(
+                  child: Text(
+                    '暂无可选账户',
+                    style: _dm(size: 12, color: _tokens.textSub),
+                  ),
+                ),
+              ),
+            if (rows.isNotEmpty)
+              SizedBox(
+                height: listHeight,
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    primary: false,
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) {
+                      final asset = rows[index];
+                      final selected = asset.id == _selectedCashAssetId;
+                      final amountText = asset.id == -999
+                          ? null
+                          : '${asset.curr} ${_formatInputNumber(asset.amount)}';
+                      return InkWell(
+                        onTap: () {
+                          setState(() => _selectedCashAssetId = asset.id);
+                          _rememberCashAsset(asset.id);
+                          _hideCashOverlay();
+                        },
+                        child: Container(
+                          color: selected
+                              ? _tokens.goldDim
+                              : Colors.transparent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 13,
+                            vertical: 11,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: _accountBgColor(asset),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  _accountEmoji(asset),
+                                  style: _dm(size: 15),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      asset.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _dm(
+                                        size: 13,
+                                        weight: FontWeight.w500,
+                                        color: _tokens.text,
+                                      ),
+                                    ),
+                                    if (amountText != null)
+                                      Text(
+                                        amountText,
+                                        style: _mono(
+                                          size: 11,
+                                          color: _tokens.textMuted,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (selected)
+                                Icon(
+                                  Icons.check,
+                                  size: 13,
+                                  color: _tokens.gold,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            if (showAddCashAction)
+              InkWell(
+                onTap: () {
+                  _hideCashOverlay();
+                  unawaited(
+                    _openAddFundingAccountDialog(
+                      targetCurrency: targetCurrency,
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: _tokens.border, width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0x1A5B8DEF),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0x595B8DEF),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          size: 13,
+                          color: Color(0xFF5B8DEF),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Text(
+                        '+ 添加现金账户',
+                        style: _dm(
+                          size: 13,
+                          weight: FontWeight.w500,
+                          color: const Color(0xFF5B8DEF),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        targetCurrency,
+                        style: _mono(size: 11, color: _tokens.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildTradeToggle() {
     if (!_isTrade) return const SizedBox.shrink();
-    return Row(
-      children: [
-        Expanded(
-          child: InkWell(
-            onTap: () => _setTradeMode('buy'),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: _tradeMode == 'buy'
-                    ? AppTheme.accent
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _tradeMode == 'buy'
-                      ? AppTheme.accent
-                      : AppTheme.border,
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                '买入',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _tradeMode == 'buy'
-                      ? AppTheme.textPrimary
-                      : AppTheme.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: InkWell(
-            onTap: () => _setTradeMode('sell'),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: _tradeMode == 'sell'
-                    ? AppTheme.danger
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _tradeMode == 'sell'
-                      ? AppTheme.danger
-                      : AppTheme.border,
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                '卖出',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _tradeMode == 'sell'
-                      ? AppTheme.textPrimary
-                      : AppTheme.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: InkWell(
-            onTap: () => _setTradeMode('adjust'),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: _tradeMode == 'adjust'
-                    ? AppTheme.accent
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _tradeMode == 'adjust'
-                      ? AppTheme.accent
-                      : AppTheme.border,
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                '调整',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _tradeMode == 'adjust'
-                      ? AppTheme.textPrimary
-                      : AppTheme.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFundInputModeToggle() {
-    if (!_isCurrentFundTarget()) return const SizedBox.shrink();
-    final isAmountMode = _isFundAmountMode();
-    Widget item(String value, String label) {
-      final selected = _fundInputMode == value;
+    Widget item(String mode, String label) {
+      final selected = _tradeMode == mode;
       return Expanded(
         child: InkWell(
-          onTap: _saving ? null : () => _setFundInputMode(value),
+          onTap: _saving ? null : () => _setTradeMode(mode),
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: selected ? AppTheme.accent : Colors.transparent,
+              color: selected ? _tokens.goldDim : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: selected ? AppTheme.accent : AppTheme.border,
+                color: selected ? _tokens.borderActive : _tokens.border,
                 width: 1,
               ),
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: selected ? AppTheme.textPrimary : AppTheme.textSecondary,
-                fontWeight: FontWeight.w600,
+              style: _dm(
+                size: 12,
+                weight: FontWeight.w600,
+                color: selected ? _tokens.text : _tokens.textMuted,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        item('buy', '买入'),
+        const SizedBox(width: 8),
+        item('sell', '卖出'),
+        const SizedBox(width: 8),
+        item('adjust', '调整'),
+      ],
+    );
+  }
+
+  Widget _buildFundInputModeToggle() {
+    if (!_isCurrentFundTarget()) return const SizedBox.shrink();
+    Widget item(String value, String label) {
+      final selected = _fundInputMode == value;
+      return Expanded(
+        child: InkWell(
+          onTap: _saving ? null : () => _setFundInputMode(value),
+          borderRadius: BorderRadius.circular(9),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            decoration: BoxDecoration(
+              color: selected ? _tokens.goldDim : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: selected ? _tokens.borderActive : _tokens.border,
+                width: 1,
+              ),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: _dm(
+                size: 12,
+                weight: FontWeight.w600,
+                color: selected ? _tokens.text : _tokens.textMuted,
               ),
             ),
           ),
@@ -1407,13 +2344,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '基金买入方式',
-          style: TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: FontSize.sm,
-          ),
-        ),
+        Text('基金买入方式', style: _dm(size: 11, color: _tokens.textMuted)),
         const SizedBox(height: 6),
         Row(
           children: [
@@ -1422,26 +2353,117 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             item('amount', '按金额'),
           ],
         ),
-        if (isAmountMode && _navLoading)
+        if (_isFundAmountMode() && _navLoading)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               '正在获取最新净值…',
-              style: TextStyle(
-                color: AppTheme.textTertiary,
-                fontSize: FontSize.xs,
-              ),
+              style: _dm(size: 11, color: _tokens.textSub),
             ),
           ),
-        if (isAmountMode && _navErrorText != null)
+        if (_isFundAmountMode() && _navErrorText != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               _navErrorText!,
-              style: TextStyle(color: AppTheme.danger, fontSize: FontSize.xs),
+              style: _dm(size: 11, color: _tokens.red),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildInputCell({
+    required String label,
+    required TextField field,
+    required bool focused,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
+        const SizedBox(height: 5),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: _tokens.surface2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: focused ? const Color(0x996395EB) : _tokens.border,
+              width: 1,
+            ),
+            boxShadow: focused
+                ? [
+                    BoxShadow(
+                      color: const Color(0x146395EB),
+                      blurRadius: 8,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                : null,
+          ),
+          child: field,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyCell({required String label, required String value}) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
+          const SizedBox(height: 5),
+          Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: _tokens.surface2,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _tokens.border, width: 1),
+            ),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              value,
+              style: _mono(
+                size: 14,
+                weight: FontWeight.w500,
+                color: _tokens.text,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextField _buildNumberField({
+    required Key key,
+    required TextEditingController controller,
+    required String hint,
+    required TextInputType keyboardType,
+    FocusNode? focusNode,
+    List<TextInputFormatter>? inputFormatters,
+    bool readOnly = false,
+  }) {
+    return TextField(
+      key: key,
+      controller: controller,
+      focusNode: focusNode,
+      readOnly: readOnly,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      style: _mono(size: 14, weight: FontWeight.w500, color: _tokens.text),
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        hintText: hint,
+        hintStyle: _mono(size: 13, color: _tokens.textMuted),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+      ),
     );
   }
 
@@ -1449,91 +2471,110 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_isTrade && _isAdjust) {
       return Column(
         children: [
-          TextField(
-            controller: _adjustPriceController,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: true,
+          _buildInputCell(
+            label: '平均成本',
+            focused: false,
+            field: _buildNumberField(
+              key: _adjustPriceFieldKey,
+              controller: _adjustPriceController,
+              hint: '0.00',
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+                signed: true,
+              ),
             ),
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: _compactDecoration('平均成本'),
           ),
-          const SizedBox(height: Spacing.md),
-          TextField(
-            controller: _adjustController,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: true,
+          const SizedBox(height: 8),
+          _buildInputCell(
+            label: '调整金额',
+            focused: false,
+            field: _buildNumberField(
+              key: _adjustAmountFieldKey,
+              controller: _adjustController,
+              hint: '0.00',
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+                signed: true,
+              ),
             ),
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: _compactDecoration('调整金额'),
           ),
         ],
       );
     }
 
-    final showFundMode = _isCurrentFundTarget();
     final amountMode = _isFundAmountMode();
+    final qtyPreview = _deriveFundQtyFromAmountNav();
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showFundMode) ...[
+        if (_isCurrentFundTarget()) ...[
           _buildFundInputModeToggle(),
-          const SizedBox(height: Spacing.md),
+          const SizedBox(height: 10),
         ],
-        TextField(
-          controller: _priceController,
-          keyboardType: const TextInputType.numberWithOptions(
-            decimal: true,
-            signed: true,
-          ),
-          style: TextStyle(color: AppTheme.textPrimary),
-          decoration: _compactDecoration(
-            amountMode ? '净值' : (_isAdd ? '买入成本价' : '价格'),
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
-        if (amountMode) ...[
-          TextField(
-            controller: _amountController,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: false,
-            ),
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: _compactDecoration('买入金额'),
-          ),
-          const SizedBox(height: 8),
-          Builder(
-            builder: (context) {
-              final qty = _deriveFundQtyFromAmountNav();
-              final text = qty == null ? '--' : _formatQtyDisplay(qty);
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '预计份额：$text',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: FontSize.sm,
+        Row(
+          children: [
+            Expanded(
+              child: _buildInputCell(
+                label: amountMode ? '净值' : '成本价',
+                focused: false,
+                field: _buildNumberField(
+                  key: _priceFieldKey,
+                  controller: _priceController,
+                  hint: '0.00',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
                   ),
                 ),
-              );
-            },
-          ),
-        ] else ...[
-          TextField(
-            controller: _qtyController,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: false,
+              ),
             ),
-            inputFormatters: showFundMode
-                ? _fundQtyInputFormatters
-                : _qtyInputFormatters,
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: _compactDecoration('数量'),
-          ),
-        ],
+            const SizedBox(width: 8),
+            amountMode
+                ? _buildReadOnlyCell(
+                    label: '数量',
+                    value: qtyPreview == null
+                        ? '--'
+                        : _formatQtyDisplay(qtyPreview),
+                  )
+                : Expanded(
+                    child: _buildInputCell(
+                      label: '数量',
+                      focused: _qtyFocusNode.hasFocus,
+                      field: _buildNumberField(
+                        key: _qtyFieldKey,
+                        controller: _qtyController,
+                        focusNode: _qtyFocusNode,
+                        hint: '0',
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: false,
+                        ),
+                        inputFormatters: _isCurrentFundTarget()
+                            ? _fundQtyInputFormatters
+                            : _qtyInputFormatters,
+                      ),
+                    ),
+                  ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildInputCell(
+                label: '金额',
+                focused: _amountFocusNode.hasFocus,
+                field: _buildNumberField(
+                  key: _amountFieldKey,
+                  controller: _amountController,
+                  focusNode: _amountFocusNode,
+                  hint: '0.00',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: false,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1557,6 +2598,113 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return amountReady && priceReady;
     }
     return priceReady && qtyReady;
+  }
+
+  String _sheetTitle() {
+    if (_isAdd) return '添加资产';
+    final action = _currentActionMode();
+    if (action == 'sell') return '卖出';
+    if (action == 'adjust') return '调整';
+    return '买入';
+  }
+
+  String _submitLabel() {
+    if (_isAdd) return '确认添加';
+    final action = _currentActionMode();
+    if (action == 'sell') return '确认卖出';
+    if (action == 'adjust') return '保存调整';
+    return '保存';
+  }
+
+  Widget _buildCashSelector({
+    required List<Asset> cashOptions,
+    required String targetCurrency,
+    required bool showAddCashAction,
+  }) {
+    Asset? selected;
+    for (final asset in cashOptions) {
+      if (asset.id == _selectedCashAssetId) {
+        selected = asset;
+        break;
+      }
+    }
+    return CompositedTransformTarget(
+      link: _cashFieldLink,
+      child: Container(
+        key: _cashTargetKey,
+        height: 38,
+        decoration: BoxDecoration(
+          color: _tokens.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: _cashOverlayVisible
+                ? const Color(0x996395EB)
+                : _tokens.border,
+            width: 1,
+          ),
+          boxShadow: _cashOverlayVisible
+              ? [
+                  BoxShadow(
+                    color: const Color(0x146395EB),
+                    blurRadius: 8,
+                    spreadRadius: 3,
+                  ),
+                ]
+              : null,
+        ),
+        child: InkWell(
+          key: _cashTriggerKey,
+          onTap: _saving || (cashOptions.isEmpty && !showAddCashAction)
+              ? null
+              : () {
+                  if (_cashOverlayVisible) {
+                    _hideCashOverlay();
+                  } else {
+                    _showCashOverlay(
+                      cashOptions: cashOptions,
+                      targetCurrency: targetCurrency,
+                      showAddCashAction: showAddCashAction,
+                    );
+                  }
+                },
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    selected == null
+                        ? '请选择账户'
+                        : selected.id == -999
+                        ? selected.name
+                        : '${selected.name} · ${selected.curr} ${_formatInputNumber(selected.amount)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _dm(
+                      size: 13,
+                      weight: FontWeight.w500,
+                      color: selected == null
+                          ? _tokens.textMuted
+                          : _tokens.text,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: _cashOverlayVisible ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: _tokens.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1592,383 +2740,265 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _selectedCashAssetId = cashOptions.first.id;
     }
     final needsCashSource = _requiresCashSource(actionMode);
-
-    final title = _isAdd
-        ? '添加投资资产'
-        : _isTrade
-        ? '买入 / 卖出 / 调整'
-        : _isBuy
-        ? '买入'
-        : (_isSell ? '卖出' : '买入 / 卖出 / 调整');
-    final actionColor = (_isTrade ? _tradeMode == 'buy' : _isBuy)
-        ? AppTheme.accent
-        : (_isTrade && _tradeMode == 'adjust'
-              ? AppTheme.accent
-              : AppTheme.danger);
+    final showAddCashAction = actionMode == 'sell' && !hasMatchingCashAccount;
     final canSave =
         !_saving &&
         _isSaveInputReady() &&
         (!needsCashSource || _selectedCashAssetId != null);
 
-    final maxDialogHeight = MediaQuery.of(context).size.height * 0.72;
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxDialogHeight),
-            child: Container(
-              padding: const EdgeInsets.all(14),
+    final centered =
+        widget.presentation == InvestTradeDialogPresentation.centered;
+    final dialogBody = Container(
+      key: _sheetRootKey,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.86,
+        maxWidth: centered ? 560 : double.infinity,
+      ),
+      decoration: BoxDecoration(
+        color: _tokens.surface,
+        borderRadius: centered
+            ? BorderRadius.circular(18)
+            : const BorderRadius.vertical(top: Radius.circular(18)),
+        border: Border.all(color: _tokens.border, width: 0.9),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!centered)
+            Container(
+              key: _sheetHandleKey,
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10),
               decoration: BoxDecoration(
-                color: AppTheme.bgCard.withOpacity(
-                  AppTheme.isLight ? 0.98 : 0.88,
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: AppTheme.isLight
-                      ? AppTheme.border.withOpacity(0.7)
-                      : Colors.white.withOpacity(0.08),
-                  width: 1,
-                ),
-                gradient: LinearGradient(
-                  colors: AppTheme.dialogGradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: AppTheme.cardShadow,
+                color: _tokens.divider,
+                borderRadius: BorderRadius.circular(2),
               ),
-              child: SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: FontSize.xxl,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                        ),
-                        if (_isTrade)
-                          PopupMenuButton<String>(
-                            enabled: !_saving,
-                            onSelected: _onMoreMenuSelect,
-                            icon: Icon(
-                              Icons.more_horiz,
-                              color: AppTheme.textSecondary,
-                            ),
-                            itemBuilder: (menuContext) {
-                              return [
-                                PopupMenuItem<String>(
-                                  value: 'corrective_delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.delete_outline,
-                                        size: 18,
-                                        color: AppTheme.danger,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '纠错删除（不回款）',
-                                        style: TextStyle(
-                                          color: AppTheme.danger,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ];
-                            },
-                          ),
-                      ],
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _sheetTitle(),
+                    style: _dm(
+                      size: 13,
+                      weight: FontWeight.w400,
+                      color: _tokens.textMuted,
+                      letterSpacing: 0.02,
                     ),
-                    const SizedBox(height: Spacing.md),
-                    if (_isAdd) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _queryController,
-                              onChanged: _onQueryChanged,
-                              style: TextStyle(color: AppTheme.textPrimary),
-                              decoration: _compactDecoration(
-                                '股票代码/名称',
-                                hintText: '输入代码或名称',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            height: 42,
-                            child: ElevatedButton.icon(
-                              onPressed: _searching ? null : _onSearchTap,
-                              icon: const Icon(Icons.search, size: 16),
-                              label: Text(_searching ? '搜索中' : '搜索'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.accent,
-                                foregroundColor: AppTheme.textPrimary,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '仅点击“搜索”后返回结果',
-                        style: TextStyle(
-                          color: AppTheme.textTertiary,
-                          fontSize: FontSize.xs,
-                        ),
-                      ),
-                      _buildSearchResults(),
-                      if (_searchErrorText != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            _searchErrorText!,
-                            style: TextStyle(
-                              color: AppTheme.danger,
-                              fontSize: FontSize.sm,
-                            ),
-                          ),
-                        ),
-                      if (_selected != null) ...[
-                        const SizedBox(height: 8),
-                        Row(
+                  ),
+                ),
+                if (_isTrade)
+                  PopupMenuButton<String>(
+                    enabled: !_saving,
+                    onSelected: _onMoreMenuSelect,
+                    icon: Icon(Icons.more_horiz, color: _tokens.textMuted),
+                    itemBuilder: (menuContext) => [
+                      PopupMenuItem<String>(
+                        value: 'corrective_delete',
+                        child: Row(
                           children: [
-                            Text(
-                              '已选择：',
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: FontSize.sm,
-                              ),
+                            Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: _tokens.red,
                             ),
-                            Text(
-                              '${_selected?['name']}  ',
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: FontSize.sm,
-                              ),
-                            ),
-                            _marketBadge(_selected?['type_name'] ?? ''),
-                            const SizedBox(width: 6),
-                            Text(
-                              _formatDisplayCode(_selected?['code'] ?? ''),
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: FontSize.sm,
-                              ),
-                            ),
+                            const SizedBox(width: 8),
+                            Text('纠错删除（不回款）', style: _dm(color: _tokens.red)),
                           ],
                         ),
-                      ],
-                      const SizedBox(height: Spacing.md),
+                      ),
+                    ],
+                  ),
+                InkWell(
+                  onTap: _saving ? null : _closeDialog,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: _tokens.surface2,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      size: 12,
+                      color: _tokens.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: _tokens.divider),
+          Flexible(
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isAdd) ...[
+                      _buildSearchField(),
+                      if (_searchErrorText != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            _searchErrorText!,
+                            style: _dm(size: 11, color: _tokens.red),
+                          ),
+                        ),
                     ] else ...[
                       Text(
                         '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: FontSize.base,
+                        style: _dm(
+                          size: 13,
+                          weight: FontWeight.w500,
+                          color: _tokens.text,
                         ),
                       ),
-                      const SizedBox(height: Spacing.md),
                     ],
-                    _buildTradeToggle(),
-                    if (_isTrade) const SizedBox(height: Spacing.md),
+                    if (_isTrade) ...[
+                      const SizedBox(height: 10),
+                      _buildTradeToggle(),
+                    ],
                     if (needsCashSource) ...[
-                      InkWell(
-                        onTap: _saving || cashOptions.isEmpty
-                            ? null
-                            : () => _openCashAssetPicker(
-                                actionMode: actionMode,
-                                cashOptions: cashOptions,
-                              ),
-                        borderRadius: BorderRadius.circular(10),
-                        child: InputDecorator(
-                          decoration: _compactDecoration(
-                            actionMode == 'sell' ? '回款账户' : '资金来源账户',
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Builder(
-                                  builder: (context) {
-                                    Asset? selected;
-                                    for (final asset in cashOptions) {
-                                      if (asset.id == _selectedCashAssetId) {
-                                        selected = asset;
-                                        break;
-                                      }
-                                    }
-                                    if (selected == null) {
-                                      return Text(
-                                        '请选择账户',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppTheme.textTertiary,
-                                        ),
-                                      );
-                                    }
-                                    final tail = selected.id == -999
-                                        ? '外部'
-                                        : '${selected.curr} ${_formatInputNumber(selected.amount)}';
-                                    return Text(
-                                      '${selected.name} · $tail',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        color: AppTheme.textPrimary,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                size: 20,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (!hasMatchingCashAccount) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppTheme.danger.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.danger.withOpacity(0.45),
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                actionMode == 'sell'
-                                    ? '未找到 $targetCashCurrency 回款账户'
-                                    : '未找到 $targetCashCurrency 现金账户',
-                                style: TextStyle(
-                                  color: AppTheme.danger,
-                                  fontSize: FontSize.sm,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                height: 34,
-                                child: OutlinedButton.icon(
-                                  onPressed: _creatingCashAccount
-                                      ? null
-                                      : () => _quickCreateCashAccount(
-                                          appState: appState,
-                                          actionMode: actionMode,
-                                          targetCurrency: targetCashCurrency,
-                                        ),
-                                  icon: Icon(
-                                    Icons.add_circle_outline,
-                                    size: 16,
-                                    color: AppTheme.danger,
-                                  ),
-                                  label: Text(
-                                    _creatingCashAccount
-                                        ? '创建中...'
-                                        : '一键创建${targetCashCurrency}账户',
-                                    style: TextStyle(
-                                      color: AppTheme.danger,
-                                      fontSize: FontSize.sm,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                    ),
-                                    side: BorderSide(
-                                      color: AppTheme.danger.withOpacity(0.65),
-                                      width: 1,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: Spacing.md),
-                    ],
-                    _buildTradeInputFields(),
-                    if (_errorText != null) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text(
-                        _errorText!,
-                        style: TextStyle(
-                          color: AppTheme.danger,
-                          fontSize: FontSize.base,
-                        ),
+                        '资金账户',
+                        style: _dm(size: 11, color: _tokens.textMuted),
+                      ),
+                      const SizedBox(height: 5),
+                      _buildCashSelector(
+                        cashOptions: cashOptions,
+                        targetCurrency: targetCashCurrency,
+                        showAddCashAction: showAddCashAction,
                       ),
                     ],
-                    const SizedBox(height: Spacing.lg),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: _saving ? null : _closeDialog,
-                            child: Text('取消'),
-                          ),
+                    const SizedBox(height: 12),
+                    _buildTradeInputFields(),
+                    if (_errorText != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _errorText!,
+                          style: _dm(size: 12, color: _tokens.red),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: actionColor,
-                            ),
-                            onPressed: canSave ? _submit : null,
-                            child: _saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text('保存'),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),
             ),
           ),
-        ),
+          Divider(height: 1, color: _tokens.divider),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: TextButton(
+                      key: _cancelButtonKey,
+                      onPressed: _saving ? null : _closeDialog,
+                      style: TextButton.styleFrom(
+                        backgroundColor: _tokens.surface2,
+                        side: BorderSide(color: _tokens.border, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        '取消',
+                        style: _dm(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: _tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: _tokens.blueGrad,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0x4D4A7BE0),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        key: _submitButtonKey,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          disabledBackgroundColor: _tokens.surface3,
+                          disabledForegroundColor: _tokens.textMuted,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: canSave ? _submit : null,
+                        child: _saving
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _tokens.text,
+                                ),
+                              )
+                            : Text(
+                                _submitLabel(),
+                                style: _dm(
+                                  size: 13,
+                                  weight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: centered
+          ? SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
+                  ),
+                  child: dialogBody,
+                ),
+              ),
+            )
+          : SafeArea(
+              top: false,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: dialogBody,
+              ),
+            ),
     );
   }
 }
