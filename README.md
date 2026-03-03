@@ -33,6 +33,7 @@ kona_repo/
 - 后端：`/Users/kona/Desktop/kaka/kona_repo/kona_tool`
 - Flutter：`/Users/kona/Desktop/kaka/kona_repo/flutter`
 - Web：`/Users/kona/Desktop/kaka/kona_repo/web`
+- 说明：`kona_tool/templates` 仅保留管理后台模板（`admin_*`），业务端旧 Flask 模板页已废弃并删除
 
 ---
 
@@ -71,6 +72,19 @@ npm run dev
 cd /Users/kona/Desktop/kaka/kona_repo/web
 npm run build
 ```
+
+### 3.4 旧 Flask 模板页下线说明（2026-03）
+
+业务端旧模板页（Jinja）已从仓库删除，不再作为运行入口：
+
+- 已删除：`kona_tool/templates/{index,assets,investment,analysis,news,settings,test_api,simple_home,simple_render,base}.html`
+- 后端兼容路由保留为 302 跳转，不再读取模板文件：
+  - `/assets -> /app/invest`
+  - `/analysis -> /app/analysis`
+  - `/news -> /app/news`
+  - `/settings -> /app/profile`
+  - `/test -> /app`
+- 当前唯一业务端前端来源：`web/` 构建产物（`kona_tool/static/web`）
 
 ---
 

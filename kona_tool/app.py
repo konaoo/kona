@@ -12,7 +12,7 @@ import hashlib
 import math
 from functools import wraps
 from collections import defaultdict
-from flask import Flask, render_template, jsonify, request, make_response, send_file, send_from_directory, g, redirect
+from flask import Flask, jsonify, request, make_response, send_file, send_from_directory, g, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from pathlib import Path
@@ -773,20 +773,13 @@ def web_assets(asset_path: str):
 @app.route('/assets')
 def assets():
     """旧资产页入口兼容跳转。"""
-    if config.WEB_ENABLE_LEGACY_REDIRECT:
-        return redirect('/app/invest', code=302)
-    response = make_response(render_template('assets.html', version=APP_VERSION))
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    response.headers['X-App-Version'] = APP_VERSION
-    return response
+    return redirect('/app/invest', code=302)
 
 
 @app.route('/test')
 def test_page():
-    """测试页面"""
-    return make_response(render_template('test_api.html'))
+    """旧测试页面入口兼容跳转。"""
+    return redirect('/app', code=302)
 
 
 @app.route('/compare')
@@ -1074,25 +1067,19 @@ def update_asset():
 @app.route('/analysis')
 def analysis():
     """旧分析页入口兼容跳转。"""
-    if config.WEB_ENABLE_LEGACY_REDIRECT:
-        return redirect('/app/analysis', code=302)
-    return make_response(render_template('analysis.html', version=APP_VERSION))
+    return redirect('/app/analysis', code=302)
 
 
 @app.route('/news')
 def news_page():
     """旧快讯页入口兼容跳转。"""
-    if config.WEB_ENABLE_LEGACY_REDIRECT:
-        return redirect('/app/news', code=302)
-    return make_response(render_template('news.html', version=APP_VERSION))
+    return redirect('/app/news', code=302)
 
 
 @app.route('/settings')
 def settings_page():
     """旧设置页入口兼容跳转。"""
-    if config.WEB_ENABLE_LEGACY_REDIRECT:
-        return redirect('/app/profile', code=302)
-    return make_response(render_template('settings.html', version=APP_VERSION))
+    return redirect('/app/profile', code=302)
 
 
 @app.route('/api/settings/info')

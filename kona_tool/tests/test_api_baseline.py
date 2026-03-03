@@ -227,6 +227,10 @@ class ApiBaselineTests(unittest.TestCase):
                 app_module.WEB_DIST_DIR = old_dir
 
     def test_legacy_template_routes_redirect_to_new_spa_paths(self):
+        assets = self.client.get('/assets', follow_redirects=False)
+        self.assertEqual(assets.status_code, 302)
+        self.assertTrue((assets.headers.get('Location') or '').endswith('/app/invest'))
+
         analysis = self.client.get('/analysis', follow_redirects=False)
         self.assertEqual(analysis.status_code, 302)
         self.assertTrue((analysis.headers.get('Location') or '').endswith('/app/analysis'))
@@ -238,6 +242,10 @@ class ApiBaselineTests(unittest.TestCase):
         settings = self.client.get('/settings', follow_redirects=False)
         self.assertEqual(settings.status_code, 302)
         self.assertTrue((settings.headers.get('Location') or '').endswith('/app/profile'))
+
+        test_page = self.client.get('/test', follow_redirects=False)
+        self.assertEqual(test_page.status_code, 302)
+        self.assertTrue((test_page.headers.get('Location') or '').endswith('/app'))
 
     def test_price_missing_code(self):
         resp = self.client.get('/api/price')
