@@ -1,7 +1,7 @@
 name: tool
 description: "咔咔记账 - 投资组合管理系统"
 publish_to: 'none'
-version: 1.0.24
+version: 1.0.25
 
 environment:
   sdk: ^3.10.7
@@ -36,6 +36,8 @@ dependencies:
   flutter_native_splash: ^2.3.9
   # 字体
   google_fonts: ^6.1.0
+  # 保存图片到相册
+  gal: ^2.3.2
 
 dev_dependencies:
   flutter_test:

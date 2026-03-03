@@ -213,6 +213,7 @@ curl -I http://114.132.238.12/download/apk
 
 ## 7. 最近版本摘要
 
+- `v1.0.25`：登录页 UI 1:1 升级还原原型（M 形 Logo、Tab 切换、聚焦发光输入框、渐变按钮、密码强度条、入场动画）；邀请码弹窗文案从后端加载 + 保存图片到相册 + 点击空白关闭；19 处 GoogleFonts 调用提取为静态缓存消除卡顿；Gradle 升级 8.13 修复 Kotlin 2.2.20 兼容。
 - `v1.0.24`：投资页成本位升级为“摊薄成本”展示（Flutter + Web）；`InvestTradeDialog` 升级为 v2 居中弹窗与新交互；卖出缺同币种账户时下拉内补建现金账户；统一 `AddAssetDialog` 新 UI 并修复 other/liability 币种透传与下拉定位问题。
 - `v1.0.23`：Flutter 现金资产弹窗新增币种选择（默认 CNY）；交易弹窗改为同币种账户过滤并支持“缺账户一键创建”；后端现金资产金额校验放宽为 `>=0`（其他资产/负债仍 `>0`），版本升级到 `1.0.23`。
 - `v1.0.22`：Flutter 添加资产弹窗改为“输入后手动点搜索”并引入自定义数字键盘（数量两位小数、负号规则按字段限制）；分析页收益日历修复历史月份切换后无法回到当月问题；B股币种全端修复（`sh900* -> USD`、`sz200* -> HKD`）并增加后端历史数据自动回填。
@@ -231,69 +232,62 @@ curl -I http://114.132.238.12/download/apk
 
 ---
 
-## 8. v1.0.24 详细改动说明（本次）
+## 8. v1.0.25 详细改动说明（本次）
 
 范围说明：
 
-1. 本次落地 `Flutter + Web + Backend(版本号) + Docs`。
-2. 目标是“统一投资弹窗新 UI + 收口资金账户规则 + 成本位切换为摊薄展示”。
+1. 本次落地 `Flutter + Docs`。
+2. 目标是“登录页 UI 1:1 还原原型设计 + 邀请码弹窗功能完善 + 渲染性能优化”。
 
 核心改动：
 
-1. 投资页“成本/现价”中的成本改为摊薄成本展示：
-   - `displayCostPrice = (qty * price - adjustment) / qty`
-   - `qty <= 0` 回退原始 `price`
-   - 允许负数展示，不截断
-2. Flutter 与 Web 编辑弹窗默认“平均成本”仍使用原始 `price`，不回写摊薄展示值。
-3. `InvestTradeDialog` 升级：
-   - 首页添加投资 + 持仓点击入口统一居中弹窗
-   - 搜索结果仅点击搜索后展示（输入/聚焦不自动下拉）
-   - 搜索按钮内嵌输入框（suffix）
-   - 资金账户下拉去搜索化，仅可滚动选择
-4. 资金账户规则：
-   - `add/buy`：允许 `外部资金/初始转入` + 同币种现金账户
-   - `sell`：仅同币种现金账户；缺账户时在下拉内 `+ 添加现金账户` 补建
-   - 主界面移除“未找到 HKD 资金账户”红色提示卡片
-5. 统一新增/编辑资产弹窗 `AddAssetDialog` 为新 UI 组件：
-   - 首页添加资产、资产详情新增/编辑、资金账户补建均复用
-   - 币种展示改为 emoji 国旗：`🇨🇳/🇺🇸/🇭🇰`
-6. 修复 other/liability 币种链路：
-   - UI 可选币种
-   - `AppState` add/update + optimistic 全部透传 `curr`
-   - 后端 API 入参全链路生效
+1. **登录页完全重写**（`login_page.dart` ~860 行）：
+   - M 形渐变 Logo（`CustomPainter`）
+   - 登录/注册 Tab 切换器（`AnimatedContainer` 滑块动画）
+   - 自定义输入框组件 `_InputWrap`（聚焦蓝色发光描边、错误红色发光、密码可见切换、JetBrains Mono 等宽字体）
+   - 渐变按钮状态机（默认 → loading → 成功打勾 → 跳转）
+   - 密码强度条（弱/中/强 动态颜色）
+   - 注册邀请码提示条 + 「获取邀请码」白色高亮链接
+   - 底部法律声明（预留用户协议/隐私政策入口）
+   - 入场 fadeUp 交错动画
+2. **全局暗色主题配色更新**（`theme.dart`）：
+   - `bgPrimary: #0C0D11`、`bgCard: #13151C`、`accent: #5B8DEF`、`success: #2ECC8A`、`danger: #F05A55` 等
+   - 新增 `textDim` 颜色字段
+3. **邀请码弹窗功能完善**：
+   - 去掉标题和 X 关闭按钮，点击空白关闭
+   - 文案左对齐，内容从后端 `invite_acquire_text` 动态获取
+   - 按钮「保存二维码」→「保存图片」，实现下载保存到相册（`gal: ^2.3.2`）
+4. **渲染性能优化**：
+   - 新增 `_S` 缓存样式类（18 个 `static final` TextStyle），消除 19 处 `GoogleFonts` 每次 build 重复解析
+   - `main.dart` 启动时 `GoogleFonts.pendingFonts()` 预加载字体
+5. **构建环境修复**：
+   - Gradle wrapper 7.3.1 → 8.13（修复 Kotlin 2.2.20 + AGP 8.11.1 编译）
 
 版本信息：
 
-1. Flutter 客户端版本：`1.0.24`
-2. 后端默认客户端版本（`/api/app/version` 默认）：`1.0.24`
+1. Flutter 客户端版本：`1.0.25`
+2. 后端默认客户端版本（`/api/app/version` 默认）：`1.0.24`（未改动后端）
 
 验收清单（建议逐条勾选）：
 
-1. 投资页成本位显示为摊薄值；卖出后成本可下降（含负数场景）。
-2. 编辑弹窗平均成本默认值仍是原始录入成本，不是摊薄值。
-3. 添加资产与持仓交易弹窗均居中显示。
-4. 搜索仅在点击搜索按钮后展示下拉，且按钮在输入框内部。
-5. `add/buy` 无同币种现金账户时可选择外部资金，且不展示非目标币种账户。
-6. `sell` 无同币种现金账户时，下拉内可补建现金账户，成功后自动选中。
-7. `其他资产/我的负债` 也可选择币种，且保存后币种正确落库。
-8. 币种下拉框位置正常，无顶部/重叠偏移。
+1. 登录页暗色主题视觉与原型一致，M Logo + 品牌文案正常显示。
+2. 登录/注册 Tab 切换流畅，滑块动画正确。
+3. 输入框聚焦时蓝色发光描边、输入错误时红色描边、取消聚焦回归默认。
+4. 密码输入框可切换明暗文，注册密码有强度条。
+5. 邀请码弹窗文案与后端内容一致、左对齐、点击空白可关闭。
+6. 保存图片按钮可下载二维码到相册。
+7. 输入框聚焦 / Tab 切换无明显卡顿感。
 
 验证命令（本次已执行）：
 
 ```bash
 cd /Users/kona/Desktop/kaka/kona_repo/flutter
-flutter test test/widget_test.dart test/invest_trade_dialog_test.dart test/invest_page_diluted_cost_test.dart
-```
-
-```bash
-cd /Users/kona/Desktop/kaka/kona_repo/web
-npm run test
-npm run build
+flutter test test/widget_test.dart
 ```
 
 详细交接文档见：
 
-- [`docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md`](./docs/README_HANDOVER_2026_03_INVEST_UI_V2_AND_DILUTED_COST.md)
+- [`CHANGELOG.md`](./CHANGELOG.md)
 
 ---
 

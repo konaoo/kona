@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'config/theme.dart';
 import 'providers/app_state.dart';
@@ -25,6 +26,11 @@ Future<void> main() async {
       systemNavigationBarDividerColor: Colors.transparent,
     ),
   );
+  // 预加载登录页所需字体，避免渲染时首帧卡顿
+  GoogleFonts.pendingFonts([
+    GoogleFonts.dmSans(),
+    GoogleFonts.jetBrainsMono(),
+  ]);
   runApp(const MyApp());
 }
 

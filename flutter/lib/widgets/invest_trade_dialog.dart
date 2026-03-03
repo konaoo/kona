@@ -980,6 +980,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                               fontSize: 14,
                               color: AppTheme.textTertiary,
                             ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 10,
@@ -1954,6 +1960,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final focused = _queryFocusNode.hasFocus || _searchOverlayVisible;
     final field = Container(
       key: _searchTargetKey,
+      height: 40,
       decoration: BoxDecoration(
         color: _tokens.surface2,
         borderRadius: BorderRadius.circular(8),
@@ -1961,30 +1968,27 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           color: focused ? const Color(0x996395EB) : _tokens.border,
           width: 1,
         ),
-        boxShadow: focused
-            ? [
-                BoxShadow(
-                  color: const Color(0x146395EB),
-                  blurRadius: 8,
-                  spreadRadius: 3,
-                ),
-              ]
-            : null,
       ),
       child: TextField(
         key: _searchFieldKey,
         controller: _queryController,
         focusNode: _queryFocusNode,
+        textAlignVertical: TextAlignVertical.center,
         textCapitalization: TextCapitalization.characters,
         onChanged: _onQueryChanged,
         style: _mono(size: 13, color: _tokens.text),
         decoration: InputDecoration(
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
           hintText: '输入代码或名称',
           hintStyle: _dm(size: 12, color: _tokens.textMuted),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 10,
-            vertical: 9,
+            vertical: 0,
           ),
           suffixIconConstraints: const BoxConstraints(minHeight: 30),
           suffixIcon: Padding(
@@ -2385,22 +2389,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         const SizedBox(height: 5),
         AnimatedContainer(
           duration: const Duration(milliseconds: 150),
+          height: 40,
           decoration: BoxDecoration(
             color: _tokens.surface2,
             borderRadius: BorderRadius.circular(8),
+            // Use border-only focus feedback to prevent border ghosting on dark backgrounds.
             border: Border.all(
               color: focused ? const Color(0x996395EB) : _tokens.border,
               width: 1,
             ),
-            boxShadow: focused
-                ? [
-                    BoxShadow(
-                      color: const Color(0x146395EB),
-                      blurRadius: 8,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                : null,
           ),
           child: field,
         ),
@@ -2452,11 +2449,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       controller: controller,
       focusNode: focusNode,
       readOnly: readOnly,
+      expands: true,
+      minLines: null,
+      maxLines: null,
+      textAlignVertical: TextAlignVertical.center,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
       style: _mono(size: 14, weight: FontWeight.w500, color: _tokens.text),
       decoration: InputDecoration(
         border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
         hintText: hint,
         hintStyle: _mono(size: 13, color: _tokens.textMuted),
         contentPadding: const EdgeInsets.symmetric(
@@ -2632,7 +2638,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       link: _cashFieldLink,
       child: Container(
         key: _cashTargetKey,
-        height: 38,
+        height: 40,
         decoration: BoxDecoration(
           color: _tokens.surface2,
           borderRadius: BorderRadius.circular(8),
@@ -2642,15 +2648,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 : _tokens.border,
             width: 1,
           ),
-          boxShadow: _cashOverlayVisible
-              ? [
-                  BoxShadow(
-                    color: const Color(0x146395EB),
-                    blurRadius: 8,
-                    spreadRadius: 3,
-                  ),
-                ]
-              : null,
         ),
         child: InkWell(
           key: _cashTriggerKey,
@@ -2895,12 +2892,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           ),
           Divider(height: 1, color: _tokens.divider),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Row(
               children: [
                 Expanded(
                   child: SizedBox(
-                    height: 48,
+                    height: 42,
                     child: TextButton(
                       key: _cancelButtonKey,
                       onPressed: _saving ? null : _closeDialog,
@@ -2925,25 +2922,31 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: SizedBox(
-                    height: 48,
+                    height: 42,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: _tokens.blueGrad,
+                        color: canSave ? null : _tokens.surface3,
+                        gradient: canSave ? _tokens.blueGrad : null,
                         borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0x4D4A7BE0),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                        border: canSave
+                            ? null
+                            : Border.all(color: _tokens.border, width: 1),
+                        boxShadow: canSave
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0x4D4A7BE0),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: ElevatedButton(
                         key: _submitButtonKey,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
-                          disabledBackgroundColor: _tokens.surface3,
+                          disabledBackgroundColor: Colors.transparent,
                           disabledForegroundColor: _tokens.textMuted,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -2964,7 +2967,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                 style: _dm(
                                   size: 13,
                                   weight: FontWeight.w600,
-                                  color: Colors.white,
+                                  color: canSave
+                                      ? Colors.white
+                                      : _tokens.textMuted,
                                 ),
                               ),
                       ),

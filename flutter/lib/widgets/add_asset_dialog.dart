@@ -14,6 +14,9 @@ class AddAssetDialog extends StatefulWidget {
   final String? initialCashCurrency;
   final bool lockCashCurrency;
   final bool returnCreatedAssetId;
+  final bool allowDeleteInEdit;
+  final VoidCallback? onDeleteSuccess;
+  final String? dialogTitleOverride;
 
   const AddAssetDialog({
     super.key,
@@ -24,6 +27,9 @@ class AddAssetDialog extends StatefulWidget {
     this.initialCashCurrency,
     this.lockCashCurrency = false,
     this.returnCreatedAssetId = false,
+    this.allowDeleteInEdit = false,
+    this.onDeleteSuccess,
+    this.dialogTitleOverride,
   });
 
   @override
@@ -64,6 +70,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
   String? _errorText;
 
   bool get _isEdit => widget.editingAsset != null;
+  bool get _canDeleteInEdit => _isEdit && widget.allowDeleteInEdit;
 
   Color get _kSurface => const Color(0xFF13151B);
   Color get _kSurface2 => const Color(0xFF1A1D25);
@@ -303,7 +310,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           border: Border.all(color: _kBorderActive, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.55),
+              color: const Color(0x8C000000),
               blurRadius: 36,
               offset: const Offset(0, 16),
             ),
@@ -317,7 +324,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
             primary: false,
             shrinkWrap: true,
             itemCount: _currencies.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: _kBorder),
+            separatorBuilder: (_, index) => Divider(height: 1, color: _kBorder),
             itemBuilder: (context, index) {
               final option = _currencies[index];
               final selected = option.code == _cashCurrency;
@@ -473,6 +480,201 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     Navigator.of(context).pop();
   }
 
+  Future<bool> _confirmDelete() async {
+    return (await showDialog<bool>(
+          context: context,
+          barrierColor: const Color(0x9E000000),
+          builder: (dialogContext) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _kSurface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _kBorder),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0xB3000000),
+                            blurRadius: 64,
+                            offset: Offset(0, 24),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '删除资产',
+                                  style: _dm(
+                                    size: 14,
+                                    weight: FontWeight.w600,
+                                    color: _kText,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '该操作不可撤销',
+                                  style: _dm(size: 11, color: _kTextMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              '确定删除「${widget.editingAsset?.name ?? ''}」吗？',
+                              style: _dm(size: 13, color: _kTextMuted),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 42,
+                                    child: OutlinedButton(
+                                      onPressed: () => Navigator.of(
+                                        dialogContext,
+                                      ).pop(false),
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: _kSurface2,
+                                        side: BorderSide(
+                                          color: _kBorder,
+                                          width: 1,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '取消',
+                                        style: _dm(
+                                          size: 13,
+                                          weight: FontWeight.w600,
+                                          color: _kTextMuted,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 42,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        gradient: const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Color(0xFFF05A55),
+                                            Color(0xFFDB4B46),
+                                          ],
+                                        ),
+                                      ),
+                                      child: ElevatedButton(
+                                        onPressed: () => Navigator.of(
+                                          dialogContext,
+                                        ).pop(true),
+                                        style: ElevatedButton.styleFrom(
+                                          elevation: 0,
+                                          backgroundColor: Colors.transparent,
+                                          shadowColor: Colors.transparent,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '确认删除',
+                                          style: _dm(
+                                            size: 13,
+                                            weight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        )) ??
+        false;
+  }
+
+  Future<void> _deleteInEditMode() async {
+    if (_saving || !_canDeleteInEdit) return;
+    final editingId = widget.editingAsset?.id;
+    if (editingId == null || editingId <= 0) {
+      setState(() {
+        _errorText = '资产ID无效，无法删除';
+      });
+      return;
+    }
+
+    _hideCurrencyOverlay(updateState: false);
+    final confirmed = await _confirmDelete();
+    if (!confirmed || !mounted) return;
+
+    final appState = context.read<AppState>();
+    final toastContext = widget.hostContext ?? context;
+
+    setState(() {
+      _saving = true;
+      _errorText = null;
+    });
+
+    final result = await appState.deleteAsset(
+      type: _assetType,
+      id: editingId,
+      awaitRefresh: true,
+    );
+    if (!mounted) return;
+
+    if (!result.ok) {
+      setState(() {
+        _saving = false;
+        _errorText = result.message ?? '删除失败，请稍后重试';
+      });
+      if (toastContext.mounted) {
+        TopToast.showError(toastContext, result.message ?? '删除失败，请稍后重试');
+      }
+      return;
+    }
+
+    if (toastContext.mounted) {
+      TopToast.showSuccess(toastContext, '已删除');
+    }
+    widget.onDeleteSuccess?.call();
+    Navigator.of(context).pop();
+  }
+
   Widget _buildTypeTabs() {
     final options = _orderedAllowedTypes
         .map(_typeOption)
@@ -508,7 +710,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                     boxShadow: _assetType == option.id
                         ? [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
+                              color: const Color(0x4D000000),
                               blurRadius: 4,
                               offset: const Offset(0, 1),
                             ),
@@ -547,7 +749,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           link: _currencyLink,
           child: Container(
             key: _currencyTargetKey,
-            height: 38,
+            height: 40,
             decoration: BoxDecoration(
               color: _kSurface2,
               borderRadius: BorderRadius.circular(8),
@@ -555,15 +757,6 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                 color: isOverlayOpen ? _kBorderActive : _kBorder,
                 width: 1,
               ),
-              boxShadow: isOverlayOpen
-                  ? [
-                      BoxShadow(
-                        color: const Color(0x12D4AF64),
-                        blurRadius: 8,
-                        spreadRadius: 3,
-                      ),
-                    ]
-                  : null,
             ),
             child: InkWell(
               key: currencyTriggerKey,
@@ -640,32 +833,29 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
     required bool hasError,
   }) {
     return Container(
+      height: 40,
       decoration: BoxDecoration(
         color: _kSurface2,
         borderRadius: BorderRadius.circular(8),
+        // Keep a single-layer border in dark mode to avoid "double stroke" artifacts.
         border: Border.all(
           color: hasError
-              ? _kRed.withOpacity(0.6)
+              ? const Color(0x99F05A55)
               : active
               ? const Color(0x8C5B8DEF)
               : _kBorder,
           width: 1,
         ),
-        boxShadow: active
-            ? [
-                BoxShadow(
-                  color: const Color(0x145B8DEF),
-                  blurRadius: 8,
-                  spreadRadius: 3,
-                ),
-              ]
-            : null,
       ),
       child: child,
     );
   }
 
   String _dialogTitle() {
+    if (widget.dialogTitleOverride != null &&
+        widget.dialogTitleOverride!.trim().isNotEmpty) {
+      return widget.dialogTitleOverride!.trim();
+    }
     if (_isEdit) return '编辑${_typeLabel(_assetType)}';
     if (widget.fixedAssetType != null) return '添加${_typeLabel(_assetType)}';
     return '记一笔';
@@ -722,25 +912,83 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             ],
                           ),
                         ),
-                        InkWell(
-                          onTap: _saving
-                              ? null
-                              : () => Navigator.of(context).pop(),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: _kSurface2,
-                              shape: BoxShape.circle,
+                        if (_canDeleteInEdit)
+                          PopupMenuButton<String>(
+                            enabled: !_saving,
+                            color: _kSurface2,
+                            elevation: 10,
+                            tooltip: '更多操作',
+                            offset: const Offset(0, 28),
+                            constraints: const BoxConstraints(
+                              minWidth: 116,
+                              maxWidth: 116,
                             ),
-                            child: Icon(
-                              Icons.close,
-                              size: 10,
-                              color: _kTextMuted,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: _kBorderActive, width: 1),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'delete') {
+                                _deleteInEditMode();
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                height: 34,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  '删除资产',
+                                  style: _dm(
+                                    size: 12,
+                                    weight: FontWeight.w600,
+                                    color: _kRed,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: _kSurface2,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: _kBorder),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '···',
+                                style: _dm(
+                                  size: 14,
+                                  weight: FontWeight.w600,
+                                  color: _kTextMuted,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          InkWell(
+                            onTap: _saving
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: _kSurface2,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                size: 10,
+                                color: _kTextMuted,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -765,15 +1013,24 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             controller: _nameController,
                             focusNode: _nameFocusNode,
                             enabled: !_saving,
+                            expands: true,
+                            minLines: null,
+                            maxLines: null,
+                            textAlignVertical: TextAlignVertical.center,
                             style: _dm(size: 13, color: _kText),
                             decoration: InputDecoration(
                               hintText: '如：招商银行储蓄卡',
                               hintStyle: _dm(size: 12, color: _kTextMuted),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 11,
-                                vertical: 9,
+                                vertical: 10,
                               ),
                               border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              focusedErrorBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
                             ),
                             onChanged: (_) {
                               if (_nameError != null) {
@@ -797,6 +1054,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             controller: _amountController,
                             focusNode: _amountFocusNode,
                             enabled: !_saving,
+                            expands: true,
+                            minLines: null,
+                            maxLines: null,
+                            textAlignVertical: TextAlignVertical.center,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -806,24 +1067,16 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                               hintStyle: _dm(size: 12, color: _kTextMuted),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 11,
-                                vertical: 9,
+                                vertical: 10,
                               ),
                               border: InputBorder.none,
-                              suffixIcon: suffixCurrency == null
-                                  ? null
-                                  : Padding(
-                                      padding: const EdgeInsets.only(right: 10),
-                                      child: Text(
-                                        suffixCurrency,
-                                        style: _dm(
-                                          size: 11,
-                                          color: _kTextMuted,
-                                        ),
-                                      ),
-                                    ),
-                              suffixIconConstraints: const BoxConstraints(
-                                minHeight: 24,
-                              ),
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              focusedErrorBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
+                              suffixText: suffixCurrency,
+                              suffixStyle: _dm(size: 11, color: _kTextMuted),
                             ),
                             onChanged: (_) {
                               if (_amountError != null) {
@@ -852,7 +1105,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                       children: [
                         Expanded(
                           child: SizedBox(
-                            height: 44,
+                            height: 42,
                             child: OutlinedButton(
                               key: cancelButtonKey,
                               onPressed: _saving
@@ -879,11 +1132,15 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: SizedBox(
-                            height: 44,
+                            height: 42,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                gradient: _blueGrad,
+                                color: canSubmit ? null : _kSurface3,
+                                gradient: canSubmit ? _blueGrad : null,
                                 borderRadius: BorderRadius.circular(8),
+                                border: canSubmit
+                                    ? null
+                                    : Border.all(color: _kBorder, width: 1),
                               ),
                               child: ElevatedButton(
                                 key: submitButtonKey,
@@ -892,6 +1149,8 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                                   elevation: 0,
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
+                                  disabledBackgroundColor: Colors.transparent,
+                                  disabledForegroundColor: _kTextMuted,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -913,7 +1172,9 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                                         style: _dm(
                                           size: 13,
                                           weight: FontWeight.w600,
-                                          color: Colors.white,
+                                          color: canSubmit
+                                              ? Colors.white
+                                              : _kTextMuted,
                                         ),
                                       ),
                               ),

@@ -26,11 +26,11 @@ void main() {
 
     expect(find.byType(LoginPage), findsOneWidget);
     expect(find.text('咔咔记账'), findsOneWidget);
-    expect(find.text('用户名'), findsOneWidget);
+    expect(find.text('账号'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
-    expect(find.byKey(const Key('login_logo_shell')), findsOneWidget);
+    expect(find.byKey(const Key('login_brand_area')), findsOneWidget);
     expect(find.byKey(const Key('login_primary_action')), findsOneWidget);
-    expect(find.byKey(const Key('register_switch_action')), findsOneWidget);
+    expect(find.text('注册'), findsOneWidget);
   });
 
   testWidgets('Add asset dialog is not dismissible by tapping barrier', (

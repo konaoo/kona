@@ -1,77 +1,39 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'dart:ui';
-import '../config/theme.dart';
-import '../providers/app_state.dart';
-import '../models/asset.dart';
-import '../widgets/add_asset_dialog.dart';
-import '../widgets/top_toast.dart';
+import 'dart:math' as math;
 
-/// 资产详情页面
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+import '../models/asset.dart';
+import '../providers/app_state.dart';
+import '../widgets/add_asset_dialog.dart';
+
+/// 资产详情页面（现金/其他/负债统一样式）
 class AssetDetailPage extends StatelessWidget {
-  final String assetType; // 'cash', 'other', 'liability'
+  final String assetType; // cash | other | liability
 
   const AssetDetailPage({super.key, required this.assetType});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgPrimary,
-      appBar: AppBar(
-        backgroundColor: AppTheme.bgPrimary,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(_getTitle(), style: TextStyle(color: AppTheme.textPrimary)),
-      ),
-      floatingActionButton: FloatingActionButton.small(
-        heroTag: 'add_asset_detail_$assetType',
-        onPressed: () => _showAddDialog(context),
-        backgroundColor: AppTheme.accent,
-        child: Icon(Icons.add, size: 20, color: AppTheme.textPrimary),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      body: Consumer<AppState>(
-        builder: (context, appState, child) {
-          final assets = _getAssets(appState);
+  static const _bg = Color(0xFF0D0E12);
+  static const _surface2 = Color(0xFF1A1D25);
+  static const _border = Color(0x0EFFFFFF);
+  static const _text = Color(0xFFE4E5EA);
+  static const _textMuted = Color(0xFF575D6E);
+  static const _textSub = Color(0xFF8A92A3);
+  static const _nameText = Color(0xFFEDF1FA);
+  static const _amountText = Color(0xFFBCC4D3);
+  static const _amountZero = Color(0xFFA9AFBD);
+  static const _gold = Color(0xFFB79C66);
 
-          if (assets.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_getIcon(), size: 64, color: AppTheme.textTertiary),
-                  const SizedBox(height: Spacing.lg),
-                  Text(
-                    '暂无${_getTitle()}',
-                    style: TextStyle(
-                      fontSize: FontSize.lg,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
+  TextStyle _dm({double? size, FontWeight? weight, Color? color}) {
+    return GoogleFonts.dmSans(fontSize: size, fontWeight: weight, color: color);
+  }
 
-          return ListView.builder(
-            padding: EdgeInsets.fromLTRB(
-              Spacing.xl,
-              Spacing.xl,
-              Spacing.xl,
-              _bottomContentPadding(context),
-            ),
-            itemCount: assets.length,
-            itemBuilder: (context, index) {
-              final asset = assets[index];
-              return _buildAssetItem(context, asset, appState);
-            },
-          );
-        },
-      ),
+  TextStyle _mono({double? size, FontWeight? weight, Color? color}) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
     );
   }
 
@@ -88,26 +50,6 @@ class AssetDetailPage extends StatelessWidget {
     }
   }
 
-  IconData _getIcon() {
-    switch (assetType) {
-      case 'cash':
-        return Icons.account_balance_wallet;
-      case 'other':
-        return Icons.dataset;
-      case 'liability':
-        return Icons.credit_card;
-      default:
-        return Icons.attach_money;
-    }
-  }
-
-  double _bottomContentPadding(BuildContext context) {
-    final safeBottom = MediaQuery.of(context).padding.bottom;
-    const navBarHeight = 60.0;
-    const fabRegion = 76.0;
-    return Spacing.xl + navBarHeight + safeBottom + fabRegion;
-  }
-
   List<Asset> _getAssets(AppState appState) {
     switch (assetType) {
       case 'cash':
@@ -121,172 +63,262 @@ class AssetDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _buildAssetItem(BuildContext context, Asset asset, AppState appState) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        onTap: () => _showEditDialog(context, asset),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: Spacing.md),
-          padding: const EdgeInsets.all(Spacing.lg),
-          decoration: BoxDecoration(
-            color: AppTheme.bgCard,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
-          child: Row(
-            children: [
-              // 图标
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(_getIcon(), color: AppTheme.accent, size: 24),
-              ),
-              const SizedBox(width: Spacing.lg),
-              // 名称和金额
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      asset.name,
-                      style: TextStyle(
-                        fontSize: FontSize.lg,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      asset.amount.toStringAsFixed(2),
-                      style: TextStyle(
-                        fontSize: FontSize.base,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // 删除按钮
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: AppTheme.danger),
-                onPressed: () => _showDeleteDialog(context, asset, appState),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  double _bottomContentPadding(BuildContext context) {
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    const navBarHeight = 60.0;
+    const fabRegion = 92.0;
+    return 18 + navBarHeight + safeBottom + fabRegion;
   }
 
-  void _showDeleteDialog(
-    BuildContext pageContext,
+  ({String symbol, String unit, String value, bool isZero}) _displayAmount(
     Asset asset,
-    AppState appState,
   ) {
-    if (asset.id == null) return;
-    showDialog(
-      context: pageContext,
-      barrierColor: Colors.black.withOpacity(0.55),
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 28,
-            vertical: 24,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+    final curr = (asset.curr).toUpperCase();
+    final absInt = math.max(0, asset.amount.abs().floor());
+    final displayValue = _formatWithThousands(absInt);
+
+    switch (curr) {
+      case 'USD':
+        return (
+          symbol: r'$',
+          unit: '美元',
+          value: displayValue,
+          isZero: absInt == 0,
+        );
+      case 'HKD':
+        return (
+          symbol: 'HK\$',
+          unit: '港币',
+          value: displayValue,
+          isZero: absInt == 0,
+        );
+      case 'CNY':
+      default:
+        return (
+          symbol: '¥',
+          unit: '人民币',
+          value: displayValue,
+          isZero: absInt == 0,
+        );
+    }
+  }
+
+  String _formatWithThousands(int value) {
+    final raw = value.toString();
+    if (raw.length <= 3) return raw;
+    final buffer = StringBuffer();
+    for (var i = 0; i < raw.length; i++) {
+      final posFromEnd = raw.length - i;
+      buffer.write(raw[i]);
+      if (posFromEnd > 1 && posFromEnd % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return buffer.toString();
+  }
+
+  IconData _iconForAsset(Asset asset) {
+    final text = asset.name.toLowerCase();
+    final curr = asset.curr.toUpperCase();
+    if (text.contains('银行')) return Icons.account_balance_outlined;
+    if (text.contains('卡')) return Icons.credit_card_outlined;
+    if (curr == 'USD' || text.contains('美元')) {
+      return Icons.account_balance_wallet_outlined;
+    }
+    if (text.contains('现金') || text.contains('备用金')) {
+      return Icons.payments_outlined;
+    }
+    return Icons.account_balance_outlined;
+  }
+
+  Widget _buildHeader(BuildContext context, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+      child: Row(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(),
+              borderRadius: BorderRadius.circular(10),
               child: Container(
-                padding: const EdgeInsets.all(20),
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  color: AppTheme.bgCard.withOpacity(
-                    AppTheme.isLight ? 0.98 : 0.88,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: AppTheme.isLight
-                        ? AppTheme.border.withOpacity(0.7)
-                        : Colors.white.withOpacity(0.08),
-                    width: 1,
-                  ),
-                  gradient: LinearGradient(
-                    colors: AppTheme.dialogGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: AppTheme.cardShadow,
+                  color: _surface2,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _border),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '删除资产',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: FontSize.xl,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '确定删除「${asset.name}」吗？',
-                      style: TextStyle(color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: Spacing.xl),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: Text('取消'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.danger,
-                            ),
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              TopToast.showSuccess(pageContext, '已删除');
-                              unawaited(() async {
-                                final result = await appState.deleteAsset(
-                                  type: assetType,
-                                  id: asset.id!,
-                                  awaitRefresh: false,
-                                );
-                                if (!pageContext.mounted) return;
-                                if (!result.ok) {
-                                  TopToast.showError(
-                                    pageContext,
-                                    result.message ?? '删除失败，请稍后重试',
-                                  );
-                                } else {
-                                  TopToast.showSuccess(pageContext, '已删除');
-                                }
-                              }());
-                            },
-                            child: Text('删除'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  size: 16,
+                  color: _text,
                 ),
               ),
             ),
           ),
-        );
-      },
+          Expanded(
+            child: Center(
+              child: Text(
+                _getTitle(),
+                style: _dm(size: 16, weight: FontWeight.w600, color: _text),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 66,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$count 个账户',
+                style: _dm(size: 11, color: _textMuted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+      decoration: BoxDecoration(
+        color: const Color(0xA81A1D25),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0x24FFFFFF),
+          style: BorderStyle.solid,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '暂无${_getTitle()}',
+            style: _dm(size: 16, weight: FontWeight.w600, color: _text),
+          ),
+          const SizedBox(height: 6),
+          Text('点击右下角 + 添加第一条资产', style: _dm(size: 12, color: _textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssetCard(BuildContext context, Asset asset) {
+    final amount = _displayAmount(asset);
+    final amountValueColor = amount.isZero ? _amountZero : _amountText;
+    final amountSymbolColor = amount.isZero ? _amountZero : _gold;
+    final amountUnitColor = amount.isZero ? const Color(0xFF838A9A) : _textSub;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showEditDialog(context, asset),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xF51A1D25), Color(0xFA171A22)],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0x0EFFFFFF)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x47000000),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: const Color(0x295B8DEF)),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0x245B8DEF), Color(0x0F4A7BE0)],
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    _iconForAsset(asset),
+                    size: 18,
+                    color: const Color(0xFF739BF0),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        asset.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _dm(
+                          size: 15,
+                          weight: FontWeight.w700,
+                          color: _nameText,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            amount.symbol,
+                            style: _mono(
+                              size: 12,
+                              weight: FontWeight.w500,
+                              color: amountSymbolColor,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              amount.value,
+                              overflow: TextOverflow.ellipsis,
+                              style: _mono(
+                                size: 13,
+                                weight: FontWeight.w500,
+                                color: amountValueColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            amount.unit,
+                            style: _dm(
+                              size: 9,
+                              weight: FontWeight.w500,
+                              color: amountUnitColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -294,8 +326,8 @@ class AssetDetailPage extends StatelessWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (dialogContext) =>
+      barrierColor: const Color(0x80000000),
+      builder: (_) =>
           AddAssetDialog(fixedAssetType: assetType, hostContext: context),
     );
   }
@@ -304,11 +336,69 @@ class AssetDetailPage extends StatelessWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (dialogContext) => AddAssetDialog(
+      barrierColor: const Color(0x80000000),
+      builder: (_) => AddAssetDialog(
         fixedAssetType: assetType,
         editingAsset: asset,
         hostContext: context,
+        lockCashCurrency: true,
+        allowDeleteInEdit: true,
+        dialogTitleOverride: '编辑资产',
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bg,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0.8, -1.1),
+            radius: 1.1,
+            colors: [Color(0x1F5B8DEF), Color(0x000D0E12)],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Consumer<AppState>(
+            builder: (context, appState, _) {
+              final assets = _getAssets(appState);
+              return Column(
+                children: [
+                  _buildHeader(context, assets.length),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(
+                        14,
+                        8,
+                        14,
+                        _bottomContentPadding(context),
+                      ),
+                      itemCount: assets.isEmpty ? 1 : assets.length,
+                      separatorBuilder: (_, index) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        if (assets.isEmpty) {
+                          return _buildEmpty();
+                        }
+                        return _buildAssetCard(context, assets[index]);
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: FloatingActionButton.small(
+        heroTag: 'add_asset_detail_$assetType',
+        onPressed: () => _showAddDialog(context),
+        backgroundColor: const Color(0xFF5B8DEF),
+        child: const Icon(Icons.add, size: 20, color: Colors.white),
       ),
     );
   }

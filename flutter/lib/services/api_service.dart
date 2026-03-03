@@ -147,6 +147,7 @@ class ApiService {
     String endpoint, {
     bool? isWebOverride,
     String? webOriginOverride,
+    String? webApiBaseOverride,
     String? mobileBaseUrlOverride,
   }) {
     if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
@@ -157,6 +158,14 @@ class ApiService {
         : '/$endpoint';
     final isWebPlatform = isWebOverride ?? kIsWeb;
     if (isWebPlatform) {
+      final rawWebApiBase =
+          (webApiBaseOverride ??
+                  const String.fromEnvironment('WEB_API_BASE_URL'))
+              .trim();
+      if (rawWebApiBase.isNotEmpty) {
+        final webBase = rawWebApiBase.replaceFirst(RegExp(r'/$'), '');
+        return Uri.parse('$webBase$normalizedEndpoint');
+      }
       final rawOrigin =
           (webOriginOverride != null && webOriginOverride.trim().isNotEmpty)
           ? webOriginOverride.trim()

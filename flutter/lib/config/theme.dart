@@ -10,6 +10,7 @@ class AppPalette {
   final Color textPrimary;
   final Color textSecondary;
   final Color textTertiary;
+  final Color textDim;
   final Color success;
   final Color danger;
   final Color border;
@@ -25,6 +26,7 @@ class AppPalette {
     required this.textPrimary,
     required this.textSecondary,
     required this.textTertiary,
+    required this.textDim,
     required this.success,
     required this.danger,
     required this.border,
@@ -32,18 +34,19 @@ class AppPalette {
   });
 
   static const dark = AppPalette(
-    bgPrimary: Color(0xFF0A0E1A),
-    bgCard: Color(0xFF1A2332),
-    bgElevated: Color(0xFF1F2937),
-    navBg: Color(0xFF0F172A),
-    accent: Color(0xFF3B82F6),
+    bgPrimary: Color(0xFF0C0D11),
+    bgCard: Color(0xFF13151C),
+    bgElevated: Color(0xFF181B23),
+    navBg: Color(0xFF0F1118),
+    accent: Color(0xFF5B8DEF),
     accentLight: Color(0xFF60A5FA),
-    textPrimary: Color(0xFFFFFFFF),
-    textSecondary: Color(0xFF94A3B8),
+    textPrimary: Color(0xFFE8EAF0),
+    textSecondary: Color(0xFF8B909F),
     textTertiary: Color(0xFF64748B),
-    success: Color(0xFF10B981),
-    danger: Color(0xFFEF4444),
-    border: Color(0xFF1F2937),
+    textDim: Color(0xFF4E5464),
+    success: Color(0xFF2ECC8A),
+    danger: Color(0xFFF05A55),
+    border: Color(0x0FFFFFFF),
     cardGradient: [Color(0xFF1A2744), Color(0xFF0F1829)],
   );
 
@@ -58,6 +61,7 @@ class AppPalette {
     textPrimary: Color(0xFF1F2A37),
     textSecondary: Color(0xFF6B7280),
     textTertiary: Color(0xFF9AA3B2),
+    textDim: Color(0xFFB0B5C3),
     success: Color(0xFF16A34A),
     danger: Color(0xFFE45656),
     border: Color(0xFFDCE3EE),
@@ -90,6 +94,7 @@ class AppTheme {
   static Color get textPrimary => _palette.textPrimary;
   static Color get textSecondary => _palette.textSecondary;
   static Color get textTertiary => _palette.textTertiary;
+  static Color get textDim => _palette.textDim;
 
   // 状态色
   static Color get success => _palette.success;

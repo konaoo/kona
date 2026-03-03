@@ -8,6 +8,64 @@
 
 ---
 
+## v1.0.25 - 登录页 UI 1:1 升级、邀请码弹窗功能完善与渲染性能优化
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Docs
+
+### Summary
+- 登录页 UI 完全重写，1:1 还原 `docs/prototypes/login.html` 原型设计：暗色主题、M 形渐变 Logo、登录/注册 Tab 切换、自定义输入框组件（聚焦发光描边）、渐变按钮状态机、密码强度条、入场动画等。
+- 全局暗色主题（`AppPalette.dark`）配色更新，对齐原型设计规范。
+- 邀请码弹窗功能完善：从后端加载文案、保存图片到相册（新增 `gal` 依赖）、点击空白关闭弹窗。
+- 登录页渲染性能优化：19 处 `GoogleFonts` 调用提取为静态缓存，启动时预加载字体，消除输入框聚焦与 Tab 切换时的卡顿。
+- Gradle wrapper 升级 7.3.1 → 8.13 修复 Kotlin 2.2.20 编译兼容性问题。
+
+### Added
+- 新增 `_LogoMPainter`：使用 `CustomPainter` 绘制 M 形渐变圆角 Logo。
+- 新增 `_InputWrap` 组件：统一输入框样式（左图标、聚焦/错误发光描边、密码可见切换、JetBrains Mono 字体支持）。
+- 新增 `_S` 缓存样式类：18 个 `static final` TextStyle 常量，避免每次 `build` 重复调用 `GoogleFonts`。
+- 新增 `gal: ^2.3.2` 依赖：支持邀请码二维码图片保存到手机相册。
+- `main.dart` 新增 `GoogleFonts.pendingFonts()` 预加载 DM Sans 和 JetBrains Mono 字体。
+- `theme.dart` 新增 `textDim` 颜色字段（placeholder / 次要图标色）。
+
+### Changed
+- `login_page.dart`：完全重写（~860 行），替换旧版 Material 风格登录页，1:1 还原原型：
+  - 品牌区：M 形 Logo + 应用名「咔咔记账」+ 副标题
+  - Tab 切换器：登录/注册并列标签 + `AnimatedContainer` 动画
+  - 登录表单：账号 + 密码 + 记住用户名/忘记密码（toast 提示"功能开发中"）+ 渐变按钮
+  - 注册表单：邀请码提示条（「获取邀请码」白色高亮链接）+ 邀请码 + 用户名 + 密码（含强度条）+ 确认密码 + 「立即注册」按钮
+  - 字段级错误提示（替代旧 banner 错误）
+  - 底部法律声明（预留用户协议/隐私政策入口）
+  - 入场 fadeUp 交错动画
+  - 字体：DM Sans（主体）+ JetBrains Mono（密码/邀请码输入框）
+  - 生物识别保留后端逻辑，前端隐藏入口
+- `theme.dart`：`AppPalette.dark` 全部配色更新（bgPrimary `#0C0D11`、bgCard `#13151C`、accent `#5B8DEF`、success `#2ECC8A`、danger `#F05A55` 等）。
+- 邀请码弹窗（`_InviteCodeDialog`）：
+  - 去掉标题「联系我们获取邀请码」和 X 关闭按钮
+  - 文案改为左对齐，内容从后端 `invite_acquire_text` 动态获取
+  - 按钮文案「保存二维码」→「保存图片」，实现下载保存到相册功能
+  - 支持点击弹窗外空白区域关闭（`barrierDismissible: true`）
+- `widget_test.dart`：更新登录页 smoke test 断言对齐新 UI Key 和文案。
+- `gradle-wrapper.properties`：Gradle 7.3.1 → 8.13（修复 Kotlin 2.2.20 + AGP 8.11.1 编译）。
+
+### Fixed
+- 修复输入框内 `TextField` 的 `fillColor` 与外层容器底色不一致导致图标区域出现色差的问题。
+- 修复输入框聚焦时 Material 内层光圈/椭圆叠加外层发光描边导致双重高亮的问题。
+- 修复记住用户名/忘记密码行上下间距过窄的问题（4px → 12px/8px）。
+- 修复 Gradle 7.3.1 与 Kotlin 2.2.20 不兼容导致 `FlutterPlugin.kt: Unresolved reference: filePermissions` 编译失败的问题。
+
+### Verification
+- `flutter analyze` — 0 error ✓
+- `flutter test test/widget_test.dart` — 4/4 passed ✓
+- 真机验收（PLG110 无线调试 ×6 轮）：登录/注册 Tab 切换、输入框聚焦发光、忘记密码 toast、密码强度条、邀请码弹窗文案/图片/保存、法律声明展示均通过。
+
+### Notes
+- 登录页仅支持暗色模式，与原型保持一致。
+- 法律链接（用户协议/隐私政策）预留点击入口，暂无实际跳转页面。
+- `image_gallery_saver` 和 `image_gallery_saver_plus` 均不兼容 Kotlin 2.2.20，最终采用 `gal` 包实现相册保存。
+
+---
+
 ## v1.0.24 - 投资弹窗 UI v2 统一、摊薄成本展示、资金账户规则收口
 - 发布状态：Released
 - 发布类型：Patch
