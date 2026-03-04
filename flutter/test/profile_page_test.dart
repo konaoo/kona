@@ -94,35 +94,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('kona'), findsOneWidget);
-    expect(find.text('已在咔咔记录 3 天'), findsOneWidget);
-    expect(find.text('个人设置'), findsOneWidget);
+    expect(find.text('已在咔咔记录 3天'), findsOneWidget);
+    expect(find.text('通用设置'), findsOneWidget);
+    expect(find.text('切换主题'), findsOneWidget);
+    expect(find.text('修改密码'), findsOneWidget);
+    expect(find.text('生物识别'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('关于我们'), findsOneWidget);
     expect(find.text('咔咔用户群'), findsOneWidget);
-    expect(find.text('修改密码'), findsNothing);
-    expect(find.text('生物识别登录'), findsNothing);
-    expect(find.text('退出登录'), findsNothing);
+    expect(find.text('退出登录'), findsOneWidget);
 
     final settingTexts = find.byType(Text);
-    final personalSettingIndex = tester
-        .widgetList<Text>(settingTexts)
-        .toList()
-        .indexWhere((w) => w.data == '个人设置');
-    final updateIndex = tester
-        .widgetList<Text>(settingTexts)
-        .toList()
-        .indexWhere((w) => w.data == '检查更新');
-    final aboutIndex = tester
-        .widgetList<Text>(settingTexts)
-        .toList()
-        .indexWhere((w) => w.data == '关于我们');
-    final userGroupIndex = tester
-        .widgetList<Text>(settingTexts)
-        .toList()
-        .indexWhere((w) => w.data == '咔咔用户群');
-    expect(personalSettingIndex, lessThan(updateIndex));
+    final themeIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '切换主题');
+    final passwordIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '修改密码');
+    final bioIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '生物识别');
+    final updateIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '检查更新');
+    final aboutIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '关于我们');
+    final groupIndex = tester.widgetList<Text>(settingTexts).toList().indexWhere((w) => w.data == '咔咔用户群');
+
+    expect(themeIndex, lessThan(passwordIndex));
+    expect(passwordIndex, lessThan(bioIndex));
+    expect(bioIndex, lessThan(updateIndex));
     expect(updateIndex, lessThan(aboutIndex));
-    expect(aboutIndex, lessThan(userGroupIndex));
+    expect(aboutIndex, lessThan(groupIndex));
 
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
@@ -147,7 +141,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('咔咔用户群'));
     await tester.pumpAndSettle();
-    expect(find.text('咔咔用户群'), findsOneWidget);
+    expect(find.text('咔咔用户群'), findsWidgets);
   });
 
   testWidgets('Check update shows latest message when version is up-to-date', (
@@ -182,7 +176,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('检查更新'));
+    await tester.tap(find.text('检查更新').first);
     await tester.pumpAndSettle();
     expect(find.text('当前已是最新版本'), findsOneWidget);
   });
