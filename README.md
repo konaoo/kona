@@ -102,7 +102,40 @@ npm run build
 - IP 直连：`http://114.132.238.12/`
 - 业务端：`http://114.132.238.12/app/login`
 - 管理端：`http://114.132.238.12/admin/login`
-- 域名：已临时禁用（备案完成后再评估恢复）
+
+---
+
+## 4. 生产环境与核心机制
+
+### 4.1 腾讯云服务器接入
+生产环境部署在腾讯云轻量应用服务器（广州）：
+- **IP 地址**：`114.132.238.12`
+- **SSH 登录凭证**：使用本地私钥 `~/.ssh/tencent_kona_key`
+
+**常用登录与运维命令**：
+```bash
+# 1. 登录服务器
+ssh -i ~/.ssh/tencent_kona_key root@114.132.238.12
+
+# 2. 查看服务状态与日志
+systemctl status kona
+journalctl -u kona -f
+
+# 3. 部署最新代码并重启
+cd /opt/kaka/portfolio && git pull origin main
+systemctl restart kona
+```
+
+### 4.2 资产快照机制（收益日历数据来源）
+**功能说明**：
+用户的“收益日历”数据完全依赖于后台定时生成的每日资产快照（存入 `daily_snapshots` 表）。如果快照中断，日历上的历史收益将显示为空。
+
+**执行机制（Cron 定时任务）**：
+为确保抓取到准确的当日盈亏（由于 A、港、美股收盘时间横跨全天，特别是美股冬令时凌晨 5 点收盘），系统采用**高频覆盖更新（UPSERT）**策略：
+- **触发频率**：每 2 小时执行一次（crontab 规则：`0 */2 * * *`）
+- **日志路径**：`/var/log/kona_snapshot.log`
+- **运行方式**：触发 `/opt/kaka/portfolio/kona_tool/core/snapshot.py` 里的 `take_snapshot()`，使用 `ON CONFLICT DO UPDATE` 长效覆盖。
+- **状态监控**：【管理后台】->【接口管理】页面底部的“快照定时任务”卡片提供了一键健康检查功能，可查看最新快照时间和整体健康度。
 
 ---
 
