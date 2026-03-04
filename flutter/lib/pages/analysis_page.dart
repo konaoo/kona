@@ -1,12 +1,62 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../providers/app_state.dart';
+import '../models/portfolio.dart';
 import '../widgets/calendar_period_wheel_sheet.dart';
+
+enum CalendarPeriodWheelMode { day, month }
+
+// ──────────────────────────────────────────────────
+// Cached TextStyles – DM Sans for labels, JetBrains Mono for numbers
+// ──────────────────────────────────────────────────
+class _S {
+  _S._();
+  // Overview
+  static final label = GoogleFonts.dmSans(
+    fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.01,
+  );
+  static final value = GoogleFonts.jetBrainsMono(
+    fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -0.02,
+  );
+  static final pnlRate = GoogleFonts.dmSans(
+    fontSize: 12, fontWeight: FontWeight.w700,
+  );
+  // Calendar
+  static final calDate = GoogleFonts.jetBrainsMono(
+    fontSize: 13, fontWeight: FontWeight.w600,
+  );
+  static final calPnl = GoogleFonts.jetBrainsMono(
+    fontSize: 9, fontWeight: FontWeight.w700,
+  );
+  static final calSumLabel = GoogleFonts.dmSans(
+    fontSize: 11, fontWeight: FontWeight.w500,
+  );
+  static final calSumVal = GoogleFonts.jetBrainsMono(
+    fontSize: 18, fontWeight: FontWeight.w700,
+  );
+  // Rankings
+  static final rankName = GoogleFonts.dmSans(
+    fontSize: 14, fontWeight: FontWeight.w600, height: 1.2,
+  );
+  static final rankCode = GoogleFonts.jetBrainsMono(
+    fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.02,
+  );
+  static final rankVal = GoogleFonts.jetBrainsMono(
+    fontSize: 15, fontWeight: FontWeight.w700,
+  );
+  static final rankPct = GoogleFonts.dmSans(
+    fontSize: 11, fontWeight: FontWeight.w600,
+  );
+  static final tabText = GoogleFonts.dmSans(
+    fontSize: 13, fontWeight: FontWeight.w600,
+  );
+}
 
 /// 分析页面 - 盈亏分析
 class AnalysisPage extends StatefulWidget {
@@ -27,6 +77,8 @@ class AnalysisPage extends StatefulWidget {
 class _AnalysisPageState extends State<AnalysisPage> {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
+  final LayerLink _datePickerLink = LayerLink();
+  OverlayEntry? _datePickerOverlay;
   static const int _maxTransientRetry = 3;
   static const String _legacyOverviewStorageKey = 'cache_analysis_overview';
   String _currentPeriod = 'day';
@@ -47,6 +99,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   int? _selectedDayYear;
   int? _selectedDayMonth;
   int? _selectedMonthYear;
+  int? _selectedMonthMonth;
   List<int> _selectableDayYears = const [];
   Map<int, List<int>> _selectableMonthsByYear = const {};
   List<int> _selectableMonthYears = const [];
@@ -57,6 +110,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedDayYear = now.year;
+    _selectedDayMonth = now.month;
+    _selectedMonthYear = now.year;
+    _selectedMonthMonth = now.month;
     _loadData();
     _loadCalendar();
   }
@@ -91,6 +149,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final data = widget.overviewLoader != null
           ? await widget.overviewLoader!('all')
           : await _api.getAnalysisOverview(period: 'all');
+      if (!mounted) return;
       setState(() {
         _overview = data;
         _loading = false;
@@ -101,6 +160,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       _overviewRetryCount = 0;
     } catch (e) {
       debugPrint('加载分析数据失败: $e');
+      if (!mounted) return;
       if (!renderedByCache && showLoadingUi) {
         setState(() => _loading = false);
       }
@@ -171,8 +231,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
 
-    // 命中缓存后仍回源一次，避免跨月后 selectable 长期陈旧导致无法切回当期。
-
     if (!renderedByCache && showLoadingUi) {
       setState(() => _calendarLoading = true);
     }
@@ -188,7 +246,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
               year: _currentCalendarRequestYear,
               month: _currentCalendarRequestMonth,
             );
-      debugPrint('收益日历数据: $data');
       if (!mounted) return;
       setState(() {
         _syncCalendarMetaFromData(data);
@@ -386,67 +443,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _loadCalendar();
   }
 
-  Future<void> _showCalendarPeriodPicker() async {
-    if (_calendarTimeType == 'day') {
-      if (_selectableDayYears.isEmpty) return;
-      final latestYear = _selectableDayYears.last;
-      final latestMonths = _selectableMonthsByYear[latestYear] ?? const <int>[];
-      final latestMonth = latestMonths.isNotEmpty ? latestMonths.last : 1;
-
-      final initialYear =
-          (_selectedDayYear != null &&
-              _selectableDayYears.contains(_selectedDayYear))
-          ? _selectedDayYear!
-          : latestYear;
-      final initialMonths =
-          _selectableMonthsByYear[initialYear] ?? const <int>[];
-      final initialMonth =
-          (_selectedDayMonth != null &&
-              initialMonths.contains(_selectedDayMonth))
-          ? _selectedDayMonth!
-          : (initialMonths.isNotEmpty ? initialMonths.last : latestMonth);
-
-      final picked = await showCalendarPeriodWheelSheet(
-        context: context,
-        mode: CalendarPeriodWheelMode.day,
-        selectableYears: _selectableDayYears,
-        selectableMonthsByYear: _selectableMonthsByYear,
-        initialYear: initialYear,
-        initialMonth: initialMonth,
-        resetYear: latestYear,
-        resetMonth: latestMonth,
-      );
-      if (!mounted || picked == null) return;
-      setState(() {
-        _selectedDayYear = picked.year;
-        _selectedDayMonth = picked.month;
-      });
-      _loadCalendar();
-      return;
-    }
-
-    if (_calendarTimeType == 'month') {
-      if (_selectableMonthYears.isEmpty) return;
-      final latestYear = _selectableMonthYears.last;
-      final initialYear =
-          (_selectedMonthYear != null &&
-              _selectableMonthYears.contains(_selectedMonthYear))
-          ? _selectedMonthYear!
-          : latestYear;
-
-      final picked = await showCalendarPeriodWheelSheet(
-        context: context,
-        mode: CalendarPeriodWheelMode.month,
-        selectableYears: _selectableMonthYears,
-        initialYear: initialYear,
-        resetYear: latestYear,
-      );
-      if (!mounted || picked == null) return;
-      setState(() {
-        _selectedMonthYear = picked.year;
-      });
-      _loadCalendar();
-    }
+  void _showCalendarPeriodPicker() {
+    _toggleDatePicker();
   }
 
   String _calendarPeriodButtonText() {
@@ -485,7 +483,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _calendarRetryCount = 0;
     final appState = context.read<AppState>();
     if (!appState.portfolioLoaded) {
-      // 分析页空数据时补拉一次首页核心数据（不阻塞手动刷新返回）。
       unawaited(appState.refreshHomeData());
     }
     try {
@@ -503,24 +500,28 @@ class _AnalysisPageState extends State<AnalysisPage> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    return RefreshIndicator(
-      onRefresh: _onPullToRefresh,
-      color: AppTheme.accent,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 盈亏概览卡片
-            _buildOverviewCard(appState),
-            const SizedBox(height: Spacing.xl),
-            // 收益日历
-            _buildCalendarSection(appState),
-            const SizedBox(height: Spacing.xl),
-            // 盈亏排行
-            _buildRankSection(appState),
-          ],
+    return Scaffold(
+      backgroundColor: AppTheme.bgPrimary,
+      body: RefreshIndicator(
+        onRefresh: _onPullToRefresh,
+        color: AppTheme.accent,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 12),
+              _buildOverviewCard(appState),
+              const SizedBox(height: 14),
+              _buildCalendarSection(appState),
+              const SizedBox(height: 14),
+              _buildCalendarSummary(appState),
+              const SizedBox(height: 16),
+              _buildRankSection(appState),
+              const SizedBox(height: 100),
+            ],
+          ),
         ),
       ),
     );
@@ -533,111 +534,148 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final isDay = _currentPeriod == 'day';
     final pnl = isDay ? appState.investDayPnl : (apiPnl ?? 0);
     final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
-    final pnlColor = pnl >= 0
-        ? const Color(0xFFEF4444)
-        : const Color(0xFF10B981);
+    final pnlColor = pnl >= 0 ? AppTheme.danger : AppTheme.success;
     final showLoading = _loading && !_overviewLoaded && !isDay;
-    final amountText = appState.amountHidden
-        ? '****'
-        : '¥${pnl.toStringAsFixed(0)}';
+    final amountText = appState.amountHidden ? '****' : '¥${pnl.toStringAsFixed(0)}';
+
+    String title;
+    switch (_currentPeriod) {
+      case 'day':
+        title = '当日盈亏';
+        break;
+      case 'month':
+        title = '本月盈亏';
+        break;
+      case 'year':
+        title = '本年盈亏';
+        break;
+      default:
+        title = '累计盈亏';
+    }
 
     return Container(
-      padding: const EdgeInsets.all(Spacing.xl),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: AppTheme.cardGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x265B8DEF)),
+        gradient: const LinearGradient(
+          begin: Alignment(-0.6, -1),
+          end: Alignment(1, 1),
+          colors: [
+            Color(0xFF171C2E),
+            Color(0xFF111520),
+            Color(0xFF0F1219),
+          ],
+          stops: [0.0, 0.6, 1.0],
         ),
-        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            _getPeriodTitle(_currentPeriod),
-            style: TextStyle(
-              fontSize: FontSize.sm,
-              color: AppTheme.textSecondary,
+            title,
+            style: _S.label.copyWith(color: const Color(0xFF9AA3B7), fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: Text(
+              showLoading ? '加载中...' : amountText,
+              style: _S.value.copyWith(
+                color: showLoading ? const Color(0xFFF0F4FF) : pnlColor,
+                fontSize: 32,
+              ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            showLoading ? '加载中...' : amountText,
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: showLoading ? AppTheme.textPrimary : pnlColor,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                pnl >= 0 ? Icons.trending_up : Icons.trending_down,
+                pnlRate >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
                 size: 16,
-                color: showLoading ? AppTheme.textTertiary : pnlColor,
+                color: pnlColor,
               ),
               const SizedBox(width: 4),
               Text(
-                showLoading ? '--' : '收益率 ${pnlRate.toStringAsFixed(2)}%',
-                style: TextStyle(
-                  fontSize: FontSize.sm,
-                  color: showLoading ? AppTheme.textTertiary : pnlColor,
+                '收益率',
+                style: _S.label.copyWith(color: pnlColor, fontSize: 13),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                showLoading ? '--' : '${pnlRate >= 0 ? '+' : ''}${pnlRate.toStringAsFixed(2)}%',
+                style: _S.pnlRate.copyWith(
+                  color: pnlColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: Spacing.lg),
-          // 周期切换
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildPeriodTab('当日', 'day'),
-              const SizedBox(width: 8),
-              _buildPeriodTab('本月', 'month'),
-              const SizedBox(width: 8),
-              _buildPeriodTab('今年', 'year'),
-              const SizedBox(width: 8),
-              _buildPeriodTab('全部', 'all'),
-            ],
-          ),
+          const SizedBox(height: 24),
+          _buildPeriodSegmentedControl(),
         ],
       ),
     );
   }
 
-  String _getPeriodTitle(String period) {
-    switch (period) {
-      case 'day':
-        return '今日盈亏';
-      case 'month':
-        return '本月盈亏';
-      case 'year':
-        return '今年盈亏';
-      case 'all':
-        return '累计盈亏';
-      default:
-        return '盈亏';
-    }
+  Widget _buildPeriodSegmentedControl() {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16181F),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildPeriodButton('当日', _currentPeriod == 'day', 'day'),
+          _buildPeriodButton('本月', _currentPeriod == 'month', 'month'),
+          _buildPeriodButton('本年', _currentPeriod == 'year', 'year'),
+          _buildPeriodButton('全部', _currentPeriod == 'profit', 'profit'),
+        ],
+      ),
+    );
   }
 
-  Widget _buildPeriodTab(String label, String value) {
-    final isSelected = _currentPeriod == value;
-    return GestureDetector(
-      onTap: () => _changePeriod(value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: FontSize.sm,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
+  Widget _buildPeriodButton(String label, bool isSelected, String period) {
+    final blue = const Color(0xFF3F8CFF);
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _changePeriod(period),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? blue : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: blue.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    )
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: _S.label.copyWith(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+            ),
           ),
         ),
       ),
@@ -645,38 +683,28 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _buildCalendarSection(AppState appState) {
-    // 根据时间类型生成日期网格数据
     final now = DateTime.now();
     List<Map<String, dynamic>> calendarGrid = [];
     final dayYear = _selectedDayYear ?? now.year;
     final dayMonth = _selectedDayMonth ?? now.month;
 
     if (_calendarTimeType == 'day') {
-      // 显示本月每天，以日历网格形式
       final lastDayOfMonth = DateTime(dayYear, dayMonth + 1, 0);
       final daysInMonth = lastDayOfMonth.day;
-
-      // 生成本月所有日期
       for (int i = 1; i <= daysInMonth; i++) {
-        final date = DateTime(dayYear, dayMonth, i);
-        final dateStr =
-            '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-        calendarGrid.add({'day': i, 'date': dateStr, 'pnl': null});
+        calendarGrid.add({'day': i, 'date': i.toString(), 'pnl': null});
       }
     } else if (_calendarTimeType == 'month') {
-      // 显示今年12个月
       for (int i = 1; i <= 12; i++) {
         calendarGrid.add({'day': i, 'date': '${i}月', 'pnl': null});
       }
     } else {
-      // 显示最近5年
-      for (int i = 0; i < 5; i++) {
-        final year = now.year - 4 + i;
+      for (int i = 0; i < 6; i++) {
+        final year = now.year - 5 + i;
         calendarGrid.add({'day': year, 'date': '${year}年', 'pnl': null});
       }
     }
 
-    // 如果有实际数据，填充到网格中（用精确匹配）
     final items = _calendarData['items'] as List<dynamic>? ?? [];
     final pnlMap = <int, double>{};
     for (var item in items) {
@@ -687,10 +715,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         pnlMap[key] = pnl;
       }
     }
-    // 当天数据始终用实时日盈亏，确保与“今日盈亏”一致
-    if (_calendarTimeType == 'day' &&
-        dayYear == now.year &&
-        dayMonth == now.month) {
+    if (_calendarTimeType == 'day' && dayYear == now.year && dayMonth == now.month) {
       final todayKey = DateTime.now().day;
       pnlMap[todayKey] = appState.investDayPnl;
     }
@@ -702,307 +727,390 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '收益日历',
-          style: TextStyle(
-            fontSize: FontSize.xl,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        const SizedBox(height: Spacing.sm),
-        Row(
-          key: const Key('calendar-header-controls-row'),
-          children: [
-            if (_calendarTimeType != 'year') ...[
-              GestureDetector(
-                key: const Key('calendar-period-button'),
-                onTap: _calendarPeriodPickerEnabled
-                    ? _showCalendarPeriodPicker
-                    : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Spacing.md,
-                    vertical: Spacing.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _calendarPeriodPickerEnabled
-                        ? AppTheme.bgCard
-                        : AppTheme.bgElevated.withOpacity(0.45),
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    border: Border.all(
-                      color: AppTheme.border.withOpacity(
-                        AppTheme.isLight ? 0.7 : 0.35,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _calendarPeriodButtonText(),
-                        style: TextStyle(
-                          fontSize: FontSize.sm,
-                          fontWeight: FontWeight.w600,
-                          color: _calendarPeriodPickerEnabled
-                              ? AppTheme.textPrimary
-                              : AppTheme.textTertiary,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18,
-                        color: _calendarPeriodPickerEnabled
-                            ? AppTheme.textSecondary
-                            : AppTheme.textTertiary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-            ] else ...[
-              const Spacer(),
-            ],
-            Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: AppTheme.bgCard,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildToggle('日', _calendarTimeType == 'day', () {
-                    _onCalendarTypeChanged('day');
-                  }),
-                  _buildToggle('月', _calendarTimeType == 'month', () {
-                    _onCalendarTypeChanged('month');
-                  }),
-                  _buildToggle('年', _calendarTimeType == 'year', () {
-                    _onCalendarTypeChanged('year');
-                  }),
-                ],
-              ),
-            ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.055)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppTheme.bgCard.withValues(alpha: 0.8),
+            AppTheme.bgPrimary.withValues(alpha: 0.5),
           ],
         ),
-        const SizedBox(height: Spacing.md),
-        Container(
-          padding: const EdgeInsets.all(Spacing.lg),
-          decoration: BoxDecoration(
-            color: AppTheme.bgCard,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: _calendarTimeType == 'day'
-                  ? 6
-                  : (_calendarTimeType == 'month' ? 4 : 5),
-              childAspectRatio: _calendarTimeType == 'day' ? 0.9 : 1.0,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: calendarGrid.length,
-            itemBuilder: (context, index) {
-              final item = calendarGrid[index];
-              final day = item['day'];
-              final pnl = item['pnl'] as double?;
-
-              Color backgroundColor;
-              Color textColor;
-
-              if (pnl != null) {
-                if (pnl > 0) {
-                  backgroundColor = const Color(0xFFEF4444).withOpacity(0.15);
-                  textColor = const Color(0xFFEF4444);
-                } else if (pnl < 0) {
-                  backgroundColor = const Color(0xFF10B981).withOpacity(0.15);
-                  textColor = const Color(0xFF10B981);
-                } else {
-                  backgroundColor = AppTheme.bgElevated;
-                  textColor = AppTheme.textSecondary;
-                }
-              } else {
-                backgroundColor = AppTheme.bgElevated;
-                textColor = AppTheme.textTertiary;
-              }
-
-              return Container(
-                decoration: BoxDecoration(
-                  color: backgroundColor,
-                  borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '收益日历',
+                style: _S.label.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _calendarTimeType == 'day'
-                          ? day.toString()
-                          : (_calendarTimeType == 'month'
-                                ? '${day}月'
-                                : day.toString()),
-                      style: TextStyle(
-                        fontSize: FontSize.sm,
-                        color: textColor,
-                        fontWeight: pnl != null
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
-                    if (pnl != null) ...[
-                      const SizedBox(height: 2),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          _formatCalendarPnl(pnl, appState),
-                          maxLines: 1,
-                          softWrap: false,
-                          style: TextStyle(fontSize: 11, color: textColor),
-                        ),
-                      ),
-                    ] else ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '-',
-                        style: TextStyle(fontSize: 11, color: textColor),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.lg,
-            vertical: Spacing.sm,
-          ),
-          decoration: BoxDecoration(
-            color: AppTheme.bgElevated,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-          ),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _calendarSummaryText(appState),
-              style: TextStyle(
-                fontSize: FontSize.sm,
-                color: AppTheme.textSecondary,
               ),
-            ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildCalendarHeaderControls(),
+          const SizedBox(height: 14),
+          _buildCalendarGrid(calendarGrid, appState),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarHeaderControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        if (_calendarTimeType != 'year')
+          _buildCalendarPeriodPicker()
+        else
+          const SizedBox.shrink(),
+        Container(
+          height: 28,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              _buildHeaderToggle('日', _calendarTimeType == 'day', () => _onCalendarTypeChanged('day')),
+              _buildHeaderToggle('月', _calendarTimeType == 'month', () => _onCalendarTypeChanged('month')),
+              _buildHeaderToggle('年', _calendarTimeType == 'year', () => _onCalendarTypeChanged('year')),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildToggle(String text, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: FontSize.sm,
-            color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
+  Widget _buildCalendarPeriodPicker() {
+    return CompositedTransformTarget(
+      link: _datePickerLink,
+      child: GestureDetector(
+        onTap: _calendarPeriodPickerEnabled ? _toggleDatePicker : null,
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16181F),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _calendarPeriodButtonText(),
+                style: _S.label.copyWith(
+                  fontSize: 13,
+                  color: _calendarPeriodPickerEnabled ? AppTheme.textPrimary : AppTheme.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 16,
+                color: _calendarPeriodPickerEnabled ? AppTheme.textSecondary : AppTheme.textMuted,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildRankSection(AppState appState) {
-    final rankItems = _buildRankItems(appState);
-    final rankList = _rankType == 'profit'
-        ? rankItems.where((x) => x.pnlCny > 0).toList()
-        : rankItems.where((x) => x.pnlCny < 0).toList();
-    if (_rankType == 'profit') {
-      rankList.sort((a, b) => b.pnlCny.compareTo(a.pnlCny));
-    } else {
-      rankList.sort((a, b) => a.pnlCny.compareTo(b.pnlCny));
+  void _hideDatePicker() {
+    _datePickerOverlay?.remove();
+    _datePickerOverlay = null;
+  }
+
+  void _toggleDatePicker() {
+    if (_datePickerOverlay != null) {
+      _hideDatePicker();
+      return;
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '盈亏排行',
-          style: TextStyle(
-            fontSize: FontSize.xl,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+    final now = DateTime.now();
+    final selectableYears = List<int>.generate(now.year - 2018 + 1, (index) => 2018 + index);
+    final Map<int, List<int>> selectableMonthsByYear = {};
+    for (var year in selectableYears) {
+      if (year < now.year) {
+        selectableMonthsByYear[year] = List<int>.generate(12, (index) => index + 1);
+      } else {
+        selectableMonthsByYear[year] = List<int>.generate(now.month, (index) => index + 1);
+      }
+    }
+
+    _datePickerOverlay = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          GestureDetector(
+            onTap: _hideDatePicker,
+            child: Container(color: Colors.transparent),
           ),
-        ),
-        const SizedBox(height: Spacing.md),
-        Row(
-          children: [
-            _buildRankTab('盈利榜', _rankType == 'profit', () {
-              setState(() => _rankType = 'profit');
-            }),
-            const SizedBox(width: Spacing.sm),
-            _buildRankTab('亏损榜', _rankType == 'loss', () {
-              setState(() => _rankType = 'loss');
-            }),
-            const Spacer(),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AnalysisRankAllPage(rankType: _rankType),
-                  ),
-                );
-              },
-              child: Text(
-                '查看全部 >',
-                style: TextStyle(
-                  fontSize: FontSize.base,
-                  color: AppTheme.accentLight,
-                ),
+          CompositedTransformFollower(
+            link: _datePickerLink,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.bottomLeft,
+            followerAnchor: Alignment.topLeft,
+            offset: const Offset(0, 8),
+            child: Material(
+              color: Colors.transparent,
+              child: DatePickerDropdown(
+                initialYear: _calendarTimeType == 'day' ? (_selectedDayYear ?? DateTime.now().year) : (_selectedMonthYear ?? DateTime.now().year),
+                initialMonth: _calendarTimeType == 'day' 
+                    ? (_selectedDayMonth ?? DateTime.now().month) 
+                    : (_selectedMonthMonth ?? DateTime.now().month),
+                selectableYears: selectableYears,
+                selectableMonthsByYear: selectableMonthsByYear,
+                onSelected: (year, month, isFinal) {
+                  if (_calendarTimeType == 'day') {
+                    setState(() {
+                      _selectedDayYear = year;
+                      _selectedDayMonth = month;
+                    });
+                  } else {
+                    setState(() {
+                      _selectedMonthYear = year;
+                      _selectedMonthMonth = month;
+                    });
+                  }
+                  
+                  if (isFinal) {
+                    _hideDatePicker();
+                  }
+
+                  // Debounce the load to avoid jumping during rapid scroll
+                  _calendarRetryTimer?.cancel();
+                  _calendarRetryTimer = Timer(const Duration(milliseconds: 100), () {
+                    if (mounted) _loadCalendar();
+                  });
+                },
               ),
             ),
+          ),
+        ],
+      ),
+    );
+
+    Overlay.of(context).insert(_datePickerOverlay!);
+  }
+
+  Widget _buildCalendarGrid(List<Map<String, dynamic>> calendarGrid, AppState appState) {
+    int crossAxisCount = 7;
+    double aspectRatio = 0.85;
+
+    if (_calendarTimeType == 'month') {
+      crossAxisCount = 4;
+      aspectRatio = 1.3;
+    } else if (_calendarTimeType == 'year') {
+      crossAxisCount = 3;
+      aspectRatio = 1.6;
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: aspectRatio,
+      ),
+      itemCount: calendarGrid.length,
+      itemBuilder: (context, index) {
+        final item = calendarGrid[index];
+        final pnl = item['pnl'] as double?;
+        final isSelected = _calendarTimeType == 'day' 
+            ? item['day'] == DateTime.now().day && (_selectedDayYear == null || _selectedDayYear == DateTime.now().year) && (_selectedDayMonth == null || _selectedDayMonth == DateTime.now().month)
+            : false;
+
+        return _buildCalendarItem(item['date'], pnl, isSelected, appState);
+      },
+    );
+  }
+
+  Widget _buildCalendarItem(String label, double? pnl, bool isSelected, AppState appState) {
+    final hasData = pnl != null;
+    final color = pnl == null ? AppTheme.textMuted : (pnl >= 0 ? AppTheme.danger : AppTheme.success);
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.surface2.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected ? AppTheme.accent : Colors.white.withValues(alpha: 0.05),
+          width: isSelected ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: _S.calDate.copyWith(
+            fontSize: label.contains('-') ? 11 : 13,
+            color: isSelected ? Colors.white : AppTheme.textPrimary,
+          )),
+          const SizedBox(height: 2),
+          Text(
+            hasData ? _formatCalendarPnl(pnl, appState) : '--',
+            style: _S.calPnl.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarSummary(AppState appState) {
+    String pnlLabel;
+    if (_calendarTimeType == 'day') {
+      pnlLabel = '本月盈亏';
+    } else if (_calendarTimeType == 'month') {
+      pnlLabel = '本年盈亏';
+    } else {
+      pnlLabel = '累计盈亏';
+    }
+
+    final pnlValue = _calendarSummaryText(appState);
+    final pnlRate = _calendarSummaryRate(appState);
+    final pnlRaw = _calendarSummaryRawValue();
+    final pnlColor = pnlRaw >= 0 ? AppTheme.danger : AppTheme.success;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.bgCard.withValues(alpha: 0.9),
+            AppTheme.bgPrimary.withValues(alpha: 0.8),
           ],
         ),
-        const SizedBox(height: Spacing.md),
-        if (rankList.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(Spacing.lg),
-            decoration: BoxDecoration(
-              color: AppTheme.bgCard,
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-            ),
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: Text(
-                  '暂无数据',
-                  style: TextStyle(color: AppTheme.textTertiary),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Text('$pnlLabel：', style: _S.calSumLabel.copyWith(color: AppTheme.textSecondary, fontSize: 13)),
+              Text(
+                pnlValue,
+                style: _S.calSumVal.copyWith(
+                  color: pnlColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          )
-        else
-          Column(
-            children: rankList.take(5).toList().asMap().entries.map((entry) {
-              final idx = entry.key;
-              final item = entry.value;
-              return _buildRankCard(item, appState, idx + 1);
-            }).toList(),
+            ],
           ),
-      ],
+          Row(
+            children: [
+              Text('盈亏率：', style: _S.calSumLabel.copyWith(color: AppTheme.textSecondary, fontSize: 13)),
+              Text(
+                pnlRate,
+                style: _S.calSumVal.copyWith(
+                  color: pnlColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _calendarSummaryRawValue() {
+    double total = 0;
+    final items = _calendarData['items'] as List<dynamic>? ?? [];
+    for (var item in items) {
+      total += (item['pnl'] as num?)?.toDouble() ?? 0;
+    }
+    return total;
+  }
+
+  Widget _buildRankSection(AppState appState) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.055)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppTheme.bgCard.withValues(alpha: 0.8),
+            AppTheme.bgPrimary.withValues(alpha: 0.5),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '盈亏排行',
+                style: _S.label.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AnalysisRankAllPage(rankType: _rankType),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Text('查看全部', style: _S.label.copyWith(color: AppTheme.accent, fontSize: 11)),
+                    Icon(Icons.chevron_right, size: 14, color: AppTheme.accent),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _buildRankTab('盈利榜', _rankType == 'profit', () => setState(() => _rankType = 'profit')),
+              const SizedBox(width: 8),
+              _buildRankTab('亏损榜', _rankType == 'loss', () => setState(() => _rankType = 'loss')),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildRankItems(appState),
+        ],
+      ),
     );
   }
 
@@ -1010,67 +1118,63 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: Spacing.sm,
-        ),
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          color: isSelected ? AppTheme.accent.withValues(alpha: 0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: isSelected ? AppTheme.accent.withValues(alpha: 0.3) : Colors.transparent),
         ),
         child: Text(
           text,
-          style: TextStyle(
-            fontSize: FontSize.lg,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? AppTheme.textPrimary : AppTheme.textTertiary,
+          style: _S.tabText.copyWith(
+            fontSize: 11,
+            color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
           ),
         ),
       ),
     );
   }
 
-  List<_RankItem> _buildRankItems(AppState appState) {
-    final items = <_RankItem>[];
-    for (final item in appState.portfolio) {
-      final priceInfo = appState.prices[item.code];
-      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-      final currentPrice = hasValidPrice
-          ? priceInfo.price
-          : (item.price > 0 ? item.price : 0.0);
-      final mv = currentPrice * item.qty;
-      final cost = item.price * item.qty;
-      final pnl = mv - cost + item.adjustment;
-      final pnlRate = cost.abs() > 0 ? (pnl / cost.abs() * 100) : 0.0;
-      final rate = appState.getCurrencyRate(item.curr);
-      final pnlCny = pnl * rate;
-      items.add(
-        _RankItem(
-          code: item.code,
-          name: item.name,
-          pnl: pnl,
-          pnlCny: pnlCny,
-          pnlRate: pnlRate,
-          currencySymbol: item.currencySymbol,
+  Widget _buildRankItems(AppState appState) {
+    final items = _buildRankItemsData(appState);
+    final isProfit = _rankType == 'profit';
+    final filtered = items.where((i) => isProfit ? i.pnlCny > 0 : i.pnlCny < 0).toList();
+    
+    // 排序：盈利榜降序，亏损榜升序（绝对值大的排前面）
+    filtered.sort((a, b) => isProfit 
+        ? b.pnlCny.compareTo(a.pnlCny) 
+        : a.pnlCny.compareTo(b.pnlCny));
+    
+    if (filtered.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Text('暂无数据', style: _S.label.copyWith(color: AppTheme.textMuted)),
         ),
       );
     }
-    return items;
+
+    final limit = filtered.length > 5 ? 5 : filtered.length;
+    final topItems = filtered.sublist(0, limit);
+
+    return Column(
+      children: List.generate(topItems.length, (idx) {
+        return _buildRankCard(topItems[idx], appState, idx + 1);
+      }),
+    );
   }
 
   Widget _buildRankCard(_RankItem item, AppState appState, int rank) {
-    final pnlColor = AppState.getPnlColor(item.pnl);
+    final pnlColor = item.pnl >= 0 ? AppTheme.danger : AppTheme.success;
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.all(Spacing.md),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
-          width: 1,
-        ),
-        boxShadow: AppTheme.cardShadow,
+        color: AppPalette.dark.surface2.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
       ),
       child: Row(
         children: [
@@ -1080,22 +1184,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  item.name,
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: FontSize.base,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(item.name, style: _S.rankName.copyWith(color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
-                Text(
-                  _formatDisplayCode(item.code),
-                  style: TextStyle(
-                    color: AppTheme.textTertiary,
-                    fontSize: FontSize.sm,
-                  ),
-                ),
+                Text(_formatDisplayCode(item.code), style: _S.rankCode.copyWith(color: AppTheme.textMuted)),
               ],
             ),
           ),
@@ -1103,22 +1194,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                appState.amountHidden
-                    ? '****'
-                    : appState.formatPnlIntWithCurrency(
-                        item.pnl,
-                        item.currencySymbol,
-                      ),
-                style: TextStyle(
-                  color: pnlColor,
-                  fontSize: FontSize.base,
-                  fontWeight: FontWeight.w600,
-                ),
+                '${item.currencySymbol}${item.pnl.toStringAsFixed(0)}',
+                style: _S.rankVal.copyWith(color: pnlColor),
               ),
               const SizedBox(height: 2),
               Text(
-                appState.formatPct(item.pnlRate),
-                style: TextStyle(color: pnlColor, fontSize: FontSize.sm),
+                (item.pnlRate >= 0 ? '+' : '') + item.pnlRate.toStringAsFixed(2) + '%',
+                style: _S.rankPct.copyWith(color: pnlColor.withValues(alpha: 0.8)),
               ),
             ],
           ),
@@ -1127,95 +1209,120 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
+  List<_RankItem> _buildRankItemsData(AppState appState) {
+    final list = <_RankItem>[];
+    for (var asset in appState.portfolio) {
+      final priceInfo = appState.resolvePriceInfo(asset);
+      final currentPrice = (priceInfo != null && priceInfo.price > 0)
+          ? priceInfo.price
+          : (asset.price > 0 ? asset.price : 0.0);
+      
+      // 累计盈亏 = (现价 - 均价) * 数量 + 调整额
+      final pnl = appState.amountHidden ? 0.0 : (currentPrice - asset.price) * asset.qty + asset.adjustment;
+      final cost = asset.price * asset.qty;
+      final rate = cost > 0 ? (pnl / cost) * 100 : 0.0;
+      
+      final exchangeRate = appState.getCurrencyRate(asset.curr);
+      list.add(_RankItem(
+        code: asset.code,
+        name: asset.name,
+        pnl: pnl,
+        pnlCny: pnl * exchangeRate,
+        pnlRate: rate,
+        currencySymbol: asset.currencySymbol,
+      ));
+    }
+    return list;
+  }
+
+  Widget _buildHeaderToggle(String text, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            color: isSelected ? Colors.white : AppTheme.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatDisplayCode(String code) {
-    const customMap = {'ft_LU1116320737': 'BLK'};
-    if (customMap.containsKey(code)) return customMap[code]!;
-    var c = code;
-    if (c.toLowerCase().startsWith('gb_')) {
-      c = c.substring(3).toUpperCase();
-    } else if (c.toLowerCase().startsWith('f_')) {
-      c = c.substring(2);
-    } else if (c.toLowerCase().startsWith('ft_')) {
-      c = c.substring(3);
-    } else if (c.toLowerCase().startsWith('sh') ||
-        c.toLowerCase().startsWith('sz') ||
-        c.toLowerCase().startsWith('bj')) {
-      c = c.substring(2);
-    }
-    if (c.toUpperCase().endsWith('.HK')) {
-      c = c.substring(0, c.length - 3);
-    }
-    return c;
+    if (code.startsWith('gb_')) return code.substring(3).toUpperCase();
+    if (code.startsWith('f_')) return code.substring(2);
+    if (code.startsWith('ft_')) return code.substring(3);
+    return code.toUpperCase();
   }
 
   int? _parseLabelKey(String label) {
-    final match = RegExp(r'\d+').allMatches(label).toList();
-    if (match.isEmpty) return null;
-    final last = match.last.group(0);
-    if (last == null) return null;
-    return int.tryParse(last);
+    if (_calendarTimeType == 'day') {
+      final parts = label.split('-');
+      if (parts.length == 2) return int.tryParse(parts[1]);
+    } else if (_calendarTimeType == 'month') {
+      final val = label.replaceAll('月', '');
+      return int.tryParse(val);
+    } else if (_calendarTimeType == 'year') {
+      final val = label.replaceAll('年', '');
+      return int.tryParse(val);
+    }
+    return null;
   }
 
   String _formatCalendarPnl(double pnl, AppState appState) {
-    if (appState.amountHidden) {
-      return '****';
-    }
-    final sign = pnl > 0 ? '+' : (pnl < 0 ? '-' : '');
-    final absVal = pnl.abs();
-    String text;
-    if (absVal >= 100000000) {
-      text = '${(absVal / 100000000).toStringAsFixed(1)}亿';
-    } else if (absVal >= 10000) {
-      text = '${(absVal / 10000).toStringAsFixed(1)}万';
-    } else {
-      text = absVal.toStringAsFixed(0);
-    }
-    return '$sign$text';
+    if (appState.amountHidden) return '***';
+    final absPnl = pnl.abs();
+    if (absPnl >= 100000) return (pnl / 10000).toStringAsFixed(1) + 'w';
+    if (absPnl >= 10000) return (pnl / 10000).toStringAsFixed(2) + 'w';
+    return pnl.toStringAsFixed(0);
   }
 
   String _calendarSummaryText(AppState appState) {
+    if (appState.amountHidden) return '****';
+    double total = _calendarSummaryRawValue();
+    return '¥${total.toStringAsFixed(0)}';
+  }
+
+  String _calendarSummaryRate(AppState appState) {
+    if (appState.amountHidden) return '--%';
+    double totalPnl = 0;
+    double totalCost = 0;
     final items = _calendarData['items'] as List<dynamic>? ?? [];
-    if (_calendarLoading && items.isEmpty) {
-      return '加载中...';
+    for (var item in items) {
+      totalPnl += (item['pnl'] as num?)?.toDouble() ?? 0;
+      totalCost += (item['cost'] as num?)?.toDouble() ?? 0;
     }
-    if (items.isEmpty) {
-      return '暂无快照数据';
-    }
-    final totalPnl = (_calendarData['total_pnl'] as num?)?.toDouble() ?? 0.0;
-    final totalRate = (_calendarData['total_rate'] as num?)?.toDouble() ?? 0.0;
-    final label = _calendarTimeType == 'day'
-        ? '当月累计'
-        : (_calendarTimeType == 'month' ? '当年累计' : '历史累计');
-    final sign = totalPnl > 0 ? '+' : (totalPnl < 0 ? '-' : '');
-    final amount = totalPnl
-        .abs()
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    final amountText = appState.amountHidden ? '****' : '$sign$amount';
-    final rateSign = totalRate >= 0 ? '+' : '';
-    return '$label  $amountText   收益率 ${rateSign}${totalRate.toStringAsFixed(2)}%';
+    if (totalCost == 0) return '0.00%';
+    final rate = (totalPnl / totalCost) * 100;
+    return (rate >= 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
   }
 
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
-      final gradients = [
-        [Color(0xFFFDE68A), Color(0xFFF59E0B)], // gold
-        [Color(0xFFE5E7EB), Color(0xFF94A3B8)], // silver
-        [Color(0xFFFED7AA), Color(0xFFEA580C)], // bronze
-      ];
-      final g = gradients[rank - 1];
-      return SizedBox(
-        width: 26,
-        height: 26,
+      final List<Color> g = rank == 1
+          ? [const Color(0xFFFFD700), const Color(0xFFFFA500)]
+          : (rank == 2
+              ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
+              : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
+      return Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 26,
-              height: 26,
+              width: 20,
+              height: 20,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: g,
@@ -1225,14 +1332,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: g[1].withOpacity(0.25),
+                    color: g[1].withValues(alpha: 0.25),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
+            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
@@ -1264,11 +1371,13 @@ class AnalysisRankAllPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final items = _buildRankItems(appState);
-    final list = rankType == 'profit'
+    final items = _buildRankItemsData(appState);
+    final isProfit = rankType == 'profit';
+    final list = isProfit
         ? items.where((x) => x.pnlCny > 0).toList()
         : items.where((x) => x.pnlCny < 0).toList();
-    if (rankType == 'profit') {
+    
+    if (isProfit) {
       list.sort((a, b) => b.pnlCny.compareTo(a.pnlCny));
     } else {
       list.sort((a, b) => a.pnlCny.compareTo(b.pnlCny));
@@ -1279,152 +1388,123 @@ class AnalysisRankAllPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.bgPrimary,
         elevation: 0,
+        centerTitle: true,
         title: Text(
           rankType == 'profit' ? '盈利榜' : '亏损榜',
-          style: TextStyle(color: AppTheme.textPrimary),
+          style: _S.label.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+          ),
         ),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(Spacing.xl),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
         itemCount: list.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
           final item = list[index];
-          final pnlColor = AppState.getPnlColor(item.pnl);
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            padding: const EdgeInsets.all(Spacing.md),
-            decoration: BoxDecoration(
-              color: AppTheme.bgCard,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-            child: Row(
-              children: [
-                _rankBadge(index + 1),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.name,
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: FontSize.base,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatDisplayCode(item.code),
-                        style: TextStyle(
-                          color: AppTheme.textTertiary,
-                          fontSize: FontSize.sm,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      appState.amountHidden
-                          ? '****'
-                          : appState.formatPnlIntWithCurrency(
-                              item.pnl,
-                              item.currencySymbol,
-                            ),
-                      style: TextStyle(
-                        color: pnlColor,
-                        fontSize: FontSize.base,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      appState.formatPct(item.pnlRate),
-                      style: TextStyle(color: pnlColor, fontSize: FontSize.sm),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
+          return _buildRankCard(item, appState, index + 1);
         },
       ),
     );
   }
 
-  List<_RankItem> _buildRankItems(AppState appState) {
-    final items = <_RankItem>[];
-    for (final item in appState.portfolio) {
-      final priceInfo = appState.prices[item.code];
-      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-      final currentPrice = hasValidPrice
+  Widget _buildRankCard(_RankItem item, AppState appState, int rank) {
+    final pnlColor = item.pnl >= 0 ? AppTheme.danger : AppTheme.success;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppPalette.dark.surface2.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+      ),
+      child: Row(
+        children: [
+          _rankBadge(rank),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.name, style: _S.rankName.copyWith(color: AppTheme.textPrimary)),
+                const SizedBox(height: 2),
+                Text(_formatDisplayCode(item.code), style: _S.rankCode.copyWith(color: AppTheme.textMuted)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${item.currencySymbol}${item.pnl.toStringAsFixed(0)}',
+                style: _S.rankVal.copyWith(color: pnlColor),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                (item.pnlRate >= 0 ? '+' : '') + item.pnlRate.toStringAsFixed(2) + '%',
+                style: _S.rankPct.copyWith(color: pnlColor.withValues(alpha: 0.8)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<_RankItem> _buildRankItemsData(AppState appState) {
+    final list = <_RankItem>[];
+    for (var asset in appState.portfolio) {
+      final priceInfo = appState.resolvePriceInfo(asset);
+      final currentPrice = (priceInfo != null && priceInfo.price > 0)
           ? priceInfo.price
-          : (item.price > 0 ? item.price : 0.0);
-      final mv = currentPrice * item.qty;
-      final cost = item.price * item.qty;
-      final pnl = mv - cost + item.adjustment;
-      final pnlRate = cost.abs() > 0 ? (pnl / cost.abs() * 100) : 0.0;
-      final rate = appState.getCurrencyRate(item.curr);
-      final pnlCny = pnl * rate;
-      items.add(
-        _RankItem(
-          code: item.code,
-          name: item.name,
-          pnl: pnl,
-          pnlCny: pnlCny,
-          pnlRate: pnlRate,
-          currencySymbol: item.currencySymbol,
-        ),
-      );
+          : (asset.price > 0 ? asset.price : 0.0);
+      
+      final pnl = appState.amountHidden ? 0.0 : (currentPrice - asset.price) * asset.qty + asset.adjustment;
+      final cost = asset.price * asset.qty;
+      final rate = cost > 0 ? (pnl / cost) * 100 : 0.0;
+      
+      final exchangeRate = appState.getCurrencyRate(asset.curr);
+      list.add(_RankItem(
+        code: asset.code,
+        name: asset.name,
+        pnl: pnl,
+        pnlCny: pnl * exchangeRate,
+        pnlRate: rate,
+        currencySymbol: asset.currencySymbol,
+      ));
     }
-    return items;
+    return list;
   }
 
   String _formatDisplayCode(String code) {
-    const customMap = {'ft_LU1116320737': 'BLK'};
-    if (customMap.containsKey(code)) return customMap[code]!;
-    var c = code;
-    if (c.toLowerCase().startsWith('gb_')) {
-      c = c.substring(3).toUpperCase();
-    } else if (c.toLowerCase().startsWith('f_')) {
-      c = c.substring(2);
-    } else if (c.toLowerCase().startsWith('ft_')) {
-      c = c.substring(3);
-    } else if (c.toLowerCase().startsWith('sh') ||
-        c.toLowerCase().startsWith('sz') ||
-        c.toLowerCase().startsWith('bj')) {
-      c = c.substring(2);
-    }
-    if (c.toUpperCase().endsWith('.HK')) {
-      c = c.substring(0, c.length - 3);
-    }
-    return c;
+    if (code.startsWith('gb_')) return code.substring(3).toUpperCase();
+    if (code.startsWith('f_')) return code.substring(2);
+    if (code.startsWith('ft_')) return code.substring(3);
+    return code.toUpperCase();
   }
 
   Widget _rankBadge(int rank) {
     if (rank <= 3) {
-      final gradients = [
-        [Color(0xFFFDE68A), Color(0xFFF59E0B)],
-        [Color(0xFFE5E7EB), Color(0xFF94A3B8)],
-        [Color(0xFFFED7AA), Color(0xFFEA580C)],
-      ];
-      final g = gradients[rank - 1];
-      return SizedBox(
-        width: 26,
-        height: 26,
+      final List<Color> g = rank == 1
+          ? [const Color(0xFFFFD700), const Color(0xFFFFA500)]
+          : (rank == 2
+              ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
+              : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
+      return Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
         child: Stack(
           alignment: Alignment.center,
           children: [
             Container(
-              width: 26,
-              height: 26,
+              width: 20,
+              height: 20,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: g,
@@ -1434,14 +1514,14 @@ class AnalysisRankAllPage extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: g[1].withOpacity(0.25),
+                    color: g[1].withValues(alpha: 0.25),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
+            const Icon(Icons.military_tech, size: 14, color: Color(0xFF0F172A)),
           ],
         ),
       );
@@ -1469,8 +1549,8 @@ class AnalysisRankAllPage extends StatelessWidget {
 class _RankItem {
   final String code;
   final String name;
-  final double pnl; // 原始币种盈亏（用于显示）
-  final double pnlCny; // 换算成人民币的盈亏（用于跨币种排序）
+  final double pnl;
+  final double pnlCny;
   final double pnlRate;
   final String currencySymbol;
 

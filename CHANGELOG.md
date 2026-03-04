@@ -8,6 +8,81 @@
 
 ---
 
+## v1.0.28 - 分析页 UI 旗舰级对齐与盈亏逻辑精密化
+- 发布状态: Released
+- 发布类型: Patch
+- 范围: Flutter | Docs
+
+### Summary
+- **UI 旗舰级对齐**: 分析页顶部的盈亏大卡片升级为与首页/投资页一致的“旗舰”风格: 引入了 3 色深蓝线性渐变、18px 圆角以及淡蓝色微光边框。
+- **文案布局优化**: 遵照用户反馈, 将大卡片内的所有文案（标题、金额、收益率）改为居中对齐, 视觉更加聚焦。
+- **盈亏汇总栏重构**: 收益日历下方的盈亏汇总卡片由两行改为单行横向布局, 实现 PnL 金额左对齐、盈亏率右对齐的专业级排版。
+- **排行逻辑精密化**: 彻底修复了“盈利榜/亏损榜”按当日变动排序的逻辑偏移, 改为按“累计盈亏”由高到低降序排列, 真实反映资产长期价值。
+- **数据计算链路修复**: 解决了汇总栏显示为 0 的 Bug, 通过手动推演实时市价与持仓均价, 确保了在多币种、多账户场景下的数据准确性。
+
+### Added
+- `analysis_page.dart`:
+    - 在 `_buildOverviewCard` 中引入了 `FittedBox` 以确保大金额数值在卡片内自动缩放显示。
+    - 统一了 `_RankItem` 结构体, 用于在多级子页面间传递一致的结算数据。
+
+### Changed
+- `analysis_page.dart`:
+    - `_buildOverviewCard`: 圆角从 24px 优化为 18px, 背景升级为 3 色线性渐变 (#171C2E -> #111520 -> #0F1219), 边框色调对齐 `0x265B8DEF`。
+    - `_buildCalendarSummary`: 重构为单行 `Row` 布局。
+    - `_buildRankItemsData`: 重写了数据生成逻辑, 实时计算累计盈亏 `(现价 - 均价) * 数量 + 调整额`。
+- `pubspec.yaml`: 版本号由 `1.0.27` 升级为 `1.0.28`。
+
+### Fixed
+- **数据回显 Bug**: 修复了盈亏汇总栏因为后端字段解析路径不匹配导致的 0 值展示问题。
+- **排行榜排序 Bug**: 修复了 Profit Board 错误按当日涨跌排序的问题。
+- **编译性能**: 清理了代码中冗余的辅助函数定义, 解决了热重载失效的潜在冲突。
+
+### Verification
+- Android 真机 (PLG110) 热重载测试 — 成功 ✓
+- 视觉一致性验收: 三页面（首/投/分）大卡片视觉语言完全统一 ✓
+- 逻辑验证: 累计盈亏计算准确, 排行榜排序符合预期 ✓
+
+---
+
+## v1.0.27 - 分析页面 1:1 UI 复刻与极致视觉升级
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Docs
+
+### Summary
+- **分析页面 1:1 UI 复刻**：参照 `cash-asset-detail-v2-preview.html` 原型对「分析」页面进行了全方位的深度重构，实现了从配色到交互的极致还原。
+- **纯黑主题与微光材质**：页面背景升级为真黑 (#000000)，卡片采用 `rgba(255,255,255,0.05)` 的暗色透明设计，搭配 iOS 风格的蓝色分段控件。
+- **盈亏日历交互增强**：重构为 7 列标准网格，支持点击选中高亮，并新增「本月累计」与「收益率」双 KPI 汇总展示。
+- **勋章排行榜系统**：为盈利与亏损榜单前三名引入了金/银/铜渐变勋章，优化了排名项的字号与排版，提升了专业度。
+- **全局一致性适配**：同步重构了「查看全部排行」页面，确保分析功能全链路视觉一致。
+
+### Added
+- `analysis_page.dart`：
+    - 新增 `_buildHeaderToggle` 分段切换组件，用于日历维度切换。
+    - 新增 `_buildCalendarSummary` 汇总展示组件。
+    - 新增 `_rankBadge` 勋章组件（支持金/银/铜渐变圆环）。
+- `AnalysisRankAllPage`：新增列表分割线与 1:1 卡片样式适配。
+
+### Changed
+- `analysis_page.dart`：
+    - `build`：外层包裹 `Scaffold` 设置黑底，`SingleChildScrollView` 增加 `AlwaysScrollableScrollPhysics`。
+    - `_buildOverviewCard`：重构为预览图风格，加大文字字号，改用 `SlidingSegmentedControl` 风格周期切换。
+    - `_buildCalendarSection`：`GridView` 改为固定 7 列。
+    - `_buildRankCard`：布局改为更紧凑的横向排列，金额使用 `700` 字重加粗。
+- `pubspec.yaml`：版本号由 `1.0.25` 升级为 `1.0.27`。
+
+### Fixed
+- 修复了 `analysis_page.dart` 中由于新增 `Scaffold` 导致的语法括号匹配错误。
+- 修复了过时的 `withOpacity` 调用，统一替换为最新的 `withValues` 接口。
+- 修复了排行页面标题未居中、背景非黑色的视觉偏差。
+
+### Verification
+- `flutter analyze` — 0 error ✓
+- Android 真机 (PLG110) 安装部署 — 成功 ✓
+- 视觉还原验收：纯黑背景、蓝色分段控件、勋章图标、日历 7 列对齐均符合预期。
+
+---
+
 ## v1.0.26 - 投资列表 UI 精细化、账户选择器 HTML 1:1 还原与 PnL 排序增强
 - 发布状态：Released
 - 发布类型：Patch
