@@ -41,6 +41,13 @@ class MockApiService implements ApiService {
 
   @override
   Future<Map<String, dynamic>?> getProfile() async => null;
+
+  @override
+  Future<Map<String, dynamic>?> getWebConfig() async {
+    return {
+      'user_group_text': '加入咔咔用户群',
+    };
+  }
 }
 
 void main() {
