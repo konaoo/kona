@@ -22,6 +22,63 @@
       </AdminTable>
     </AdminCard>
 
+    <!-- 快照定时任务健康检查 -->
+    <AdminCard class="block" variant="surface">
+      <AdminSectionHeader title="快照定时任务" subtitle="检测 cron 定时快照是否正常运行" />
+      <div class="snapshot-actions">
+        <AdminButton :disabled="snapshotHealth.loading" pill @click="runSnapshotHealthCheck">
+          {{ snapshotHealth.loading ? '检测中...' : '检测' }}
+        </AdminButton>
+        <span v-if="snapshotHealth.data" :class="['snapshot-badge', `badge-${snapshotHealth.data.status}`]">
+          {{ snapshotStatusLabel(snapshotHealth.data.status) }}
+        </span>
+      </div>
+      <p v-if="snapshotHealth.error" class="down" style="margin-top:8px">{{ snapshotHealth.error }}</p>
+      <div v-if="snapshotHealth.data" class="snapshot-result">
+        <div class="snapshot-summary">
+          <div class="summary-item">
+            <span class="summary-label">服务器时间</span>
+            <span class="summary-value">{{ snapshotHealth.data.server_time }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">今日快照覆盖</span>
+            <span class="summary-value">{{ snapshotHealth.data.today_snapshot_users }} / {{ snapshotHealth.data.total_users }} 用户</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">最大间隔天数</span>
+            <span class="summary-value" :class="snapshotHealth.data.max_gap_days > 1 ? 'down' : ''">{{ snapshotHealth.data.max_gap_days }} 天</span>
+          </div>
+        </div>
+        <AdminButton v-if="snapshotHealth.data.users.length" variant="secondary" soft pill style="margin:12px 0 8px" @click="snapshotHealth.showUsers = !snapshotHealth.showUsers">
+          {{ snapshotHealth.showUsers ? '收起用户明细' : '展开用户明细' }} ({{ snapshotHealth.data.users.length }})
+        </AdminButton>
+        <AdminTable v-if="snapshotHealth.showUsers" compact>
+          <thead>
+            <tr>
+              <th>用户名</th>
+              <th>状态</th>
+              <th>快照总数</th>
+              <th>最早日期</th>
+              <th>最新日期</th>
+              <th>间隔(天)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in snapshotHealth.data.users" :key="u.user_id">
+              <td>{{ u.username || u.user_id.slice(0, 8) }}</td>
+              <td :class="u.status === 'ok' ? 'up' : u.status === 'recent' ? '' : 'down'">
+                {{ u.status === 'ok' ? '✅ 正常' : u.status === 'recent' ? '🕐 近期' : '⚠️ 过期' }}
+              </td>
+              <td>{{ u.total_snapshots }}</td>
+              <td>{{ u.earliest_date }}</td>
+              <td>{{ u.latest_date }}</td>
+              <td :class="u.gap_days > 1 ? 'down' : ''">{{ u.gap_days }}</td>
+            </tr>
+          </tbody>
+        </AdminTable>
+      </div>
+    </AdminCard>
+
     <div v-if="modal.visible && currentProvider" class="detail-mask" @click.self="closeModal">
       <AdminCard class="detail-panel" variant="surface">
         <div class="detail-head">
@@ -214,6 +271,64 @@ function openTestModal(providerKey: ProviderKey) {
 function closeModal() {
   modal.visible = false
 }
+
+// --- 快照健康检查 ---
+interface SnapshotUserHealth {
+  user_id: string
+  username: string
+  total_snapshots: number
+  earliest_date: string
+  latest_date: string
+  last_updated_at: string
+  gap_days: number
+  has_today: boolean
+  status: 'ok' | 'recent' | 'stale'
+}
+
+interface SnapshotHealthData {
+  status: 'healthy' | 'recent' | 'warning' | 'critical'
+  server_time: string
+  today: string
+  today_snapshot_users: number
+  total_users: number
+  max_gap_days: number
+  users: SnapshotUserHealth[]
+}
+
+const snapshotHealth = reactive<{
+  loading: boolean
+  error: string
+  data: SnapshotHealthData | null
+  showUsers: boolean
+}>({
+  loading: false,
+  error: '',
+  data: null,
+  showUsers: false,
+})
+
+function snapshotStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    healthy: '✅ 正常运行',
+    recent: '🕐 近期正常',
+    warning: '⚠️ 有延迟',
+    critical: '🔴 异常',
+  }
+  return labels[status] || status
+}
+
+async function runSnapshotHealthCheck() {
+  if (snapshotHealth.loading) return
+  snapshotHealth.loading = true
+  snapshotHealth.error = ''
+  try {
+    snapshotHealth.data = await api.get<SnapshotHealthData>('/api/admin/data/snapshot/health')
+  } catch (e) {
+    snapshotHealth.error = e instanceof Error ? e.message : '检测失败'
+  } finally {
+    snapshotHealth.loading = false
+  }
+}
 </script>
 
 <style scoped>
@@ -261,6 +376,55 @@ function closeModal() {
   margin: 0;
   color: #8a939c;
   font-size: 13px;
+}
+
+.snapshot-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.snapshot-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.badge-healthy { background: #e6f9ee; color: #0d7a3e; }
+.badge-recent  { background: #e8f4fd; color: #1a6fb5; }
+.badge-warning { background: #fff8e1; color: #b5850a; }
+.badge-critical { background: #fde8e8; color: #c0392b; }
+
+.snapshot-result {
+  margin-top: 12px;
+}
+
+.snapshot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #8a939c;
+}
+
+.summary-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f252b;
 }
 
 .up {
