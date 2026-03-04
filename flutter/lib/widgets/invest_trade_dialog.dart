@@ -136,8 +136,11 @@ class InvestTradeDialog extends StatefulWidget {
 class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _queryController = TextEditingController();
   final _queryFocusNode = FocusNode();
+  final _priceFocusNode = FocusNode();
   final _qtyFocusNode = FocusNode();
   final _amountFocusNode = FocusNode();
+  final _adjustPriceFocusNode = FocusNode();
+  final _adjustAmountFocusNode = FocusNode();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
   final _amountController = TextEditingController();
@@ -281,6 +284,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _adjustPriceController.addListener(_onInputControllerChanged);
     _adjustController.addListener(_onInputControllerChanged);
     _queryFocusNode.addListener(_onQueryFocusChanged);
+    _priceFocusNode.addListener(_onInputControllerChanged);
+    _qtyFocusNode.addListener(_onInputControllerChanged);
+    _amountFocusNode.addListener(_onInputControllerChanged);
+    _adjustPriceFocusNode.addListener(_onInputControllerChanged);
+    _adjustAmountFocusNode.addListener(_onInputControllerChanged);
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
@@ -311,11 +319,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _adjustPriceController.removeListener(_onInputControllerChanged);
     _adjustController.removeListener(_onInputControllerChanged);
     _queryFocusNode.removeListener(_onQueryFocusChanged);
+    _priceFocusNode.removeListener(_onInputControllerChanged);
+    _qtyFocusNode.removeListener(_onInputControllerChanged);
+    _amountFocusNode.removeListener(_onInputControllerChanged);
+    _adjustPriceFocusNode.removeListener(_onInputControllerChanged);
+    _adjustAmountFocusNode.removeListener(_onInputControllerChanged);
     _hideSearchOverlay(updateState: false);
     _hideCashOverlay(updateState: false);
     _queryFocusNode.dispose();
+    _priceFocusNode.dispose();
     _qtyFocusNode.dispose();
     _amountFocusNode.dispose();
+    _adjustPriceFocusNode.dispose();
+    _adjustAmountFocusNode.dispose();
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
@@ -1960,62 +1976,74 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final focused = _queryFocusNode.hasFocus || _searchOverlayVisible;
     final field = Container(
       key: _searchTargetKey,
-      height: 40,
+      height: 48,
+      padding: const EdgeInsets.only(left: 14, right: 6),
       decoration: BoxDecoration(
         color: _tokens.surface2,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: focused ? const Color(0x996395EB) : _tokens.border,
           width: 1,
         ),
       ),
-      child: TextField(
-        key: _searchFieldKey,
-        controller: _queryController,
-        focusNode: _queryFocusNode,
-        textAlignVertical: TextAlignVertical.center,
-        textCapitalization: TextCapitalization.characters,
-        onChanged: _onQueryChanged,
-        style: _mono(size: 13, color: _tokens.text),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          hintText: '输入代码或名称',
-          hintStyle: _dm(size: 12, color: _tokens.textMuted),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 0,
-          ),
-          suffixIconConstraints: const BoxConstraints(minHeight: 30),
-          suffixIcon: Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: _tokens.blueGrad,
-                borderRadius: BorderRadius.circular(5),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              key: _searchFieldKey,
+              controller: _queryController,
+              focusNode: _queryFocusNode,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: _onQueryChanged,
+              cursorColor: _tokens.blueStart,
+              style: _dm(size: 14, color: _tokens.text),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.transparent,
+                isDense: true,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                hintText: '输入代码或名称',
+                hintStyle: _dm(size: 14, color: _tokens.textMuted),
+                contentPadding: EdgeInsets.zero,
               ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            height: 34,
+            decoration: BoxDecoration(
+              gradient: _tokens.blueGrad,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0x384A7BE0),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
               child: InkWell(
                 key: _searchButtonKey,
                 onTap: _searching ? null : _onSearchTap,
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(6),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.search, size: 13, color: Colors.white),
+                      const Icon(Icons.search, size: 15, color: Colors.white),
                       const SizedBox(width: 4),
                       Text(
                         _searching ? '搜索中' : '搜索',
                         style: _dm(
-                          size: 11,
+                          size: 13,
                           weight: FontWeight.w600,
                           color: Colors.white,
                         ),
@@ -2026,7 +2054,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
     return CompositedTransformTarget(
@@ -2144,12 +2172,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           _hideCashOverlay();
                         },
                         child: Container(
-                          color: selected
-                              ? _tokens.goldDim
-                              : Colors.transparent,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 13,
                             vertical: 11,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected ? _tokens.goldDim : Colors.transparent,
+                            border: index < rows.length - 1
+                                ? Border(
+                                    bottom: BorderSide(
+                                      color: _tokens.border,
+                                      width: 1,
+                                    ),
+                                  )
+                                : null,
                           ),
                           child: Row(
                             children: [
@@ -2161,15 +2197,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(
-                                  _accountEmoji(asset),
-                                  style: _dm(size: 15),
-                                ),
+                                child: Text(_accountEmoji(asset), style: _dm(size: 15)),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
                                       asset.name,
@@ -2181,7 +2215,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                         color: _tokens.text,
                                       ),
                                     ),
-                                    if (amountText != null)
+                                    if (amountText != null) ...[
+                                      const SizedBox(height: 2),
                                       Text(
                                         amountText,
                                         style: _mono(
@@ -2189,13 +2224,14 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                           color: _tokens.textMuted,
                                         ),
                                       ),
+                                    ],
                                   ],
                                 ),
                               ),
                               if (selected)
                                 Icon(
                                   Icons.check,
-                                  size: 13,
+                                  size: 16,
                                   color: _tokens.gold,
                                 ),
                             ],
@@ -2242,13 +2278,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         ),
                         child: const Icon(
                           Icons.add,
-                          size: 13,
+                          size: 15,
                           color: Color(0xFF5B8DEF),
                         ),
                       ),
                       const SizedBox(width: 9),
                       Text(
-                        '+ 添加现金账户',
+                        '添加账户',
                         style: _dm(
                           size: 13,
                           weight: FontWeight.w500,
@@ -2256,10 +2292,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         ),
                       ),
                       const Spacer(),
-                      Text(
-                        targetCurrency,
-                        style: _mono(size: 11, color: _tokens.textMuted),
-                      ),
                     ],
                   ),
                 ),
@@ -2277,24 +2309,40 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return Expanded(
         child: InkWell(
           onTap: _saving ? null : () => _setTradeMode(mode),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            height: 34,
             decoration: BoxDecoration(
-              color: selected ? _tokens.goldDim : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              gradient: selected
+                  ? const LinearGradient(
+                      colors: [Color(0xF25B8DEF), Color(0xF24A7BE0)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                  : null,
+              color: selected ? null : _tokens.surface2,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: selected ? _tokens.borderActive : _tokens.border,
+                color: selected ? const Color(0x7A5B8DEF) : _tokens.border,
                 width: 1,
               ),
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: const Color(0x384A7BE0),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : null,
             ),
+            alignment: Alignment.center,
             child: Text(
               label,
-              textAlign: TextAlign.center,
               style: _dm(
                 size: 12,
                 weight: FontWeight.w600,
-                color: selected ? _tokens.text : _tokens.textMuted,
+                color: selected ? Colors.white : _tokens.textMuted,
               ),
             ),
           ),
@@ -2385,19 +2433,35 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
-        const SizedBox(height: 5),
+        Text(
+          label,
+          style: _dm(
+            size: 11,
+            weight: FontWeight.w500,
+            color: _tokens.textMuted,
+          ),
+        ),
+        const SizedBox(height: 6),
         AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          height: 40,
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: _tokens.surface2,
             borderRadius: BorderRadius.circular(8),
-            // Use border-only focus feedback to prevent border ghosting on dark backgrounds.
             border: Border.all(
               color: focused ? const Color(0x996395EB) : _tokens.border,
               width: 1,
             ),
+            boxShadow: focused
+                ? [
+                    BoxShadow(
+                      color: const Color(0x1A6395EB),
+                      blurRadius: 0,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                : null,
           ),
           child: field,
         ),
@@ -2410,10 +2474,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
-          const SizedBox(height: 5),
+          Text(
+            label,
+            style: _dm(
+              size: 11,
+              weight: FontWeight.w500,
+              color: _tokens.textMuted,
+            ),
+          ),
+          const SizedBox(height: 6),
           Container(
-            height: 40,
+            height: 38,
             decoration: BoxDecoration(
               color: _tokens.surface2,
               borderRadius: BorderRadius.circular(8),
@@ -2455,8 +2526,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       textAlignVertical: TextAlignVertical.center,
       keyboardType: keyboardType,
       inputFormatters: inputFormatters,
+      cursorColor: _tokens.blueStart,
       style: _mono(size: 14, weight: FontWeight.w500, color: _tokens.text),
       decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.transparent,
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,
@@ -2464,11 +2538,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         focusedErrorBorder: InputBorder.none,
         disabledBorder: InputBorder.none,
         hintText: hint,
-        hintStyle: _mono(size: 13, color: _tokens.textMuted),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
+        hintStyle: _mono(size: 14, color: _tokens.textSub),
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
       ),
     );
   }
@@ -2479,10 +2551,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         children: [
           _buildInputCell(
             label: '平均成本',
-            focused: false,
+            focused: _adjustPriceFocusNode.hasFocus,
             field: _buildNumberField(
               key: _adjustPriceFieldKey,
               controller: _adjustPriceController,
+              focusNode: _adjustPriceFocusNode,
               hint: '0.00',
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -2493,10 +2566,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           const SizedBox(height: 8),
           _buildInputCell(
             label: '调整金额',
-            focused: false,
+            focused: _adjustAmountFocusNode.hasFocus,
             field: _buildNumberField(
               key: _adjustAmountFieldKey,
               controller: _adjustController,
+              focusNode: _adjustAmountFocusNode,
               hint: '0.00',
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -2523,10 +2597,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             Expanded(
               child: _buildInputCell(
                 label: amountMode ? '净值' : '成本价',
-                focused: false,
+                focused: _priceFocusNode.hasFocus,
                 field: _buildNumberField(
                   key: _priceFieldKey,
                   controller: _priceController,
+                  focusNode: _priceFocusNode,
                   hint: '0.00',
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -2638,7 +2713,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       link: _cashFieldLink,
       child: Container(
         key: _cashTargetKey,
-        height: 40,
+        height: 38,
         decoration: BoxDecoration(
           color: _tokens.surface2,
           borderRadius: BorderRadius.circular(8),
@@ -2648,6 +2723,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 : _tokens.border,
             width: 1,
           ),
+          boxShadow: _cashOverlayVisible
+              ? [
+                  BoxShadow(
+                    color: const Color(0x1A6395EB),
+                    blurRadius: 0,
+                    spreadRadius: 3,
+                  ),
+                ]
+              : null,
         ),
         child: InkWell(
           key: _cashTriggerKey,
@@ -2734,10 +2818,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _selectedCashAssetId = null;
     }
     if (_selectedCashAssetId == null && cashOptions.isNotEmpty) {
-      _selectedCashAssetId = cashOptions.first.id;
+      final realAccounts = cashOptions.where((a) => a.id != -999);
+      if (realAccounts.isNotEmpty) {
+        _selectedCashAssetId = realAccounts.first.id;
+      } else {
+        _selectedCashAssetId = cashOptions.first.id;
+      }
     }
     final needsCashSource = _requiresCashSource(actionMode);
-    final showAddCashAction = actionMode == 'sell' && !hasMatchingCashAccount;
+    final showAddCashAction = true;
     final canSave =
         !_saving &&
         _isSaveInputReady() &&
@@ -2747,71 +2836,44 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         widget.presentation == InvestTradeDialogPresentation.centered;
     final dialogBody = Container(
       key: _sheetRootKey,
+      width: double.infinity,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.86,
-        maxWidth: centered ? 560 : double.infinity,
+        maxWidth: 390,
       ),
       decoration: BoxDecoration(
         color: _tokens.surface,
-        borderRadius: centered
-            ? BorderRadius.circular(18)
-            : const BorderRadius.vertical(top: Radius.circular(18)),
-        border: Border.all(color: _tokens.border, width: 0.9),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x12FFFFFF), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.7),
+            blurRadius: 64,
+            offset: const Offset(0, 24),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!centered)
-            Container(
-              key: _sheetHandleKey,
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(top: 10),
-              decoration: BoxDecoration(
-                color: _tokens.divider,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+          // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 11),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: Text(
-                    _sheetTitle(),
-                    style: _dm(
-                      size: 13,
-                      weight: FontWeight.w400,
-                      color: _tokens.textMuted,
-                      letterSpacing: 0.02,
-                    ),
+                Text(
+                  _isAdd ? '添加资产' : '编辑资产',
+                  style: _dm(
+                    size: 13,
+                    weight: FontWeight.w400,
+                    color: _tokens.textMuted,
+                    letterSpacing: 0.02,
                   ),
                 ),
-                if (_isTrade)
-                  PopupMenuButton<String>(
-                    enabled: !_saving,
-                    onSelected: _onMoreMenuSelect,
-                    icon: Icon(Icons.more_horiz, color: _tokens.textMuted),
-                    itemBuilder: (menuContext) => [
-                      PopupMenuItem<String>(
-                        value: 'corrective_delete',
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.delete_outline,
-                              size: 18,
-                              color: _tokens.red,
-                            ),
-                            const SizedBox(width: 8),
-                            Text('纠错删除（不回款）', style: _dm(color: _tokens.red)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 InkWell(
                   onTap: _saving ? null : _closeDialog,
-                  borderRadius: BorderRadius.circular(12),
+                  customBorder: const CircleBorder(),
                   child: Container(
                     width: 24,
                     height: 24,
@@ -2821,7 +2883,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     ),
                     child: Icon(
                       Icons.close,
-                      size: 12,
+                      size: 14,
                       color: _tokens.textMuted,
                     ),
                   ),
@@ -2829,7 +2891,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               ],
             ),
           ),
-          Divider(height: 1, color: _tokens.divider),
+          Divider(height: 1, color: _tokens.border),
           Flexible(
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -2849,12 +2911,111 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           ),
                         ),
                     ] else ...[
-                      Text(
-                        '${widget.item?.name ?? ''} · ${_formatDisplayCode(widget.item?.code ?? '')}',
-                        style: _dm(
-                          size: 13,
-                          weight: FontWeight.w500,
-                          color: _tokens.text,
+                      // Stock Info Card
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _tokens.goldDim,
+                          border: Border.all(
+                            color: _tokens.gold.withOpacity(0.2),
+                            width: 1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    widget.item?.marketType?.toLowerCase() ==
+                                        'a'
+                                    ? const Color(0x243ECF82)
+                                    : widget.item?.marketType?.toLowerCase() ==
+                                          'hk'
+                                    ? const Color(0x24E06B3A)
+                                    : widget.item?.marketType?.toLowerCase() ==
+                                          'us'
+                                    ? const Color(0x245B8DEF)
+                                    : const Color(0x24B57ADB), // fund
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                widget.item?.marketType?.toLowerCase() == 'hk'
+                                    ? '港股'
+                                    : widget.item?.marketType?.toLowerCase() ==
+                                          'us'
+                                    ? '美股'
+                                    : widget.item?.marketType?.toLowerCase() ==
+                                          'fund'
+                                    ? '基金'
+                                    : 'A股',
+                                style: _dm(
+                                  size: 10,
+                                  weight: FontWeight.w600,
+                                  letterSpacing: 0.03,
+                                  color:
+                                      widget.item?.marketType?.toLowerCase() ==
+                                          'a'
+                                      ? const Color(0xFF3ECF82)
+                                      : widget.item?.marketType
+                                                ?.toLowerCase() ==
+                                            'hk'
+                                      ? const Color(0xFFE06B3A)
+                                      : widget.item?.marketType
+                                                ?.toLowerCase() ==
+                                            'us'
+                                      ? const Color(0xFF5B8DEF)
+                                      : const Color(0xFFB57ADB), // fund
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              _formatDisplayCode(widget.item?.code ?? ''),
+                              style: _mono(
+                                size: 12,
+                                weight: FontWeight.w500,
+                                color: _tokens.gold,
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Container(
+                              width: 1,
+                              height: 10,
+                              color: _tokens.gold.withOpacity(0.25),
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                (widget.item?.name ?? '').length > 20
+                                    ? '${(widget.item?.name ?? '').substring(0, 20)}...'
+                                    : (widget.item?.name ?? ''),
+                                style: _dm(size: 11, color: _tokens.textSub),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              '368.20', // TODO: Fetch real price if available, hardcoded placeholder for now
+                              style: _mono(size: 11, color: _tokens.text),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              '+1.54%', // TODO: Fetch real PnL
+                              style: _dm(
+                                size: 10,
+                                weight: FontWeight.w500,
+                                color: _tokens.red,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -2890,20 +3051,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               ),
             ),
           ),
-          Divider(height: 1, color: _tokens.divider),
+          Divider(height: 1, color: _tokens.border),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             child: Row(
               children: [
                 Expanded(
                   child: SizedBox(
-                    height: 42,
+                    height: 44,
                     child: TextButton(
                       key: _cancelButtonKey,
                       onPressed: _saving ? null : _closeDialog,
                       style: TextButton.styleFrom(
                         backgroundColor: _tokens.surface2,
-                        side: BorderSide(color: _tokens.border, width: 1),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -2911,65 +3071,68 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       child: Text(
                         '取消',
                         style: _dm(
-                          size: 13,
+                          size: 14,
                           weight: FontWeight.w600,
-                          color: _tokens.textMuted,
+                          color: _tokens.textSub,
                         ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 Expanded(
                   child: SizedBox(
-                    height: 42,
-                    child: DecoratedBox(
+                    height: 44,
+                    child: Container(
                       decoration: BoxDecoration(
-                        color: canSave ? null : _tokens.surface3,
-                        gradient: canSave ? _tokens.blueGrad : null,
-                        borderRadius: BorderRadius.circular(8),
-                        border: canSave
+                        gradient: !canSave
                             ? null
-                            : Border.all(color: _tokens.border, width: 1),
-                        boxShadow: canSave
-                            ? [
+                            : const LinearGradient(
+                                colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                        color: canSave ? null : const Color(0xFF3B4048),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: !canSave
+                            ? null
+                            : [
                                 BoxShadow(
-                                  color: const Color(0x4D4A7BE0),
+                                  color: const Color(0x384A7BE0),
                                   blurRadius: 16,
-                                  offset: const Offset(0, 4),
+                                  offset: const Offset(0, 6),
                                 ),
-                              ]
-                            : null,
+                              ],
                       ),
                       child: ElevatedButton(
                         key: _submitButtonKey,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
-                          disabledBackgroundColor: Colors.transparent,
-                          disabledForegroundColor: _tokens.textMuted,
+                          elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
                         onPressed: canSave ? _submit : null,
                         child: _saving
-                            ? SizedBox(
+                            ? const SizedBox(
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: _tokens.text,
+                                  color: Colors.white,
                                 ),
                               )
                             : Text(
                                 _submitLabel(),
                                 style: _dm(
-                                  size: 13,
+                                  size: 14,
                                   weight: FontWeight.w600,
                                   color: canSave
                                       ? Colors.white
-                                      : _tokens.textMuted,
+                                      : const Color(0xFF8C91A0),
                                 ),
                               ),
                       ),

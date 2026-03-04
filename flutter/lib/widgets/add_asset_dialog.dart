@@ -1019,6 +1019,8 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             textAlignVertical: TextAlignVertical.center,
                             style: _dm(size: 13, color: _kText),
                             decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.transparent,
                               hintText: '如：招商银行储蓄卡',
                               hintStyle: _dm(size: 12, color: _kTextMuted),
                               contentPadding: const EdgeInsets.symmetric(
@@ -1063,6 +1065,8 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             ),
                             style: _mono(size: 13, color: _kText),
                             decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.transparent,
                               hintText: '请输入金额',
                               hintStyle: _dm(size: 12, color: _kTextMuted),
                               contentPadding: const EdgeInsets.symmetric(

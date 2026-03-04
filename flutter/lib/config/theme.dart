@@ -5,12 +5,17 @@ class AppPalette {
   final Color bgCard;
   final Color bgElevated;
   final Color navBg;
+  final Color surface2;
+  final Color surface3;
   final Color accent;
   final Color accentLight;
+  final Color gold;
+  final Color goldDim;
   final Color textPrimary;
   final Color textSecondary;
   final Color textTertiary;
   final Color textDim;
+  final Color textMuted;
   final Color success;
   final Color danger;
   final Color border;
@@ -21,12 +26,17 @@ class AppPalette {
     required this.bgCard,
     required this.bgElevated,
     required this.navBg,
+    required this.surface2,
+    required this.surface3,
     required this.accent,
     required this.accentLight,
+    required this.gold,
+    required this.goldDim,
     required this.textPrimary,
     required this.textSecondary,
     required this.textTertiary,
     required this.textDim,
+    required this.textMuted,
     required this.success,
     required this.danger,
     required this.border,
@@ -38,12 +48,17 @@ class AppPalette {
     bgCard: Color(0xFF13151C),
     bgElevated: Color(0xFF181B23),
     navBg: Color(0xFF0F1118),
+    surface2: Color(0xFF1A1D25),
+    surface3: Color(0xFF20242E),
     accent: Color(0xFF5B8DEF),
     accentLight: Color(0xFF60A5FA),
+    gold: Color(0xFFD4AF64),
+    goldDim: Color(0x1FD4AF64),
     textPrimary: Color(0xFFE8EAF0),
     textSecondary: Color(0xFF8B909F),
     textTertiary: Color(0xFF64748B),
     textDim: Color(0xFF4E5464),
+    textMuted: Color(0xFF575D6E),
     success: Color(0xFF2ECC8A),
     danger: Color(0xFFF05A55),
     border: Color(0x0FFFFFFF),
@@ -56,12 +71,17 @@ class AppPalette {
     bgCard: Color(0xFFFFFFFF),
     bgElevated: Color(0xFFEFF2F7),
     navBg: Color(0xFFF1EEE8),
+    surface2: Color(0xFFEFF3FB),
+    surface3: Color(0xFFE5EBF7),
     accent: Color(0xFF4B86F0),
     accentLight: Color(0xFF8CB5FF),
+    gold: Color(0xFFB8942D),
+    goldDim: Color(0x1FB8942D),
     textPrimary: Color(0xFF1F2A37),
     textSecondary: Color(0xFF6B7280),
     textTertiary: Color(0xFF9AA3B2),
     textDim: Color(0xFFB0B5C3),
+    textMuted: Color(0xFF69758F),
     success: Color(0xFF16A34A),
     danger: Color(0xFFE45656),
     border: Color(0xFFDCE3EE),
@@ -85,15 +105,20 @@ class AppTheme {
   static Color get bgCard => _palette.bgCard;
   static Color get bgElevated => _palette.bgElevated;
   static Color get navBg => _palette.navBg;
+  static Color get surface2 => _palette.surface2;
+  static Color get surface3 => _palette.surface3;
 
   // 强调色
   static Color get accent => _palette.accent;
   static Color get accentLight => _palette.accentLight;
+  static Color get gold => _palette.gold;
+  static Color get goldDim => _palette.goldDim;
 
   // 文字色
   static Color get textPrimary => _palette.textPrimary;
   static Color get textSecondary => _palette.textSecondary;
   static Color get textTertiary => _palette.textTertiary;
+  static Color get textMuted => _palette.textMuted;
   static Color get textDim => _palette.textDim;
 
   // 状态色

@@ -15,27 +15,34 @@ class AssetDetailPage extends StatelessWidget {
   const AssetDetailPage({super.key, required this.assetType});
 
   static const _bg = Color(0xFF0D0E12);
-  static const _surface2 = Color(0xFF1A1D25);
   static const _border = Color(0x0EFFFFFF);
   static const _text = Color(0xFFE4E5EA);
   static const _textMuted = Color(0xFF575D6E);
-  static const _textSub = Color(0xFF8A92A3);
   static const _nameText = Color(0xFFEDF1FA);
   static const _amountText = Color(0xFFBCC4D3);
   static const _amountZero = Color(0xFFA9AFBD);
   static const _gold = Color(0xFFB79C66);
+  static const _iconColor = Color(0xFF739BF0);
 
-  TextStyle _dm({double? size, FontWeight? weight, Color? color}) {
-    return GoogleFonts.dmSans(fontSize: size, fontWeight: weight, color: color);
-  }
-
-  TextStyle _mono({double? size, FontWeight? weight, Color? color}) {
-    return GoogleFonts.jetBrainsMono(
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-    );
-  }
+  // Cached TextStyles – created once, reused every build
+  static final _titleStyle = GoogleFonts.dmSans(
+    fontSize: 16, fontWeight: FontWeight.w600, color: _text,
+  );
+  static final _countStyle = GoogleFonts.dmSans(fontSize: 11, color: _textMuted);
+  static final _emptyTitle = GoogleFonts.dmSans(
+    fontSize: 16, fontWeight: FontWeight.w600, color: _text,
+  );
+  static final _emptySub = GoogleFonts.dmSans(fontSize: 12, color: _textMuted);
+  static final _nameStyle = GoogleFonts.dmSans(
+    fontSize: 15, fontWeight: FontWeight.w700, color: _nameText,
+  );
+  static final _amountSymbol = GoogleFonts.jetBrainsMono(
+    fontSize: 12, fontWeight: FontWeight.w500,
+  );
+  static final _amountValue = GoogleFonts.jetBrainsMono(
+    fontSize: 13, fontWeight: FontWeight.w500,
+  );
+  static final _amountUnit = GoogleFonts.dmSans(fontSize: 9, fontWeight: FontWeight.w500);
 
   String _getTitle() {
     switch (assetType) {
@@ -145,7 +152,7 @@ class AssetDetailPage extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: _surface2,
+                  color: const Color(0xFF1A1D25),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: _border),
                 ),
@@ -160,20 +167,14 @@ class AssetDetailPage extends StatelessWidget {
           ),
           Expanded(
             child: Center(
-              child: Text(
-                _getTitle(),
-                style: _dm(size: 16, weight: FontWeight.w600, color: _text),
-              ),
+              child: Text(_getTitle(), style: _titleStyle),
             ),
           ),
           SizedBox(
             width: 66,
             child: Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                '$count 个账户',
-                style: _dm(size: 11, color: _textMuted),
-              ),
+              child: Text('$count 个账户', style: _countStyle),
             ),
           ),
         ],
@@ -196,12 +197,9 @@ class AssetDetailPage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '暂无${_getTitle()}',
-            style: _dm(size: 16, weight: FontWeight.w600, color: _text),
-          ),
+          Text('暂无${_getTitle()}', style: _emptyTitle),
           const SizedBox(height: 6),
-          Text('点击右下角 + 添加第一条资产', style: _dm(size: 12, color: _textMuted)),
+          Text('点击右下角 + 添加第一条资产', style: _emptySub),
         ],
       ),
     );
@@ -211,7 +209,7 @@ class AssetDetailPage extends StatelessWidget {
     final amount = _displayAmount(asset);
     final amountValueColor = amount.isZero ? _amountZero : _amountText;
     final amountSymbolColor = amount.isZero ? _amountZero : _gold;
-    final amountUnitColor = amount.isZero ? const Color(0xFF838A9A) : _textSub;
+    final amountUnitColor = amount.isZero ? const Color(0xFF838A9A) : const Color(0xFF8A92A3);
 
     return Material(
       color: Colors.transparent,
@@ -256,7 +254,7 @@ class AssetDetailPage extends StatelessWidget {
                   child: Icon(
                     _iconForAsset(asset),
                     size: 18,
-                    color: const Color(0xFF739BF0),
+                    color: _iconColor,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -269,11 +267,7 @@ class AssetDetailPage extends StatelessWidget {
                         asset.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _dm(
-                          size: 15,
-                          weight: FontWeight.w700,
-                          color: _nameText,
-                        ),
+                        style: _nameStyle,
                       ),
                       const SizedBox(height: 5),
                       Row(
@@ -282,9 +276,7 @@ class AssetDetailPage extends StatelessWidget {
                         children: [
                           Text(
                             amount.symbol,
-                            style: _mono(
-                              size: 12,
-                              weight: FontWeight.w500,
+                            style: _amountSymbol.copyWith(
                               color: amountSymbolColor,
                             ),
                           ),
@@ -293,9 +285,7 @@ class AssetDetailPage extends StatelessWidget {
                             child: Text(
                               amount.value,
                               overflow: TextOverflow.ellipsis,
-                              style: _mono(
-                                size: 13,
-                                weight: FontWeight.w500,
+                              style: _amountValue.copyWith(
                                 color: amountValueColor,
                               ),
                             ),
@@ -303,9 +293,7 @@ class AssetDetailPage extends StatelessWidget {
                           const SizedBox(width: 5),
                           Text(
                             amount.unit,
-                            style: _dm(
-                              size: 9,
-                              weight: FontWeight.w500,
+                            style: _amountUnit.copyWith(
                               color: amountUnitColor,
                             ),
                           ),

@@ -8,6 +8,39 @@
 
 ---
 
+## v1.0.26 - 投资列表 UI 精细化、账户选择器 HTML 1:1 还原与 PnL 排序增强
+- 发布状态：Released
+- 发布类型：Patch
+- 范围：Flutter | Docs
+
+### Summary
+- **投资详情 UI 1:1 还原**：参考 `cash-asset-detail-v2-preview.html` 彻底重构了 `InvestTradeDialog` 的现金账户选择组件，包括发光边框交互、金额层级、以及“添加账户”按钮的视觉还原。
+- **持仓排序逻辑增强**：投资列表现在默认按“当日盈亏”金额进行**降序排列**（盈利最多在前），并自动处理了跨币种转换。
+- **字段显示优化**：股票/资产名称增加 20 字符长度限制（超出显示 `...`）；修复了当日盈亏负数场景下丢失符号 "-" 的显示 Bug。
+- **稳定性与交互优化**：修复了 `InvestTradeDialog` 中现金账户列表的 `BoxDecoration` 渲染崩溃；优化了添加资产时的默认账户选中逻辑。
+
+### Added
+- `invest_page.dart` 新增持仓列表自定义排序函数，支持实时汇率换算的当日盈亏排序。
+- `invest_trade_dialog.dart` 现金账户下拉列表新增“+ 添加账户”快捷入口，视觉对齐 HTML 原型。
+
+### Changed
+- `invest_page.dart`：
+    - 列表渲染前增加 `filtered.sort` 逻辑。
+    - 名称显示增加 `.length > 20` 截断逻辑。
+    - `_fmtPnl` 修复 `value < 0` 时硬编码 `prefix = ''` 导致负号丢失的问题。
+- `invest_trade_dialog.dart`：
+    - 重构 `_buildCashOverlayCard`，样式完全对齐 `.aa-acct-dropdown`。
+    - 成本价输入框增加 `onFocus` 发光效果逻辑，保持与数量/金额一致。
+    - 自动选中逻辑优化：优先选中 ID > 0 的真实账户而非“-999”外部资金。
+
+### Fixed
+- 修复 `Container` 同时设置 `color` 和 `decoration` 导致的 `Cannot provide both a color and a decoration` 崩溃。
+- 修复 PnL 显示负数时符号丢失的逻辑问题。
+
+### Verification
+- `flutter analyze` — 0 error ✓
+- 真机交互验收：当日盈亏负号显示正常、列表按收益排序正常、长名称截断正常、账户选择器视觉一致。
+
 ## v1.0.25 - 登录页 UI 1:1 升级、邀请码弹窗功能完善与渲染性能优化
 - 发布状态：Released
 - 发布类型：Patch

@@ -169,6 +169,9 @@ class AppState extends ChangeNotifier {
   // 金额隐藏
   bool _amountHidden = false;
 
+  // 显示币种（全局）
+  String _displayCurrency = 'CNY';
+
   // 主题模式
   ThemeMode _themeMode = ThemeMode.dark;
 
@@ -215,6 +218,7 @@ class AppState extends ChangeNotifier {
   Map<String, bool> get marketTradingDayStatus =>
       Map<String, bool>.from(_marketTradingDayStatus);
   bool get amountHidden => _amountHidden;
+  String get displayCurrency => _displayCurrency;
   ThemeMode get themeMode => _themeMode;
   bool get isLightTheme => _themeMode == ThemeMode.light;
 
@@ -1763,6 +1767,20 @@ class AppState extends ChangeNotifier {
   void toggleAmountHidden() {
     _amountHidden = !_amountHidden;
     notifyListeners();
+  }
+
+  void setDisplayCurrency(String currency) {
+    if (_displayCurrency == currency) return;
+    _displayCurrency = currency;
+    notifyListeners();
+  }
+
+  /// Convert a CNY-denominated amount to the global display currency
+  double convertDisplayAmount(double cnyAmount) {
+    if (_displayCurrency == 'CNY') return cnyAmount;
+    final rate = _rateForCurrency(_displayCurrency);
+    if (rate <= 0) return cnyAmount;
+    return cnyAmount / rate;
   }
 
   /// 格式化金额（支持隐藏）
