@@ -2078,6 +2078,102 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
         return jsonify({"error": "Failed to take snapshot"}), 500
 
+    @bp.route("/data/snapshot/health", methods=["GET"])
+    @admin_required
+    def admin_data_snapshot_health():
+        """快照定时任务健康检查。
+
+        返回每个用户的快照覆盖情况，以及整体 cron 健康状态。
+        """
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            # 每个用户的快照统计
+            cursor.execute("""
+                SELECT
+                    ds.user_id,
+                    COALESCE(u.username, '') AS username,
+                    COUNT(*) AS total_snapshots,
+                    MIN(ds.date) AS earliest_date,
+                    MAX(ds.date) AS latest_date,
+                    MAX(ds.updated_at) AS last_updated_at
+                FROM daily_snapshots ds
+                LEFT JOIN users u ON u.id = ds.user_id
+                GROUP BY ds.user_id
+                ORDER BY total_snapshots DESC
+            """)
+            user_rows = cursor.fetchall()
+
+            users = []
+            max_gap_days = 0
+            for row in user_rows:
+                latest = str(row["latest_date"] or "")
+                if latest:
+                    try:
+                        latest_dt = datetime.strptime(latest, "%Y-%m-%d")
+                        gap_days = (now - latest_dt).days
+                    except ValueError:
+                        gap_days = -1
+                else:
+                    gap_days = -1
+
+                has_today = latest == today_str
+                has_yesterday = latest == yesterday_str
+
+                if gap_days > max_gap_days:
+                    max_gap_days = gap_days
+
+                users.append({
+                    "user_id": row["user_id"],
+                    "username": row["username"],
+                    "total_snapshots": int(row["total_snapshots"] or 0),
+                    "earliest_date": str(row["earliest_date"] or ""),
+                    "latest_date": latest,
+                    "last_updated_at": str(row["last_updated_at"] or ""),
+                    "gap_days": gap_days,
+                    "has_today": has_today,
+                    "status": "ok" if has_today else ("recent" if has_yesterday else "stale"),
+                })
+
+            # 今日全局快照数
+            cursor.execute(
+                "SELECT COUNT(DISTINCT user_id) AS c FROM daily_snapshots WHERE date = ?",
+                (today_str,),
+            )
+            today_count = int((cursor.fetchone() or {}).get("c", 0) or 0)
+
+            # 总用户数（有快照的）
+            cursor.execute(
+                "SELECT COUNT(DISTINCT user_id) AS c FROM daily_snapshots"
+            )
+            total_users = int((cursor.fetchone() or {}).get("c", 0) or 0)
+
+            # 整体健康状态
+            if max_gap_days <= 0:
+                cron_status = "healthy"
+            elif max_gap_days <= 1:
+                cron_status = "recent"
+            elif max_gap_days <= 3:
+                cron_status = "warning"
+            else:
+                cron_status = "critical"
+
+            return jsonify({
+                "status": cron_status,
+                "server_time": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "today": today_str,
+                "today_snapshot_users": today_count,
+                "total_users": total_users,
+                "max_gap_days": max_gap_days,
+                "users": users,
+            })
+        finally:
+            conn.close()
+
     def _parse_cleanup_markets(data: Dict[str, Any]) -> List[str]:
         raw = data.get("markets", ["a", "hk", "us", "fund"])
         if isinstance(raw, str):
