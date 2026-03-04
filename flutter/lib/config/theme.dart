@@ -19,6 +19,8 @@ class AppPalette {
   final Color success;
   final Color danger;
   final Color border;
+  final Color borderSubtle;
+  final Color borderDivider;
   final List<Color> cardGradient;
 
   const AppPalette({
@@ -40,6 +42,8 @@ class AppPalette {
     required this.success,
     required this.danger,
     required this.border,
+    required this.borderSubtle,
+    required this.borderDivider,
     required this.cardGradient,
   });
 
@@ -61,7 +65,9 @@ class AppPalette {
     textMuted: Color(0xFF575D6E),
     success: Color(0xFF2ECC8A),
     danger: Color(0xFFF05A55),
-    border: Color(0x0FFFFFFF),
+    border: Color(0x1FFFFFFF),
+    borderSubtle: Color(0x0CFFFFFF),
+    borderDivider: Color(0x0FFFFFFF),
     cardGradient: [Color(0xFF1A2744), Color(0xFF0F1829)],
   );
 
@@ -85,6 +91,8 @@ class AppPalette {
     success: Color(0xFF16A34A),
     danger: Color(0xFFE45656),
     border: Color(0xFFDCE3EE),
+    borderSubtle: Color(0xFFEAEEF5),
+    borderDivider: Color(0xFFF2F5FA),
     cardGradient: [Color(0xFFE3EDFF), Color(0xFFF7FAFF)],
   );
 }
@@ -127,6 +135,8 @@ class AppTheme {
 
   // 边框
   static Color get border => _palette.border;
+  static Color get borderSubtle => _palette.borderSubtle;
+  static Color get borderDivider => _palette.borderDivider;
 
   // 渐变色
   static List<Color> get cardGradient => _palette.cardGradient;

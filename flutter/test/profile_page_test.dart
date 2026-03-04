@@ -120,15 +120,15 @@ void main() {
 
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本'), findsOneWidget);
-    expect(find.text('v1.0.2'), findsOneWidget);
+    expect(find.text('发现新版本 v1.0.2'), findsOneWidget);
     expect(find.text('test notes'), findsOneWidget);
     expect(find.text('暂不更新'), findsNothing);
-    expect(find.text('更新'), findsOneWidget);
+    expect(find.text('稍后再说'), findsOneWidget);
+    expect(find.text('立即升级'), findsOneWidget);
 
-    await tester.tap(find.text('更新'));
+    await tester.tap(find.text('立即升级'));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本'), findsNothing);
+    expect(find.text('发现新版本 v1.0.2'), findsNothing);
     expect(openCalls, isNotEmpty);
     expect(openCalls.single, LaunchMode.externalApplication);
 
@@ -141,15 +141,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('咔咔用户群'));
     await tester.pumpAndSettle();
-    expect(find.text('咔咔用户群'), findsWidgets);
+    expect(find.text('截图保存二维码\n使用微信扫一扫进群'), findsOneWidget);
   });
 
   testWidgets('Check update shows latest message when version is up-to-date', (
     WidgetTester tester,
   ) async {
+    PackageInfo.setMockInitialValues(
+      appName: 'kaka',
+      packageName: 'com.example.kaka',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: 'mock',
+    );
+
     final mockApi = MockApiService(
       appVersion: const AppVersion(
-        version: '1.0.1',
+        version: '1.0.0',
         buildNumber: 1,
         releaseNotes: 'latest',
         downloadUrl: 'http://test.com/app.apk',

@@ -2966,12 +2966,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                       widget.item?.marketType.toLowerCase() ==
                                           'a'
                                       ? const Color(0xFF3ECF82)
-                                      : widget.item?.marketType
-                                                ?.toLowerCase() ==
+                                      : widget.item?.marketType.toLowerCase() ==
                                             'hk'
                                       ? const Color(0xFFE06B3A)
-                                      : widget.item?.marketType
-                                                ?.toLowerCase() ==
+                                      : widget.item?.marketType.toLowerCase() ==
                                             'us'
                                       ? const Color(0xFF5B8DEF)
                                       : const Color(0xFFB57ADB), // fund

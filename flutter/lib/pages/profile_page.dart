@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../config/theme.dart';
 import '../models/app_version.dart';
 import '../providers/app_state.dart';
+import '../widgets/profile_custom_dialog.dart';
 import '../widgets/profile_icons.dart';
 import 'about_page.dart';
 import 'invite_acquire_page.dart';
@@ -73,12 +78,166 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _openUserGroupPage() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            const InviteAcquirePage(scene: InviteAcquireScene.userGroup),
-      ),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final appState = context.read<AppState>();
+      final config = await appState.apiService.getWebConfig();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      final opsText = config?['user_group_text']?.toString().trim() ?? '';
+      final imageUrl = config?['user_group_image_url']?.toString().trim() ?? '';
+
+      showDialog(
+        context: context,
+        builder: (context) => ProfileCustomDialog(
+          title: '咔咔用户群',
+          subTitle: '',
+          showClose: false,
+          showDivider: true,
+          primaryText: '保存二维码',
+          onPrimary: imageUrl.isEmpty ? null : () async {
+            final scaffoldMessenger = ScaffoldMessenger.of(context);
+            try {
+              final response = await http.get(Uri.parse(imageUrl)).timeout(const Duration(seconds: 15));
+              if (response.statusCode == 200) {
+                // 先保存到本地临时文件，再保存到相册，增加兼容性
+                final tempDir = await getTemporaryDirectory();
+                final tempFile = File('${tempDir.path}/kaka_qr_${DateTime.now().millisecondsSinceEpoch}.png');
+                await tempFile.writeAsBytes(response.bodyBytes);
+                
+                await Gal.putImage(tempFile.path);
+                
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(content: Text('二维码已保存至相册')),
+                );
+              } else {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(content: Text('下载失败: HTTP ${response.statusCode}')),
+                );
+              }
+            } catch (e) {
+              debugPrint('保存图片失败: $e');
+              scaffoldMessenger.showSnackBar(
+                SnackBar(content: Text('保存失败: $e')),
+              );
+            }
+          },
+          body: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: appState.isLightTheme
+                  ? Colors.white
+                  : const Color(0xFF1F2A3D),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: appState.isLightTheme
+                    ? const Color.fromRGBO(91, 141, 239, 0.20)
+                    : const Color.fromRGBO(34, 44, 64, 0.10),
+              ),
+              boxShadow: appState.isLightTheme
+                  ? const [
+                      BoxShadow(
+                        color: Color.fromRGBO(34, 44, 72, 0.10),
+                        blurRadius: 20,
+                        offset: Offset(0, 8),
+                      ),
+                    ]
+                  : const [
+                      BoxShadow(
+                        color: Color.fromRGBO(0, 0, 0, 0.26),
+                        blurRadius: 22,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              decoration: BoxDecoration(
+                color: appState.isLightTheme
+                    ? const Color.fromRGBO(34, 44, 64, 0.05)
+                    : const Color.fromRGBO(255, 255, 255, 0.02),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: appState.isLightTheme
+                      ? const Color.fromRGBO(34, 44, 64, 0.10)
+                      : const Color.fromRGBO(255, 255, 255, 0.05),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // 二维码区域
+                  Container(
+                    width: 104,
+                    height: 104,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color.fromRGBO(255, 255, 255, 0.2),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: imageUrl.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Image.network(
+                              imageUrl,
+                              width: 92,
+                              height: 92,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.qr_code_2,
+                                size: 80,
+                                color: Colors.black,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.qr_code_2,
+                            size: 80,
+                            color: Colors.black,
+                          ),
+                  ),
+                  const SizedBox(width: 16),
+                  // 文案区域
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (opsText.isNotEmpty)
+                          Text(
+                            opsText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textSecondary,
+                              height: 1.45,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取运营配置失败: $e')),
+      );
+    }
   }
 
   Future<void> _checkUpdate() async {
@@ -148,140 +307,68 @@ class _ProfilePageState extends State<ProfilePage> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 420),
+      builder: (dialogContext) => ProfileCustomDialog(
+        title: '发现新版本 v${version.version}',
+        subTitle: '本次升级包含以下优化内容',
+        ghostText: '稍后再说',
+        onGhost: () => Navigator.of(dialogContext).pop(),
+        primaryText: '立即升级',
+        onPrimary: () async {
+          final urlText = version.downloadUrl.trim();
+          final uri = Uri.tryParse(urlText);
+          if (uri == null ||
+              uri.host.isEmpty ||
+              !(uri.scheme == 'http' || uri.scheme == 'https')) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('下载链接不可用')));
+            return;
+          }
+          Navigator.of(dialogContext).pop();
+          final ok = await _openExternalUrl(
+            uri,
+            LaunchMode.externalApplication,
+          );
+          if (!ok && mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('无法打开下载链接')));
+          }
+        },
+        body: Container(
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppTheme.bgElevated,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x332D1E70),
-                blurRadius: 26,
-                offset: Offset(0, 12),
-              ),
-            ],
+            color: context.read<AppState>().isLightTheme
+                ? const Color.fromRGBO(34, 44, 64, 0.05)
+                : const Color.fromRGBO(255, 255, 255, 0.02),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: context.read<AppState>().isLightTheme
+                  ? const Color.fromRGBO(34, 44, 64, 0.09)
+                  : const Color.fromRGBO(255, 255, 255, 0.05),
+            ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFFFD954), Color(0xFFFFC83D)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.rocket_launch_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '发现新版本',
-                          style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        'v${version.version}',
-                        style: const TextStyle(
-                          color: Color(0xFFE63946),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+              Text(
+                '更新内容',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '更新内容',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      version.releaseNotes.trim().isEmpty
-                          ? '修复已知问题，优化使用体验。'
-                          : version.releaseNotes,
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 14,
-                        height: 1.6,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFC5B61),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                        ),
-                        onPressed: () async {
-                          final urlText = version.downloadUrl.trim();
-                          final uri = Uri.tryParse(urlText);
-                          if (uri == null ||
-                              uri.host.isEmpty ||
-                              !(uri.scheme == 'http' ||
-                                  uri.scheme == 'https')) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('下载链接不可用')),
-                            );
-                            return;
-                          }
-                          Navigator.of(dialogContext).pop();
-                          final ok = await _openExternalUrl(
-                            uri,
-                            LaunchMode.externalApplication,
-                          );
-                          if (!ok && mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('无法打开下载链接')),
-                            );
-                          }
-                        },
-                        child: const Text(
-                          '更新',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 8),
+              Text(
+                version.releaseNotes.trim().isEmpty
+                    ? '修复已知问题，优化使用体验。'
+                    : version.releaseNotes,
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  height: 1.5,
                 ),
               ),
             ],
@@ -350,30 +437,18 @@ class _ProfilePageState extends State<ProfilePage> {
     final controller = TextEditingController(text: appState.nickname ?? '');
     final newName = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('修改昵称', style: TextStyle(color: AppTheme.textPrimary)),
-        content: TextField(
+      builder: (context) => ProfileCustomDialog(
+        title: '修改昵称',
+        subTitle: '将用于我的页面顶部展示',
+        ghostText: '取消',
+        primaryText: '保存',
+        onPrimary: () => Navigator.pop(context, controller.text.trim()),
+        body: ProfileCustomInput(
           controller: controller,
+          hintText: '请输入昵称',
+          maxLength: 16,
           autofocus: true,
-          maxLength: 12,
-          style: TextStyle(color: AppTheme.textPrimary),
-          decoration: InputDecoration(
-            hintText: '请输入昵称',
-            hintStyle: TextStyle(color: AppTheme.textTertiary),
-            counterText: '',
-          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: Text('保存', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
       ),
     );
 
@@ -393,44 +468,34 @@ class _ProfilePageState extends State<ProfilePage> {
     final confirmCtrl = TextEditingController();
     final submit = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.bgElevated,
-        title: Text('修改密码', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Column(
+      builder: (context) => ProfileCustomDialog(
+        title: '修改密码',
+        subTitle: '请输入原密码与新密码后提交',
+        ghostText: '取消',
+        primaryText: '提交',
+        onPrimary: () => Navigator.pop(context, true),
+        body: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            ProfileCustomInput(
               controller: oldCtrl,
+              hintText: '原密码',
               obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '原密码'),
             ),
-            const SizedBox(height: Spacing.sm),
-            TextField(
+            const SizedBox(height: 12),
+            ProfileCustomInput(
               controller: newCtrl,
+              hintText: '新密码（至少 6 位）',
               obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '新密码'),
             ),
-            const SizedBox(height: Spacing.sm),
-            TextField(
+            const SizedBox(height: 12),
+            ProfileCustomInput(
               controller: confirmCtrl,
+              hintText: '确认新密码',
               obscureText: true,
-              style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: '确认新密码'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('提交', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
       ),
     );
     if (submit != true) return;
@@ -482,11 +547,25 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Stack(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 56, // matching 56px in new ui.html
+            height: 56,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.accent,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color.fromRGBO(171, 203, 255, 0.46),
+              ),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6B98F7), Color(0xFF4A7BE0)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color.fromRGBO(61, 103, 198, 0.4),
+                  blurRadius: 24,
+                  offset: Offset(0, 12),
+                ),
+              ],
               image: hasAvatar
                   ? DecorationImage(image: avatarImage!, fit: BoxFit.cover)
                   : null,
@@ -496,10 +575,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 ? null
                 : Text(
                     fallback,
-                    style: TextStyle(
-                      fontSize: 20,
+                    style: const TextStyle(
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
+                      color: Colors.white,
                     ),
                   ),
           ),
@@ -564,33 +643,41 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           Row(
             children: [
-              _buildAvatar(appState),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [_buildAvatar(appState)],
+              ),
               const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: appState.isLightTheme
-                          ? const Color(0xFF1F2A3D)
-                          : const Color(0xFFE6EBF7),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: appState.isLightTheme
+                            ? const Color(0xFF1F2A3D)
+                            : const Color(0xFFE6EBF7),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '已在咔咔记录 $days天',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: appState.isLightTheme
-                          ? const Color(0xFF55617B)
-                          : const Color(0xFFECF1FB),
+                    const SizedBox(height: 5),
+                    Text(
+                      '已在咔咔记录 $days天',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0.01,
+                        color: appState.isLightTheme
+                            ? const Color(0xFF55617B)
+                            : const Color(0xB5FFFFFF),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -653,7 +740,7 @@ class _ProfilePageState extends State<ProfilePage> {
             trailing: Switch(
               value: isLight,
               onChanged: (_) => appState.toggleTheme(),
-              activeThumbColor: Colors.white,
+              activeColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
               inactiveThumbColor: const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
@@ -683,7 +770,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ).showSnackBar(const SnackBar(content: Text('当前设备不可用生物识别')));
                 }
               },
-              activeThumbColor: Colors.white,
+              activeColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
               inactiveThumbColor: const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
