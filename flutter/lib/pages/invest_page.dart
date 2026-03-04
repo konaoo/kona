@@ -956,7 +956,7 @@ class InvestPageState extends State<InvestPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '成本 ${_formatDisplayPrice(displayCostPrice, item: item)}',
+                      '成本 $sym${_formatDisplayPrice(displayCostPrice, item: item)}',
                       style: _S.cardProgressLabel.copyWith(
                         color: const Color(0xFFF0F4FF),
                       ),
@@ -966,7 +966,7 @@ class InvestPageState extends State<InvestPage> {
                         children: [
                           TextSpan(
                             text:
-                                '现价 ${_formatDisplayPrice(currentPrice, item: item)} ',
+                                '现价 $sym${_formatDisplayPrice(currentPrice, item: item)} ',
                             style: _S.cardProgressLabel.copyWith(
                               color: const Color(0xFFF0F4FF),
                             ),

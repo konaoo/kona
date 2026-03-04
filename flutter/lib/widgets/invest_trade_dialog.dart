@@ -2856,6 +2856,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handle for tests
+          SizedBox(key: _sheetHandleKey, height: 0),
           // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 11),

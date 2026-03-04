@@ -500,9 +500,9 @@ void main() {
     expect(find.text('未找到 USD 资金账户'), findsNothing);
     await tester.tap(_k('invest_cash_trigger'));
     await tester.pumpAndSettle();
-    expect(find.text('+ 添加现金账户'), findsOneWidget);
+    expect(find.text('添加账户'), findsOneWidget);
 
-    await tester.tap(find.text('+ 添加现金账户'));
+    await tester.tap(find.text('添加账户'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
