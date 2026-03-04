@@ -143,7 +143,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('咔咔用户群'));
     await tester.pumpAndSettle();
-    expect(find.text('截图保存二维码\n使用微信扫一扫进群'), findsOneWidget);
+    expect(find.text('加入咔咔用户群'), findsOneWidget);
   });
 
   testWidgets('Check update shows latest message when version is up-to-date', (
