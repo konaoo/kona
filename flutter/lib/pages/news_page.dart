@@ -266,7 +266,7 @@ class _NewsPageState extends State<NewsPage> {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: AppTheme.bgElevated.withOpacity(0.9),
+          color: AppTheme.bgElevated.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(6),
         ),
       );
@@ -279,7 +279,7 @@ class _NewsPageState extends State<NewsPage> {
         color: AppTheme.bgCard,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
-          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+          color: AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.6 : 0.2),
           width: 1,
         ),
         boxShadow: AppTheme.cardShadow,
@@ -312,8 +312,8 @@ class _NewsPageState extends State<NewsPage> {
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
           color: isImportant
-              ? AppTheme.accent.withOpacity(0.3)
-              : AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.2),
+              ? AppTheme.accent.withValues(alpha: 0.3)
+              : AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.6 : 0.2),
           width: 1,
         ),
         boxShadow: AppTheme.cardShadow,

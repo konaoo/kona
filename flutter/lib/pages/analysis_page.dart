@@ -7,10 +7,15 @@ import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../providers/app_state.dart';
-import '../models/portfolio.dart';
 import '../widgets/calendar_period_wheel_sheet.dart';
 
 enum CalendarPeriodWheelMode { day, month }
+
+// Test Keys
+const kCalendarYearWheelKey = Key('calendar-year-wheel');
+const kCalendarMonthWheelKey = Key('calendar-month-wheel');
+const kCalendarPickerDoneKey = Key('calendar-picker-done');
+const kCalendarPickerResetKey = Key('calendar-picker-reset');
 
 // ──────────────────────────────────────────────────
 // Cached TextStyles – DM Sans for labels, JetBrains Mono for numbers
@@ -321,20 +326,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
   }
 
-  bool _isCurrentCalendarPeriod() {
-    final now = DateTime.now();
-    if (_calendarTimeType == 'day') {
-      final year = _selectedDayYear ?? now.year;
-      final month = _selectedDayMonth ?? now.month;
-      return year == now.year && month == now.month;
-    }
-    if (_calendarTimeType == 'month') {
-      final year = _selectedMonthYear ?? now.year;
-      return year == now.year;
-    }
-    return false;
-  }
-
   String _calendarCacheKey() {
     if (_calendarTimeType == 'day') {
       if (_selectedDayYear == null || _selectedDayMonth == null) {
@@ -441,10 +432,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (_calendarTimeType == nextType) return;
     setState(() => _calendarTimeType = nextType);
     _loadCalendar();
-  }
-
-  void _showCalendarPeriodPicker() {
-    _toggleDatePicker();
   }
 
   String _calendarPeriodButtonText() {

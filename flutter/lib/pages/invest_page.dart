@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -285,7 +284,7 @@ class InvestPageState extends State<InvestPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 26,
             offset: const Offset(0, 12),
           ),
@@ -568,7 +567,7 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden ? '' : _fmtPct(catDayPnlRate),
                         style: _S.sumPct.copyWith(
-                          color: dayColor.withOpacity(0.85),
+                          color: dayColor.withValues(alpha: 0.85),
                         ),
                       ),
                     ],
@@ -602,7 +601,7 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden ? '' : _fmtPct(catHoldPnlRate),
                         style: _S.sumPct.copyWith(
-                          color: holdColor.withOpacity(0.85),
+                          color: holdColor.withValues(alpha: 0.85),
                         ),
                       ),
                     ],
@@ -755,7 +754,7 @@ class InvestPageState extends State<InvestPage> {
           color: AppTheme.surface2,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -832,7 +831,7 @@ class InvestPageState extends State<InvestPage> {
                           height: 3,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: AppTheme.textMuted.withOpacity(0.5),
+                            color: AppTheme.textMuted.withValues(alpha: 0.5),
                           ),
                         ),
                         const SizedBox(width: 4),

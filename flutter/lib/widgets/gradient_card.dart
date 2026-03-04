@@ -24,7 +24,7 @@ class GradientCard extends StatelessWidget {
           colors: AppTheme.cardGradient,
         ),
         border: Border.all(
-          color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.25),
+          color: AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.7 : 0.25),
           width: 1,
         ),
         borderRadius: BorderRadius.circular(AppRadius.xxl),

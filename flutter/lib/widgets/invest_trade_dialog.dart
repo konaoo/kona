@@ -469,9 +469,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.6), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
       ),
       child: Text(
         label,
@@ -938,7 +938,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         width: 38,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: AppTheme.textTertiary.withOpacity(0.45),
+                          color: AppTheme.textTertiary.withValues(alpha: 0.45),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -1767,7 +1767,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           border: Border.all(color: _tokens.border, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.55),
+              color: Colors.black.withValues(alpha: 0.55),
               blurRadius: 36,
               offset: const Offset(0, 16),
             ),
@@ -1913,7 +1913,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       decoration: BoxDecoration(
         color: _tokens.goldDim,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _tokens.gold.withOpacity(0.2), width: 1),
+        border: Border.all(color: _tokens.gold.withValues(alpha: 0.2), width: 1),
       ),
       child: Row(
         children: [
@@ -1961,7 +1961,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               width: 17,
               height: 17,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.07),
+                color: Colors.white.withValues(alpha: 0.07),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.close, size: 8, color: _tokens.textMuted),
@@ -2130,7 +2130,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           border: Border.all(color: _tokens.border, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.55),
+              color: Colors.black.withValues(alpha: 0.55),
               blurRadius: 36,
               offset: const Offset(0, 16),
             ),
@@ -2847,7 +2847,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         border: Border.all(color: const Color(0x12FFFFFF), width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.7),
+            color: Colors.black.withValues(alpha: 0.7),
             blurRadius: 64,
             offset: const Offset(0, 24),
           ),
@@ -2922,7 +2922,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         decoration: BoxDecoration(
                           color: _tokens.goldDim,
                           border: Border.all(
-                            color: _tokens.gold.withOpacity(0.2),
+                            color: _tokens.gold.withValues(alpha: 0.2),
                             width: 1,
                           ),
                           borderRadius: BorderRadius.circular(6),
@@ -2936,25 +2936,25 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                               ),
                               decoration: BoxDecoration(
                                 color:
-                                    widget.item?.marketType?.toLowerCase() ==
+                                    widget.item?.marketType.toLowerCase() ==
                                         'a'
                                     ? const Color(0x243ECF82)
-                                    : widget.item?.marketType?.toLowerCase() ==
+                                    : widget.item?.marketType.toLowerCase() ==
                                           'hk'
                                     ? const Color(0x24E06B3A)
-                                    : widget.item?.marketType?.toLowerCase() ==
+                                    : widget.item?.marketType.toLowerCase() ==
                                           'us'
                                     ? const Color(0x245B8DEF)
                                     : const Color(0x24B57ADB), // fund
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                widget.item?.marketType?.toLowerCase() == 'hk'
+                                widget.item?.marketType.toLowerCase() == 'hk'
                                     ? '港股'
-                                    : widget.item?.marketType?.toLowerCase() ==
+                                    : widget.item?.marketType.toLowerCase() ==
                                           'us'
                                     ? '美股'
-                                    : widget.item?.marketType?.toLowerCase() ==
+                                    : widget.item?.marketType.toLowerCase() ==
                                           'fund'
                                     ? '基金'
                                     : 'A股',
@@ -2963,7 +2963,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   weight: FontWeight.w600,
                                   letterSpacing: 0.03,
                                   color:
-                                      widget.item?.marketType?.toLowerCase() ==
+                                      widget.item?.marketType.toLowerCase() ==
                                           'a'
                                       ? const Color(0xFF3ECF82)
                                       : widget.item?.marketType
@@ -2991,7 +2991,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                             Container(
                               width: 1,
                               height: 10,
-                              color: _tokens.gold.withOpacity(0.25),
+                              color: _tokens.gold.withValues(alpha: 0.25),
                             ),
                             const SizedBox(width: 7),
                             Expanded(

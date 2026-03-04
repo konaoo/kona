@@ -109,8 +109,8 @@ class StartupSplashPage extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              AppTheme.accent.withOpacity(0.9),
-              AppTheme.accent.withOpacity(0.65),
+              AppTheme.accent.withValues(alpha: 0.9),
+              AppTheme.accent.withValues(alpha: 0.65),
             ],
           ),
         ),
@@ -143,7 +143,7 @@ class StartupSplashPage extends StatelessWidget {
                     valueColor: const AlwaysStoppedAnimation<Color>(
                       Colors.white,
                     ),
-                    backgroundColor: Colors.white.withOpacity(0.3),
+                    backgroundColor: Colors.white.withValues(alpha: 0.3),
                   ),
                 ),
               ],
@@ -237,8 +237,8 @@ class _AppLockOverlayState extends State<AppLockOverlay>
           color: Colors.transparent,
           child: Container(
             color: isDark
-                ? Colors.black.withOpacity(0.88)
-                : Colors.white.withOpacity(0.92),
+                ? Colors.black.withValues(alpha: 0.88)
+                : Colors.white.withValues(alpha: 0.92),
             child: SafeArea(
               child: Center(
                 child: Padding(
@@ -252,9 +252,9 @@ class _AppLockOverlayState extends State<AppLockOverlay>
                         height: 80,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: AppTheme.accent.withOpacity(0.12),
+                          color: AppTheme.accent.withValues(alpha: 0.12),
                           border: Border.all(
-                            color: AppTheme.accent.withOpacity(0.35),
+                            color: AppTheme.accent.withValues(alpha: 0.35),
                             width: 1.5,
                           ),
                         ),
@@ -544,7 +544,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     showDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.5),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (dialogContext) => AddAssetDialog(hostContext: context),
     );
   }
@@ -621,7 +621,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           color: AppTheme.navBg,
           border: Border(
             top: BorderSide(
-              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.6 : 0.3),
+              color: AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.6 : 0.3),
               width: 1,
             ),
           ),

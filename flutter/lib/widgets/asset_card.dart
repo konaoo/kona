@@ -42,7 +42,7 @@ class AssetCard extends StatelessWidget {
           padding: const EdgeInsets.all(Spacing.lg),
           decoration: BoxDecoration(
             border: Border.all(
-              color: AppTheme.border.withOpacity(AppTheme.isLight ? 0.7 : 0.4),
+              color: AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.7 : 0.4),
               width: 1,
             ),
             borderRadius: BorderRadius.circular(AppRadius.lg),
