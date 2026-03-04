@@ -137,7 +137,9 @@ void main() {
     expect(find.text('隐私协议'), findsOneWidget);
     expect(find.text('《第三方信息共享清单》'), findsOneWidget);
 
-    await tester.pageBack();
+    // About page uses a custom IconButton instead of standard BackButton,
+    // so tester.pageBack() won't work. Tap the icon directly.
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
     await tester.pumpAndSettle();
     await tester.tap(find.text('咔咔用户群'));
     await tester.pumpAndSettle();

@@ -14,8 +14,7 @@ enum CalendarPeriodWheelMode { day, month }
 // Test Keys
 const kCalendarYearWheelKey = Key('calendar-year-wheel');
 const kCalendarMonthWheelKey = Key('calendar-month-wheel');
-const kCalendarPickerDoneKey = Key('calendar-picker-done');
-const kCalendarPickerResetKey = Key('calendar-picker-reset');
+
 
 // ──────────────────────────────────────────────────
 // Cached TextStyles – DM Sans for labels, JetBrains Mono for numbers

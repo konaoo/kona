@@ -279,7 +279,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Future<void> _checkInviteCode() async {
     final code = _regInvCtrl.text.trim().toUpperCase();
-    if (code.length < 8) {
+    if (code.length < 10) {
       setState(() => _inviteValid = null);
       return;
     }
@@ -881,7 +881,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             onSubmitted: () => _regAccFocus.requestFocus(),
             isMono: true,
             forceUppercase: true,
-            maxLength: 8,
+            maxLength: 10,
             errorKey: 'regInv',
             onChanged: (_) => _checkInviteCodeDebounced(),
           ),

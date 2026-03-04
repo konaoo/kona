@@ -638,17 +638,17 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [_buildAvatar(appState)],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
+          Expanded(
+            child: Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [_buildAvatar(appState)],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -678,8 +678,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                 ),
               ),
-            ],
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => _editNickname(appState),
             child: Container(

@@ -134,7 +134,6 @@ void main() {
     await tester.tap(find.byKey(const Key('calendar-period-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('日期筛选'), findsOneWidget);
     expect(find.byKey(kCalendarYearWheelKey), findsOneWidget);
     expect(find.byKey(kCalendarMonthWheelKey), findsOneWidget);
   });
@@ -151,10 +150,12 @@ void main() {
     await tester.tap(find.byKey(const Key('calendar-period-button')));
     await tester.pumpAndSettle();
 
+    // Drag year wheel to select 2025 and tap on it to confirm (isFinal)
     await tester.drag(find.byKey(kCalendarYearWheelKey), const Offset(0, 120));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(kCalendarPickerDoneKey));
+    // Tap the year wheel to trigger isFinal=true and auto-close
+    await tester.tap(find.byKey(kCalendarYearWheelKey));
     await tester.pumpAndSettle();
 
     expect(find.text('2025年01月'), findsOneWidget);
@@ -198,32 +199,9 @@ void main() {
     expect(periodButton.onTap, isNull);
   });
 
-  testWidgets('重置后完成会回到最近有数据周期并触发加载', (tester) async {
-    final calls = <Map<String, dynamic>>[];
-
-    await tester.pumpWidget(
-      buildTestPage(
-        calendarLoader: ({required timeType, year, month}) async {
-          calls.add({'type': timeType, 'year': year, 'month': month});
-          return calendarResponse(timeType: timeType, year: year, month: month);
-        },
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('calendar-period-button')));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(kCalendarPickerResetKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(kCalendarPickerDoneKey));
-    await tester.pumpAndSettle();
-
-    expect(find.text('2026年03月'), findsOneWidget);
-    expect(calls.last['type'], 'day');
-    expect(calls.last['year'], 2026);
-    expect(calls.last['month'], 3);
-  });
+  // Test removed: '重置后完成会回到最近有数据周期并触发加载'
+  // The Reset button was removed during the Date Picker UI refactoring
+  // (replaced by inline DatePickerDropdown overlay).
 
   testWidgets('历史周期命中持久缓存后重建页面会后台回源刷新', (tester) async {
     int firstLoaderCalls = 0;
