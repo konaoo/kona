@@ -295,9 +295,8 @@ class _ProfilePageState extends State<ProfilePage> {
     return value
         .split('.')
         .map((part) {
-          final match = RegExp(r'^\d+').firstMatch(part.trim());
-          if (match == null) return 0;
-          return int.tryParse(match.group(0) ?? '') ?? 0;
+          final stripped = part.replaceAll(RegExp(r'[^0-9]'), '');
+          return int.tryParse(stripped) ?? 0;
         })
         .toList(growable: false);
   }
