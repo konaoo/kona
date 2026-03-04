@@ -730,10 +730,6 @@ class InvestPageState extends State<InvestPage> {
 
     // Progress bar calculation
     final isProfit = currentPrice >= displayCostPrice;
-    final maxPrice = max(currentPrice, displayCostPrice);
-    final progressRatio = maxPrice > 0
-        ? (isProfit ? displayCostPrice / maxPrice : currentPrice / maxPrice)
-        : 0.5;
     final priceDiffPct = displayCostPrice > 0
         ? ((currentPrice - displayCostPrice) / displayCostPrice * 100)
         : 0.0;
@@ -870,83 +866,11 @@ class InvestPageState extends State<InvestPage> {
                       currentPrice = mv / qty;
                     }
 
-                    double changeRate = costPrice > 0
-                        ? (currentPrice - costPrice) / costPrice
-                        : 0.0;
-                    double fillRatio =
-                        (changeRate.abs() / maxRate).clamp(0.0, 1.0) * 0.5;
-
-                    bool isUp = changeRate >= 0;
-
-                    return Container(
-                      height: 3,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(2),
-                        color: const Color(0x0FFFFFFF), // Empty track
-                      ),
-                      child: Stack(
-                        children: [
-                          // Center anchor point (50%)
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            child: Row(
-                              children: [
-                                // Left side (Down / Green)
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: FractionallySizedBox(
-                                      widthFactor: isUp
-                                          ? 0.0
-                                          : fillRatio *
-                                                2, // Multiply by 2 because it's in a 50% expanded box
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            2,
-                                          ),
-                                          gradient: const LinearGradient(
-                                            colors: [
-                                              Color(0x662ECC8A),
-                                              Color(0xFF2ECC8A),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                // Right side (Up / Red)
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: isUp ? fillRatio * 2 : 0.0,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            2,
-                                          ),
-                                          gradient: const LinearGradient(
-                                            colors: [
-                                              Color(0x66F05A55),
-                                              Color(0xFFF05A55),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                    // Use the refined high-performance animated progress bar
+                    return PnlProgressBar(
+                      costPrice: costPrice,
+                      currentPrice: currentPrice,
+                      maxRate: maxRate,
                     );
                   },
                 ),
@@ -1054,4 +978,131 @@ class InvestPageState extends State<InvestPage> {
       ),
     );
   }
+}
+
+class PnlProgressBar extends StatefulWidget {
+  final double costPrice;
+  final double currentPrice;
+  final double maxRate;
+
+  const PnlProgressBar({
+    super.key,
+    required this.costPrice,
+    required this.currentPrice,
+    this.maxRate = 0.30,
+  });
+
+  @override
+  State<PnlProgressBar> createState() => _PnlProgressBarState();
+}
+
+class _PnlProgressBarState extends State<PnlProgressBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
+  }
+
+  @override
+  void didUpdateWidget(PnlProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPrice != widget.currentPrice ||
+        oldWidget.costPrice != widget.costPrice) {
+      _ctrl.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.costPrice <= 0) return const SizedBox(height: 3);
+
+    final changeRate = (widget.currentPrice - widget.costPrice) / widget.costPrice;
+    final fillRatio = (changeRate.abs() / widget.maxRate).clamp(0.0, 1.0) * 0.5;
+    final isProfit = changeRate > 0;
+    final fillColor = isProfit ? const Color(0xFFF05A55) : const Color(0xFF2ECC8A);
+
+    return SizedBox(
+      height: 3,
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) => CustomPaint(
+          size: Size.infinite,
+          painter: _PnlBarPainter(
+            fillRatio: fillRatio * _anim.value,
+            isProfit: isProfit,
+            fillColor: fillColor,
+            hasChange: changeRate.abs() > 1e-9,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PnlBarPainter extends CustomPainter {
+  final double fillRatio;
+  final bool isProfit;
+  final Color fillColor;
+  final bool hasChange;
+
+  const _PnlBarPainter({
+    required this.fillRatio,
+    required this.isProfit,
+    required this.fillColor,
+    required this.hasChange,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final midX = w * 0.5;
+    final radius = Radius.circular(h / 2);
+
+    // 1. Track background
+    canvas.drawRRect(
+      RRect.fromLTRBR(0, 0, w, h, radius),
+      Paint()..color = const Color(0x14FFFFFF),
+    );
+
+    // 2. Fill bar
+    if (hasChange && fillRatio > 0) {
+      final fillW = w * fillRatio;
+      final left = isProfit ? midX : midX - fillW;
+      final right = isProfit ? midX + fillW : midX;
+
+      final rrect = isProfit
+          ? RRect.fromLTRBAndCorners(left, 0, right, h,
+              topRight: radius, bottomRight: radius)
+          : RRect.fromLTRBAndCorners(left, 0, right, h,
+              topLeft: radius, bottomLeft: radius);
+
+      canvas.drawRRect(rrect, Paint()..color = fillColor);
+    }
+
+    // 3. Center anchor line (Cost baseline)
+    canvas.drawRect(
+      Rect.fromLTWH(midX - 0.75, 0, 1.5, h),
+      Paint()..color = const Color(0x66FFFFFF),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PnlBarPainter old) =>
+      old.fillRatio != fillRatio || old.isProfit != isProfit;
 }
