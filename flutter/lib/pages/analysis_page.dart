@@ -756,6 +756,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Widget _buildCalendarHeaderControls() {
     return Row(
+      key: const Key('calendar-header-controls-row'),
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         if (_calendarTimeType != 'year')
@@ -785,6 +786,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return CompositedTransformTarget(
       link: _datePickerLink,
       child: GestureDetector(
+        key: const Key('calendar-period-button'),
         onTap: _calendarPeriodPickerEnabled ? _toggleDatePicker : null,
         child: Container(
           height: 32,
@@ -830,16 +832,27 @@ class _AnalysisPageState extends State<AnalysisPage> {
       return;
     }
 
-    final now = DateTime.now();
-    final selectableYears = List<int>.generate(now.year - 2018 + 1, (index) => 2018 + index);
-    final Map<int, List<int>> selectableMonthsByYear = {};
-    for (var year in selectableYears) {
-      if (year < now.year) {
-        selectableMonthsByYear[year] = List<int>.generate(12, (index) => index + 1);
-      } else {
-        selectableMonthsByYear[year] = List<int>.generate(now.month, (index) => index + 1);
-      }
+    // Use the API-returned selectable data
+    final List<int> selectableYears;
+    final Map<int, List<int>> selectableMonthsByYear;
+    final int initialYear;
+    final int? initialMonth;
+
+    if (_calendarTimeType == 'day') {
+      selectableYears = _selectableDayYears;
+      selectableMonthsByYear = _selectableMonthsByYear;
+      initialYear = _selectedDayYear ?? (selectableYears.isNotEmpty ? selectableYears.last : DateTime.now().year);
+      initialMonth = _selectedDayMonth ?? (selectableMonthsByYear[initialYear]?.isNotEmpty == true ? selectableMonthsByYear[initialYear]!.last : DateTime.now().month);
+    } else {
+      selectableYears = _selectableMonthYears;
+      selectableMonthsByYear = const {};
+      initialYear = _selectedMonthYear ?? (selectableYears.isNotEmpty ? selectableYears.last : DateTime.now().year);
+      initialMonth = null; // month mode: no month wheel
     }
+
+    // Track temporary selections within the picker
+    int tempYear = initialYear;
+    int? tempMonth = initialMonth;
 
     _datePickerOverlay = OverlayEntry(
       builder: (context) => Stack(
@@ -856,36 +869,107 @@ class _AnalysisPageState extends State<AnalysisPage> {
             offset: const Offset(0, 8),
             child: Material(
               color: Colors.transparent,
-              child: DatePickerDropdown(
-                initialYear: _calendarTimeType == 'day' ? (_selectedDayYear ?? DateTime.now().year) : (_selectedMonthYear ?? DateTime.now().year),
-                initialMonth: _calendarTimeType == 'day' 
-                    ? (_selectedDayMonth ?? DateTime.now().month) 
-                    : (_selectedMonthMonth ?? DateTime.now().month),
-                selectableYears: selectableYears,
-                selectableMonthsByYear: selectableMonthsByYear,
-                onSelected: (year, month, isFinal) {
-                  if (_calendarTimeType == 'day') {
-                    setState(() {
-                      _selectedDayYear = year;
-                      _selectedDayMonth = month;
-                    });
-                  } else {
-                    setState(() {
-                      _selectedMonthYear = year;
-                      _selectedMonthMonth = month;
-                    });
-                  }
-                  
-                  if (isFinal) {
-                    _hideDatePicker();
-                  }
-
-                  // Debounce the load to avoid jumping during rapid scroll
-                  _calendarRetryTimer?.cancel();
-                  _calendarRetryTimer = Timer(const Duration(milliseconds: 100), () {
-                    if (mounted) _loadCalendar();
-                  });
-                },
+              child: Container(
+                width: 200,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2128).withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Text(
+                        '日期筛选',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 160,
+                      child: DatePickerDropdown(
+                        initialYear: initialYear,
+                        initialMonth: initialMonth,
+                        selectableYears: selectableYears,
+                        selectableMonthsByYear: selectableMonthsByYear,
+                        yearWheelKey: kCalendarYearWheelKey,
+                        monthWheelKey: kCalendarMonthWheelKey,
+                        onSelected: (year, month, isFinal) {
+                          tempYear = year;
+                          tempMonth = month;
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            key: kCalendarPickerResetKey,
+                            onTap: () {
+                              // Reset: go to the latest available period
+                              if (_calendarTimeType == 'day' && _selectableDayYears.isNotEmpty) {
+                                final lastYear = _selectableDayYears.last;
+                                final lastMonths = _selectableMonthsByYear[lastYear] ?? const <int>[];
+                                final lastMonth = lastMonths.isNotEmpty ? lastMonths.last : 1;
+                                tempYear = lastYear;
+                                tempMonth = lastMonth;
+                              } else if (_calendarTimeType == 'month' && _selectableMonthYears.isNotEmpty) {
+                                tempYear = _selectableMonthYears.last;
+                                tempMonth = null;
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Text(
+                                '重置',
+                                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            key: kCalendarPickerDoneKey,
+                            onTap: () {
+                              if (_calendarTimeType == 'day') {
+                                setState(() {
+                                  _selectedDayYear = tempYear;
+                                  _selectedDayMonth = tempMonth;
+                                });
+                              } else {
+                                setState(() {
+                                  _selectedMonthYear = tempYear;
+                                  _selectedMonthMonth = tempMonth;
+                                });
+                              }
+                              _hideDatePicker();
+                              _loadCalendar();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Text(
+                                '完成',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF3F8CFF)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1207,7 +1291,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
       // 累计盈亏 = (现价 - 均价) * 数量 + 调整额
       final pnl = appState.amountHidden ? 0.0 : (currentPrice - asset.price) * asset.qty + asset.adjustment;
       final cost = asset.price * asset.qty;
-      final rate = cost > 0 ? (pnl / cost) * 100 : 0.0;
+      final absCost = cost.abs();
+      final rate = absCost > 0 ? (pnl / absCost) * 100 : 0.0;
       
       final exchangeRate = appState.getCurrencyRate(asset.curr);
       list.add(_RankItem(

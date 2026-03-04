@@ -8,6 +8,8 @@ class DatePickerDropdown extends StatefulWidget {
     required this.selectableYears,
     required this.selectableMonthsByYear,
     required this.onSelected,
+    this.yearWheelKey,
+    this.monthWheelKey,
   });
 
   final int initialYear;
@@ -15,6 +17,8 @@ class DatePickerDropdown extends StatefulWidget {
   final List<int> selectableYears;
   final Map<int, List<int>> selectableMonthsByYear;
   final void Function(int year, int? month, bool isFinal) onSelected;
+  final Key? yearWheelKey;
+  final Key? monthWheelKey;
 
   @override
   State<DatePickerDropdown> createState() => _DatePickerDropdownState();
@@ -112,6 +116,7 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
         children: [
           Expanded(
             child: _buildColumn(
+              key: widget.yearWheelKey,
               values: widget.selectableYears,
               selectedValue: _selectedYear,
               controller: _yearController,
@@ -132,6 +137,7 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
           Expanded(
             child: _isMonthMode
                 ? _buildColumn(
+                    key: widget.monthWheelKey,
                     values: _monthsFor(_selectedYear),
                     selectedValue: _selectedMonth,
                     controller: _monthController,
@@ -159,6 +165,7 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
   }
 
   Widget _buildColumn({
+    Key? key,
     required List<int> values,
     required int? selectedValue,
     required FixedExtentScrollController? controller,
@@ -173,6 +180,7 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: ListWheelScrollView.useDelegate(
+        key: key,
         controller: controller,
         itemExtent: 40,
         perspective: 0.005,
