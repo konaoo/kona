@@ -2144,13 +2144,15 @@ def create_admin_blueprint(db, admin_write_audit):
                 "SELECT COUNT(DISTINCT user_id) AS c FROM daily_snapshots WHERE date = ?",
                 (today_str,),
             )
-            today_count = int((cursor.fetchone() or {}).get("c", 0) or 0)
+            row = cursor.fetchone()
+            today_count = int(row["c"] if row else 0)
 
             # 总用户数（有快照的）
             cursor.execute(
                 "SELECT COUNT(DISTINCT user_id) AS c FROM daily_snapshots"
             )
-            total_users = int((cursor.fetchone() or {}).get("c", 0) or 0)
+            row = cursor.fetchone()
+            total_users = int(row["c"] if row else 0)
 
             # 整体健康状态
             if max_gap_days <= 0:
