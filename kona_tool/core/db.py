@@ -4014,7 +4014,7 @@ class DatabaseManager:
                         pnl = float(row['total_pnl']) - prev_total
                     if (not is_market_closed) and row['total_pnl'] is not None:
                         prev_total = float(row['total_pnl'])
-                    items.append({'label': str(day), 'pnl': pnl})
+                    items.append({'label': f"{target_month}-{day}", 'pnl': pnl})
 
                 title = f'{target_year}年{target_month}月累计'
 

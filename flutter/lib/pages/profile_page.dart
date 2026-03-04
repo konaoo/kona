@@ -17,7 +17,6 @@ import '../providers/app_state.dart';
 import '../widgets/profile_custom_dialog.dart';
 import '../widgets/profile_icons.dart';
 import 'about_page.dart';
-import 'invite_acquire_page.dart';
 
 /// 我的页面
 typedef ProfileUrlOpener = Future<bool> Function(Uri uri, LaunchMode mode);

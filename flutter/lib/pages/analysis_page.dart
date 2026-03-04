@@ -97,14 +97,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
   // 收益日历相关
   String _calendarTimeType = 'day';
   Map<String, dynamic> _calendarData = {};
-  bool _calendarLoading = false;
   int _calendarRetryCount = 0;
   Timer? _calendarRetryTimer;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
   int? _selectedDayYear;
   int? _selectedDayMonth;
   int? _selectedMonthYear;
-  int? _selectedMonthMonth;
   List<int> _selectableDayYears = const [];
   Map<int, List<int>> _selectableMonthsByYear = const {};
   List<int> _selectableMonthYears = const [];
@@ -119,7 +117,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _selectedDayYear = now.year;
     _selectedDayMonth = now.month;
     _selectedMonthYear = now.year;
-    _selectedMonthMonth = now.month;
     _loadData();
     _loadCalendar();
   }
@@ -230,14 +227,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
           _syncCalendarMetaFromData(cachedData);
           _normalizeCalendarSelections();
           _calendarData = cachedData;
-          _calendarLoading = false;
         });
         renderedByCache = true;
       }
     }
 
     if (!renderedByCache && showLoadingUi) {
-      setState(() => _calendarLoading = true);
+      if (mounted) setState(() {});
     }
     try {
       final data = widget.calendarLoader != null
@@ -258,7 +254,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _calendarData = data;
         final resolvedCacheKey = _calendarCacheKey();
         _calendarCache[resolvedCacheKey] = data;
-        _calendarLoading = false;
       });
       _calendarRetryTimer?.cancel();
       _calendarRetryCount = 0;
@@ -268,7 +263,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       debugPrint('加载收益日历失败: $e');
       if (!mounted) return;
       if (!renderedByCache && showLoadingUi) {
-        setState(() => _calendarLoading = false);
+        if (mounted) setState(() {});
       }
       if (_calendarRetryCount < _maxTransientRetry) {
         _calendarRetryCount += 1;
@@ -473,6 +468,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       unawaited(appState.refreshHomeData());
     }
     try {
+      _calendarCache.clear();
       await Future.wait<void>([
         _loadData(force: true, showLoadingUi: false),
         _loadCalendar(force: true, showLoadingUi: false),
@@ -558,7 +554,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
+            color: Colors.black.withOpacity(0.35),
             blurRadius: 26,
             offset: const Offset(0, 12),
           ),
@@ -649,7 +645,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: blue.withValues(alpha: 0.3),
+                      color: blue.withOpacity(0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     )
@@ -683,12 +679,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     } else if (_calendarTimeType == 'month') {
       for (int i = 1; i <= 12; i++) {
-        calendarGrid.add({'day': i, 'date': '${i}月', 'pnl': null});
+        calendarGrid.add({'day': i, 'date': '$i月', 'pnl': null});
       }
     } else {
       for (int i = 0; i < 6; i++) {
         final year = now.year - 5 + i;
-        calendarGrid.add({'day': year, 'date': '${year}年', 'pnl': null});
+        calendarGrid.add({'day': year, 'date': '$year年', 'pnl': null});
       }
     }
 
@@ -719,13 +715,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.055)),
+        border: Border.all(color: Colors.white.withOpacity(0.055)),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppTheme.bgCard.withValues(alpha: 0.8),
-            AppTheme.bgPrimary.withValues(alpha: 0.5),
+            AppTheme.bgCard.withOpacity(0.8),
+            AppTheme.bgPrimary.withOpacity(0.5),
           ],
         ),
       ),
@@ -767,7 +763,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           height: 28,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: Colors.black.withOpacity(0.2),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -795,7 +791,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           decoration: BoxDecoration(
             color: const Color(0xFF16181F),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -870,14 +866,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
             child: Material(
               color: Colors.transparent,
               child: Container(
-                width: 200,
+                width: 140,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F2128).withValues(alpha: 0.98),
+                  color: const Color(0xFF1F2128).withOpacity(0.98),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Colors.black.withOpacity(0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -886,17 +881,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Text(
-                        '日期筛选',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
                     SizedBox(
                       height: 160,
                       child: DatePickerDropdown(
@@ -909,40 +894,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         onSelected: (year, month, isFinal) {
                           tempYear = year;
                           tempMonth = month;
-                        },
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GestureDetector(
-                            key: kCalendarPickerResetKey,
-                            onTap: () {
-                              // Reset: go to the latest available period
-                              if (_calendarTimeType == 'day' && _selectableDayYears.isNotEmpty) {
-                                final lastYear = _selectableDayYears.last;
-                                final lastMonths = _selectableMonthsByYear[lastYear] ?? const <int>[];
-                                final lastMonth = lastMonths.isNotEmpty ? lastMonths.last : 1;
-                                tempYear = lastYear;
-                                tempMonth = lastMonth;
-                              } else if (_calendarTimeType == 'month' && _selectableMonthYears.isNotEmpty) {
-                                tempYear = _selectableMonthYears.last;
-                                tempMonth = null;
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Text(
-                                '重置',
-                                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            key: kCalendarPickerDoneKey,
-                            onTap: () {
+                          if (isFinal) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_calendarTimeType == 'day') {
                                 setState(() {
                                   _selectedDayYear = tempYear;
@@ -951,21 +904,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
                               } else {
                                 setState(() {
                                   _selectedMonthYear = tempYear;
-                                  _selectedMonthMonth = tempMonth;
                                 });
                               }
                               _hideDatePicker();
                               _loadCalendar();
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Text(
-                                '完成',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF3F8CFF)),
-                              ),
-                            ),
-                          ),
-                        ],
+                            });
+                          }
+                        },
                       ),
                     ),
                   ],
@@ -1338,8 +1283,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   int? _parseLabelKey(String label) {
     if (_calendarTimeType == 'day') {
-      final parts = label.split('-');
-      if (parts.length == 2) return int.tryParse(parts[1]);
+      if (label.contains('-')) {
+        final parts = label.split('-');
+        return int.tryParse(parts.last);
+      }
+      return int.tryParse(label);
     } else if (_calendarTimeType == 'month') {
       final val = label.replaceAll('月', '');
       return int.tryParse(val);

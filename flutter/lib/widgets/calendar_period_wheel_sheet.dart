@@ -95,71 +95,64 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
   Widget build(BuildContext context) {
     const Color primaryBlue = Color(0xFF3F8CFF);
     const Color textMuted = Color(0xFF8E8E93);
-    const Color bg = Color(0xFF1F2128);
 
-    return Container(
-      width: 160,
+    return SizedBox(
+      width: 120,
       height: 160,
-      decoration: BoxDecoration(
-        color: bg.withValues(alpha: 0.98),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildColumn(
-              key: widget.yearWheelKey,
-              values: widget.selectableYears,
-              selectedValue: _selectedYear,
-              controller: _yearController,
-              onSelectedItemChanged: (index) {
-                _onYearChanged(index);
-                widget.onSelected(_selectedYear, _selectedMonth, false);
-              },
-              labelBuilder: (v) => '$v',
-              primaryColor: primaryBlue,
-              mutedColor: textMuted,
+      child: Material(
+        color: Colors.transparent,
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildColumn(
+                key: widget.yearWheelKey,
+                values: widget.selectableYears,
+                selectedValue: _selectedYear,
+                controller: _yearController,
+                onSelectedItemChanged: (index) {
+                  _onYearChanged(index);
+                  widget.onSelected(_selectedYear, _selectedMonth, false);
+                },
+                onTap: () {
+                  widget.onSelected(_selectedYear, _selectedMonth, true);
+                },
+                labelBuilder: (v) => '$v',
+                primaryColor: primaryBlue,
+                mutedColor: textMuted,
+              ),
             ),
-          ),
-          Container(
-            width: 1,
-            height: 80,
-            color: Colors.white.withValues(alpha: 0.05),
-          ),
-          Expanded(
-            child: _isMonthMode
-                ? _buildColumn(
-                    key: widget.monthWheelKey,
-                    values: _monthsFor(_selectedYear),
-                    selectedValue: _selectedMonth,
-                    controller: _monthController,
-                    onSelectedItemChanged: (index) {
-                      _onMonthChanged(index);
-                      widget.onSelected(_selectedYear, _selectedMonth, true);
-                    },
-                    onTap: () {
-                      widget.onSelected(_selectedYear, _selectedMonth, true);
-                    },
-                    labelBuilder: (v) => '${v}月',
-                    primaryColor: primaryBlue,
-                    mutedColor: textMuted,
-                  )
-                : Center(
-                    child: Text(
-                      '--',
-                      style: TextStyle(color: textMuted.withValues(alpha: 0.5), fontSize: 16),
+            Container(
+              width: 1,
+              height: 60,
+              color: Colors.white.withValues(alpha: 0.03),
+            ),
+            Expanded(
+              child: _isMonthMode
+                  ? _buildColumn(
+                      key: widget.monthWheelKey,
+                      values: _monthsFor(_selectedYear),
+                      selectedValue: _selectedMonth,
+                      controller: _monthController,
+                      onSelectedItemChanged: (index) {
+                        _onMonthChanged(index);
+                        widget.onSelected(_selectedYear, _selectedMonth, false);
+                      },
+                      onTap: () {
+                        widget.onSelected(_selectedYear, _selectedMonth, true);
+                      },
+                      labelBuilder: (v) => '$v月',
+                      primaryColor: primaryBlue,
+                      mutedColor: textMuted,
+                    )
+                  : Center(
+                      child: Text(
+                        '--',
+                        style: TextStyle(color: textMuted.withValues(alpha: 0.5), fontSize: 16),
+                      ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -176,15 +169,16 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
     VoidCallback? onTap,
   }) {
     if (values.isEmpty) return const SizedBox();
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      splashColor: primaryColor.withValues(alpha: 0.1),
+      highlightColor: Colors.transparent,
       child: ListWheelScrollView.useDelegate(
         key: key,
         controller: controller,
-        itemExtent: 40,
-        perspective: 0.005,
-        diameterRatio: 1.2,
+        itemExtent: 38,
+        perspective: 0.008,
+        diameterRatio: 1.0,
         physics: const FixedExtentScrollPhysics(),
         onSelectedItemChanged: onSelectedItemChanged,
         childDelegate: ListWheelChildBuilderDelegate(
@@ -196,9 +190,9 @@ class _DatePickerDropdownState extends State<DatePickerDropdown> {
               child: Text(
                 labelBuilder(value),
                 style: TextStyle(
-                  fontSize: isSelected ? 18 : 16,
+                  fontSize: isSelected ? 17 : 14,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? primaryColor : mutedColor.withValues(alpha: 0.6),
+                  color: isSelected ? primaryColor : mutedColor.withValues(alpha: 0.5),
                 ),
               ),
             );
