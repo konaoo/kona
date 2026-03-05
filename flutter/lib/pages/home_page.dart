@@ -87,9 +87,8 @@ class HomePageState extends State<HomePage> {
   ];
 
   @override
-  @override
   void dispose() {
-    _hideDropdown();
+    _hideDropdown(notify: false);
     super.dispose();
   }
 
@@ -533,10 +532,10 @@ class HomePageState extends State<HomePage> {
     setState(() => _currDropdownOpen = true);
   }
 
-  void _hideDropdown() {
+  void _hideDropdown({bool notify = true}) {
     _dropdownEntry?.remove();
     _dropdownEntry = null;
-    if (mounted) {
+    if (notify && mounted) {
       setState(() => _currDropdownOpen = false);
     }
   }

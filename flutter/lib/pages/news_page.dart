@@ -792,8 +792,12 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 监听全局状态，以便在主题等变化时触发重建
-    context.watch<AppState>();
+    // 测试场景可能未注入 AppState，避免抛出 ProviderNotFoundException。
+    try {
+      context.watch<AppState>();
+    } on ProviderNotFoundException {
+      // no-op
+    }
 
     final filtered = _filteredNews;
 

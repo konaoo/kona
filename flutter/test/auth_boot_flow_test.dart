@@ -15,6 +15,11 @@ Widget _buildApp(AppState appState) {
   );
 }
 
+Future<void> _unmountApp(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -38,6 +43,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     expect(find.byType(LoginPage), findsOneWidget);
     expect(find.byType(MainApp), findsNothing);
+    await _unmountApp(tester);
   });
 
   testWidgets('normal + refresh token：启动时静默 refresh 恢复登录', (tester) async {
@@ -79,6 +85,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 40));
     expect(find.byType(MainApp), findsOneWidget);
     expect(find.byType(LoginPage), findsNothing);
+    await _unmountApp(tester);
   });
 
   testWidgets('biometric_ready：启动后停留登录页，不自动登录', (tester) async {
@@ -101,6 +108,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     expect(find.byType(LoginPage), findsOneWidget);
     expect(find.byType(MainApp), findsNothing);
+    await _unmountApp(tester);
   });
 
   testWidgets('有 token 且校验成功：不出现登录页闪现', (tester) async {
@@ -135,6 +143,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byType(MainApp), findsOneWidget);
     expect(find.byType(LoginPage), findsNothing);
+    await _unmountApp(tester);
   });
 
   testWidgets('有 token 但校验失败：回退到登录页', (tester) async {
@@ -166,5 +175,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.byType(LoginPage), findsOneWidget);
     expect(find.byType(MainApp), findsNothing);
+    await _unmountApp(tester);
   });
 }
