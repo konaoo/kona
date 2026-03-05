@@ -76,9 +76,11 @@ def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float]
         (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
     try:
-        url = config.API_ENDPOINTS["eastmoney_fund_f10"]
+        # 新版可用接口（返回 JSON），老 F10DataApi 在部分环境返回非 JSON
+        url = "https://api.fund.eastmoney.com/f10/lsjz"
         params = {"fundCode": clean_code, "pageIndex": 1, "pageSize": 2}
-        headers = config.API_HEADERS["eastmoney"]
+        headers = dict(config.API_HEADERS["eastmoney"])
+        headers["Referer"] = "https://fundf10.eastmoney.com/"
         
         r = monitored_http_get("eastmoney_fund_f10", url, params=params, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code == 200:
@@ -237,17 +239,17 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     
     logger.debug(f"Fetching fund price for {code}")
     
-    # 1. 优先使用天天基金（适合场外基金）
+    # 1. 优先东方财富F10确认净值，避免天天接口确认净值日期滞后
+    price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
+    if price > 0:
+        return price, yclose, amt, chg
+
+    # 2. f_场外基金回退天天（dwjz优先，gsz兜底）
     if code.startswith('f_'):
         price, yclose, amt, chg = get_fund_tiantian_price(code)
         if price > 0:
             return price, yclose, amt, chg
-    
-    # 2. 尝试东方财富F10接口
-    price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
-    if price > 0:
-        return price, yclose, amt, chg
-    
+
     # 3. 尝试东方财富手机端接口（适合互认基金）
     price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)
     if price > 0:
