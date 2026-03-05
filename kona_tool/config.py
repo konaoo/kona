@@ -62,7 +62,7 @@ CLIENT_APP_FORCE_UPDATE = os.getenv("CLIENT_APP_FORCE_UPDATE", "false").lower() 
 # 新 Web 门户配置（独立 H5）
 WEB_APK_DOWNLOAD_URL = os.getenv(
     "WEB_APK_DOWNLOAD_URL",
-    "",
+    "https://www.pgyer.com/kakawallet",
 ).strip()
 WEB_APK_FILENAME = os.getenv("WEB_APK_FILENAME", "kaka-latest-release.apk").strip() or "kaka-latest-release.apk"
 WEB_APK_LOCAL_PATH = BASE_DIR / "static" / "downloads" / WEB_APK_FILENAME
@@ -89,7 +89,7 @@ IOS_QR_TEXT = os.getenv(
 ).strip() or "扫码下载苹果版"
 IOS_QR_IMAGE_URL = os.getenv(
     "IOS_QR_IMAGE_URL",
-    "",
+    "https://kaka-1402418961.cos.ap-guangzhou.myqcloud.com/ios-test-qr.png",
 ).strip()
 
 # JWT 认证配置（必须显式配置，缺失即启动失败）

@@ -18,7 +18,7 @@
           <div class="dl-platform">ANDROID</div>
           <div class="dl-title">安卓版</div>
           <div class="dl-desc">下载 APK 安装包，支持安卓 8.0 及以上版本。</div>
-          <div class="dl-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载 APK</div>
+          <div class="dl-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>安卓版</div>
         </a>
         <div class="hover-qr-wrap">
           <a href="#" class="dl-card ios">
@@ -26,7 +26,7 @@
             <div class="dl-platform">iOS</div>
             <div class="dl-title">苹果版</div>
             <div class="dl-desc">App Store 即将上线，可先扫码加入内测群。</div>
-            <div class="dl-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="3" height="3"/><rect x="14" y="7" width="3" height="3"/><rect x="7" y="14" width="3" height="3"/><rect x="14" y="14" width="3" height="3"/></svg>敬请期待</div>
+            <div class="dl-btn"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="3" height="3"/><rect x="14" y="7" width="3" height="3"/><rect x="7" y="14" width="3" height="3"/><rect x="14" y="14" width="3" height="3"/></svg>苹果版</div>
           </a>
           <div class="qr-tooltip" v-if="iosQrImageUrl || iosQrText">
             <img v-if="iosQrImageUrl" :src="iosQrImageUrl" alt="iOS QR Code" class="qr-img" />
@@ -77,7 +77,8 @@ section.download {
   background: rgba(17,19,26,0.9); border: 1px solid var(--border); border-radius: 18px;
   padding: 22px 20px; min-width: 250px; flex: 1; text-align: left;
   transition: border-color .22s, transform .22s, box-shadow .22s;
-  text-decoration: none; display: block; cursor: pointer;
+  text-decoration: none; display: flex; flex-direction: column; cursor: pointer;
+  height: 100%;
 }
 
 .dl-card:hover { transform: translateY(-4px); box-shadow: 0 18px 38px rgba(0,0,0,0.28); }
@@ -111,14 +112,15 @@ section.download {
 
 .hover-qr-wrap {
   position: relative;
-  display: inline-block;
+  flex: 1;
+  display: flex;
 }
 
 .qr-tooltip {
   position: absolute;
-  bottom: 100%;
+  top: 100%;
   left: 50%;
-  transform: translateX(-50%) translateY(-10px);
+  transform: translateX(-50%) translateY(0);
   background: rgba(17,19,26,0.98);
   border: 1px solid rgba(255,255,255,0.12);
   padding: 12px;
@@ -141,7 +143,7 @@ section.download {
 .hover-qr-wrap:hover .qr-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(-4px);
+  transform: translateX(-50%) translateY(8px);
 }
 
 .qr-img {
