@@ -1211,7 +1211,8 @@ def get_system_info():
 def get_web_config():
     """公开 Web 门户配置（无需鉴权）。"""
     # 优先使用专门的WEB_APK_DOWNLOAD_URL，若无则使用与App检查更新一致的CLIENT_APP_DOWNLOAD_URL
-    apk_download_url = config.WEB_APK_DOWNLOAD_URL or config.CLIENT_APP_DOWNLOAD_URL
+    # 强制使用指定的 Pgyer 下载链接
+    apk_download_url = "https://www.pgyer.com/kakawallet"
     invite_acquire_text = _read_runtime_config_or_default(
         _RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY,
         config.INVITE_ACQUIRE_TEXT,
