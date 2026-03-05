@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @retry_on_failure(max_retries=2, delay=0.5)
 def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float]:
     """
-    从天天基金获取场外基金估值
+    从天天基金获取场外基金净值
     
     Args:
         fund_code: 基金代码（已包含f_前缀）
@@ -36,17 +36,27 @@ def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float]
             import json
             data = json.loads(match.group(1))
             
-            price = safe_float(data.get('dwjz', 0))
+            # 口径约束：优先返回确认净值(dwjz)，仅在缺失时回退估算净值(gsz)
+            dwjz = safe_float(data.get('dwjz', 0))
             gsz = safe_float(data.get('gsz', 0))
             gszzl = safe_float(data.get('gszzl', 0))
-            
-            current_price = gsz if gsz > 0 else price
-            
+
+            current_price = dwjz if dwjz > 0 else gsz
+
             if current_price > 0:
-                yclose = current_price / (1 + gszzl/100) if (1 + gszzl/100) != 0 else current_price
+                yclose = current_price
+                # 天天接口未直接给昨收，若估算涨幅可用则反推昨收；否则退化为平盘。
+                if gsz > 0 and abs(gszzl) > 1e-9:
+                    base = 1 + gszzl / 100
+                    if abs(base) > 1e-9:
+                        inferred_yclose = gsz / base
+                        if inferred_yclose > 0:
+                            yclose = inferred_yclose
+
                 amt = current_price - yclose
-                
-                return current_price, yclose, amt, gszzl
+                chg = (amt / yclose * 100) if yclose > 0 else 0.0
+
+                return current_price, yclose, amt, chg
                 
     except Exception as e:
         logger.warning(f"Tiantian fund API error for {fund_code}: {e}")

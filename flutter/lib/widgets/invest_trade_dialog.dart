@@ -1428,24 +1428,139 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (item == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierColor: const Color(0x9E000000),
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('删除并清理历史'),
-          content: Text(
-            '仅用于误录入纠错：将删除「${item.name}」持仓、相关交易记录，并清理受影响快照。\n'
-            '注意：不会回款到现金账户。\n'
-            '如果是正常平仓，请使用“卖出”并选择回款账户。',
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _tokens.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _tokens.border),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0xB3000000),
+                        blurRadius: 64,
+                        offset: Offset(0, 24),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '删除并清理历史',
+                              style: _dm(
+                                size: 14,
+                                weight: FontWeight.w600,
+                                color: _tokens.text,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '该操作不可撤销',
+                              style: _dm(size: 11, color: _tokens.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Text(
+                          '仅用于误录入纠错：将删除「${item.name}」持仓、相关交易记录，并清理受影响快照。\n\n'
+                          '注意：不会回款到现金账户。\n'
+                          '如果是正常平仓，请使用“卖出”并选择回款账户。',
+                          style: _dm(size: 13, color: _tokens.textMuted).copyWith(height: 1.5),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 42,
+                                child: OutlinedButton(
+                                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: _tokens.surface2,
+                                    side: BorderSide(
+                                      color: _tokens.border,
+                                      width: 1,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '取消',
+                                    style: _dm(
+                                      size: 13,
+                                      weight: FontWeight.w600,
+                                      color: _tokens.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: SizedBox(
+                                height: 42,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFF05A55),
+                                        Color(0xFFDB4B46),
+                                      ],
+                                    ),
+                                  ),
+                                  child: ElevatedButton(
+                                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                                    style: ElevatedButton.styleFrom(
+                                      elevation: 0,
+                                      backgroundColor: Colors.transparent,
+                                      shadowColor: Colors.transparent,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '仍要纠错删除',
+                                      style: _dm(
+                                        size: 13,
+                                        weight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('仍要纠错删除'),
-            ),
-          ],
         );
       },
     );
@@ -2891,47 +3006,55 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           ),
                         ),
                       )
-                    : Theme(
-                        data: Theme.of(context).copyWith(
-                          splashColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
+                    : PopupMenuButton<String>(
+                        onSelected: _saving ? null : _onMoreMenuSelect,
+                        enabled: !_saving,
+                        color: _tokens.surface2,
+                        elevation: 10,
+                        tooltip: '更多操作',
+                        offset: const Offset(0, 28),
+                        constraints: const BoxConstraints(
+                          minWidth: 116,
+                          maxWidth: 116,
                         ),
-                        child: PopupMenuButton<String>(
-                          onSelected: _onMoreMenuSelect,
-                          color: _tokens.surface2,
-                          elevation: 8,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: BorderSide(color: _tokens.border, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: _tokens.borderActive, width: 1),
+                        ),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'corrective_delete',
+                            height: 34,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline, size: 16, color: _tokens.red),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '删除资产',
+                                  style: _dm(size: 12, color: _tokens.red, weight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
                           ),
-                          offset: const Offset(0, 32),
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: 'corrective_delete',
-                              height: 40,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete_outline, size: 16, color: _tokens.red),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '删除该资产',
-                                    style: _dm(size: 13, color: _tokens.red, weight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: _tokens.surface2,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.more_horiz,
+                        ],
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _tokens.surface2,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _tokens.border),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '···',
+                            style: _dm(
                               size: 14,
+                              weight: FontWeight.w600,
                               color: _tokens.textMuted,
                             ),
                           ),
