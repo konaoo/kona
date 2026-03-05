@@ -4,6 +4,8 @@
 """
 import re
 import logging
+import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Tuple, Optional, Dict, Any, List
 from bs4 import BeautifulSoup
@@ -12,6 +14,18 @@ import config
 from .utils import safe_float, retry_on_failure, get_first_valid_price, monitored_http_get
 
 logger = logging.getLogger(__name__)
+_warn_throttle_lock = threading.Lock()
+_warn_throttle_last: Dict[str, float] = {}
+
+
+def _log_warn_throttled(key: str, message: str, interval_seconds: float = 60.0) -> None:
+    now = time.monotonic()
+    with _warn_throttle_lock:
+        last = float(_warn_throttle_last.get(key, 0.0))
+        if now - last < interval_seconds:
+            return
+        _warn_throttle_last[key] = now
+    logger.warning(message)
 
 
 def _sina_headers() -> Dict[str, Any]:
@@ -215,7 +229,10 @@ def get_us_extended_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
             try:
                 quote = future.result()
             except Exception as exc:
-                logger.warning(f"Nasdaq extended quote API error for {symbol}: {exc}")
+                _log_warn_throttled(
+                    "nasdaq_extended_quote",
+                    f"Nasdaq extended quote API error: {exc}",
+                )
                 continue
             if quote:
                 result[symbol] = quote
@@ -302,7 +319,7 @@ def get_ft_fund_price(isin: str) -> Tuple[float, float, float, float]:
                     return curr, yclose, curr - yclose, chg
                     
     except Exception as e:
-        logger.warning(f"FT fund API error for {isin}: {e}")
+        _log_warn_throttled("ft_fund_api", f"FT fund API error: {e}")
     
     return 0.0, 0.0, 0.0, 0.0
 
@@ -338,7 +355,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                 return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
                 
     except Exception as e:
-        logger.warning(f"Sina US stock API error for {code}: {e}")
+        _log_warn_throttled("sina_us_stock", f"Sina US stock API error: {e}")
     
     try:
         for secid in [f"105.{s}", f"106.{s}"]:
@@ -360,7 +377,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                     return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
                     
     except Exception as e:
-        logger.warning(f"Eastmoney US stock API error for {code}: {e}")
+        _log_warn_throttled("eastmoney_us_stock", f"Eastmoney US stock API error: {e}")
 
     # Nasdaq 备用接口（ETF/US Stocks）
     try:
@@ -370,7 +387,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                 curr, yclose, amt, pct = quote
                 return curr, yclose, amt, pct
     except Exception as e:
-        logger.warning(f"Nasdaq quote API error for {code}: {e}")
+        _log_warn_throttled("nasdaq_quote", f"Nasdaq quote API error: {e}")
 
     return 0.0, 0.0, 0.0, 0.0
 

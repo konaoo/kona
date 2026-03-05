@@ -33,6 +33,18 @@ class SourceHealth:
             }
         return self._stats[source]
 
+    def _policy(self, source: str) -> tuple[int, int]:
+        """
+        支持对慢源使用更快熔断策略，避免反复超时拖慢请求。
+        """
+        slow_sources = {"nasdaq_quote", "ft_fund"}
+        if source in slow_sources:
+            return (
+                max(1, int(getattr(config, "SLOW_SOURCE_FAIL_THRESHOLD", self._fail_threshold))),
+                max(1, int(getattr(config, "SLOW_SOURCE_COOLDOWN_SECONDS", self._cooldown_seconds))),
+            )
+        return self._fail_threshold, self._cooldown_seconds
+
     def can_attempt(self, source: str) -> bool:
         with self._lock:
             info = self._ensure(source)
@@ -47,6 +59,7 @@ class SourceHealth:
         error: str = "",
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        fail_threshold, cooldown_seconds = self._policy(source)
         with self._lock:
             info = self._ensure(source)
             if success:
@@ -65,8 +78,8 @@ class SourceHealth:
             info["last_error"] = error[:160]
             if timeout:
                 info["timeout"] += 1
-            if info["consecutive_fail"] >= self._fail_threshold:
-                info["circuit_open_until"] = time.time() + self._cooldown_seconds
+            if info["consecutive_fail"] >= fail_threshold:
+                info["circuit_open_until"] = time.time() + cooldown_seconds
 
     def snapshot(self) -> Dict[str, Dict[str, Any]]:
         with self._lock:
@@ -85,4 +98,3 @@ source_health = SourceHealth(
     fail_threshold=config.SOURCE_FAIL_THRESHOLD,
     cooldown_seconds=config.SOURCE_COOLDOWN_SECONDS,
 )
-

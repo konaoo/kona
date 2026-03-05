@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from functools import wraps
 import requests
 from requests import Timeout, RequestException
+import config
 from .source_health import source_health
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,13 @@ def monitored_http_get(
     """
     if not source_health.can_attempt(source):
         raise RuntimeError(f"source circuit open: {source}")
+
+    slow_sources = {"nasdaq_quote", "ft_fund"}
+    if source in slow_sources:
+        timeout = min(
+            float(timeout),
+            max(0.3, float(getattr(config, "SLOW_SOURCE_TIMEOUT_SECONDS", timeout))),
+        )
 
     start = time.monotonic()
     try:
