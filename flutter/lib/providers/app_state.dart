@@ -32,6 +32,9 @@ class AppState extends ChangeNotifier {
   static const Duration _staticDataTtl = Duration(minutes: 5);
   static const Duration _historyDataTtl = Duration(minutes: 10);
   static const Duration _ratesDataTtl = Duration(minutes: 10);
+  static const Duration _marketStatusRefreshBudget = Duration(
+    milliseconds: 350,
+  );
   static const Duration _syncVersionTtl = Duration(days: 365);
   static const Duration _userProfileTtl = Duration(days: 30);
   static const String _userProfileDomain = 'user_profile';
@@ -1241,6 +1244,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  _ParsedMarketStatus _currentMarketStatusSnapshot() {
+    return _ParsedMarketStatus(
+      open: Map<String, bool>.from(_marketOpenStatus),
+      tradingDay: Map<String, bool>.from(_marketTradingDayStatus),
+    );
+  }
+
+  Future<_ParsedMarketStatus> _loadMarketStatusWithBudget() async {
+    try {
+      return await _loadMarketStatusSafe().timeout(
+        _marketStatusRefreshBudget,
+        onTimeout: () => _currentMarketStatusSnapshot(),
+      );
+    } catch (_) {
+      return _currentMarketStatusSnapshot();
+    }
+  }
+
   Future<String?> _safeReadStorageString(
     Future<String?> Function() reader,
     String label,
@@ -2142,10 +2163,11 @@ class AppState extends ChangeNotifier {
     }
     _priceRefreshInFlight = true;
     try {
-      final marketStatus = await _loadMarketStatusSafe();
-      _marketOpenStatus = marketStatus.open;
-      _marketTradingDayStatus = marketStatus.tradingDay;
+      final marketStatusFuture = _loadMarketStatusWithBudget();
       if (_portfolio.isEmpty) {
+        final marketStatus = await marketStatusFuture;
+        _marketOpenStatus = marketStatus.open;
+        _marketTradingDayStatus = marketStatus.tradingDay;
         await _saveDomainEnvelope(
           'market_status',
           data: _serializeMarketStatusForCache(),
@@ -2184,6 +2206,9 @@ class AppState extends ChangeNotifier {
       }).toList();
 
       final pricesData = await _api.getPricesBatch(priceApiCodes);
+      final marketStatus = await marketStatusFuture;
+      _marketOpenStatus = marketStatus.open;
+      _marketTradingDayStatus = marketStatus.tradingDay;
       final nextPrices = <String, PriceInfo>{};
       for (int i = 0; i < codes.length; i++) {
         final originalCode = codes[i];
