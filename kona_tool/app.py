@@ -124,6 +124,8 @@ _RUNTIME_CFG_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 _RUNTIME_CFG_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 _RUNTIME_CFG_USER_GROUP_TEXT_KEY = "ops.user_group.text"
 _RUNTIME_CFG_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
+_RUNTIME_CFG_IOS_QR_TEXT_KEY = "ops.ios_qr.text"
+_RUNTIME_CFG_IOS_QR_IMAGE_URL_KEY = "ops.ios_qr.image_url"
 _RUNTIME_CFG_APP_UPDATE_TEXT_KEY = "ops.app_update.text"
 _RUNTIME_CFG_APP_UPDATE_DOWNLOAD_URL_KEY = "ops.app_update.download_url"
 
@@ -1226,6 +1228,14 @@ def get_web_config():
         _RUNTIME_CFG_USER_GROUP_IMAGE_URL_KEY,
         config.USER_GROUP_IMAGE_URL,
     ).strip()
+    ios_qr_text = _read_runtime_config_or_default(
+        _RUNTIME_CFG_IOS_QR_TEXT_KEY,
+        config.IOS_QR_TEXT,
+    ).strip() or config.IOS_QR_TEXT
+    ios_qr_image_url = _read_runtime_config_or_default(
+        _RUNTIME_CFG_IOS_QR_IMAGE_URL_KEY,
+        config.IOS_QR_IMAGE_URL,
+    ).strip()
     
     # 最后退化为检查本地是否存在apk文件
     if not apk_download_url and config.WEB_APK_LOCAL_PATH.exists():
@@ -1240,6 +1250,8 @@ def get_web_config():
             "invite_acquire_image_url": invite_acquire_image_url,
             "user_group_text": user_group_text,
             "user_group_image_url": user_group_image_url,
+            "ios_qr_text": ios_qr_text,
+            "ios_qr_image_url": ios_qr_image_url,
         }
     )
 

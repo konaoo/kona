@@ -149,6 +149,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.invites.revoke": "作废邀请码",
     "admin.ops.invite_acquire.update": "更新运营配置（邀请码获取页）",
     "admin.ops.user_group.update": "更新运营配置（用户群页）",
+    "admin.ops.ios_qr.update": "更新运营配置（苹果版下载二维码）",
     "admin.ops.app_update.update": "更新运营配置（App检查更新）",
 }
 
@@ -218,10 +219,14 @@ OPS_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 OPS_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 OPS_USER_GROUP_TEXT_KEY = "ops.user_group.text"
 OPS_USER_GROUP_IMAGE_URL_KEY = "ops.user_group.image_url"
+OPS_IOS_QR_TEXT_KEY = "ops.ios_qr.text"
+OPS_IOS_QR_IMAGE_URL_KEY = "ops.ios_qr.image_url"
 OPS_APP_UPDATE_TEXT_KEY = "ops.app_update.text"
 OPS_APP_UPDATE_DOWNLOAD_URL_KEY = "ops.app_update.download_url"
 OPS_INVITE_ACQUIRE_TEXT_MAX_LENGTH = 200
 OPS_INVITE_ACQUIRE_IMAGE_URL_MAX_LENGTH = 2048
+OPS_IOS_QR_TEXT_MAX_LENGTH = 200
+OPS_IOS_QR_IMAGE_URL_MAX_LENGTH = 2048
 OPS_APP_UPDATE_TEXT_MAX_LENGTH = 500
 OPS_APP_UPDATE_DOWNLOAD_URL_MAX_LENGTH = 2048
 ADMIN_PORTFOLIO_CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -328,6 +333,25 @@ def _normalize_invite_acquire_image_url(raw: Any) -> str:
     return url
 
 
+def _normalize_ios_qr_text(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text or len(text) > OPS_IOS_QR_TEXT_MAX_LENGTH:
+        raise ValueError(f"text must be 1-{OPS_IOS_QR_TEXT_MAX_LENGTH} characters")
+    return text
+
+
+def _normalize_ios_qr_image_url(raw: Any) -> str:
+    url = str(raw or "").strip()
+    if not url:
+        return ""
+    if len(url) > OPS_IOS_QR_IMAGE_URL_MAX_LENGTH:
+        raise ValueError(f"image_url must be <= {OPS_IOS_QR_IMAGE_URL_MAX_LENGTH} characters")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("image_url must start with http:// or https://")
+    return url
+
+
 def _normalize_app_update_text(raw: Any) -> str:
     text = str(raw or "").strip()
     if not text or len(text) > OPS_APP_UPDATE_TEXT_MAX_LENGTH:
@@ -366,6 +390,16 @@ def _load_user_group_ops_config(db) -> Dict[str, str]:
         image_url_key=OPS_USER_GROUP_IMAGE_URL_KEY,
         default_text=str(config.USER_GROUP_TEXT).strip() or "加入咔咔用户群",
         default_image_url=str(config.USER_GROUP_IMAGE_URL).strip(),
+    )
+
+
+def _load_ios_qr_ops_config(db) -> Dict[str, str]:
+    return _load_ops_text_image_config(
+        db=db,
+        text_key=OPS_IOS_QR_TEXT_KEY,
+        image_url_key=OPS_IOS_QR_IMAGE_URL_KEY,
+        default_text=str(config.IOS_QR_TEXT).strip() or "扫码下载苹果版",
+        default_image_url=str(config.IOS_QR_IMAGE_URL).strip(),
     )
 
 
@@ -1988,6 +2022,27 @@ def create_admin_blueprint(db, admin_write_audit):
         updater = str(getattr(g, "user_id", "") or "")
         db.set_runtime_config(OPS_USER_GROUP_TEXT_KEY, text, updated_by=updater)
         db.set_runtime_config(OPS_USER_GROUP_IMAGE_URL_KEY, image_url, updated_by=updater)
+        return jsonify({"status": "ok", "text": text, "image_url": image_url})
+
+    @bp.route("/ops/ios_qr", methods=["GET"])
+    @admin_required
+    def admin_ops_ios_qr():
+        return jsonify(_load_ios_qr_ops_config(db))
+
+    @bp.route("/ops/ios_qr/update", methods=["POST"])
+    @admin_write_audit(action="admin.ops.ios_qr.update", target_type="ops_config")
+    @admin_required
+    def admin_ops_ios_qr_update():
+        data = _json_body()
+        try:
+            text = _normalize_ios_qr_text(data.get("text"))
+            image_url = _normalize_ios_qr_image_url(data.get("image_url"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        updater = str(getattr(g, "user_id", "") or "")
+        db.set_runtime_config(OPS_IOS_QR_TEXT_KEY, text, updated_by=updater)
+        db.set_runtime_config(OPS_IOS_QR_IMAGE_URL_KEY, image_url, updated_by=updater)
         return jsonify({"status": "ok", "text": text, "image_url": image_url})
 
     @bp.route("/ops/app_update", methods=["GET"])

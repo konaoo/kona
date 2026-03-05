@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import PortalPage from './pages/portal/PortalPage.vue'
+import LandingPage from './views/Landing.vue'
 import AppLoginPage from './pages/app/AppLoginPage.vue'
 import AppHomePage from './pages/app/AppHomePage.vue'
 import AppInvestPage from './pages/app/AppInvestPage.vue'
@@ -16,7 +16,7 @@ import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
 import { useKonaStore } from './shared/store'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', component: PortalPage },
+  { path: '/', component: LandingPage },
   { path: '/app', redirect: '/app/home' },
   { path: '/app/login', component: AppLoginPage },
   { path: '/app/register', component: AppLoginPage },

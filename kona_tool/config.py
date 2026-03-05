@@ -83,6 +83,14 @@ USER_GROUP_IMAGE_URL = os.getenv(
     "USER_GROUP_IMAGE_URL",
     "",
 ).strip()
+IOS_QR_TEXT = os.getenv(
+    "IOS_QR_TEXT",
+    "扫码下载苹果版",
+).strip() or "扫码下载苹果版"
+IOS_QR_IMAGE_URL = os.getenv(
+    "IOS_QR_IMAGE_URL",
+    "",
+).strip()
 
 # JWT 认证配置（必须显式配置，缺失即启动失败）
 JWT_SECRET = os.getenv("JWT_SECRET")

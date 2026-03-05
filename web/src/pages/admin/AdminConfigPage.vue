@@ -108,7 +108,7 @@ type OpsAppUpdatePayload = {
   download_url?: string
 }
 
-const SCENES = ['invite', 'user_group'] as const
+const SCENES = ['invite', 'user_group', 'ios_qr'] as const
 type ConfigScene = typeof SCENES[number]
 
 const META: Record<
@@ -144,6 +144,16 @@ const META: Record<
     loadError: '读取用户群配置失败',
     saveError: '用户群配置保存失败',
   },
+  ios_qr: {
+    title: '苹果版下载二维码',
+    modalTitle: '苹果版下载配置',
+    defaultText: '扫码下载苹果版',
+    loadPath: '/api/admin/ops/ios_qr',
+    savePath: '/api/admin/ops/ios_qr/update',
+    saveSuccess: '苹果版下载配置已保存',
+    loadError: '读取苹果版下载配置失败',
+    saveError: '苹果版下载配置保存失败',
+  },
 }
 
 const APP_UPDATE_META = {
@@ -161,11 +171,13 @@ const APP_UPDATE_META = {
 const configForm = reactive<Record<ConfigScene, Required<OpsConfigPayload>>>({
   invite: { text: '', image_url: '' },
   user_group: { text: '', image_url: '' },
+  ios_qr: { text: '', image_url: '' },
 })
 
 const loading = reactive<Record<ConfigScene, boolean>>({
   invite: false,
   user_group: false,
+  ios_qr: false,
 })
 
 const loadingAppUpdate = ref(false)
@@ -173,6 +185,7 @@ const loadingAppUpdate = ref(false)
 const thumbLoadFailed = reactive<Record<ConfigScene, boolean>>({
   invite: false,
   user_group: false,
+  ios_qr: false,
 })
 
 const appUpdateState = reactive<Required<OpsAppUpdatePayload>>({
