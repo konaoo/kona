@@ -23,7 +23,15 @@ void main() {
       if (resetCalls == 1) {
         return <String, dynamic>{
           'items': <Map<String, dynamic>>[
-            <String, dynamic>{'time': '10:00', 'content': '旧快讯内容'},
+            <String, dynamic>{
+              'id': 'old1',
+              'title': '旧快讯标题',
+              'summary': '旧快讯内容',
+              'category': 'macro',
+              'source': '测试',
+              'time': '10:00',
+              'content': '旧快讯内容',
+            },
           ],
           'has_more': false,
         };
@@ -31,7 +39,15 @@ void main() {
       await refreshCompleter.future;
       return <String, dynamic>{
         'items': <Map<String, dynamic>>[
-          <String, dynamic>{'time': '10:01', 'content': '新快讯内容'},
+          <String, dynamic>{
+            'id': 'new1',
+            'title': '新快讯标题',
+            'summary': '新快讯内容',
+            'category': 'macro',
+            'source': '测试',
+            'time': '10:01',
+            'content': '新快讯内容',
+          },
         ],
         'has_more': false,
       };
@@ -44,7 +60,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('旧快讯内容'), findsOneWidget);
+    expect(find.text('旧快讯标题'), findsOneWidget);
 
     final refresh = tester.widget<RefreshIndicator>(
       find.byType(RefreshIndicator),
@@ -52,14 +68,14 @@ void main() {
     final refreshFuture = refresh.onRefresh();
     await tester.pump();
 
-    expect(find.text('旧快讯内容'), findsOneWidget);
+    expect(find.text('旧快讯标题'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
     refreshCompleter.complete();
     await refreshFuture;
     await tester.pumpAndSettle();
 
-    expect(find.text('新快讯内容'), findsOneWidget);
+    expect(find.text('新快讯标题'), findsOneWidget);
   });
 
   testWidgets('快讯页首次加载时不显示中部大Loading', (tester) async {

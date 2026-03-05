@@ -171,6 +171,20 @@
             <label class="input-label">{{ modal.type === 'edit' ? '平均成本' : (isFundAmountMode ? '净值' : '成交价格') }}</label>
             <input v-model.number="form.price" type="number" step="0.0001" class="modal-input" required />
           </div>
+          <div class="input-group" v-if="showCashAccountSelector">
+            <label class="input-label">资金账户</label>
+            <select v-model.number="form.cashAssetId" class="modal-input" :disabled="cashAccountsLoading || !cashAccountOptions.length">
+              <option v-if="!cashAccountOptions.length" :value="-1">暂无可用账户</option>
+              <option v-for="account in cashAccountOptions" :key="account.id" :value="account.id">
+                {{ account.label }}
+              </option>
+            </select>
+            <div v-if="cashAccountsLoading" class="fund-mode-hint">正在加载资金账户…</div>
+            <div v-else-if="cashAccountError" class="fund-mode-error">{{ cashAccountError }}</div>
+            <div v-else-if="modal.type === 'sell' && !hasMatchingCashAccount" class="fund-mode-error">
+              未找到 {{ targetTradeCurrency }} 现金账户，请先添加对应账户。
+            </div>
+          </div>
           <div v-if="isFundAmountMode" class="input-group">
             <label class="input-label">买入金额</label>
             <input v-model.number="form.amount" type="number" min="0" step="0.01" class="modal-input" required />
@@ -205,6 +219,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { marketDisplayCurrency, toNumber } from '../../shared/format'
 import { api } from '../../shared/http'
+import type { ApiError } from '../../shared/http'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../shared/store'
@@ -214,6 +229,8 @@ type TabKey = 'all' | 'a' | 'fund' | 'us' | 'hk'
 type ModalType = 'add' | 'buy' | 'sell' | 'edit'
 type ActionMenuState = { openCode: string | null }
 type IndexCard = { id: string; name: string; price: number; chg: number }
+type CashAsset = { id: number; name: string; amount?: number; curr?: string }
+type CashAccountOption = { id: number; label: string }
 type InvestCachePayload = {
   indexCards: IndexCard[]
   currentCategory: TabKey
@@ -228,6 +245,7 @@ const INVEST_CACHE_DOMAIN = 'invest'
 const INVEST_CACHE_KEY = 'page'
 const INVEST_CACHE_TTL_MS = 15 * 60_000
 const INVEST_PAGE_REFRESH_INTERVAL_MS = 60_000
+const EXTERNAL_CASH_ASSET_ID = -999
 
 const store = useKonaStore()
 const { theme } = useWebTheme()
@@ -260,7 +278,20 @@ const actionMenu = reactive<ActionMenuState>({
   openCode: null,
 })
 
-const form = reactive({
+const form = reactive<{
+  code: string
+  name: string
+  qty: number
+  price: number
+  amount: number
+  curr: string
+  market: string
+  fundInputMode: 'qty' | 'amount'
+  navLoading: boolean
+  navError: string
+  adjustment: number
+  cashAssetId: number | null
+}>({
   code: '',
   name: '',
   qty: 0,
@@ -272,11 +303,22 @@ const form = reactive({
   navLoading: false,
   navError: '',
   adjustment: 0,
+  cashAssetId: null,
 })
+const cashAccounts = ref<CashAsset[]>([])
+const cashAccountsLoading = ref(false)
+const cashAccountsLoaded = ref(false)
+const cashAccountError = ref('')
 let refreshInflight: Promise<void> | null = null
 let staticRefreshTimer: number | null = null
 let navPrefillTimer: number | null = null
 let navFetchSeq = 0
+
+function normalizeCurrency(curr: unknown): string {
+  const text = String(curr || 'CNY').trim().toUpperCase()
+  if (text === 'USD' || text === 'HKD' || text === 'CNY') return text
+  return 'CNY'
+}
 
 function cacheUserId(): string {
   return String(store.state.user?.id || 'guest')
@@ -479,6 +521,64 @@ const showFundInputMode = computed(() => {
 })
 
 const isFundAmountMode = computed(() => showFundInputMode.value && form.fundInputMode === 'amount')
+const showCashAccountSelector = computed(() => modal.type === 'buy' || modal.type === 'sell')
+const targetTradeCurrency = computed(() => normalizeCurrency(form.curr))
+const matchingCashAccounts = computed(() =>
+  cashAccounts.value.filter((asset) => normalizeCurrency(asset.curr) === targetTradeCurrency.value),
+)
+const hasMatchingCashAccount = computed(() => matchingCashAccounts.value.length > 0)
+const cashAccountOptions = computed<CashAccountOption[]>(() => {
+  const options: CashAccountOption[] = []
+  if (modal.type === 'buy') {
+    options.push({
+      id: EXTERNAL_CASH_ASSET_ID,
+      label: `外部资金/初始转入 (${targetTradeCurrency.value})`,
+    })
+  }
+  for (const asset of matchingCashAccounts.value) {
+    options.push({
+      id: Number(asset.id),
+      label: `${asset.name} · ${normalizeCurrency(asset.curr)}`,
+    })
+  }
+  return options
+})
+
+function applyDefaultCashSelection() {
+  if (!showCashAccountSelector.value) {
+    form.cashAssetId = null
+    return
+  }
+  const optionIds = new Set(cashAccountOptions.value.map((item) => item.id))
+  if (modal.type === 'buy') {
+    if (form.cashAssetId != null && optionIds.has(form.cashAssetId)) return
+    form.cashAssetId = EXTERNAL_CASH_ASSET_ID
+    return
+  }
+  if (form.cashAssetId != null && optionIds.has(form.cashAssetId)) return
+  form.cashAssetId = cashAccountOptions.value[0]?.id ?? null
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return Number((error as ApiError | undefined)?.status) === 404
+}
+
+async function ensureCashAccountsLoaded(force = false) {
+  if (cashAccountsLoading.value) return
+  if (cashAccountsLoaded.value && !force) return
+  cashAccountsLoading.value = true
+  cashAccountError.value = ''
+  try {
+    const list = await api.get<CashAsset[]>('/api/cash_assets')
+    cashAccounts.value = Array.isArray(list) ? list : []
+    cashAccountsLoaded.value = true
+  } catch (error) {
+    cashAccountError.value = (error as Error)?.message || '资金账户加载失败'
+  } finally {
+    cashAccountsLoading.value = false
+    applyDefaultCashSelection()
+  }
+}
 
 function derivedFundQty(): number {
   const amount = toNumber(form.amount)
@@ -582,9 +682,12 @@ function openModal(type: ModalType, row?: Record<string, unknown>) {
   form.navLoading = false
   form.navError = ''
   form.adjustment = toNumber(row?.adjustment, 0)
+  form.cashAssetId = null
   if (type === 'buy' || type === 'sell') {
     form.qty = 0
     form.price = toNumber(row?.currentPrice ?? row?.price, 0)
+    applyDefaultCashSelection()
+    void ensureCashAccountsLoaded()
   }
   if ((type === 'add' || type === 'buy') && showFundInputMode.value) {
     form.fundInputMode = 'amount'
@@ -710,9 +813,46 @@ async function submitModal() {
       curr: form.curr || 'CNY',
     })
   } else if (modal.type === 'buy') {
-    await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+    const selectedCashAssetId = Number(form.cashAssetId)
+    if (!Number.isFinite(selectedCashAssetId)) {
+      alert('请选择资金账户')
+      return
+    }
+    if (selectedCashAssetId === EXTERNAL_CASH_ASSET_ID) {
+      await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+    } else {
+      try {
+        await api.post('/api/portfolio/buy_with_cash', {
+          code: submitCode,
+          name: form.name || modal.code || submitCode,
+          qty: submitQty,
+          price: form.price,
+          cash_asset_id: selectedCashAssetId,
+          curr: form.curr || 'CNY',
+          asset_type: form.market || 'a',
+        })
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error
+        await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+      }
+    }
   } else if (modal.type === 'sell') {
-    await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
+    const selectedCashAssetId = Number(form.cashAssetId)
+    if (!Number.isFinite(selectedCashAssetId) || selectedCashAssetId <= 0) {
+      alert(`请先选择 ${targetTradeCurrency.value} 回款账户`)
+      return
+    }
+    try {
+      await api.post('/api/portfolio/sell_to_cash', {
+        code: submitCode,
+        qty: submitQty,
+        price: form.price,
+        cash_asset_id: selectedCashAssetId,
+      })
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error
+      await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
+    }
   } else {
     await api.post('/api/portfolio/modify', {
       code: submitCode,
@@ -730,6 +870,17 @@ watch(
   () => {
     if (showFundInputMode.value && isFundAmountMode.value) {
       scheduleFundNavPrefill()
+    }
+  },
+)
+
+watch(
+  () => [modal.visible, modal.type, form.curr, cashAccounts.value.length] as const,
+  ([visible, type]) => {
+    if (!visible) return
+    if (type === 'buy' || type === 'sell') {
+      applyDefaultCashSelection()
+      void ensureCashAccountsLoaded()
     }
   },
 )

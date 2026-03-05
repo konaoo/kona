@@ -73,27 +73,27 @@ class AppPalette {
 
   // 轻浅文艺风：柔和米白 + 低饱和蓝绿
   static const light = AppPalette(
-    bgPrimary: Color(0xFFF5F2ED),
-    bgCard: Color(0xFFFFFFFF),
-    bgElevated: Color(0xFFEFF2F7),
-    navBg: Color(0xFFF1EEE8),
+    bgPrimary: Color(0xFFEEF2F8),
+    bgCard: Color(0xFFF8FAFF),
+    bgElevated: Color(0xFFEFF3FB),
+    navBg: Color(0xFFE6EDFA),
     surface2: Color(0xFFEFF3FB),
     surface3: Color(0xFFE5EBF7),
     accent: Color(0xFF4B86F0),
     accentLight: Color(0xFF8CB5FF),
     gold: Color(0xFFB8942D),
     goldDim: Color(0x1FB8942D),
-    textPrimary: Color(0xFF1F2A37),
-    textSecondary: Color(0xFF6B7280),
-    textTertiary: Color(0xFF9AA3B2),
-    textDim: Color(0xFFB0B5C3),
+    textPrimary: Color(0xFF1F2A3D),
+    textSecondary: Color(0xFF55617B),
+    textTertiary: Color(0xFF69758F),
+    textDim: Color(0xFF8A94AB),
     textMuted: Color(0xFF69758F),
     success: Color(0xFF16A34A),
     danger: Color(0xFFE45656),
-    border: Color(0xFFDCE3EE),
-    borderSubtle: Color(0xFFEAEEF5),
-    borderDivider: Color(0xFFF2F5FA),
-    cardGradient: [Color(0xFFE3EDFF), Color(0xFFF7FAFF)],
+    border: Color(0x1A222C40),
+    borderSubtle: Color(0x17222C40),
+    borderDivider: Color(0x14222C40),
+    cardGradient: [Color(0xFFFFFFFF), Color(0xFFF5F8FF)],
   );
 }
 
@@ -140,6 +140,44 @@ class AppTheme {
 
   // 渐变色
   static List<Color> get cardGradient => _palette.cardGradient;
+
+  // ── 分割线颜色 ──
+  static Color get dividerColor =>
+      isLight ? const Color(0x1A222C40) : const Color(0x1AFFFFFF);
+
+  // ── Hero 卡片装饰 ──
+  static BoxDecoration get heroDecoration => BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isLight
+              ? const Color(0x2E5B8DEF) // rgba(91,141,239,0.18)
+              : Colors.white.withValues(alpha: 0.06),
+        ),
+        gradient: LinearGradient(
+          begin: const Alignment(-0.6, -1),
+          end: const Alignment(1, 1),
+          colors: isLight
+              ? [const Color(0xFFDDE8FF), const Color(0xFFCFDAF5), const Color(0xFFC8D5F0)]
+              : [const Color(0x335B8DEF), const Color(0x0F4A7BE0), const Color(0xF0191C25)],
+          stops: const [0.0, 0.6, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isLight
+                ? const Color(0x1A222C48) // rgba(34,44,72,0.10)
+                : Colors.black.withValues(alpha: 0.35),
+            blurRadius: isLight ? 20 : 26,
+            offset: isLight ? const Offset(0, 8) : const Offset(0, 12),
+          ),
+        ],
+      );
+
+  // ── Hero 卡片内部的文字颜色 ──
+  static Color get heroLabelColor =>
+      isLight ? const Color(0xFF55617B) : const Color(0xFF9AA3B7);
+
+  static Color get heroValueColor =>
+      isLight ? const Color(0xFF111C2E) : const Color(0xFFF0F4FF);
 
   static List<BoxShadow> get cardShadow {
     if (!isLight) return [];

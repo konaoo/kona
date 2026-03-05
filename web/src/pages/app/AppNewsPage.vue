@@ -70,6 +70,8 @@ type NewsCachePayload = {
 const CACHE_DOMAIN = 'news'
 const CACHE_KEY = 'timeline'
 const CACHE_TTL_MS = 1000 * 60 * 20
+const NEWS_PAGE_SIZE = 50
+const NEWS_POLL_INTERVAL_MS = 3000
 
 const store = useKonaStore()
 const items = ref<NewsItem[]>([])
@@ -131,7 +133,9 @@ function normalizeNews(raw: Record<string, unknown>): NewsItem {
 
 async function fetchNews() {
   try {
-    const payload = await api.get<{ items?: Record<string, unknown>[] }>('/api/news/latest?page=1&page_size=80')
+    const payload = await api.get<{ items?: Record<string, unknown>[] }>(
+      `/api/news/latest?page=1&page_size=${NEWS_PAGE_SIZE}`,
+    )
     const list = (payload.items || []).map(normalizeNews)
 
     if (!list.length) return
@@ -169,7 +173,7 @@ async function fetchNews() {
 onMounted(async () => {
   restoreCache()
   await fetchNews()
-  timer = window.setInterval(fetchNews, 10000)
+  timer = window.setInterval(fetchNews, NEWS_POLL_INTERVAL_MS)
 })
 
 onUnmounted(() => {

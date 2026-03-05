@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../config/theme.dart';
+import '../providers/app_state.dart';
 import '../services/api_service.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -790,6 +792,9 @@ class _NewsPageState extends State<NewsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 监听全局状态，以便在主题等变化时触发重建
+    context.watch<AppState>();
+
     final filtered = _filteredNews;
 
     return RefreshIndicator(

@@ -273,23 +273,7 @@ class InvestPageState extends State<InvestPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x265B8DEF)),
-        gradient: const LinearGradient(
-          begin: Alignment(-0.6, -1),
-          end: Alignment(1, 1),
-          colors: [Color(0xFF171C2E), Color(0xFF111520), Color(0xFF0F1219)],
-          stops: [0.0, 0.6, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: AppTheme.heroDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -302,7 +286,7 @@ class InvestPageState extends State<InvestPage> {
                   Text(
                     '投资总市值',
                     style: _S.heroLabel.copyWith(
-                      color: const Color(0xFF9AA3B7),
+                      color: AppTheme.heroLabelColor,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -332,7 +316,7 @@ class InvestPageState extends State<InvestPage> {
                                       prefix: '',
                                     ),
                               style: _S.heroAmount.copyWith(
-                                color: const Color(0xFFF0F4FF),
+                                color: AppTheme.heroValueColor,
                               ),
                             ),
                           ),
@@ -390,8 +374,8 @@ class InvestPageState extends State<InvestPage> {
           // Stats grid: 4 columns
           Container(
             padding: const EdgeInsets.only(top: 10),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0x1AFFFFFF))),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: AppTheme.dividerColor)),
             ),
             child: Row(
               children: [
@@ -431,8 +415,8 @@ class InvestPageState extends State<InvestPage> {
     return Expanded(
       child: Container(
         decoration: hasDivider
-            ? const BoxDecoration(
-                border: Border(right: BorderSide(color: Color(0x1AFFFFFF))),
+            ? BoxDecoration(
+                border: Border(right: BorderSide(color: AppTheme.dividerColor)),
               )
             : null,
         child: Column(
@@ -459,8 +443,8 @@ class InvestPageState extends State<InvestPage> {
       ('fund', '基金'),
     ];
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0x1AFFFFFF))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.dividerColor)),
       ),
       child: Row(
         children: categories.map((cat) {
@@ -473,7 +457,7 @@ class InvestPageState extends State<InvestPage> {
                 border: Border(
                   bottom: BorderSide(
                     color: isActive
-                        ? const Color(0xFFF0F4FF)
+                        ? AppTheme.heroValueColor
                         : Colors.transparent,
                     width: 2,
                   ),
@@ -483,8 +467,8 @@ class InvestPageState extends State<InvestPage> {
                 cat.$2,
                 style: (isActive ? _S.tabTextActive : _S.tabText).copyWith(
                   color: isActive
-                      ? const Color(0xFFF0F4FF)
-                      : const Color(0xFF9AA3B7),
+                      ? AppTheme.heroValueColor
+                      : AppTheme.heroLabelColor,
                 ),
               ),
             ),
@@ -539,8 +523,14 @@ class InvestPageState extends State<InvestPage> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x1AFFFFFF)),
-        color: const Color(0x06FFFFFF),
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x0A222C40)
+              : AppTheme.dividerColor,
+        ),
+        color: AppTheme.isLight
+            ? const Color(0x05222C40)
+            : const Color(0x06FFFFFF),
       ),
       child: Row(
         children: [
@@ -577,7 +567,7 @@ class InvestPageState extends State<InvestPage> {
             ),
           ),
           // Divider
-          Container(width: 1, height: 30, color: const Color(0x1AFFFFFF)),
+          Container(width: 1, height: 30, color: AppTheme.dividerColor),
           // Hold PnL
           Expanded(
             child: Padding(
@@ -750,7 +740,7 @@ class InvestPageState extends State<InvestPage> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x0FFFFFFF)),
+          border: Border.all(color: AppTheme.border),
           color: AppTheme.surface2,
           boxShadow: [
             BoxShadow(
@@ -778,7 +768,7 @@ class InvestPageState extends State<InvestPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: _S.cardName.copyWith(
-                          color: const Color(0xFFF0F4FF),
+                          color: AppTheme.heroValueColor,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -819,7 +809,9 @@ class InvestPageState extends State<InvestPage> {
                           ? '****'
                           : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}',
                       style: _S.cardMktVal.copyWith(
-                        color: const Color(0xFFF0F4FF),
+                        color: AppTheme.isLight
+                            ? AppTheme.textPrimary
+                            : const Color(0xFFF0F4FF),
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -881,7 +873,7 @@ class InvestPageState extends State<InvestPage> {
                     Text(
                       '成本 $sym${_formatDisplayPrice(displayCostPrice, item: item)}',
                       style: _S.cardProgressLabel.copyWith(
-                        color: const Color(0xFFF0F4FF),
+                        color: AppTheme.textMuted,
                       ),
                     ),
                     RichText(
@@ -891,7 +883,7 @@ class InvestPageState extends State<InvestPage> {
                             text:
                                 '现价 $sym${_formatDisplayPrice(currentPrice, item: item)} ',
                             style: _S.cardProgressLabel.copyWith(
-                              color: const Color(0xFFF0F4FF),
+                              color: AppTheme.textMuted,
                             ),
                           ),
                           TextSpan(
@@ -954,8 +946,12 @@ class InvestPageState extends State<InvestPage> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x1AFFFFFF)),
-        color: AppTheme.surface2,
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x08222C40)
+              : const Color(0x1AFFFFFF),
+        ),
+        color: AppTheme.isLight ? const Color(0x05222C40) : AppTheme.surface2,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,6 +1042,7 @@ class _PnlProgressBarState extends State<PnlProgressBar>
             isProfit: isProfit,
             fillColor: fillColor,
             hasChange: changeRate.abs() > 1e-9,
+            isLight: AppTheme.isLight,
           ),
         ),
       ),
@@ -1058,12 +1055,14 @@ class _PnlBarPainter extends CustomPainter {
   final bool isProfit;
   final Color fillColor;
   final bool hasChange;
+  final bool isLight;
 
   const _PnlBarPainter({
     required this.fillRatio,
     required this.isProfit,
     required this.fillColor,
     required this.hasChange,
+    required this.isLight,
   });
 
   @override
@@ -1076,7 +1075,10 @@ class _PnlBarPainter extends CustomPainter {
     // 1. Track background
     canvas.drawRRect(
       RRect.fromLTRBR(0, 0, w, h, radius),
-      Paint()..color = const Color(0x14FFFFFF),
+      Paint()
+        ..color = isLight
+            ? const Color(0x1A222C40)
+            : const Color(0x14FFFFFF),
     );
 
     // 2. Fill bar
@@ -1097,7 +1099,10 @@ class _PnlBarPainter extends CustomPainter {
     // 3. Center anchor line (Cost baseline)
     canvas.drawRect(
       Rect.fromLTWH(midX - 0.75, 0, 1.5, h),
-      Paint()..color = const Color(0x66FFFFFF),
+      Paint()
+        ..color = isLight
+            ? const Color(0x33222C40)
+            : const Color(0x66FFFFFF),
     );
   }
 

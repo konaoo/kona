@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models/asset.dart';
 import '../providers/app_state.dart';
+import '../config/theme.dart';
 import '../widgets/add_asset_dialog.dart';
 
 /// 资产详情页面（现金/其他/负债统一样式）
@@ -14,26 +15,26 @@ class AssetDetailPage extends StatelessWidget {
 
   const AssetDetailPage({super.key, required this.assetType});
 
-  static const _bg = Color(0xFF0D0E12);
-  static const _border = Color(0x0EFFFFFF);
-  static const _text = Color(0xFFE4E5EA);
-  static const _textMuted = Color(0xFF575D6E);
-  static const _nameText = Color(0xFFEDF1FA);
-  static const _amountText = Color(0xFFBCC4D3);
-  static const _amountZero = Color(0xFFA9AFBD);
-  static const _gold = Color(0xFFB79C66);
-  static const _iconColor = Color(0xFF739BF0);
+  static Color get _bg => AppTheme.bgPrimary;
+  static Color get _border => AppTheme.border;
+  static Color get _text => AppTheme.textPrimary;
+  static Color get _textMuted => AppTheme.textMuted;
+  static Color get _nameText => AppTheme.heroValueColor;
+  static Color get _amountText => AppTheme.isLight ? const Color(0xFF3D4E6A) : const Color(0xFFBCC4D3);
+  static Color get _amountZero => AppTheme.textDim;
+  static Color get _gold => AppTheme.gold;
+  static Color get _iconColor => AppTheme.accent;
 
-  // Cached TextStyles – created once, reused every build
-  static final _titleStyle = GoogleFonts.dmSans(
+  // Cached TextStyles – re-created each build for theme-awareness
+  static TextStyle get _titleStyle => GoogleFonts.dmSans(
     fontSize: 16, fontWeight: FontWeight.w600, color: _text,
   );
-  static final _countStyle = GoogleFonts.dmSans(fontSize: 11, color: _textMuted);
-  static final _emptyTitle = GoogleFonts.dmSans(
+  static TextStyle get _countStyle => GoogleFonts.dmSans(fontSize: 11, color: _textMuted);
+  static TextStyle get _emptyTitle => GoogleFonts.dmSans(
     fontSize: 16, fontWeight: FontWeight.w600, color: _text,
   );
-  static final _emptySub = GoogleFonts.dmSans(fontSize: 12, color: _textMuted);
-  static final _nameStyle = GoogleFonts.dmSans(
+  static TextStyle get _emptySub => GoogleFonts.dmSans(fontSize: 12, color: _textMuted);
+  static TextStyle get _nameStyle => GoogleFonts.dmSans(
     fontSize: 15, fontWeight: FontWeight.w700, color: _nameText,
   );
   static final _amountSymbol = GoogleFonts.jetBrainsMono(
@@ -152,12 +153,12 @@ class AssetDetailPage extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1D25),
+                  color: AppTheme.surface2,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: _border),
                 ),
                 alignment: Alignment.center,
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_back_ios_new_rounded,
                   size: 16,
                   color: _text,
@@ -218,18 +219,22 @@ class AssetDetailPage extends StatelessWidget {
         onTap: () => _showEditDialog(context, asset),
         child: Ink(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xF51A1D25), Color(0xFA171A22)],
+              colors: AppTheme.isLight
+                  ? [AppTheme.bgCard, AppTheme.surface2]
+                  : [const Color(0xF51A1D25), const Color(0xFA171A22)],
             ),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0x0EFFFFFF)),
-            boxShadow: const [
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x47000000),
+                color: AppTheme.isLight
+                    ? const Color(0x14222C48)
+                    : const Color(0x47000000),
                 blurRadius: 18,
-                offset: Offset(0, 8),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -338,14 +343,19 @@ class AssetDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 监听全局状态变化（特别是主题切换）
+    final appState = context.watch<AppState>();
+
     return Scaffold(
       backgroundColor: _bg,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: RadialGradient(
             center: Alignment(0.8, -1.1),
             radius: 1.1,
-            colors: [Color(0x1F5B8DEF), Color(0x000D0E12)],
+            colors: AppTheme.isLight
+                ? [Color(0x145B8DEF), Color(0x00EEF2F8)]
+                : [Color(0x1F5B8DEF), Color(0x000D0E12)],
           ),
         ),
         child: SafeArea(

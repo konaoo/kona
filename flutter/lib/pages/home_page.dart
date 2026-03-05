@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -71,6 +73,12 @@ class HomePageState extends State<HomePage> {
 
   // Currency dropdown open state
   bool _currDropdownOpen = false;
+  OverlayEntry? _dropdownEntry;
+  final GlobalKey _currencyButtonKey = GlobalKey();
+
+  // Avatar Cache
+  String? _lastAvatarString;
+  MemoryImage? _cachedAvatarImage;
 
   static const _currencies = [
     {'code': 'CNY', 'name': '人民币', 'flag': '🇨🇳', 'symbol': '¥'},
@@ -79,8 +87,10 @@ class HomePageState extends State<HomePage> {
   ];
 
   @override
-  void initState() {
-    super.initState();
+  @override
+  void dispose() {
+    _hideDropdown();
+    super.dispose();
   }
 
   Future<void> _refreshData() async {
@@ -100,6 +110,10 @@ class HomePageState extends State<HomePage> {
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
+    if (_currDropdownOpen) {
+      _hideDropdown();
+    }
+
     final callback = widget.onFabVisibilityChanged;
     if (callback == null) return false;
 
@@ -185,11 +199,7 @@ class HomePageState extends State<HomePage> {
           child: NotificationListener<ScrollNotification>(
             onNotification: _onScrollNotification,
             child: GestureDetector(
-              onTap: () {
-                if (_currDropdownOpen) {
-                  setState(() => _currDropdownOpen = false);
-                }
-              },
+              onTap: _hideDropdown,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(
@@ -271,43 +281,88 @@ class HomePageState extends State<HomePage> {
 
   // ─── Brand Header ──────────────────────────────
   Widget _buildBrandHeader(AppState appState) {
+    final fallback =
+        (appState.nickname?.isNotEmpty == true
+                ? appState.nickname!.substring(0, 1)
+                : (appState.username?.substring(0, 1).toUpperCase() ?? 'U'))
+            .toUpperCase();
+
+    final currentAvatarString = appState.avatar;
+    if (currentAvatarString != _lastAvatarString) {
+      _lastAvatarString = currentAvatarString;
+      if (currentAvatarString != null && currentAvatarString.isNotEmpty) {
+        try {
+          _cachedAvatarImage = MemoryImage(base64Decode(currentAvatarString));
+        } catch (_) {
+          _cachedAvatarImage = null;
+        }
+      } else {
+        _cachedAvatarImage = null;
+      }
+    }
+
+    final hasAvatar = _cachedAvatarImage != null;
+    final avatarImage = _cachedAvatarImage;
+
+    final name = appState.nickname?.isNotEmpty == true
+        ? appState.nickname!
+        : (appState.username?.isNotEmpty == true
+            ? appState.username!
+            : 'Kona 用户');
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
+          bottom: BorderSide(
+            color: AppTheme.isLight
+                ? const Color(0x0A222C40)
+                : Colors.white.withValues(alpha: 0.04),
+          ),
         ),
       ),
       child: Row(
         children: [
-          // Brand mark
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF4A7BE0).withValues(alpha: 0.32),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+          // User avatar
+          GestureDetector(
+            onTap: () => widget.onSwitchTab(4), // Navigate to profile tab (index 4)
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.isLight
+                      ? const Color(0x335B8DEF)
+                      : Colors.white.withValues(alpha: 0.16),
                 ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'K',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4A7BE0).withValues(alpha: 0.32),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+                image: hasAvatar
+                    ? DecorationImage(image: avatarImage!, fit: BoxFit.cover)
+                    : null,
               ),
+              alignment: Alignment.center,
+              child: hasAvatar
+                  ? null
+                  : Text(
+                      fallback,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: 10),
@@ -323,9 +378,7 @@ class HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  (appState.nickname ?? '').isNotEmpty
-                      ? '你好，${appState.nickname}'
-                      : '你好，欢迎回来',
+                  '你好，$name',
                   style: _S.brandSub.copyWith(color: AppTheme.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -333,8 +386,6 @@ class HomePageState extends State<HomePage> {
               ],
             ),
           ),
-
-
         ],
       ),
     );
@@ -347,40 +398,24 @@ class HomePageState extends State<HomePage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-        gradient: const LinearGradient(
-          begin: Alignment(-0.6, -1),
-          end: Alignment(1, 1),
-          colors: [
-            Color(0x335B8DEF),
-            Color(0x0F4A7BE0),
-            Color(0xF0191C25),
-          ],
-          stops: [0.0, 0.35, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: AppTheme.heroDecoration,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // Top row: label + CNY dropdown + eye button
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '总资产估值',
-                style: _S.heroLabel.copyWith(color: const Color(0xFF9AA3B7)),
-              ),
-              const SizedBox(width: 6),
-              // Currency selector button
-              _buildCurrencyButton(appState),
+              // Top row: label + CNY dropdown + eye button
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    '总资产估值',
+                    style: _S.heroLabel.copyWith(color: AppTheme.heroLabelColor),
+                  ),
+                  const SizedBox(width: 6),
+                  // Currency selector button
+                  _buildCurrencyButton(appState),
               const Spacer(),
               // Privacy toggle
               _heroIconBtn(
@@ -408,7 +443,7 @@ class HomePageState extends State<HomePage> {
                         ? '****'
                         : _fmt(displayTotal, false),
                     style: _S.heroValue.copyWith(
-                      color: const Color(0xFFF0F4FF),
+                      color: AppTheme.heroValueColor,
                     ),
                   ),
                 ),
@@ -449,28 +484,80 @@ class HomePageState extends State<HomePage> {
             ],
           ),
 
-          // Currency dropdown (shown/hidden by state)
-          if (_currDropdownOpen) _buildCurrencyDropdown(appState),
+            ],
+          ),
         ],
       ),
     );
   }
 
   // ─── Currency Selector ─────────────────────────
+  void _toggleDropdown(AppState appState) {
+    if (_currDropdownOpen) {
+      _hideDropdown();
+    } else {
+      _showDropdown(appState);
+    }
+  }
+
+  void _showDropdown(AppState appState) {
+    if (_dropdownEntry != null) return;
+
+    final RenderBox renderBox = _currencyButtonKey.currentContext!.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    final offset = renderBox.localToGlobal(Offset.zero);
+
+    _dropdownEntry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _hideDropdown,
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          Positioned(
+            left: offset.dx,
+            top: offset.dy + size.height + 4,
+            child: Material(
+              type: MaterialType.transparency,
+              child: _buildCurrencyDropdown(appState),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Overlay.of(context).insert(_dropdownEntry!);
+    setState(() => _currDropdownOpen = true);
+  }
+
+  void _hideDropdown() {
+    _dropdownEntry?.remove();
+    _dropdownEntry = null;
+    if (mounted) {
+      setState(() => _currDropdownOpen = false);
+    }
+  }
+
   Widget _buildCurrencyButton(AppState appState) {
     return GestureDetector(
-      onTap: () {
-        setState(() => _currDropdownOpen = !_currDropdownOpen);
-      },
+      onTap: () => _toggleDropdown(appState),
       child: Container(
+        key: _currencyButtonKey,
         height: 20,
         padding: const EdgeInsets.symmetric(horizontal: 7),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.4 : 0.26),
+            color: AppTheme.isLight
+                ? AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.2 : 0.1)
+                : AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.4 : 0.26),
           ),
-          color: AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.1 : 0.05),
+          color: AppTheme.isLight
+              ? AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.05 : 0.0)
+              : AppTheme.gold.withValues(alpha: _currDropdownOpen ? 0.1 : 0.05),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -486,7 +573,7 @@ class HomePageState extends State<HomePage> {
               child: Icon(
                 Icons.expand_more,
                 size: 9,
-                color: const Color(0xFFCDB47C),
+                color: AppTheme.isLight ? const Color(0xFFB59353) : const Color(0xFFCDB47C),
               ),
             ),
           ],
@@ -496,17 +583,26 @@ class HomePageState extends State<HomePage> {
   }
 
   Widget _buildCurrencyDropdown(AppState appState) {
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        width: 120, // Constrain width based on the screenshot
+        margin: const EdgeInsets.only(top: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.42)),
-        color: const Color(0xFA14171F),
+        border: Border.all(
+          color: AppTheme.isLight
+              ? AppTheme.gold.withValues(alpha: 0.15)
+              : AppTheme.gold.withValues(alpha: 0.42),
+        ),
+        color: AppTheme.isLight ? const Color(0xFFF9FAFF) : const Color(0xFA14171F),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 32,
-            offset: const Offset(0, 16),
+            color: AppTheme.isLight
+                ? const Color(0x1A222C48)
+                : Colors.black.withValues(alpha: 0.5),
+            blurRadius: AppTheme.isLight ? 20 : 32,
+            offset: AppTheme.isLight ? const Offset(0, 8) : const Offset(0, 16),
           ),
         ],
       ),
@@ -521,21 +617,21 @@ class HomePageState extends State<HomePage> {
           return GestureDetector(
             onTap: () {
               appState.setDisplayCurrency(code);
-              setState(() {
-                _currDropdownOpen = false;
-              });
+              _hideDropdown();
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               decoration: BoxDecoration(
                 color: isActive
-                    ? AppTheme.gold.withValues(alpha: 0.14)
+                    ? AppTheme.gold.withValues(alpha: AppTheme.isLight ? 0.08 : 0.14)
                     : Colors.transparent,
                 border: isLast
                     ? null
                     : Border(
                         bottom: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.06),
+                          color: AppTheme.isLight
+                              ? const Color(0x0A222C40)
+                              : Colors.white.withValues(alpha: 0.06),
                         ),
                       ),
                 borderRadius: isLast
@@ -553,7 +649,9 @@ class HomePageState extends State<HomePage> {
                   Text(
                     code,
                     style: _S.currItemCode.copyWith(
-                      color: const Color(0xFFD7BD83),
+                      color: AppTheme.isLight
+                          ? const Color(0xFFB59353)
+                          : const Color(0xFFD7BD83),
                     ),
                   ),
                   const Spacer(),
@@ -561,7 +659,9 @@ class HomePageState extends State<HomePage> {
                     c['name']!,
                     style: _S.currItemName.copyWith(
                       color: isActive
-                          ? const Color(0xFFEFD8A7)
+                          ? (AppTheme.isLight
+                              ? const Color(0xFFC7A25D)
+                              : const Color(0xFFEFD8A7))
                           : AppTheme.textMuted,
                     ),
                   ),
@@ -570,7 +670,9 @@ class HomePageState extends State<HomePage> {
                     Icon(
                       Icons.check,
                       size: 12,
-                      color: const Color(0xFFD7BD83),
+                      color: AppTheme.isLight
+                          ? const Color(0xFFB59353)
+                          : const Color(0xFFD7BD83),
                     ),
                   ],
                 ],
@@ -579,6 +681,7 @@ class HomePageState extends State<HomePage> {
           );
         }).toList(),
       ),
+    ),
     );
   }
 
@@ -615,21 +718,35 @@ class HomePageState extends State<HomePage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.055)),
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xF51A1D25),
-              Color(0xFA171A22),
-            ],
+          border: Border.all(
+            color: AppTheme.isLight
+                ? const Color(0x0A222C40)
+                : Colors.white.withValues(alpha: 0.055),
           ),
+          color: AppTheme.isLight ? Colors.white : null,
+          gradient: AppTheme.isLight
+              ? null
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xF51A1D25),
+                    Color(0xFA171A22),
+                  ],
+                ),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.28),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
+            if (AppTheme.isLight)
+              const BoxShadow(
+                color: Color(0x0A222C48),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
           ],
         ),
         child: Row(
@@ -670,7 +787,11 @@ class HomePageState extends State<HomePage> {
                 children: [
                   Text(
                     name,
-                    style: _S.cardName.copyWith(color: const Color(0xFFEDF1FA)),
+                    style: _S.cardName.copyWith(
+                      color: AppTheme.isLight
+                          ? const Color(0xFF1F2A3D)
+                          : const Color(0xFFEDF1FA),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -684,7 +805,11 @@ class HomePageState extends State<HomePage> {
             // Value
             Text(
               amount,
-              style: _S.cardValue.copyWith(color: const Color(0xFFE3E9F7)),
+              style: _S.cardValue.copyWith(
+                color: AppTheme.isLight
+                    ? const Color(0xFF1F2A3D)
+                    : const Color(0xFFE3E9F7),
+              ),
             ),
             const SizedBox(width: 8),
 

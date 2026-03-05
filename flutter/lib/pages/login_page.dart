@@ -1448,19 +1448,32 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 描述
+            // 标题
             Text(
-              _text,
-              textAlign: TextAlign.start,
-              style: _S.dialogDesc,
+              '获取邀请码',
+              style: GoogleFonts.dmSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: _C.text,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // 描述
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _text,
+                textAlign: TextAlign.start,
+                style: _S.dialogDesc,
+              ),
             ),
             const SizedBox(height: 16),
             // 二维码
             Container(
-              width: double.infinity,
-              height: 260,
+              width: 200,
+              height: 200,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),

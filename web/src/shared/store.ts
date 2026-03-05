@@ -12,7 +12,16 @@ import { computeDisplayCostPrice } from './costBasis'
 import { toNumber } from './format'
 
 export type MarketCode = 'a' | 'hk' | 'us' | 'fund'
-type SyncDomain = 'portfolio' | 'rates'
+const ALL_SYNC_DOMAINS = [
+  'portfolio',
+  'cash_assets',
+  'other_assets',
+  'liabilities',
+  'history',
+  'overview_all',
+  'rates',
+] as const
+type SyncDomain = typeof ALL_SYNC_DOMAINS[number]
 
 type User = {
   id?: string
@@ -69,6 +78,8 @@ const STORE_CACHE_STORAGE_KEY = 'web_store_cache_v1'
 const STORE_CACHE_STATIC_TTL_MS = 5 * 60_000
 const STORE_CACHE_QUOTES_TTL_MS = 60_000
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 2500
+const SYNC_BOOTSTRAP_STATIC_INCLUDE: SyncDomain[] = [...ALL_SYNC_DOMAINS]
+const SYNC_BOOTSTRAP_QUOTE_INCLUDE: SyncDomain[] = ['portfolio', 'rates']
 const DEFAULT_QUOTE_POLICY: QuotePolicy = {
   interval_open_sec: 5,
   interval_closed_sec: 120,
@@ -317,7 +328,7 @@ function applyQuotePolicy(policy?: Partial<QuotePolicy>) {
 function applyBootstrapVersions(versions?: Partial<Record<string, string>>) {
   if (!versions) return
   let dirty = false
-  for (const domain of ['portfolio', 'rates'] as SyncDomain[]) {
+  for (const domain of ALL_SYNC_DOMAINS) {
     const next = String(versions[domain] || '').trim()
     if (!next) continue
     if (state.syncVersions[domain] !== next) {
@@ -539,7 +550,11 @@ function bootstrapIncludeKey(include: SyncDomain[]): string {
   return [...new Set(include)].sort().join(',')
 }
 
-async function loadBootstrap(include: SyncDomain[] = ['portfolio', 'rates']): Promise<Set<SyncDomain>> {
+function isSyncDomain(value: string): value is SyncDomain {
+  return (ALL_SYNC_DOMAINS as readonly string[]).includes(value)
+}
+
+async function loadBootstrap(include: SyncDomain[] = SYNC_BOOTSTRAP_QUOTE_INCLUDE): Promise<Set<SyncDomain>> {
   const includeKey = bootstrapIncludeKey(include)
   const inflight = bootstrapInflight.get(includeKey)
   if (inflight) {
@@ -547,14 +562,15 @@ async function loadBootstrap(include: SyncDomain[] = ['portfolio', 'rates']): Pr
   }
 
   const request = (async () => {
+    const clientVersions = include.reduce<Partial<Record<SyncDomain, string>>>((acc, domain) => {
+      acc[domain] = state.syncVersions[domain] || ''
+      return acc
+    }, {})
     const payload = await api.post<BootstrapPayload>(
       '/api/sync/bootstrap',
       {
         include,
-        client_versions: {
-          portfolio: state.syncVersions.portfolio || '',
-          rates: state.syncVersions.rates || '',
-        },
+        client_versions: clientVersions,
       },
       true,
     )
@@ -566,7 +582,7 @@ async function loadBootstrap(include: SyncDomain[] = ['portfolio', 'rates']): Pr
     const changed = new Set(
       (payload.changed || [])
         .map((x) => String(x))
-        .filter((x): x is SyncDomain => x === 'portfolio' || x === 'rates'),
+        .filter((x): x is SyncDomain => isSyncDomain(x)),
     )
 
     const data = payload.data || {}
@@ -642,7 +658,7 @@ function scheduleAutoRefresh(delayMs?: number) {
 
 async function refreshQuotesOnly() {
   try {
-    const changed = await loadBootstrap(['portfolio', 'rates'])
+    const changed = await loadBootstrap(SYNC_BOOTSTRAP_QUOTE_INCLUDE)
     if (!state.portfolio.length && !changed.has('portfolio')) {
       await loadPortfolio()
     }
@@ -680,7 +696,7 @@ async function refreshAll() {
     state.loading = true
     try {
       try {
-        const changed = await loadBootstrap(['portfolio', 'rates'])
+        const changed = await loadBootstrap(SYNC_BOOTSTRAP_STATIC_INCLUDE)
         if (!state.portfolio.length && !changed.has('portfolio')) {
           await loadPortfolio()
         }
@@ -727,7 +743,7 @@ function markRatesDirty() {
 
 async function refreshStaticOnly() {
   try {
-    const changed = await loadBootstrap(['portfolio', 'rates'])
+    const changed = await loadBootstrap(SYNC_BOOTSTRAP_STATIC_INCLUDE)
     if (!state.portfolio.length && !changed.has('portfolio')) {
       await loadPortfolio()
     }

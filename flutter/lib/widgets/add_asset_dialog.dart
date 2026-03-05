@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/asset.dart';
 import '../providers/app_state.dart';
+import '../config/theme.dart';
 import 'top_toast.dart';
 
 class AddAssetDialog extends StatefulWidget {
@@ -72,19 +73,19 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
   bool get _isEdit => widget.editingAsset != null;
   bool get _canDeleteInEdit => _isEdit && widget.allowDeleteInEdit;
 
-  Color get _kSurface => const Color(0xFF13151B);
-  Color get _kSurface2 => const Color(0xFF1A1D25);
-  Color get _kSurface3 => const Color(0xFF20242E);
-  Color get _kBorder => const Color(0x12FFFFFF);
-  Color get _kBorderActive => const Color(0x73D4AF64);
-  Color get _kGold => const Color(0xFFD4AF64);
-  Color get _kGoldDim => const Color(0x1FD4AF64);
-  Color get _kText => const Color(0xFFE4E5EA);
-  Color get _kTextMuted => const Color(0xFF575D6E);
-  Color get _kGreen => const Color(0xFF3ECF82);
-  Color get _kRed => const Color(0xFFF05A55);
-  Color get _kBlueStart => const Color(0xFF5B8DEF);
-  Color get _kBlueEnd => const Color(0xFF4A7BE0);
+  Color get _kSurface => AppTheme.bgElevated;
+  Color get _kSurface2 => AppTheme.surface2;
+  Color get _kSurface3 => AppTheme.isLight ? Colors.white : AppTheme.surface3;
+  Color get _kBorder => AppTheme.border;
+  Color get _kBorderActive => AppTheme.accent;
+  Color get _kGold => AppTheme.gold;
+  Color get _kGoldDim => AppTheme.goldDim;
+  Color get _kText => AppTheme.textPrimary;
+  Color get _kTextMuted => AppTheme.textSecondary;
+  Color get _kGreen => AppTheme.success;
+  Color get _kRed => AppTheme.danger;
+  Color get _kBlueStart => AppTheme.accent;
+  Color get _kBlueEnd => AppTheme.accentLight;
 
   LinearGradient get _blueGrad => LinearGradient(
     begin: Alignment.topLeft,
@@ -497,13 +498,21 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                         color: _kSurface,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: _kBorder),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0xB3000000),
-                            blurRadius: 64,
-                            offset: Offset(0, 24),
-                          ),
-                        ],
+                        boxShadow: AppTheme.isLight
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x26222C48),
+                                  blurRadius: 40,
+                                  offset: Offset(0, 16),
+                                ),
+                              ]
+                            : const [
+                                BoxShadow(
+                                  color: Color(0xB3000000),
+                                  blurRadius: 64,
+                                  offset: Offset(0, 24),
+                                ),
+                              ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -698,34 +707,51 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                           _hideCurrencyOverlay(updateState: false);
                         });
                       },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                child: SizedBox(
                   height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _assetType == option.id
-                        ? _kSurface3
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(7),
-                    boxShadow: _assetType == option.id
-                        ? [
-                            BoxShadow(
-                              color: const Color(0x4D000000),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    option.label,
-                    style: _dm(
-                      size: 12,
-                      weight: FontWeight.w500,
-                      color: _assetType == option.id
-                          ? option.color
-                          : _kTextMuted,
-                    ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Animated background for selected state
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 150),
+                        opacity: _assetType == option.id ? 1.0 : 0.0,
+                        curve: Curves.easeInOut,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _kSurface3,
+                            borderRadius: BorderRadius.circular(7),
+                            boxShadow: AppTheme.isLight
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0x1F222C48),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ]
+                                : [
+                                    BoxShadow(
+                                      color: const Color(0x4D000000),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                          ),
+                        ),
+                      ),
+                      // Text
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 150),
+                        style: _dm(
+                          size: 12,
+                          weight: FontWeight.w500,
+                          color: _assetType == option.id
+                              ? option.color
+                              : _kTextMuted,
+                        ),
+                        child: Text(option.label),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -863,6 +889,8 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 监听全局状态变化，使得主题切换能够及时生效
+    context.watch<AppState>();
     final canSubmit = !_saving;
     final suffixCurrency = _cashCurrency;
 
@@ -878,13 +906,21 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                 color: _kSurface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: _kBorder),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0xB3000000),
-                    blurRadius: 64,
-                    offset: Offset(0, 24),
-                  ),
-                ],
+                boxShadow: AppTheme.isLight
+                    ? const [
+                        BoxShadow(
+                          color: Color(0x26222C48),
+                          blurRadius: 40,
+                          offset: Offset(0, 16),
+                        ),
+                      ]
+                    : const [
+                        BoxShadow(
+                          color: Color(0xB3000000),
+                          blurRadius: 64,
+                          offset: Offset(0, 24),
+                        ),
+                      ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,

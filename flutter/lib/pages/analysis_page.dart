@@ -538,27 +538,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x265B8DEF)),
-        gradient: const LinearGradient(
-          begin: Alignment(-0.6, -1),
-          end: Alignment(1, 1),
-          colors: [
-            Color(0xFF171C2E),
-            Color(0xFF111520),
-            Color(0xFF0F1219),
-          ],
-          stops: [0.0, 0.6, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: AppTheme.heroDecoration,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -615,7 +595,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFF16181F),
+        color: AppTheme.isLight ? AppTheme.surface3 : const Color(0xFF16181F),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -714,14 +694,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.055)),
+        border: Border.all(color: AppTheme.border),
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            AppTheme.bgCard.withOpacity(0.8),
-            AppTheme.bgPrimary.withOpacity(0.5),
-          ],
+          colors: AppTheme.cardGradient,
         ),
       ),
       child: Column(
@@ -788,9 +765,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFF16181F),
+            color: AppTheme.isLight ? AppTheme.surface3 : const Color(0xFF16181F),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(color: AppTheme.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -867,7 +844,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
               child: Container(
                 width: 140,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F2128).withOpacity(0.98),
+                  color: AppTheme.isLight
+                      ? AppTheme.bgCard.withValues(alpha: 0.98)
+                      : const Color(0xFF1F2128).withValues(alpha: 0.98),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -976,7 +955,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Text(label, style: _S.calDate.copyWith(
             fontSize: label.contains('-') ? 11 : 13,
-            color: isSelected ? Colors.white : AppTheme.textPrimary,
+            color: isSelected ? (AppTheme.isLight ? Colors.black : Colors.white) : AppTheme.textPrimary,
           )),
           const SizedBox(height: 2),
           Text(
@@ -1187,9 +1166,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: AppPalette.dark.surface2.withValues(alpha: 0.4),
+        color: AppTheme.isLight
+            ? const Color(0x0A222C40)
+            : AppPalette.dark.surface2.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x0A222C40)
+              : Colors.white.withValues(alpha: 0.03),
+        ),
       ),
       child: Row(
         children: [
@@ -1313,6 +1298,40 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   String _calendarSummaryRate(AppState appState) {
     if (appState.amountHidden) return '--%';
+
+    // Try to get the rate directly from the backend response keys
+    final apiRate = _calendarData['total_rate'] ?? _calendarData['pnl_rate'] ?? _calendarData['rate'];
+    if (apiRate != null) {
+      final rate = (apiRate as num).toDouble();
+      return (rate > 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
+    }
+
+    // Fallback 1: If the selected calendar date represents the CURRENT period, 
+    // we can accurately borrow the rate from the `_overview` API response.
+    final now = DateTime.now();
+    bool isCurrentPeriod = false;
+    double? overviewRate;
+
+    if (_calendarTimeType == 'day') {
+      final selectedYear = _selectedDayYear ?? now.year;
+      final selectedMonth = _selectedDayMonth ?? now.month;
+      isCurrentPeriod = (selectedYear == now.year && selectedMonth == now.month);
+      if (isCurrentPeriod) overviewRate = (_overview['month']?['pnl_rate'] as num?)?.toDouble();
+    } else if (_calendarTimeType == 'month') {
+      final selectedYear = _selectedMonthYear ?? now.year;
+      isCurrentPeriod = (selectedYear == now.year);
+      if (isCurrentPeriod) overviewRate = (_overview['year']?['pnl_rate'] as num?)?.toDouble();
+    } else if (_calendarTimeType == 'year') {
+      isCurrentPeriod = true;
+      overviewRate = (_overview['all']?['pnl_rate'] as num?)?.toDouble();
+    }
+
+    if (isCurrentPeriod && overviewRate != null) {
+      // Note: overviewRate is already a percentage (e.g. -0.94 means -0.94%)
+      return (overviewRate > 0 ? '+' : '') + overviewRate.toStringAsFixed(2) + '%';
+    }
+
+    // Fallback 2: Manual calculation (will be 0.00% if cost is missing)
     double totalPnl = 0;
     double totalCost = 0;
     final items = _calendarData['items'] as List<dynamic>? ?? [];
@@ -1322,7 +1341,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     }
     if (totalCost == 0) return '0.00%';
     final rate = (totalPnl / totalCost) * 100;
-    return (rate >= 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
+    return (rate > 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
   }
 
   Widget _rankBadge(int rank) {
@@ -1438,9 +1457,15 @@ class AnalysisRankAllPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: AppPalette.dark.surface2.withValues(alpha: 0.4),
+        color: AppTheme.isLight
+            ? const Color(0x0A222C40)
+            : AppPalette.dark.surface2.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x0A222C40)
+              : Colors.white.withValues(alpha: 0.03),
+        ),
       ),
       child: Row(
         children: [

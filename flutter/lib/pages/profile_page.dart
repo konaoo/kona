@@ -589,12 +589,12 @@ class _ProfilePageState extends State<ProfilePage> {
               decoration: BoxDecoration(
                 color: appState.isLightTheme
                     ? const Color(0xFFF0F5FF)
-                    : const Color(0xFF1F2A3D),
+                    : AppTheme.surface2,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: appState.isLightTheme
                       ? Colors.white
-                      : const Color(0xFF13151B),
+                      : AppTheme.bgPrimary,
                   width: 1.5,
                 ),
               ),
@@ -631,10 +631,16 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: appState.isLightTheme
-              ? const Color(0x2E5B8DEF)
-              : const Color(0x2E5B8DEF),
+          color: const Color(0x2E5B8DEF),
         ),
+        boxShadow: [
+          if (appState.isLightTheme)
+            const BoxShadow(
+              color: Color(0x1A222C48),
+              blurRadius: 20,
+              offset: Offset(0, 8),
+            ),
+        ],
       ),
       child: Row(
         children: [
@@ -742,10 +748,11 @@ class _ProfilePageState extends State<ProfilePage> {
               onChanged: (_) => appState.toggleTheme(),
               activeColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
-              inactiveThumbColor: const Color(0xFFD8DEEB),
+              inactiveThumbColor: isLight ? Colors.white : const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
-                  ? const Color(0x26222C40)
+                  ? const Color(0xFFDFE4ED)
                   : const Color(0x29FFFFFF),
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             isTop: true,
@@ -772,10 +779,11 @@ class _ProfilePageState extends State<ProfilePage> {
               },
               activeColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
-              inactiveThumbColor: const Color(0xFFD8DEEB),
+              inactiveThumbColor: isLight ? Colors.white : const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
-                  ? const Color(0x26222C40)
+                  ? const Color(0xFFDFE4ED)
                   : const Color(0x29FFFFFF),
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ),

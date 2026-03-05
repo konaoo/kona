@@ -621,8 +621,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           color: AppTheme.navBg,
           border: Border(
             top: BorderSide(
-              color: AppTheme.border.withValues(alpha: AppTheme.isLight ? 0.6 : 0.3),
-              width: 1,
+              color: AppTheme.isLight
+                  ? const Color(0x0F000000)
+                  : Colors.transparent,
+              width: AppTheme.isLight ? 1 : 0,
             ),
           ),
           boxShadow: AppTheme.navShadow,

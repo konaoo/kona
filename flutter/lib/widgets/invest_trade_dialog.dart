@@ -3257,12 +3257,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       decoration: BoxDecoration(
                         gradient: !canSave
                             ? null
-                            : const LinearGradient(
-                                colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
+                            : LinearGradient(
+                                colors: [_tokens.blueStart, _tokens.blueEnd],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
-                        color: canSave ? null : const Color(0xFF3B4048),
+                        color: canSave ? null : (AppTheme.isLight ? const Color(0xFFE4E5EA) : const Color(0xFF3B4048)),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: !canSave
                             ? null
@@ -3302,7 +3302,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   weight: FontWeight.w600,
                                   color: canSave
                                       ? Colors.white
-                                      : const Color(0xFF8C91A0),
+                                      : _tokens.textSub,
                                 ),
                               ),
                       ),
