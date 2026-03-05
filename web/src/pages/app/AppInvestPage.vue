@@ -244,7 +244,7 @@ type InvestCachePayload = {
 const INVEST_CACHE_DOMAIN = 'invest'
 const INVEST_CACHE_KEY = 'page'
 const INVEST_CACHE_TTL_MS = 15 * 60_000
-const INVEST_PAGE_REFRESH_INTERVAL_MS = 60_000
+const INVEST_PAGE_REFRESH_INTERVAL_MS = 120_000
 const EXTERNAL_CASH_ASSET_ID = -999
 
 const store = useKonaStore()
@@ -510,6 +510,121 @@ function normalizeCodeForSubmit(rawCode: string): string {
   if (input.toUpperCase().endsWith('.HK')) return input.toUpperCase()
   if (/^[a-zA-Z]+$/.test(input)) return `gb_${input.toLowerCase()}`
   return input
+}
+
+function normalizeCodeForCompare(rawCode: unknown): string {
+  return String(rawCode || '').trim().toLowerCase()
+}
+
+function clonePortfolioSnapshot(): Record<string, unknown>[] {
+  return (store.state.portfolio as Record<string, unknown>[]).map((item) => ({ ...item }))
+}
+
+function restorePortfolioSnapshot(snapshot: Record<string, unknown>[]) {
+  store.state.portfolio = snapshot as typeof store.state.portfolio
+}
+
+function findPortfolioIndexByCode(code: string): number {
+  const target = normalizeCodeForCompare(code)
+  if (!target) return -1
+  return (store.state.portfolio as Record<string, unknown>[]).findIndex(
+    (item) => normalizeCodeForCompare(item.code) === target,
+  )
+}
+
+function holdingQtyByCode(code: string): number {
+  const idx = findPortfolioIndexByCode(code)
+  if (idx < 0) return 0
+  return toNumber((store.state.portfolio as Record<string, unknown>[])[idx]?.qty, 0)
+}
+
+function applyOptimisticPortfolioChange(params: {
+  mode: ModalType
+  code: string
+  name: string
+  qty: number
+  price: number
+  adjustment: number
+  curr: string
+  assetType: string
+}) {
+  const { mode, code, name, qty, price, adjustment, curr, assetType } = params
+  const list = [...(store.state.portfolio as Record<string, unknown>[])]
+  const idx = findPortfolioIndexByCode(code)
+
+  if (mode === 'add') {
+    if (idx >= 0) {
+      const existing = list[idx]
+      if (!existing) return
+      const oldQty = toNumber(existing.qty, 0)
+      const oldPrice = toNumber(existing.price, 0)
+      const nextQty = oldQty + qty
+      const nextPrice = nextQty > 0 ? ((oldQty * oldPrice + qty * price) / nextQty) : oldPrice
+      list[idx] = {
+        ...existing,
+        qty: nextQty,
+        price: Number(nextPrice.toFixed(6)),
+      }
+    } else {
+      list.push({
+        code,
+        name: name || code,
+        qty,
+        price,
+        curr,
+        asset_type: assetType,
+        adjustment: 0,
+      })
+    }
+    store.state.portfolio = list as typeof store.state.portfolio
+    return
+  }
+
+  if (mode === 'buy') {
+    if (idx < 0) return
+    const existing = list[idx]
+    if (!existing) return
+    const oldQty = toNumber(existing.qty, 0)
+    const oldPrice = toNumber(existing.price, 0)
+    const nextQty = oldQty + qty
+    const nextPrice = nextQty > 0 ? ((oldQty * oldPrice + qty * price) / nextQty) : oldPrice
+    list[idx] = {
+      ...existing,
+      qty: nextQty,
+      price: Number(nextPrice.toFixed(6)),
+    }
+    store.state.portfolio = list as typeof store.state.portfolio
+    return
+  }
+
+  if (mode === 'sell') {
+    if (idx < 0) return
+    const existing = list[idx]
+    if (!existing) return
+    const oldQty = toNumber(existing.qty, 0)
+    const nextQty = oldQty - qty
+    if (nextQty <= 1e-6) {
+      list.splice(idx, 1)
+    } else {
+      list[idx] = {
+        ...existing,
+        qty: nextQty,
+      }
+    }
+    store.state.portfolio = list as typeof store.state.portfolio
+    return
+  }
+
+  if (mode === 'edit') {
+    if (idx < 0) return
+    list[idx] = {
+      ...list[idx],
+      qty,
+      price,
+      adjustment,
+    }
+    store.state.portfolio = list as typeof store.state.portfolio
+  }
 }
 
 const showFundInputMode = computed(() => {
@@ -793,6 +908,10 @@ async function submitModal() {
 
   const submitCode = normalizeCodeForSubmit(modal.type === 'add' ? form.code : modal.code)
   const submitQty = isFundAmountMode.value ? derivedFundQty() : toNumber(form.qty)
+  if (!submitCode) {
+    alert('资产代码无效')
+    return
+  }
   if (isFundAmountMode.value) {
     if (toNumber(form.amount) <= 0) {
       alert('买入金额必须大于 0')
@@ -803,63 +922,90 @@ async function submitModal() {
       return
     }
   }
-
-  if (modal.type === 'add') {
-    await api.post('/api/portfolio/add', {
-      code: submitCode,
-      name: form.name || submitCode,
-      qty: submitQty,
-      price: form.price,
-      curr: form.curr || 'CNY',
-    })
-  } else if (modal.type === 'buy') {
-    const selectedCashAssetId = Number(form.cashAssetId)
-    if (!Number.isFinite(selectedCashAssetId)) {
-      alert('请选择资金账户')
+  if (modal.type === 'sell') {
+    const holdingQty = holdingQtyByCode(submitCode)
+    if (submitQty > holdingQty + 1e-6) {
+      alert(`卖出数量超过持仓：当前持仓 ${formatHoldingQty(holdingQty)}`)
       return
     }
-    if (selectedCashAssetId === EXTERNAL_CASH_ASSET_ID) {
-      await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
-    } else {
+  }
+
+  const snapshot = clonePortfolioSnapshot()
+  try {
+    applyOptimisticPortfolioChange({
+      mode: modal.type,
+      code: submitCode,
+      name: form.name || modal.code || submitCode,
+      qty: modal.type === 'edit' ? toNumber(form.qty, 0) : submitQty,
+      price: toNumber(form.price, 0),
+      adjustment: toNumber(form.adjustment, 0),
+      curr: form.curr || 'CNY',
+      assetType: form.market || 'a',
+    })
+
+    if (modal.type === 'add') {
+      await api.post('/api/portfolio/add', {
+        code: submitCode,
+        name: form.name || submitCode,
+        qty: submitQty,
+        price: form.price,
+        curr: form.curr || 'CNY',
+      })
+    } else if (modal.type === 'buy') {
+      const selectedCashAssetId = Number(form.cashAssetId)
+      if (!Number.isFinite(selectedCashAssetId)) {
+        restorePortfolioSnapshot(snapshot)
+        alert('请选择资金账户')
+        return
+      }
+      if (selectedCashAssetId === EXTERNAL_CASH_ASSET_ID) {
+        await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+      } else {
+        try {
+          await api.post('/api/portfolio/buy_with_cash', {
+            code: submitCode,
+            name: form.name || modal.code || submitCode,
+            qty: submitQty,
+            price: form.price,
+            cash_asset_id: selectedCashAssetId,
+            curr: form.curr || 'CNY',
+            asset_type: form.market || 'a',
+          })
+        } catch (error) {
+          if (!isNotFoundError(error)) throw error
+          await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+        }
+      }
+    } else if (modal.type === 'sell') {
+      const selectedCashAssetId = Number(form.cashAssetId)
+      if (!Number.isFinite(selectedCashAssetId) || selectedCashAssetId <= 0) {
+        restorePortfolioSnapshot(snapshot)
+        alert(`请先选择 ${targetTradeCurrency.value} 回款账户`)
+        return
+      }
       try {
-        await api.post('/api/portfolio/buy_with_cash', {
+        await api.post('/api/portfolio/sell_to_cash', {
           code: submitCode,
-          name: form.name || modal.code || submitCode,
           qty: submitQty,
           price: form.price,
           cash_asset_id: selectedCashAssetId,
-          curr: form.curr || 'CNY',
-          asset_type: form.market || 'a',
         })
       } catch (error) {
         if (!isNotFoundError(error)) throw error
-        await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
+        await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
       }
-    }
-  } else if (modal.type === 'sell') {
-    const selectedCashAssetId = Number(form.cashAssetId)
-    if (!Number.isFinite(selectedCashAssetId) || selectedCashAssetId <= 0) {
-      alert(`请先选择 ${targetTradeCurrency.value} 回款账户`)
-      return
-    }
-    try {
-      await api.post('/api/portfolio/sell_to_cash', {
+    } else {
+      await api.post('/api/portfolio/modify', {
         code: submitCode,
-        qty: submitQty,
+        qty: form.qty,
         price: form.price,
-        cash_asset_id: selectedCashAssetId,
+        adjustment: form.adjustment,
       })
-    } catch (error) {
-      if (!isNotFoundError(error)) throw error
-      await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
     }
-  } else {
-    await api.post('/api/portfolio/modify', {
-      code: submitCode,
-      qty: form.qty,
-      price: form.price,
-      adjustment: form.adjustment,
-    })
+  } catch (error) {
+    restorePortfolioSnapshot(snapshot)
+    alert((error as Error)?.message || '保存失败，请稍后重试')
+    return
   }
   closeModal()
   await refresh('force')

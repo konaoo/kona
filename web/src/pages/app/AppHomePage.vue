@@ -209,7 +209,7 @@ type HomeCachePayload = {
 const HOME_CACHE_DOMAIN = 'home'
 const HOME_CACHE_KEY = 'assets'
 const HOME_CACHE_TTL_MS = 1000 * 60 * 60 * 12
-const STATIC_REFRESH_INTERVAL_MS = 5 * 60_000
+const STATIC_REFRESH_INTERVAL_MS = 120_000
 
 const store = useKonaStore()
 const { theme, toggleTheme } = useWebTheme()
