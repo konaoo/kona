@@ -16,6 +16,14 @@ from .policy_runtime import is_policy_enabled
 
 logger = logging.getLogger(__name__)
 
+
+def _sina_headers() -> Dict[str, str]:
+    return {
+        "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+        "Referer": "https://finance.sina.com.cn",
+    }
+
+
 class SystemManager:
     def get_version_info(self) -> Dict[str, str]:
         """获取Git版本信息"""
@@ -66,7 +74,7 @@ class SystemManager:
             start = time.time()
             try:
                 # 简单的连通性测试，超时设短一点
-                requests.get(url, timeout=3, headers={"User-Agent": "curl/7.64.1"})
+                requests.get(url, timeout=3, headers=_sina_headers())
                 latency = int((time.time() - start) * 1000)
                 results[name] = {"ok": True, "latency": latency}
             except Exception as e:

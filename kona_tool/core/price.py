@@ -20,6 +20,12 @@ from .policy_runtime import is_policy_enabled
 logger = logging.getLogger(__name__)
 
 
+def _sina_headers() -> Dict[str, Any]:
+    headers = dict(config.HEADERS)
+    headers.setdefault("Referer", "https://finance.sina.com.cn")
+    return headers
+
+
 class PriceCache:
     """价格缓存类"""
     
@@ -363,7 +369,7 @@ def get_forex_rates() -> Dict[str, float]:
     # 备用数据源：新浪外汇
     try:
         url = config.API_ENDPOINTS["sina_forex"]
-        r = monitored_http_get("sina_forex", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        r = monitored_http_get("sina_forex", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
         if r.status_code == 200:
             text = r.text
             matches = re.findall(r'hf_([A-Z]+)CNY.*?=([0-9.]+)', text)
@@ -426,7 +432,7 @@ def _search_sina(query: str, type_code: str) -> List[dict]:
         r = monitored_http_get(
             "sina_search",
             url,
-            headers=config.HEADERS,
+            headers=_sina_headers(),
             timeout=_search_source_timeout_seconds(),
         )
         r.encoding = 'gbk'

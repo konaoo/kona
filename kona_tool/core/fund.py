@@ -290,23 +290,23 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     
     logger.debug(f"Fetching fund price for {code}")
     
-    # 1. 优先东方财富F10确认净值，避免天天接口确认净值日期滞后
-    price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
-    if price > 0:
-        return price, yclose, amt, chg
-
-    # 2. 备源腾讯基金接口（确认净值）
+    # 1. 速度优先：腾讯基金接口
     price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
     if price > 0:
         return price, yclose, amt, chg
 
-    # 3. f_场外基金回退天天（dwjz优先，gsz兜底）
+    # 2. 准确性次优：东财 F10（确认净值）
+    price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
+    if price > 0:
+        return price, yclose, amt, chg
+
+    # 3. 兜底：天天基金（dwjz优先，gsz兜底）
     if code.startswith('f_'):
         price, yclose, amt, chg = get_fund_tiantian_price(code)
         if price > 0:
             return price, yclose, amt, chg
 
-    # 4. 尝试东方财富手机端接口（适合互认基金）
+    # 4. 兜底：东财手机端（适合互认基金）
     price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)
     if price > 0:
         return price, yclose, amt, chg
