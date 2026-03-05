@@ -864,7 +864,31 @@ class _NewsPageState extends State<NewsPage> {
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 10, 14, 8),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: AppTheme.heroDecoration,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x2E5B8DEF)
+              : Colors.white.withValues(alpha: 0.06),
+        ),
+        gradient: LinearGradient(
+          begin: const Alignment(-0.6, -1),
+          end: const Alignment(1, 1),
+          colors: AppTheme.isLight
+              ? const [Color(0xFFDDE8FF), Color(0xFFCFDAF5), Color(0xFFC8D5F0)]
+              : const [Color(0x335B8DEF), Color(0x0F4A7BE0), Color(0xF0191C25)],
+          stops: const [0.0, 0.6, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.isLight
+                ? const Color(0x1A222C48)
+                : Colors.black.withValues(alpha: 0.35),
+            blurRadius: AppTheme.isLight ? 20 : 26,
+            offset: AppTheme.isLight ? const Offset(0, 8) : const Offset(0, 12),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
