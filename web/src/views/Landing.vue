@@ -28,7 +28,9 @@ const iosQrImageUrl = ref('')
 onMounted(async () => {
   try {
     const payload = await api.get<{ apk_download_url?: string, ios_qr_text?: string, ios_qr_image_url?: string }>('/api/web/config', false)
-    if (payload.apk_download_url) apkUrl.value = payload.apk_download_url
+    if (payload.apk_download_url && payload.apk_download_url.trim() !== '') {
+      apkUrl.value = payload.apk_download_url
+    }
     if (payload.ios_qr_text) iosQrText.value = payload.ios_qr_text
     if (payload.ios_qr_image_url) iosQrImageUrl.value = payload.ios_qr_image_url
   } catch {
