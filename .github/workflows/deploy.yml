@@ -309,7 +309,17 @@ jobs:
             web_root=$(curl -sS -o /tmp/kona_web_root.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/ || true)
             app_login=$(curl -sS -o /tmp/kona_app_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/app/login || true)
             admin_login=$(curl -sS -o /tmp/kona_admin_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/admin/login || true)
-            market_status=$(curl -sS -o /tmp/kona_market_status.json -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/api/market/status || true)
+            market_status="000"
+            ms_try=1
+            while [ "$ms_try" -le 5 ]; do
+              market_status=$(curl -sS -o /tmp/kona_market_status.json -w "%{http_code}" --max-time 5 http://127.0.0.1:5003/api/market/status || true)
+              echo "market status attempt $ms_try -> $market_status"
+              if [ "$market_status" = "200" ]; then
+                break
+              fi
+              ms_try=$((ms_try + 1))
+              sleep 1
+            done
             echo "web root -> $web_root"
             echo "app login -> $app_login"
             echo "admin login -> $admin_login"
