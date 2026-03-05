@@ -8,6 +8,103 @@
 
 ---
 
+## v1.0.31 - 行情与快讯性能提速、源优先级重排、部署稳定性加固
+- 发布状态: Released
+- 发布类型: Patch
+- 范围: Backend | Flutter | Web | CI | Docs
+- 关联日期: 2026-03-05
+
+### Summary
+- **基金净值口径纠偏**：基金主源调整为“确认净值优先”，先走东方财富 F10 历史净值，失败后回退腾讯 `jj` 备源，避免估算净值导致的日期滞后与偏差放大。
+- **四市场速度优先重排**：A 股/港股/美股/基金分别设置主次源顺序与超时上限，形成“快源先返回，慢源兜底不拖主链路”的统一策略。
+- **批量价格接口降尾延迟**：`/api/prices/batch` 新增 fast 路径，支持请求级 `timeout_ms`，并引入 cache-first，显著降低前端首屏报价等待。
+- **快讯改造为“预载+增量”**：后端快讯缓存重构为固定窗口；前端进入快讯页先拿近 50 条，再按增量刷新，减少白屏与列表抖动。
+- **多端刷新节奏对齐**：Flutter 将 market status 拉取与报价刷新解耦；Web 对齐刷新 cadence，并补充交易 optimistic rollback，避免失败后前端状态脏写。
+- **CI/部署稳定性收口**：部署流程增加 market status 冷启动重试；补齐 baseline/mock 与 widget 测试稳定性，降低 GitHub Actions 偶发红灯。
+
+### Added
+- `kona_tool/tests/test_fund_source_priority.py`：新增基金源优先级与回退行为覆盖（确认净值优先、腾讯备源、异常分支）。
+- `kona_tool/tests/test_stock_source_order.py`：新增 A/HK/US 源顺序与超时回退测试。
+- 快讯后端缓存能力增强：支持启动预热、增量合并、容量裁剪（默认保留近 50+，可扩展）。
+- Web 交易失败回滚机制：买卖请求失败时撤销 optimistic 变更并恢复缓存快照。
+
+### Changed
+- `kona_tool/core/fund.py`：
+  - 调整基金数据优先级：Eastmoney F10（确认净值） -> Tencent `jj` -> 其他补链路；
+  - 优化 `dwjz/gsz` 取值策略，优先确认值，估算值仅作为兜底。
+- `kona_tool/core/stock.py` / `kona_tool/core/price.py` / `kona_tool/core/system.py`：
+  - 按市场重排源优先级与超时；
+  - 增加美股扩展行情聚合链路的节流与告警降噪。
+- `kona_tool/core/source_health.py` / `kona_tool/core/utils.py` / `kona_tool/config.py`：
+  - 增加慢源（如 Nasdaq/FT）熔断阈值、冷却窗口与单源超时上限；
+  - 将“慢源不阻塞主链路”固化为统一可配置策略。
+- `kona_tool/app.py`：
+  - `/api/prices/batch` 接入 fast 获取器、请求级超时；
+  - market status 缓存与 bootstrap 流程细节优化，减少冷启动时误判失败。
+- `flutter/lib/providers/app_state.dart`：
+  - 将 market status 刷新从报价主流程拆分，避免首页/投资页被状态接口串行拖慢。
+- `flutter/lib/pages/news_page.dart` / `flutter/lib/services/api_service.dart`：
+  - 快讯页面切为“预加载 + 增量刷新 + 主题兼容”新实现。
+- `web/src/pages/app/AppInvestPage.vue` / `web/src/pages/app/AppHomePage.vue` / `web/src/shared/store.ts`：
+  - 对齐刷新频率策略、改进缓存命中与恢复逻辑；
+  - 增加交易 optimistic rollback 与错误恢复。
+- `.github/workflows/deploy.yml`：
+  - market status 冒烟校验增加重试窗口，提升冷启动阶段部署成功率。
+
+### Fixed
+- 修复基金个别代码（如 `025209`）出现旧日期净值优先的问题。
+- 修复快讯页主题 Token 兼容问题（`news_page` hero decoration getter 缺失）。
+- 修复 batch/mock 与 bootstrap 相关测试在 CI 环境的随机失败。
+- 修复 widget 测试中 Provider/Timer 未释放导致的偶发失败。
+
+### Verification
+- Backend:
+  - `pytest kona_tool/tests/test_fund_source_priority.py kona_tool/tests/test_stock_source_order.py kona_tool/tests/test_api_baseline.py`
+- Web:
+  - `cd web && npm run build`
+- Flutter:
+  - `cd flutter && flutter test test/news_page_refresh_test.dart test/auth_boot_flow_test.dart`
+- 部署链路:
+  - GitHub Actions deploy + health + market status smoke 通过。
+
+---
+
+## v1.0.30 - 主题一致性与闪烁治理、日期交互优化、版本解析修复
+- 发布状态: Released
+- 发布类型: Patch
+- 范围: Flutter | Web | CI | Docs
+- 关联日期: 2026-03-04 ~ 2026-03-05
+
+### Summary
+- **跨页面主题统一修复**：修复首页头像闪烁、添加资产分类切换闪烁、底部导航上沿生硬边线、投资弹窗浅色按钮错色等问题。
+- **日期选择器交互优化**：分析页日期轮盘与区间交互重构，减少布局抖动与构建噪音。
+- **版本显示鲁棒性增强**：客户端版本解析支持忽略 `v` 前缀（如 `v1.0.30`），避免版本文案错判。
+- **编辑弹窗删除入口回归**：恢复编辑资产场景头部删除入口并统一删除交互样式。
+- **CI 用例收敛**：修复 9 处前后端测试失败，补 mock 与断言，恢复主干稳定绿勾。
+
+### Added
+- profile 页面测试补充 `getWebConfig` mock，避免邀请文案断言受远端配置影响。
+- 用户群弹窗断言同步到新 UI 文案。
+
+### Changed
+- `flutter/lib/config/theme.dart` 与多页面（home/invest/news/profile/analysis/login）主题 token 同步修正。
+- `flutter/lib/widgets/invest_trade_dialog.dart` / `flutter/lib/widgets/add_asset_dialog.dart`：删除按钮、按钮态与视觉层级收敛。
+- `web/src/pages/app/AppInvestPage.vue` / `web/src/pages/app/AppNewsPage.vue`：主题与刷新细节同步。
+- `flutter/lib/pages/profile_page.dart`：版本号解析逻辑兼容 `v` 前缀。
+
+### Fixed
+- 修复多页面白/黑主题切换时的闪烁与颜色跳变。
+- 修复投资弹窗删除入口缺失与删除交互不一致问题。
+- 修复 analysis/profile/login/后端周末日历等 CI 失败用例。
+
+### Verification
+- `flutter test`
+- `pytest`
+- `flutter analyze`
+- 主干 GitHub Actions 绿勾验证通过。
+
+---
+
 ## v1.0.29 - 用户群交互深度纠偏与图片保存稳定性加固
 - 发布状态: Released
 - 发布类型: Patch

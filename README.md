@@ -104,6 +104,7 @@ npm install && npm run dev
 ## 📖 文档导航
 
 - [环境准备与迁移说明](./docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md)
+- [行情与快讯性能交接（v1.0.31）](./docs/README_HANDOVER_2026_03_QUOTE_NEWS_PERF_AND_CI.md)
 - [资产同步与盈亏算法口径](./docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md)
 - [管理后台功能手册 V2](./docs/README_ADMIN_CONSOLE_V2.md)
 - [生物识别与会话持久化](./docs/README_AUTH_PERSISTENCE_BIOMETRIC.md)
@@ -112,15 +113,17 @@ npm install && npm run dev
 
 ## 📈 版本历史
 
-最新稳定版：`v1.0.30`
+最新稳定版：`v1.0.31`
+- **行情与快讯性能升级 (v1.0.31)**
+  - 四市场报价链路改为速度优先：快源先返回、慢源受控兜底。
+  - 基金净值改为确认值优先（Eastmoney F10），新增腾讯 `jj` 备源。
+  - 快讯页升级为“预加载近 50 条 + 增量刷新”。
+  - Web/Flutter 刷新节奏对齐，并补 optimistic rollback 与部署重试稳定性。
 - **UI & 交互体验升级 (v1.0.30)**
-  - 修复首页头像由于图片频繁 Decode 导致的闪烁问题。
-  - 修复「添加资产」面板分类切换时在浅色模式及深色模式下的颜色突变与闪烁（现采用平滑的 `AnimatedOpacity` 与白色主题过渡）。
-  - 去除深色模式下底部导航栏上方生硬的边框线，优化空间层级感。
-  - 修复「投资」- 添加/编辑交易弹窗中，在浅色模式下按钮无法适配变为暗色的问题。
-  - 优化「注册登录」页面的获取邀请码二维码样式，调整为更美观的 200x200 正方形卡片式布局。
+  - 修复首页头像闪烁、添加资产面板主题闪烁、投资弹窗浅色态错色等问题。
+  - 优化分析页日期交互与多页面主题一致性。
 - `v1.0.29` 及更早：
-  - 修复了 Android 16 真机图片保存与 UI 弹窗层级细节。
+  - 修复 Android 16 真机图片保存与用户群弹窗层级细节。
 - 详情请查阅 [CHANGELOG.md](./CHANGELOG.md)。
 
 ---
