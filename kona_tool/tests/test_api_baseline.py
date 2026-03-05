@@ -290,7 +290,7 @@ class ApiBaselineTests(unittest.TestCase):
             self.assertEqual(data.get('price'), 10)
 
     def test_prices_batch_mocked(self):
-        with patch.object(app_module, 'batch_get_prices', return_value={'sh600000': (10, 9, 0, 0)}):
+        with patch.object(app_module, 'batch_get_prices_fast', return_value={'sh600000': (10, 9, 0, 0)}):
             resp = self.client.post('/api/prices/batch', json={'codes': ['sh600000']})
             self.assertEqual(resp.status_code, 200)
             data = resp.get_json()

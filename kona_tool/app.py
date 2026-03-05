@@ -264,13 +264,18 @@ def _rate_limit_key() -> str:
     return _client_ip() or get_remote_address()
 
 
-def _get_market_status_cached(now_utc: Optional[datetime] = None) -> Dict[str, Any]:
+def _get_market_status_cached(
+    now_utc: Optional[datetime] = None,
+    *,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
     now = now_utc or datetime.now(timezone.utc)
     now_ts = time.time()
-    with _market_status_lock:
-        cached_at = float(_market_status_cache.get("cached_at", 0.0) or 0.0)
-        if _market_status_cache and (now_ts - cached_at) < _MARKET_STATUS_CACHE_TTL_SECONDS:
-            return dict(_market_status_cache.get("payload", {}))
+    if not force_refresh:
+        with _market_status_lock:
+            cached_at = float(_market_status_cache.get("cached_at", 0.0) or 0.0)
+            if _market_status_cache and (now_ts - cached_at) < _MARKET_STATUS_CACHE_TTL_SECONDS:
+                return dict(_market_status_cache.get("payload", {}))
 
     markets = get_market_statuses(_MARKET_SCOPE, now=now)
     payload = {
@@ -2526,7 +2531,7 @@ def api_sync_bootstrap():
         else:
             data[domain] = _build_sync_domain_data(domain, user_id=user_id)
 
-    market_payload = _get_market_status_cached(now_utc=now_utc)
+    market_payload = _get_market_status_cached(now_utc=now_utc, force_refresh=True)
     markets = market_payload.get("markets", {})
     return jsonify(
         {
