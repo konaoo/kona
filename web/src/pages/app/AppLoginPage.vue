@@ -141,12 +141,12 @@
 
         <div class="quote-card" :class="{ 'fade-out': !quoteCardVisible }">
           <div class="quote-mark">"</div>
-          <div class="quote-text">{{ quotes[currentQuoteIndex].text }}</div>
+          <div class="quote-text">{{ currentQuote?.text }}</div>
           <div class="quote-author">
-            <div class="qa-avatar">{{ quotes[currentQuoteIndex].avatar }}</div>
+            <div class="qa-avatar">{{ currentQuote?.avatar }}</div>
             <div>
-              <div class="qa-name">{{ quotes[currentQuoteIndex].name }}</div>
-              <div class="qa-role">{{ quotes[currentQuoteIndex].role }}</div>
+              <div class="qa-name">{{ currentQuote?.name }}</div>
+              <div class="qa-role">{{ currentQuote?.role }}</div>
             </div>
           </div>
           <div class="quote-controls">
@@ -187,7 +187,7 @@ import { useKonaStore } from '../../shared/store'
 
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
 const REMEMBER_USERNAME_KEY = 'kona_web_remember_username'
-const REMEMBER_PASSWORD_KEY = 'kona_web_remember_password'
+
 
 const router = useRouter()
 const route = useRoute()
@@ -218,6 +218,7 @@ const quoteCardVisible = ref(true)
 let quoteInterval: ReturnType<typeof setInterval>
 
 const isRegisterRoute = computed(() => route.path === '/app/register')
+const currentQuote = computed(() => quotes[currentQuoteIndex.value])
 
 function switchTab(type: 'login' | 'register') {
   error.value = ''
