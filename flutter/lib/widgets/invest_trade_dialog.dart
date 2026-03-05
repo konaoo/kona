@@ -2873,23 +2873,70 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     letterSpacing: 0.02,
                   ),
                 ),
-                InkWell(
-                  onTap: _saving ? null : _closeDialog,
-                  customBorder: const CircleBorder(),
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: _tokens.surface2,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: _tokens.textMuted,
-                    ),
-                  ),
-                ),
+                _isAdd
+                    ? InkWell(
+                        onTap: _saving ? null : _closeDialog,
+                        customBorder: const CircleBorder(),
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _tokens.surface2,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 14,
+                            color: _tokens.textMuted,
+                          ),
+                        ),
+                      )
+                    : Theme(
+                        data: Theme.of(context).copyWith(
+                          splashColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                        ),
+                        child: PopupMenuButton<String>(
+                          onSelected: _onMoreMenuSelect,
+                          color: _tokens.surface2,
+                          elevation: 8,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: _tokens.border, width: 1),
+                          ),
+                          offset: const Offset(0, 32),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 'corrective_delete',
+                              height: 40,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_outline, size: 16, color: _tokens.red),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '删除该资产',
+                                    style: _dm(size: 13, color: _tokens.red, weight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: _tokens.surface2,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.more_horiz,
+                              size: 14,
+                              color: _tokens.textMuted,
+                            ),
+                          ),
+                        ),
+                      ),
               ],
             ),
           ),
