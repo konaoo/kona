@@ -6,6 +6,7 @@ import time
 import logging
 import re
 import threading
+import os
 from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
@@ -102,6 +103,22 @@ _runtime_metrics: Dict[str, Any] = {
     "last_fetch_at": 0.0,
 }
 
+_FAST_BATCH_TIMEOUT_SECONDS = max(
+    0.2,
+    float(os.getenv("PRICE_BATCH_TIMEOUT_SECONDS", "0.6")),
+)
+_FAST_BATCH_MAX_WORKERS = max(
+    4,
+    int(os.getenv("PRICE_BATCH_MAX_WORKERS", "12")),
+)
+_ASYNC_REFRESH_MAX_WORKERS = max(
+    2,
+    int(os.getenv("PRICE_ASYNC_REFRESH_WORKERS", "6")),
+)
+_async_refresh_executor = ThreadPoolExecutor(max_workers=_ASYNC_REFRESH_MAX_WORKERS)
+_async_refresh_lock = threading.Lock()
+_async_refresh_inflight: set[str] = set()
+
 
 def _mark_metric(key: str, inc: int = 1) -> None:
     with _runtime_lock:
@@ -112,6 +129,39 @@ def _mark_metric(key: str, inc: int = 1) -> None:
 def get_price_runtime_metrics() -> Dict[str, Any]:
     with _runtime_lock:
         return dict(_runtime_metrics)
+
+
+def _normalize_code_key(code: Any) -> str:
+    return str(code or "").strip()
+
+
+def _unique_codes(codes: list) -> List[str]:
+    seen = set()
+    uniq: List[str] = []
+    for raw in codes:
+        code = _normalize_code_key(raw)
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        uniq.append(code)
+    return uniq
+
+
+def _release_async_refresh(code: str) -> None:
+    with _async_refresh_lock:
+        _async_refresh_inflight.discard(code)
+
+
+def _submit_async_refresh(code: str) -> None:
+    normalized = _normalize_code_key(code)
+    if not normalized:
+        return
+    with _async_refresh_lock:
+        if normalized in _async_refresh_inflight:
+            return
+        _async_refresh_inflight.add(normalized)
+    future = _async_refresh_executor.submit(get_price, normalized, False)
+    future.add_done_callback(lambda _: _release_async_refresh(normalized))
 
 
 def get_price_source_health() -> Dict[str, Dict[str, Any]]:
@@ -255,6 +305,124 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
                 except Exception as e:
                     logger.warning(f"Failed to get price for {code}: {e}")
                     results[code] = (0.0, 0.0, 0.0, 0.0)
+
+    return results
+
+
+def batch_get_prices_fast(
+    codes: list,
+    timeout_seconds: Optional[float] = None,
+) -> Dict[str, Tuple[float, float, float, float]]:
+    """
+    快速批量报价：
+    - 优先返回 fresh cache
+    - 对未命中的代码做短超时并发抓取
+    - 超时后立即返回 stale/0，并异步继续刷新
+    """
+    normalized_codes = _unique_codes(codes)
+    if not normalized_codes:
+        return {}
+
+    timeout_budget = (
+        _FAST_BATCH_TIMEOUT_SECONDS if timeout_seconds is None else max(0.2, float(timeout_seconds))
+    )
+    max_workers = min(_FAST_BATCH_MAX_WORKERS, max(1, len(normalized_codes)))
+
+    results: Dict[str, Tuple[float, float, float, float]] = {}
+    stale_map: Dict[str, Tuple[float, float, float, float]] = {}
+    missing_codes: List[str] = []
+
+    for code in normalized_codes:
+        cached = price_cache.get(code)
+        if cached:
+            results[code] = cached
+            continue
+        stale = price_cache.get_stale(code)
+        if stale:
+            stale_map[code] = stale
+        missing_codes.append(code)
+
+    if not missing_codes:
+        return results
+
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    future_to_code = {
+        executor.submit(get_price, code, False): code
+        for code in missing_codes
+    }
+    done = set()
+    not_done = set()
+    unresolved_codes: List[str] = []
+    try:
+        done, not_done = wait(
+            set(future_to_code.keys()),
+            timeout=timeout_budget,
+            return_when=FIRST_COMPLETED,
+        )
+        # 首轮有结果后继续尽量吃掉剩余已完成任务，直到超时预算结束。
+        deadline = time.monotonic() + timeout_budget
+        while done:
+            current_done = list(done)
+            done.clear()
+            for future in current_done:
+                code = future_to_code[future]
+                try:
+                    value = future.result()
+                except Exception as exc:
+                    logger.warning("fast batch get price failed code=%s err=%s", code, exc)
+                    value = (0.0, 0.0, 0.0, 0.0)
+                if value and float(value[0] or 0.0) > 0:
+                    results[code] = value
+                elif code in stale_map:
+                    _mark_metric("stale_hits")
+                    results[code] = stale_map[code]
+                else:
+                    results[code] = (0.0, 0.0, 0.0, 0.0)
+
+            pending = {
+                future
+                for future, code in future_to_code.items()
+                if code not in results and not future.done()
+            }
+            if not pending:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            done, not_done = wait(
+                pending,
+                timeout=remaining,
+                return_when=FIRST_COMPLETED,
+            )
+
+        for future, code in future_to_code.items():
+            if code in results:
+                continue
+            if future.done():
+                try:
+                    value = future.result()
+                except Exception:
+                    value = (0.0, 0.0, 0.0, 0.0)
+                if value and float(value[0] or 0.0) > 0:
+                    results[code] = value
+                elif code in stale_map:
+                    _mark_metric("stale_hits")
+                    results[code] = stale_map[code]
+                else:
+                    results[code] = (0.0, 0.0, 0.0, 0.0)
+            else:
+                unresolved_codes.append(code)
+                if code in stale_map:
+                    _mark_metric("stale_hits")
+                    results[code] = stale_map[code]
+                else:
+                    results[code] = (0.0, 0.0, 0.0, 0.0)
+                future.cancel()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    for code in unresolved_codes:
+        _submit_async_refresh(code)
 
     return results
 

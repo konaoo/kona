@@ -12,6 +12,7 @@ import hashlib
 import math
 from functools import wraps
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import Flask, jsonify, request, make_response, send_file, send_from_directory, g, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -27,6 +28,7 @@ from core.db import DatabaseManager
 from core.price import (
     get_price,
     batch_get_prices,
+    batch_get_prices_fast,
     get_forex_rates,
     search_stocks,
     get_price_runtime_metrics,
@@ -60,7 +62,7 @@ from core.auth import (
 )
 from core.ip_region import resolve_ip_region
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(
@@ -110,6 +112,9 @@ _ACTIVITY_TOUCH_INTERVAL_SECONDS = 30.0
 _EXCHANGE_FUND_PROBE_TTL_SECONDS = 300.0
 _exchange_fund_probe_lock = threading.Lock()
 _exchange_fund_probe_cache: Dict[str, Dict[str, Any]] = {}
+_market_status_lock = threading.Lock()
+_market_status_cache: Dict[str, Any] = {}
+_MARKET_STATUS_CACHE_TTL_SECONDS = 5.0
 _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/password/change",
     "/api/auth/logout",
@@ -257,6 +262,26 @@ def _resolve_exchange_tradable_fund_code(code: str) -> str:
 
 def _rate_limit_key() -> str:
     return _client_ip() or get_remote_address()
+
+
+def _get_market_status_cached(now_utc: Optional[datetime] = None) -> Dict[str, Any]:
+    now = now_utc or datetime.now(timezone.utc)
+    now_ts = time.time()
+    with _market_status_lock:
+        cached_at = float(_market_status_cache.get("cached_at", 0.0) or 0.0)
+        if _market_status_cache and (now_ts - cached_at) < _MARKET_STATUS_CACHE_TTL_SECONDS:
+            return dict(_market_status_cache.get("payload", {}))
+
+    markets = get_market_statuses(_MARKET_SCOPE, now=now)
+    payload = {
+        "server_time_utc": now.isoformat(),
+        "markets": markets,
+        "all_closed": all_markets_closed(_MARKET_SCOPE, now=now),
+    }
+    with _market_status_lock:
+        _market_status_cache["cached_at"] = now_ts
+        _market_status_cache["payload"] = payload
+    return dict(payload)
 
 
 def _idempotency_begin(action: str, user_id: str, request_id: str):
@@ -899,13 +924,22 @@ def api_price():
 @app.route('/api/prices/batch', methods=['POST'])
 def api_prices_batch():
     """批量获取价格"""
-    data = request.json
+    data = request.json or {}
     codes = data.get('codes', [])
     
     if not codes:
         return jsonify({"error": "Missing codes"}), 400
     
-    results = batch_get_prices(codes)
+    timeout_ms_raw = (data.get('timeout_ms') if isinstance(data, dict) else None)
+    timeout_seconds = None
+    try:
+        if timeout_ms_raw is not None:
+            timeout_seconds = max(0.2, min(float(timeout_ms_raw) / 1000.0, 5.0))
+    except Exception:
+        timeout_seconds = None
+
+    # 快速模式：优先返回缓存/短超时结果，慢源在后台继续刷新，不阻塞本次响应。
+    results = batch_get_prices_fast(codes, timeout_seconds=timeout_seconds)
     
     # 将元组转换为对象，便于前端使用
     formatted_results = {}
@@ -936,7 +970,22 @@ def api_prices_batch():
 
     if symbol_by_code:
         try:
-            us_quotes = get_us_extended_quotes(list(set(symbol_by_code.values())))
+            symbols = list(set(symbol_by_code.values()))
+            us_quote_timeout_sec = 0.35
+            us_quotes: Dict[str, Any] = {}
+            executor = ThreadPoolExecutor(max_workers=1)
+            fut = executor.submit(get_us_extended_quotes, symbols)
+            try:
+                us_quotes = fut.result(timeout=us_quote_timeout_sec)
+            except FuturesTimeoutError:
+                fut.cancel()
+                logger.debug(
+                    "US extended quote timed out (symbols=%s timeout=%.1fs)",
+                    len(symbols),
+                    us_quote_timeout_sec,
+                )
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
             for code in us_codes:
                 symbol = symbol_by_code.get(code)
                 quote = us_quotes.get(symbol or '', {})
@@ -2437,14 +2486,7 @@ def health():
 def api_market_status():
     """主流市场开休市状态。"""
     now_utc = datetime.now(timezone.utc)
-    markets = get_market_statuses(_MARKET_SCOPE, now=now_utc)
-    return jsonify(
-        {
-            "server_time_utc": now_utc.isoformat(),
-            "markets": markets,
-            "all_closed": all_markets_closed(_MARKET_SCOPE, now=now_utc),
-        }
-    )
+    return jsonify(_get_market_status_cached(now_utc=now_utc))
 
 
 @app.route('/api/sync/bootstrap', methods=['POST'])
@@ -2484,7 +2526,8 @@ def api_sync_bootstrap():
         else:
             data[domain] = _build_sync_domain_data(domain, user_id=user_id)
 
-    markets = get_market_statuses(_MARKET_SCOPE, now=now_utc)
+    market_payload = _get_market_status_cached(now_utc=now_utc)
+    markets = market_payload.get("markets", {})
     return jsonify(
         {
             "server_time": now_utc.isoformat(),
