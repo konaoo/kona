@@ -1025,8 +1025,14 @@ class ApiService {
   Future<Map<String, dynamic>> getNews({
     int page = 1,
     int pageSize = 30,
+    String? sinceId,
   }) async {
-    final data = await _get('${ApiConfig.news}?page=$page&page_size=$pageSize');
+    final query = StringBuffer('page=$page&page_size=$pageSize');
+    final marker = sinceId?.trim() ?? '';
+    if (marker.isNotEmpty) {
+      query.write('&since_id=${Uri.encodeQueryComponent(marker)}');
+    }
+    final data = await _get('${ApiConfig.news}?$query');
     if (data is Map<String, dynamic>) {
       return data;
     }
