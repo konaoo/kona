@@ -105,6 +105,57 @@ def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float]
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
+def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float]:
+    """
+    从腾讯基金接口获取场外基金净值（备源）
+
+    Args:
+        clean_code: 清理后的基金代码（不含前缀）
+
+    Returns:
+        (当前价格, 昨收, 涨跌额, 涨跌幅%)
+    """
+    try:
+        symbol = f"jj{clean_code}"
+        url = f"https://qt.gtimg.cn/q={symbol}"
+        r = monitored_http_get("tencent_fund_jj", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
+        if r.status_code != 200:
+            return 0.0, 0.0, 0.0, 0.0
+
+        text = str(r.text or "")
+        match = re.search(r'v_[^=]+="([^"]*)"', text)
+        if not match:
+            return 0.0, 0.0, 0.0, 0.0
+
+        fields = match.group(1).split("~")
+        if len(fields) < 9:
+            return 0.0, 0.0, 0.0, 0.0
+
+        curr = safe_float(fields[5]) if len(fields) > 5 else 0.0
+        yclose_from_feed = safe_float(fields[6]) if len(fields) > 6 else 0.0
+        chg = safe_float(fields[7]) if len(fields) > 7 else 0.0
+
+        if curr <= 0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        yclose = yclose_from_feed if yclose_from_feed > 0 else curr
+        if abs(chg) > 1e-9:
+            base = 1 + chg / 100
+            if abs(base) > 1e-9:
+                inferred = curr / base
+                if inferred > 0:
+                    yclose = inferred
+
+        amt = curr - yclose
+        chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
+        return curr, yclose, amt, chg_pct
+    except Exception as e:
+        logger.warning(f"Tencent fund API error for {clean_code}: {e}")
+
+    return 0.0, 0.0, 0.0, 0.0
+
+
+@retry_on_failure(max_retries=2, delay=0.5)
 def get_fund_eastmoney_mobile(clean_code: str) -> Tuple[float, float, float, float]:
     """
     从东方财富手机端接口获取基金净值（适合互认基金）
@@ -244,18 +295,23 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     if price > 0:
         return price, yclose, amt, chg
 
-    # 2. f_场外基金回退天天（dwjz优先，gsz兜底）
+    # 2. 备源腾讯基金接口（确认净值）
+    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
+    if price > 0:
+        return price, yclose, amt, chg
+
+    # 3. f_场外基金回退天天（dwjz优先，gsz兜底）
     if code.startswith('f_'):
         price, yclose, amt, chg = get_fund_tiantian_price(code)
         if price > 0:
             return price, yclose, amt, chg
 
-    # 3. 尝试东方财富手机端接口（适合互认基金）
+    # 4. 尝试东方财富手机端接口（适合互认基金）
     price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)
     if price > 0:
         return price, yclose, amt, chg
     
-    # 4. 尝试海外基金网页（适合968xxx等海外基金）
+    # 5. 尝试海外基金网页（适合968xxx等海外基金）
     if clean_code.startswith('968'):
         price, yclose, amt, chg = get_fund_overseas_html(clean_code)
         if price > 0:
