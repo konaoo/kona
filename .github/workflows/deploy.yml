@@ -129,7 +129,6 @@ jobs:
       needs.backend-gate.result == 'success' &&
       needs.frontend-gate.result == 'success'
     # 部署链路允许非代码原因失败（网络/SSH抖动），不阻塞代码检查结论。
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -200,11 +199,6 @@ jobs:
               exit 1
             fi
 
-            WEB_DIR="$APP_DIR/static/web"
-            if [ ! -f "$APP_DIR/app.py" ] && [ -d "$APP_DIR/kona_tool" ]; then
-              WEB_DIR="$APP_DIR/kona_tool/static/web"
-            fi
-
             cd "$APP_DIR"
             echo "Deploy dir: $(pwd)"
             git config --global --add safe.directory "$APP_DIR"
@@ -212,7 +206,6 @@ jobs:
               FETCH_OK=0
               for attempt in 1 2 3 4 5; do
                 echo "git fetch attempt $attempt ..."
-                # 强制 HTTP/1.1，规避部分环境下 fetch 的偶发空响应
                 if git -c http.version=HTTP/1.1 fetch --depth=1 origin main; then
                   FETCH_OK=1
                   break
@@ -220,35 +213,29 @@ jobs:
                 sleep 2
               done
               if [ "$FETCH_OK" -ne 1 ]; then
-                echo "ERROR: git fetch origin main failed after retries."
-                echo "Please check server outbound network to github.com:443."
+                echo "ERROR: git fetch origin main failed."
                 exit 1
               fi
               git reset --hard origin/main
+              echo "Server git status after reset:"
+              git log -1 --oneline
             else
-              echo "WARN: $APP_DIR is not a git repository, skip git sync."
-            fi
-
-            REQ_FILE="requirements.txt"
-            if [ ! -f "$REQ_FILE" ] && [ -f "kona_tool/requirements.txt" ]; then
-              REQ_FILE="kona_tool/requirements.txt"
-            fi
-            if [ ! -f "$REQ_FILE" ]; then
-              echo "requirements file not found in $APP_DIR"
+              echo "ERROR: $APP_DIR is not a git repository! This will prevent backend updates."
               exit 1
             fi
+
+            WEB_DIR="$APP_DIR/kona_tool/static/web"
+            if [ ! -d "$APP_DIR/kona_tool" ]; then
+               WEB_DIR="$APP_DIR/static/web"
+            fi
+            echo "Static web target: $WEB_DIR"
+
             PYTHON_BIN="python3"
             if [ -f "kona_tool/.venv/bin/python3" ]; then
               PYTHON_BIN="kona_tool/.venv/bin/python3"
-            elif [ -f ".venv/bin/python3" ]; then
-              PYTHON_BIN=".venv/bin/python3"
             fi
             
-            if [ "$PYTHON_BIN" != "python3" ]; then
-              $PYTHON_BIN -m pip install -r "$REQ_FILE"
-            else
-              $PYTHON_BIN -m pip install --user -r "$REQ_FILE"
-            fi
+            $PYTHON_BIN -m pip install -r kona_tool/requirements.txt --user
 
             if [ ! -f /tmp/web-dist.tar.gz ]; then
               echo "Missing /tmp/web-dist.tar.gz"
@@ -257,32 +244,16 @@ jobs:
             TMP_WEB_DIR="$(mktemp -d)"
             tar -xzf /tmp/web-dist.tar.gz -C "$TMP_WEB_DIR"
             rm -f /tmp/web-dist.tar.gz
-            BACKUP_WEB_DIR="${WEB_DIR}.bak.$(date +%s)"
-            if [ -d "$WEB_DIR" ]; then
-              cp -a "$WEB_DIR" "$BACKUP_WEB_DIR"
-            fi
+            
             rm -rf "$WEB_DIR"
             mkdir -p "$WEB_DIR"
             cp -a "$TMP_WEB_DIR"/. "$WEB_DIR"/
             rm -rf "$TMP_WEB_DIR"
-            rollback_web() {
-              if [ -d "$BACKUP_WEB_DIR" ]; then
-                echo "Rolling back web artifact from $BACKUP_WEB_DIR ..."
-                rm -rf "$WEB_DIR"
-                cp -a "$BACKUP_WEB_DIR" "$WEB_DIR"
-                sudo systemctl restart kona || true
-              else
-                echo "No web backup directory found, skip rollback."
-              fi
-            }
+            echo "Frontend assets updated in $WEB_DIR"
+            ls -l "$WEB_DIR/index.html"
 
-            if ! sudo test -f /etc/systemd/system/kona.service; then
-              echo "Missing /etc/systemd/system/kona.service on server."
-              echo "Please bootstrap service unit once, then re-run deploy."
-              exit 1
-            fi
-            echo "Existing /etc/systemd/system/kona.service detected, keep current unit."
             sudo systemctl restart kona
+            echo "Systemd service kona restarted."
 
             i=1
             while [ "$i" -le 60 ]; do
