@@ -59,12 +59,17 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
             code = f"f_{code}"
             if not curr:
                 curr = 'CNY'
+        # 16xxxx 多为 LOF/联接基金，保留基金口径
+        elif code.startswith('16'):
+            code = f"f_{code}"
+            if not curr:
+                curr = 'CNY'
         # 沪市: 60, 51, 90
         elif code.startswith(('6', '5', '9')):
             code = f"sh{code}"
             if not curr:
                 curr = 'CNY'
-        # 深市: 00, 30, 15, 16, 20
+        # 深市: 00, 30, 15, 20
         elif code.startswith(('0', '3', '1', '2')):
             code = f"sz{code}"
             if not curr:

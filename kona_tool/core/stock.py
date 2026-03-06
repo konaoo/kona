@@ -34,6 +34,21 @@ def _sina_headers() -> Dict[str, Any]:
     return headers
 
 
+def _parse_locale_decimal(value: Any) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    text = text.replace("\xa0", "").replace(" ", "")
+    if "," in text and "." in text:
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif "," in text:
+        text = text.replace(",", ".")
+    return safe_float(text)
+
+
 def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float]:
     """
     东财 A/HK 行情（本地市场回退链路）。
@@ -392,6 +407,55 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     return 0.0, 0.0, 0.0, 0.0
 
 
+@retry_on_failure(max_retries=2, delay=0.5)
+def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float]:
+    """
+    通过 Boursorama 搜索页按 ISIN 解析海外基金净值。
+    """
+    try:
+        query = str(isin or "").strip().upper()
+        if not query:
+            return 0.0, 0.0, 0.0, 0.0
+
+        url = f"https://www.boursorama.com/recherche/?query={query}"
+        headers = dict(config.HEADERS)
+        headers.setdefault("Referer", "https://www.boursorama.com/")
+
+        r = monitored_http_get("boursorama_fund", url, headers=headers, timeout=config.API_TIMEOUT)
+        if r.status_code != 200:
+            return 0.0, 0.0, 0.0, 0.0
+
+        final_url = str(getattr(r, "url", "") or "")
+        if "/bourse/opcvm/cours/" not in final_url:
+            return 0.0, 0.0, 0.0, 0.0
+
+        text = str(r.text or "")
+        price_match = re.search(r'data-ist-last>\s*([^<]+)\s*<', text, re.I)
+        if not price_match:
+            return 0.0, 0.0, 0.0, 0.0
+
+        curr = _parse_locale_decimal(price_match.group(1))
+        if curr <= 0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        variation_match = re.search(r'data-ist-variation>\s*([^<]+)\s*<', text, re.I)
+        chg = _parse_locale_decimal(variation_match.group(1)) if variation_match else 0.0
+        yclose = curr
+        base = 1 + chg / 100
+        if abs(chg) > 1e-9 and abs(base) > 1e-9:
+            inferred = curr / base
+            if inferred > 0:
+                yclose = inferred
+
+        amt = curr - yclose
+        chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
+        return curr, yclose, amt, chg_pct
+    except Exception as e:
+        _log_warn_throttled("boursorama_fund_api", f"Boursorama fund API error: {e}")
+
+    return 0.0, 0.0, 0.0, 0.0
+
+
 def get_us_asset_type(code: str) -> Optional[str]:
     """
     判断美股资产类型：ETF -> fund / 股票 -> us
@@ -604,7 +668,11 @@ def get_stock_price(code: str) -> Tuple[float, float, float, float]:
     
     # FT基金
     if code.startswith('ft_'):
-        return get_ft_fund_price(code.replace('ft_', ''))
+        isin = code.replace('ft_', '')
+        curr, yclose, amt, chg = get_boursorama_fund_price(isin)
+        if curr > 0:
+            return curr, yclose, amt, chg
+        return get_ft_fund_price(isin)
     
     # 美股
     if code.startswith('gb_'):

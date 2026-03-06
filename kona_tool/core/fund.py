@@ -4,13 +4,30 @@
 """
 import re
 import logging
-import requests
 from typing import Tuple, Optional
 
 import config
 from .utils import safe_float, retry_on_failure, monitored_http_get
 
 logger = logging.getLogger(__name__)
+
+
+def _derive_yclose_from_price_and_change(curr: float, chg_pct: float) -> float:
+    if curr <= 0:
+        return 0.0
+    base = 1 + chg_pct / 100
+    if abs(base) <= 1e-9:
+        return 0.0
+    inferred = curr / base
+    return inferred if inferred > 0 else 0.0
+
+
+def _is_plausible_fund_yclose(curr: float, yclose: float) -> bool:
+    if curr <= 0 or yclose <= 0:
+        return False
+    ratio = yclose / curr
+    # 场外基金单日涨跌通常很小；放宽到 20% 作为脏数据保护，避免把累计净值当昨收。
+    return 0.8 <= ratio <= 1.2
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -138,13 +155,13 @@ def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float]:
         if curr <= 0:
             return 0.0, 0.0, 0.0, 0.0
 
-        yclose = yclose_from_feed if yclose_from_feed > 0 else curr
+        yclose = 0.0
         if abs(chg) > 1e-9:
-            base = 1 + chg / 100
-            if abs(base) > 1e-9:
-                inferred = curr / base
-                if inferred > 0:
-                    yclose = inferred
+            yclose = _derive_yclose_from_price_and_change(curr, chg)
+        if yclose <= 0 and _is_plausible_fund_yclose(curr, yclose_from_feed):
+            yclose = yclose_from_feed
+        if yclose <= 0:
+            yclose = curr
 
         amt = curr - yclose
         chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
@@ -283,28 +300,29 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     Returns:
         (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
-    clean_code = re.sub(r'[^0-9]', '', str(code))
+    code_str = str(code or '').strip()
+    clean_code = re.sub(r'[^0-9]', '', code_str)
     
     if not clean_code:
         return 0.0, 0.0, 0.0, 0.0
     
     logger.debug(f"Fetching fund price for {code}")
     
-    # 1. 速度优先：腾讯基金接口
-    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
-    if price > 0:
-        return price, yclose, amt, chg
-
-    # 2. 准确性次优：东财 F10（确认净值）
+    # 1. 确认净值优先：东财 F10
     price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
     if price > 0:
         return price, yclose, amt, chg
 
-    # 3. 兜底：天天基金（dwjz优先，gsz兜底）
-    if code.startswith('f_'):
-        price, yclose, amt, chg = get_fund_tiantian_price(code)
+    # 2. 兜底：天天基金（dwjz优先，gsz兜底）
+    if code_str.startswith('f_'):
+        price, yclose, amt, chg = get_fund_tiantian_price(code_str)
         if price > 0:
             return price, yclose, amt, chg
+
+    # 3. 兜底：腾讯 jj，仅补现价，不再信任其累计净值字段为昨收。
+    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
+    if price > 0:
+        return price, yclose, amt, chg
 
     # 4. 兜底：东财手机端（适合互认基金）
     price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)

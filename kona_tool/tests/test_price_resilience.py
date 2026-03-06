@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -65,6 +66,19 @@ class TestPriceResilience(unittest.TestCase):
 
         self.assertAlmostEqual(got[0], 1.2345, places=4)
         stock_mock.assert_not_called()
+
+    def test_fast_batch_waits_a_bit_longer_for_ft_codes(self):
+        def fake_get_price(code, use_cache):
+            if code == "ft_LU1116320737":
+                time.sleep(0.75)
+                return (9.38, 9.35, 0.03, 0.29)
+            return (0.0, 0.0, 0.0, 0.0)
+
+        with patch("core.price.get_price", side_effect=fake_get_price):
+            got = price.batch_get_prices_fast(["ft_LU1116320737"], timeout_seconds=0.1)
+
+        self.assertIn("ft_LU1116320737", got)
+        self.assertAlmostEqual(got["ft_LU1116320737"][0], 9.38, places=2)
 
 
 if __name__ == "__main__":

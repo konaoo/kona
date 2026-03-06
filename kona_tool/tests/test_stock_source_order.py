@@ -11,14 +11,15 @@ if str(KONA_TOOL) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
-from core.stock import get_sina_stock_price, get_us_stock_price
+from core.stock import get_boursorama_fund_price, get_sina_stock_price, get_stock_price, get_us_stock_price
 
 
 class _Resp:
-    def __init__(self, text: str = "", status_code: int = 200, json_data=None):
+    def __init__(self, text: str = "", status_code: int = 200, json_data=None, url: str = ""):
         self.text = text
         self.status_code = status_code
         self._json_data = json_data if json_data is not None else {}
+        self.url = url
 
     def json(self):
         return self._json_data
@@ -138,6 +139,43 @@ class TestStockSourceOrder(unittest.TestCase):
         # eastmoney 会按 105/106 两个 secid 依次尝试
         self.assertGreaterEqual(calls.count("eastmoney_us_stock"), 1)
         self.assertGreaterEqual(nasdaq_mock.call_count, 1)
+
+    def test_boursorama_fund_parser_reads_price_and_variation(self):
+        html = """
+        <html><body>
+          <span class="c-instrument c-instrument--last" data-ist-last>9,38</span>
+          <span class="c-instrument c-instrument--variation" data-ist-variation>+0,29%</span>
+        </body></html>
+        """
+        with patch(
+            "core.stock.monitored_http_get",
+            return_value=_Resp(
+                text=html,
+                status_code=200,
+                url="https://www.boursorama.com/bourse/opcvm/cours/0P00014FO3/",
+            ),
+        ):
+            curr, yclose, amt, chg = get_boursorama_fund_price("LU1116320737")
+
+        self.assertAlmostEqual(curr, 9.38, places=2)
+        self.assertAlmostEqual(chg, 0.29, places=2)
+        self.assertAlmostEqual(yclose, curr / 1.0029, places=4)
+        self.assertAlmostEqual(amt, curr - yclose, places=4)
+
+    def test_ft_fund_prefers_boursorama_before_ft(self):
+        with patch(
+            "core.stock.get_boursorama_fund_price",
+            return_value=(9.38, 9.3529, 0.0271, 0.29),
+        ) as boursorama_mock, patch(
+            "core.stock.get_ft_fund_price",
+            return_value=(0.0, 0.0, 0.0, 0.0),
+        ) as ft_mock:
+            curr, yclose, *_ = get_stock_price("ft_LU1116320737")
+
+        self.assertAlmostEqual(curr, 9.38, places=2)
+        self.assertAlmostEqual(yclose, 9.3529, places=4)
+        boursorama_mock.assert_called_once_with("LU1116320737")
+        ft_mock.assert_not_called()
 
 
 if __name__ == "__main__":

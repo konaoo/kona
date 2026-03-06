@@ -48,6 +48,11 @@ class TestMarketCodeNormalization(unittest.TestCase):
         self.assertEqual(parsed["code"], "sz200002")
         self.assertEqual(parsed["curr"], "HKD")
 
+    def test_parse_code_16_prefix_keeps_fund_path(self):
+        parsed = parse_code("161907", "")
+        self.assertEqual(parsed["code"], "f_161907")
+        self.assertEqual(parsed["curr"], "CNY")
+
     def test_infer_asset_type_numeric_5_is_hk(self):
         self.assertEqual(infer_asset_type("00700", "腾讯控股"), "hk")
 
@@ -89,6 +94,9 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_infer_asset_type_a_share_etf_remains_a(self):
         self.assertEqual(infer_asset_type("sh510300", "沪深300ETF"), "a")
+
+    def test_infer_asset_type_otc_fund_prefix_remains_fund(self):
+        self.assertEqual(infer_asset_type("f_161907", "万家中证红利ETF联接A"), "fund")
 
     def test_infer_asset_type_invalid_f_prefix_letters_treated_as_us(self):
         self.assertEqual(infer_asset_type("f_NUGT", "Direxion NUGT ETF"), "us")

@@ -972,6 +972,24 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('asset_type'), 'fund')
 
+    def test_portfolio_add_16_prefix_fund_keeps_fund_code(self):
+        with patch.object(app_module, 'batch_get_prices', return_value={}):
+            add_resp = self.client.post('/api/portfolio/add', json={
+                'code': '161907',
+                'name': '万家中证红利ETF联接A',
+                'price': 1.60,
+                'qty': 10.0,
+                'curr': 'CNY',
+            })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'f_161907'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('asset_type'), 'fund')
+
     def test_portfolio_add_sh_b_share_forces_usd_currency(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh900901',

@@ -222,7 +222,7 @@ def _exchange_fund_candidates(code: str) -> list[str]:
     # 交易所基金常见代码段：
     # - 深市 ETF/LOF: 15xxxx / 16xxxx / 18xxxx
     # - 沪市 ETF: 50xxxx / 51xxxx / 52xxxx / 56xxxx / 58xxxx
-    if suffix.startswith(('15', '16', '18')):
+    if suffix.startswith(('15', '18')):
         return [f"sz{suffix}"]
     if suffix.startswith(('50', '51', '52', '56', '58')):
         return [f"sh{suffix}"]
@@ -956,6 +956,31 @@ def api_prices_batch():
             "yclose": yclose,
             "amt": amt,
             "chg": chg
+        }
+
+    # ft_ 海外基金链路更慢，fast batch 可能先回 0；这里对仍未命中的代码做一次同步补拉。
+    ft_retry_codes = []
+    for code in codes:
+        code_text = str(code or '').strip()
+        if not code_text.lower().startswith('ft_'):
+            continue
+        current = formatted_results.get(code_text, {})
+        if float(current.get("price") or 0.0) > 0:
+            continue
+        ft_retry_codes.append(code_text)
+
+    for code in ft_retry_codes:
+        try:
+            price, yclose, amt, chg = get_price(code, use_cache=False)
+        except Exception:
+            continue
+        if float(price or 0.0) <= 0:
+            continue
+        formatted_results[code] = {
+            "price": price,
+            "yclose": yclose,
+            "amt": amt,
+            "chg": chg,
         }
 
     us_codes = []

@@ -1481,7 +1481,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           '仅用于误录入纠错：将删除「${item.name}」持仓、相关交易记录，并清理受影响快照。\n\n'
                           '注意：不会回款到现金账户。\n'
                           '如果是正常平仓，请使用“卖出”并选择回款账户。',
-                          style: _dm(size: 13, color: _tokens.textMuted).copyWith(height: 1.5),
+                          style: _dm(
+                            size: 13,
+                            color: _tokens.textMuted,
+                          ).copyWith(height: 1.5),
                         ),
                       ),
                       Padding(
@@ -1492,7 +1495,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                               child: SizedBox(
                                 height: 42,
                                 child: OutlinedButton(
-                                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(false),
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: _tokens.surface2,
                                     side: BorderSide(
@@ -1531,7 +1535,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                     ),
                                   ),
                                   child: ElevatedButton(
-                                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                                    onPressed: () =>
+                                        Navigator.of(dialogContext).pop(true),
                                     style: ElevatedButton.styleFrom(
                                       elevation: 0,
                                       backgroundColor: Colors.transparent,
@@ -2028,7 +2033,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       decoration: BoxDecoration(
         color: _tokens.goldDim,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _tokens.gold.withValues(alpha: 0.2), width: 1),
+        border: Border.all(
+          color: _tokens.gold.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -2292,7 +2300,9 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                             vertical: 11,
                           ),
                           decoration: BoxDecoration(
-                            color: selected ? _tokens.goldDim : Colors.transparent,
+                            color: selected
+                                ? _tokens.goldDim
+                                : Colors.transparent,
                             border: index < rows.length - 1
                                 ? Border(
                                     bottom: BorderSide(
@@ -2312,7 +2322,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(_accountEmoji(asset), style: _dm(size: 15)),
+                                child: Text(
+                                  _accountEmoji(asset),
+                                  style: _dm(size: 15),
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -2946,6 +2959,30 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         !_saving &&
         _isSaveInputReady() &&
         (!needsCashSource || _selectedCashAssetId != null);
+    final currentItem = widget.item;
+    final marketType = (currentItem?.marketType ?? 'a').toLowerCase();
+    final isCurrentFund =
+        currentItem != null &&
+        _isFundAsset(assetType: currentItem.assetType, code: currentItem.code);
+    final priceInfo = currentItem == null
+        ? null
+        : appState.resolvePriceInfoByCode(currentItem.code);
+    final livePrice = (priceInfo != null && priceInfo.price > 0)
+        ? priceInfo.price
+        : null;
+    final liveChangePct =
+        (priceInfo != null && (priceInfo.price > 0 || priceInfo.yclose > 0))
+        ? priceInfo.changePct
+        : null;
+    final livePriceText = livePrice == null
+        ? '--'
+        : _formatInputNumber(
+            livePrice,
+            decimals: isCurrentFund ? 4 : (livePrice.abs() < 10 ? 3 : 2),
+          );
+    final liveChangeText = liveChangePct == null
+        ? '--'
+        : '${liveChangePct >= 0 ? '+' : ''}${_formatInputNumber(liveChangePct, decimals: 2)}%';
 
     final centered =
         widget.presentation == InvestTradeDialogPresentation.centered;
@@ -3019,7 +3056,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: _tokens.borderActive, width: 1),
+                          side: BorderSide(
+                            color: _tokens.borderActive,
+                            width: 1,
+                          ),
                         ),
                         itemBuilder: (context) => [
                           PopupMenuItem(
@@ -3031,11 +3071,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.delete_outline, size: 16, color: _tokens.red),
+                                Icon(
+                                  Icons.delete_outline,
+                                  size: 16,
+                                  color: _tokens.red,
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   '删除资产',
-                                  style: _dm(size: 12, color: _tokens.red, weight: FontWeight.w600),
+                                  style: _dm(
+                                    size: 12,
+                                    color: _tokens.red,
+                                    weight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
@@ -3105,42 +3153,32 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                 vertical: 1,
                               ),
                               decoration: BoxDecoration(
-                                color:
-                                    widget.item?.marketType.toLowerCase() ==
-                                        'a'
+                                color: marketType == 'a'
                                     ? const Color(0x243ECF82)
-                                    : widget.item?.marketType.toLowerCase() ==
-                                          'hk'
+                                    : marketType == 'hk'
                                     ? const Color(0x24E06B3A)
-                                    : widget.item?.marketType.toLowerCase() ==
-                                          'us'
+                                    : marketType == 'us'
                                     ? const Color(0x245B8DEF)
                                     : const Color(0x24B57ADB), // fund
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                widget.item?.marketType.toLowerCase() == 'hk'
+                                marketType == 'hk'
                                     ? '港股'
-                                    : widget.item?.marketType.toLowerCase() ==
-                                          'us'
+                                    : marketType == 'us'
                                     ? '美股'
-                                    : widget.item?.marketType.toLowerCase() ==
-                                          'fund'
+                                    : marketType == 'fund'
                                     ? '基金'
                                     : 'A股',
                                 style: _dm(
                                   size: 10,
                                   weight: FontWeight.w600,
                                   letterSpacing: 0.03,
-                                  color:
-                                      widget.item?.marketType.toLowerCase() ==
-                                          'a'
+                                  color: marketType == 'a'
                                       ? const Color(0xFF3ECF82)
-                                      : widget.item?.marketType.toLowerCase() ==
-                                            'hk'
+                                      : marketType == 'hk'
                                       ? const Color(0xFFE06B3A)
-                                      : widget.item?.marketType.toLowerCase() ==
-                                            'us'
+                                      : marketType == 'us'
                                       ? const Color(0xFF5B8DEF)
                                       : const Color(0xFFB57ADB), // fund
                                 ),
@@ -3173,16 +3211,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                             ),
                             const SizedBox(width: 7),
                             Text(
-                              '368.20', // TODO: Fetch real price if available, hardcoded placeholder for now
+                              livePriceText,
                               style: _mono(size: 11, color: _tokens.text),
                             ),
                             const SizedBox(width: 7),
                             Text(
-                              '+1.54%', // TODO: Fetch real PnL
+                              liveChangeText,
                               style: _dm(
                                 size: 10,
                                 weight: FontWeight.w500,
-                                color: _tokens.red,
+                                color: liveChangePct == null
+                                    ? _tokens.textMuted
+                                    : liveChangePct >= 0
+                                    ? _tokens.green
+                                    : _tokens.red,
                               ),
                             ),
                           ],
@@ -3262,7 +3304,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
-                        color: canSave ? null : (AppTheme.isLight ? const Color(0xFFE4E5EA) : const Color(0xFF3B4048)),
+                        color: canSave
+                            ? null
+                            : (AppTheme.isLight
+                                  ? const Color(0xFFE4E5EA)
+                                  : const Color(0xFF3B4048)),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: !canSave
                             ? null

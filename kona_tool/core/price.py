@@ -111,6 +111,10 @@ _FAST_BATCH_MAX_WORKERS = max(
     4,
     int(os.getenv("PRICE_BATCH_MAX_WORKERS", "12")),
 )
+_FAST_BATCH_SLOW_CODE_EXTRA_TIMEOUT_SECONDS = max(
+    0.2,
+    float(os.getenv("PRICE_BATCH_SLOW_CODE_EXTRA_TIMEOUT_SECONDS", "1.6")),
+)
 _ASYNC_REFRESH_MAX_WORKERS = max(
     2,
     int(os.getenv("PRICE_ASYNC_REFRESH_WORKERS", "6")),
@@ -178,7 +182,7 @@ def _exchange_fund_candidates(code: str) -> List[str]:
     # 11xxxx 明确保留场外基金路径
     if suffix.startswith("11"):
         return []
-    if suffix.startswith(("15", "16", "18")):
+    if suffix.startswith(("15", "18")):
         return [f"sz{suffix}"]
     if suffix.startswith(("50", "51", "52", "56", "58")):
         return [f"sh{suffix}"]
@@ -411,6 +415,14 @@ def batch_get_prices_fast(
                 else:
                     results[code] = (0.0, 0.0, 0.0, 0.0)
             else:
+                if _requires_extended_fast_wait(code):
+                    try:
+                        value = future.result(timeout=_FAST_BATCH_SLOW_CODE_EXTRA_TIMEOUT_SECONDS)
+                    except Exception:
+                        value = (0.0, 0.0, 0.0, 0.0)
+                    if value and float(value[0] or 0.0) > 0:
+                        results[code] = value
+                        continue
                 unresolved_codes.append(code)
                 if code in stale_map:
                     _mark_metric("stale_hits")
@@ -805,6 +817,10 @@ def _pick_preferred_name(current: str, incoming: str) -> str:
     if not inc:
         return cur
     return inc if len(inc) > len(cur) else cur
+
+
+def _requires_extended_fast_wait(code: str) -> bool:
+    return str(code or "").strip().lower().startswith("ft_")
 
 
 def _asset_type_from_type_name(type_name: str, code: str = "") -> str:
