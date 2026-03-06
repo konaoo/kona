@@ -185,6 +185,7 @@
 import { computed, onMounted, ref, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useKonaStore } from '../../shared/store'
+import { api } from '../../shared/http'
 
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
 const REMEMBER_USERNAME_KEY = 'kona_web_remember_username'
@@ -238,13 +239,7 @@ function nextQuote() {
   }, 200)
 }
 
-function prevQuote() {
-  quoteCardVisible.value = false
-  setTimeout(() => {
-    currentQuoteIndex.value = (currentQuoteIndex.value - 1 + quotes.length) % quotes.length
-    quoteCardVisible.value = true
-  }, 200)
-}
+
 
 function checkPasswordStrength(v: string) {
   if (!v) {
