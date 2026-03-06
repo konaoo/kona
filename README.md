@@ -105,6 +105,7 @@ npm install && npm run dev
 
 - [环境准备与迁移说明](./docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md)
 - [行情与快讯性能交接（v1.0.31）](./docs/README_HANDOVER_2026_03_QUOTE_NEWS_PERF_AND_CI.md)
+- [价格源 / 基金净值 / 快照与盈亏口径交接（2026-03）](./docs/README_HANDOVER_2026_03_PRICE_ALERTS_AND_PNL_LOGIC.md)
 - [资产同步与盈亏算法口径](./docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md)
 - [管理后台功能手册 V2](./docs/README_ADMIN_CONSOLE_V2.md)
 - [生物识别与会话持久化](./docs/README_AUTH_PERSISTENCE_BIOMETRIC.md)
