@@ -643,8 +643,11 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
+          Flexible(
+            flex: 1,
+            fit: FlexFit.loose,
             child: Row(
               children: [
                 Stack(
@@ -652,7 +655,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [_buildAvatar(appState)],
                 ),
                 const SizedBox(width: 14),
-                Expanded(
+                Flexible(
+                  flex: 1,
+                  fit: FlexFit.loose,
                   child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
