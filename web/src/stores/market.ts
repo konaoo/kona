@@ -7,7 +7,7 @@ import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
 import type { MarketCode, MarketStatus } from './types'
-import { MARKET_CODES, DEFAULT_QUOTE_POLICY } from './types'
+import { MARKET_CODES } from './types'
 
 export const useMarketStore = defineStore('market', () => {
   // ───────────────────────────────────────────────────────────────

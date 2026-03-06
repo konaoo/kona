@@ -257,7 +257,6 @@ export const useSyncStore = defineStore('sync', () => {
    * LoadBootstrap - 加载 bootstrap 数据
    */
   async function loadBootstrap(include: SyncDomain[] = SYNC_BOOTSTRAP.QUOTE_INCLUDE): Promise<Set<SyncDomain>> {
-    const authStore = useAuthStore()
     const portfolioStore = usePortfolioStore()
     const marketStore = useMarketStore()
     const quoteStore = useQuoteStore()

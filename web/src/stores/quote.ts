@@ -2,7 +2,7 @@
  * Quote Store - 实时行情数据
  */
 
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
 import type { Quote, QuotePolicy } from './types'

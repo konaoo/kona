@@ -14,34 +14,34 @@ export type PositionRow = {
   market: MarketCode
   asset_type: string
   qty: number
-  cost_price: number
-  display_cost_price: number
-  current_price: number
+  costPrice: number
+  displayCostPrice: number
+  currentPrice: number
   yclose: number
 
   // 价值相关
   value: number
   cost: number
-  total_pnl: number
-  total_pnl_rate: number
+  totalPnl: number
+  totalPnlRate: number
 
   // 今日盈亏
-  day_pnl: number
-  day_pnl_rate: number
-  day_pnl_display: number
-  day_pnl_rate_display: number
-  day_pnl_aggregate: number
-  day_pnl_rate_aggregate: number
+  dayPnl: number
+  dayPnlRate: number
+  dayPnlDisplay: number
+  dayPnlRateDisplay: number
+  dayPnlAggregate: number
+  dayPnlRateAggregate: number
 
   // 市场状态
-  market_open: boolean
-  market_trading_day: boolean
-  market_status_reason: string
-  us_extended_active: boolean
+  marketOpen: boolean
+  marketTradingDay: boolean
+  marketStatusReason: string
+  usExtendedActive: boolean
   session: Session
-  nav_update_pending: boolean
-  day_pnl_display_enabled: boolean
-  day_pnl_aggregate_enabled: boolean
+  navUpdatePending: boolean
+  dayPnlDisplayEnabled: boolean
+  dayPnlAggregateEnabled: boolean
 
   // 其他
   adjustment?: number
@@ -88,11 +88,11 @@ export type PeriodStats = {
  * 投资组合摘要
  */
 export type PortfolioSummary = {
-  total_value: number
-  total_cost: number
-  total_pnl: number
-  today_pnl: number
-  total_rate: number
+  totalValue: number
+  totalCost: number
+  totalPnl: number
+  todayPnl: number
+  totalRate: number
 }
 
 /**

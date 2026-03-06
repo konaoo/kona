@@ -12,10 +12,7 @@ import type {
   PortfolioItem,
   PositionRow,
   PortfolioSummary,
-  Quote,
-  MarketStatus,
 } from './types'
-import { MARKET_CODES } from './types'
 import { useMarketStore } from './market'
 import { useQuoteStore } from './quote'
 
@@ -217,7 +214,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   function updatePortfolioItem(code: string, updates: Partial<PortfolioItem>) {
     const index = portfolio.value.findIndex(item => item.code === code)
     if (index !== -1) {
-      portfolio.value[index] = { ...portfolio.value[index], ...updates }
+      portfolio.value[index] = { ...portfolio.value[index], ...updates } as PortfolioItem
     }
   }
 
