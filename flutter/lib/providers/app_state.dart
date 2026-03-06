@@ -339,12 +339,19 @@ class AppState extends ChangeNotifier {
     return _resolvePriceInfoByCode(item.code, preferred: preferred);
   }
 
+  bool isNavUpdatePendingAsset(PortfolioItem item) {
+    final code = item.code.trim().toLowerCase();
+    return code.startsWith('f_') || code.startsWith('ft_');
+  }
+
   bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (isNavUpdatePendingAsset(item)) return false;
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     return resolved != null && resolved.yclose > 0;
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (isNavUpdatePendingAsset(item)) return false;
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     if (resolved == null || resolved.yclose <= 0) return false;
     if (isAssetTradingDay(item)) return true;
