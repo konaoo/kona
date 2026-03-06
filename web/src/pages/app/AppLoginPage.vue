@@ -16,15 +16,11 @@
         </RouterLink>
 
         <div class="form-body">
-          <div class="auth-tabs">
-            <button :class="['auth-tab', { active: !isRegisterRoute }]" @click="switchTab('login')">登录</button>
-            <button :class="['auth-tab', { active: isRegisterRoute }]" @click="switchTab('register')">注册</button>
-          </div>
+
 
           <!-- LOGIN FORM -->
           <div v-if="!isRegisterRoute" class="auth-form active">
-            <div class="form-title">欢迎回来</div>
-            <div class="form-sub">登录账户，继续管理你的全球资产。</div>
+            <div class="form-title">你好，很高兴见到你。</div>
             <div class="input-group">
               <label class="input-label">账号</label>
               <div class="input-wrap">
@@ -54,16 +50,28 @@
             <button class="submit-btn" :class="{ loading: submitting }" @click="submit" :disabled="submitting">
               {{ submitting ? '登录中…' : '登 录' }}
             </button>
-            <div class="auth-legal">登录即代表同意 <a href="#">《用户服务协议》</a>与<a href="#">《隐私政策》</a></div>
             <div class="auth-switch">还没有账号？<button @click="switchTab('register')">立即注册</button></div>
+            <div class="auth-legal">登录即代表同意 <a href="#">《用户服务协议》</a>与<a href="#">《隐私政策》</a></div>
+
           </div>
 
           <!-- REGISTER FORM -->
           <div v-else class="auth-form active">
             <div class="form-title">创建账户</div>
-            <div class="form-sub">内测期间需要邀请码，<a href="#" style="color:var(--gold);text-decoration:none">如何获取？</a></div>
             <div class="input-group">
-              <div class="invite-badge"><span class="i-dot"></span>仅限内测用户</div>
+              <div class="invite-badge">
+                <span class="i-dot"></span>
+                目前仅限受邀用户注册，
+                <div class="invite-link-wrap">
+                  <a href="#" class="invite-link" @click.prevent>获取邀请码</a>
+                  <div class="invite-popover">
+                    <div class="pop-content">
+                      <p v-if="inviteAcquireText">{{ inviteAcquireText }}</p>
+                      <img v-if="inviteAcquireImageUrl" :src="inviteAcquireImageUrl" alt="邀请码获取方式" />
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="input-wrap">
                 <span class="input-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                 <input v-model.trim="inviteCode" class="form-input invite" type="text" placeholder="XXXXXX" maxlength="8" @input="inviteCode = inviteCode.toUpperCase()"/>
@@ -136,7 +144,7 @@
         <div class="brand-top">
           <div class="brand-eyebrow">GLOBAL ASSET DESK</div>
           <h2 class="brand-title">全球资产<br><span class="brand-title-accent">一站式管理</span></h2>
-          <p class="brand-desc">港股、美股、A股、基金，跨市场统一追踪。实时盈亏、多账户隔离，尽在掌控。</p>
+
         </div>
 
         <div class="quote-card" :class="{ 'fade-out': !quoteCardVisible }">
@@ -149,14 +157,7 @@
               <div class="qa-role">{{ currentQuote?.role }}</div>
             </div>
           </div>
-          <div class="quote-controls">
-            <button class="qc-btn" @click="prevQuote" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <button class="qc-btn next-btn" @click="nextQuote" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
+
         </div>
 
         <div class="stats-strip">
@@ -200,6 +201,10 @@ const confirmPassword = ref('')
 const inviteCode = ref('')
 const rememberMe = ref(false)
 const error = ref('')
+
+// Invitation config
+const inviteAcquireText = ref('')
+const inviteAcquireImageUrl = ref('')
 
 // Password UI state
 const showPassword = ref(false)
@@ -314,10 +319,21 @@ async function submit() {
   }
 }
 
+async function fetchWebConfig() {
+  try {
+    const payload = await api.get<{ invite_acquire_text?: string, invite_acquire_image_url?: string }>('/api/web/config', false)
+    if (payload.invite_acquire_text) inviteAcquireText.value = payload.invite_acquire_text
+    if (payload.invite_acquire_image_url) inviteAcquireImageUrl.value = payload.invite_acquire_image_url
+  } catch {
+    // fallback
+  }
+}
+
 onMounted(() => {
   if (!isRegisterRoute.value) {
     readRememberFields()
   }
+  fetchWebConfig()
   quoteInterval = setInterval(nextQuote, 5200)
 })
 
@@ -344,7 +360,7 @@ onUnmounted(() => {
 }
 
 .card {
-  position: relative; z-index: 1; width: 100%; max-width: 1080px; min-height: 660px;
+  position: relative; z-index: 1; width: 100%; max-width: 940px; min-height: 580px;
   border-radius: 26px; display: grid; grid-template-columns: 1fr 1fr;
   overflow: hidden;
   background: #12141c;
@@ -356,7 +372,7 @@ onUnmounted(() => {
 /* ── LEFT: FORM PANEL ── */
 .form-panel {
   background: rgba(16,18,26,0.97);
-  padding: 44px 52px; display: flex; flex-direction: column; position: relative; overflow: hidden;
+  padding: 40px 48px; display: flex; flex-direction: column; position: relative; overflow: hidden;
 }
 .form-panel::before {
   content: ''; position: absolute; top: -130px; left: -130px;
@@ -365,7 +381,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.panel-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 48px; position: relative; z-index: 1; }
+.panel-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 20px; position: relative; z-index: 1; }
 .logo-icon {
   width: 36px; height: 36px; border-radius: 10px;
   background: linear-gradient(135deg, #ff7b67, #f24688 55%, #f0279e);
@@ -390,7 +406,7 @@ onUnmounted(() => {
 
 .auth-form { display: flex; flex-direction: column; }
 
-.form-title { font-size: 25px; font-weight: 800; letter-spacing: -.025em; color: #e4e5ea; margin-bottom: 5px; }
+.form-title { font-size: 25px; font-weight: 800; letter-spacing: -.025em; color: #e4e5ea; margin-bottom: 28px; }
 .form-sub { font-size: 13px; color: #545c72; margin-bottom: 26px; line-height: 1.5; }
 
 .input-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
@@ -427,12 +443,35 @@ onUnmounted(() => {
 .pw-hint { font-size: 11px; color: #545c72; margin-top: 4px; }
 
 .invite-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600; letter-spacing: .08em;
-  color: #d4af64; background: rgba(212,175,100,0.1); border: 1px solid rgba(212,175,100,0.25);
-  border-radius: 999px; padding: 2px 8px; margin-bottom: 5px;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(212,175,100,0.08); border: 1px solid rgba(212,175,100,0.18);
+  padding: 8px 14px; border-radius: 10px; color: var(--gold); font-size: 13px; font-weight: 500;
+  margin-bottom: 12px;
 }
-.i-dot { width: 5px; height: 5px; border-radius: 50%; background: #d4af64; }
+.i-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+
+.invite-link-wrap { position: relative; display: inline-block; }
+.invite-link { color: #fff; text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.4); cursor: pointer; transition: 0.2s; }
+.invite-link:hover { color: var(--gold); opacity: 0.9; }
+
+.invite-popover {
+  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%) translateY(10px);
+  width: 240px; background: rgba(18,20,28,0.95); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  visibility: hidden; opacity: 0; transition: 0.25s cubic-bezier(0.19, 1, 0.22, 1);
+  pointer-events: none; z-index: 100;
+}
+.invite-popover::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: rgba(18,20,28,0.95);
+}
+.invite-link-wrap:hover .invite-popover {
+  visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0);
+}
+.pop-content { display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.pop-content p { color: #e4e5ea; font-size: 13px; line-height: 1.5; margin: 0; }
+.pop-content img { width: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
 .form-input.invite { text-transform: uppercase; letter-spacing: .1em; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 
 .form-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; margin-top: 4px; }
@@ -466,7 +505,7 @@ onUnmounted(() => {
 .input-error { font-size: 11px; color: #f05a55; margin-top: 3px; display: none; }
 .input-error.visible { display: block; }
 
-.auth-legal { font-size: 11px; color: #545c72; line-height: 1.55; text-align: center; }
+.auth-legal { font-size: 11px; color: #545c72; line-height: 1.55; text-align: center; margin-top: 24px; }
 .auth-legal a { color: #545c72; text-decoration: underline; transition: color .13s; }
 .auth-legal a:hover { color: #828a9e; }
 .auth-switch { text-align: center; font-size: 13px; color: #545c72; margin-top: 11px; }
@@ -479,7 +518,7 @@ onUnmounted(() => {
   background: linear-gradient(155deg, #0e1119 0%, #0b0d16 45%, #0d1020 100%);
   border-left: 1px solid rgba(255,255,255,0.055);
   display: flex; flex-direction: column; justify-content: space-between;
-  padding: 44px 44px 44px 48px;
+  padding: 40px 40px 40px 44px;
 }
 .brand-panel::before {
   content: ''; position: absolute; top: -90px; right: -90px;
