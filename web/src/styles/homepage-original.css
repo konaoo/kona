@@ -280,6 +280,9 @@ a {
   background: rgba(62,207,130,0.12);
 }
 
+.up { color: var(--red) !important; }
+.dn { color: var(--green) !important; }
+
 .tag {
   display: inline-block;
   font-size: 9px;

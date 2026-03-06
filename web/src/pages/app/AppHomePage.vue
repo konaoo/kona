@@ -199,9 +199,9 @@ function formatPct(value: number | undefined): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
-function valueClass(value: number | undefined): 'up' | 'down' | 'neutral' {
+function valueClass(value: number | undefined): 'up' | 'dn' | 'neutral' {
   if (typeof value !== 'number' || isNaN(value)) return 'neutral'
-  return value >= 0 ? 'up' : 'down'
+  return value >= 0 ? 'up' : 'dn'
 }
 
 function masked(text: string): string {
@@ -472,16 +472,15 @@ onBeforeUnmount(() => {
             </div>
             <div class="c3-total">{{ masked(currMeta.sym + Math.round(displayTotalAssets).toLocaleString('zh-CN')) }}</div>
             <div class="c3-stats">
-              <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">{{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }} 今日</span>
-              <span class="mono" style="font-size:11px;color:var(--sub)">净资产 <span :style="{ color: (totalAssetsCny||0) >= 0 ? 'var(--green)' : 'var(--red)' }">{{ formatCny(totalAssetsCny) }}</span></span>
+              <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">今日 {{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }}</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
             <div style="font-size:10px;color:var(--muted)">近30天走势</div>
             <div class="c1-period-tabs">
-              <button class="c1-pt active">1M</button>
-              <button class="c1-pt">3M</button>
-              <button class="c1-pt">1Y</button>
+              <button class="c1-pt active">近1月</button>
+              <button class="c1-pt">近3月</button>
+              <button class="c1-pt">近1年</button>
               <button class="c1-pt">全部</button>
             </div>
           </div>
@@ -492,14 +491,14 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 1044 120" preserveAspectRatio="none" fill="none">
             <defs>
               <linearGradient id="c3grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stop-opacity=".15"/>
-                <stop offset="100%" :stop-color="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stop-opacity="0"/>
+                <stop offset="0%" :stop-color="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stop-opacity=".15"/>
+                <stop offset="100%" :stop-color="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7" :stroke="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stroke-width="2.5" fill="none"/>
+            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7" :stroke="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stroke-width="2.5" fill="none"/>
             <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7 L1044,120 L0,120 Z" fill="url(#c3grad)"/>
-            <circle cx="1044" cy="7" r="4.5" :fill="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'"/>
-            <line x1="1044" y1="7" x2="1044" y2="120" :stroke="(investTotal?.dayPnl||0)>=0?'rgba(62,207,130,0.2)':'rgba(240,90,85,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <circle cx="1044" cy="7" r="4.5" :fill="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'"/>
+            <line x1="1044" y1="7" x2="1044" y2="120" :stroke="(investTotal?.dayPnl||0)>=0?'rgba(240,90,85,0.2)':'rgba(62,207,130,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
           </svg>
         </div>
 
@@ -509,7 +508,7 @@ onBeforeUnmount(() => {
             <div class="c3-active-bar" :style="{ background: activeSegment === 'invest' ? 'var(--green)' : '' }"></div>
             <div class="c3-segment-label">投资资产</div>
             <div class="c3-segment-val">{{ masked(formatCny(investTotal?.mv||0)) }}</div>
-            <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">{{ formatPct(investTotal?.dayRate||0) }} 今日</div>
+            <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">今日 {{ formatPct(investTotal?.dayRate||0) }}</div>
           </div>
           <div class="c3-segment" :class="{ active: activeSegment === 'cash' }" @click="toggleSegment('cash')">
             <div class="c3-active-bar" :style="{ background: activeSegment === 'cash' ? 'var(--blue)' : '' }"></div>
