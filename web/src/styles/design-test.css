@@ -1,0 +1,70 @@
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN SYSTEM TEST - 设计系统测试页面
+   ═══════════════════════════════════════════════════════════════ */
+
+body {
+  padding: var(--space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.test-section {
+  margin-bottom: var(--space-6);
+}
+
+.test-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-4);
+  color: var(--text);
+}
+
+.test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.test-box {
+  padding: var(--space-3);
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.test-label {
+  font-size: var(--font-size-sm);
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   COLOR TESTS - 颜色测试
+   ─────────────────────────────────────────────────────────────── */
+.color-test {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.test-bg { background: var(--bg); }
+.test-s1 { background: var(--s1); }
+.test-s2 { background: var(--s2); }
+.test-s3 { background: var(--s3); }
+
+/* ───────────────────────────────────────────────────────────────
+   ANIMATION TESTS - 动画测试
+   ─────────────────────────────────────────────────────────────── */
+.animate-box {
+  padding: var(--space-4);
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}

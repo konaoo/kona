@@ -1,0 +1,155 @@
+/* ═══════════════════════════════════════════════════════════════
+   BASE STYLES - 基础样式重置和全局样式
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────
+   CSS RESET - 样式重置
+   ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--bg);
+  color: var(--text);
+  line-height: var(--line-height-normal);
+  overflow-x: hidden;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   TYPOGRAPHY - 排版
+   ─────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--text);
+}
+
+h1 { font-size: var(--font-size-5xl); }
+h2 { font-size: var(--font-size-4xl); }
+h3 { font-size: var(--font-size-2xl); }
+h4 { font-size: var(--font-size-xl); }
+h5 { font-size: var(--font-size-lg); }
+h6 { font-size: var(--font-size-md); }
+
+p {
+  margin-bottom: var(--space-3);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   LINKS - 链接
+   ─────────────────────────────────────────────────────────────── */
+a {
+  color: var(--blue);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--easing-default);
+}
+
+a:hover {
+  color: #7aa0ff;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   SCROLLBAR - 滚动条
+   ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   FORM ELEMENTS - 表单元素
+   ─────────────────────────────────────────────────────────────── */
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   SELECTION - 文本选择
+   ─────────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(91, 141, 239, 0.3);
+  color: var(--text);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   UTILITIES - 工具类
+   ─────────────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   FOCUS STYLES - 焦点样式
+   ─────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}

@@ -1,0 +1,251 @@
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATIONS - 动画效果
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────
+   KEYFRAMES - 关键帧动画
+   ─────────────────────────────────────────────────────────────── */
+
+/* 脉冲动画 - 用于市场状态指示器 */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.7);
+  }
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 淡入上滑动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 淡入下滑动画 */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 缩放淡入动画 */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 滑入动画 */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* 旋转动画 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 弹跳动画 */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* 闪烁动画 */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   ANIMATION UTILITIES - 动画工具类
+   ─────────────────────────────────────────────────────────────── */
+
+/* 脉冲效果 - 用于市场状态指示点 */
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 淡入效果 */
+.animate-fadeIn {
+  animation: fadeIn var(--duration-slow) var(--easing-out);
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp var(--duration-slow) var(--easing-out);
+}
+
+.animate-fadeInDown {
+  animation: fadeInDown var(--duration-slow) var(--easing-out);
+}
+
+/* 缩放效果 */
+.animate-scaleIn {
+  animation: scaleIn var(--duration-slow) var(--easing-out);
+}
+
+/* 悬停效果 */
+.hover-lift {
+  transition: transform var(--duration-base) var(--easing-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* 按下效果 */
+.active-press:active {
+  transform: scale(0.98);
+}
+
+/* 加载闪烁效果 */
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    90deg,
+    var(--s2) 0%,
+    var(--s3) 50%,
+    var(--s2) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+/* 旋转加载 */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   TRANSITION UTILITIES - 过渡工具类
+   ─────────────────────────────────────────────────────────────── */
+
+/* 通用过渡 */
+.transition-all {
+  transition: all var(--duration-base) var(--easing-default);
+}
+
+.transition-colors {
+  transition: color var(--duration-base) var(--easing-default),
+              background-color var(--duration-base) var(--easing-default),
+              border-color var(--duration-base) var(--easing-default);
+}
+
+.transition-opacity {
+  transition: opacity var(--duration-base) var(--easing-default);
+}
+
+.transition-transform {
+  transition: transform var(--duration-base) var(--easing-default);
+}
+
+/* 延迟动画 */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* 持续时间 */
+.duration-fast { animation-duration: var(--duration-fast); }
+.duration-base { animation-duration: var(--duration-base); }
+.duration-slow { animation-duration: var(--duration-slow); }
+
+/* ───────────────────────────────────────────────────────────────
+   SPECIAL EFFECTS - 特殊效果
+   ─────────────────────────────────────────────────────────────── */
+
+/* 玻璃态效果 */
+.glass {
+  background: rgba(17, 19, 26, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* 霓虹发光效果 */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(91, 141, 239, 0.3);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(62, 207, 130, 0.3);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(240, 90, 85, 0.3);
+}
+
+.glow-gold {
+  box-shadow: 0 0 20px rgba(212, 175, 100, 0.3);
+}
+
+/* 渐变背景 */
+.gradient-blue {
+  background: linear-gradient(135deg, #5b8def, #4a7be0);
+}
+
+.gradient-green {
+  background: linear-gradient(135deg, #3ecf82, #2db870);
+}
+
+.gradient-red {
+  background: linear-gradient(135deg, #f05a55, #e04845);
+}
+
+.gradient-gold {
+  background: linear-gradient(135deg, #d4af64, #c49a54);
+}

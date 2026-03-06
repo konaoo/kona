@@ -2532,6 +2532,55 @@ def api_market_status():
     return jsonify(_get_market_status_cached(now_utc=now_utc))
 
 
+@app.route('/api/market/indices')
+def api_market_indices():
+    """获取首页顶部的指数和汇率数据。"""
+    index_codes = [
+        's_sh000001',  # 上证指数
+        's_sz399001',  # 深证成指
+        's_sz399006',  # 创业板指
+        'gb_ixic',     # 纳斯达克
+    ]
+    
+    # 批量获取基础指数
+    prices = batch_get_prices(index_codes)
+    
+    # 恒生科技单独获取（处理可能的不同来源）
+    from core.stock import get_hstech_price
+    hstech = get_hstech_price()
+    
+    # 获取汇率
+    rates = get_forex_rates()
+    usd_cny = rates.get('USD', 0.0)
+    
+    # 标准化返回格式
+    # (价格, 昨收, 涨跌额, 涨跌幅%)
+    def format_item(name, data):
+        curr, yclose, amt, pct = data
+        return {
+            "name": name,
+            "value": curr,
+            "change": amt,
+            "change_pct": pct
+        }
+
+    results = [
+        format_item("上证指数", prices.get('s_sh000001', (0,0,0,0))),
+        format_item("深成指数", prices.get('s_sz399001', (0,0,0,0))),
+        format_item("创业板指", prices.get('s_sz399006', (0,0,0,0))),
+        format_item("恒生科技", hstech),
+        format_item("纳斯达克", prices.get('gb_ixic', (0,0,0,0))),
+        {
+            "name": "USD/CNY",
+            "value": usd_cny,
+            "change": 0.0, # 汇率暂不计算日内涨跌
+            "change_pct": 0.0
+        }
+    ]
+    
+    return jsonify(results)
+
+
 @app.route('/api/sync/bootstrap', methods=['POST'])
 @optional_auth
 def api_sync_bootstrap():
