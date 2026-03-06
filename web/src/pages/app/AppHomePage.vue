@@ -33,6 +33,7 @@ const modalType = ref<AssetType>('cash')
 const modalMode = ref<'add' | 'edit'>('add')
 const selectedTab = ref('all')
 const marketIndices = ref<any[]>([])
+const activeSegment = ref<AssetType | 'invest' | null>(null)
 
 // Currency Switcher State
 const currencyOpen = ref(false)
@@ -132,6 +133,34 @@ const modalAddLabel = computed(() => {
   if (modalType.value === 'other') return '添加其他资产'
   return '添加负债记录'
 })
+
+// Segment Drawer Data
+const activeDrawerData = computed(() => {
+  if (!activeSegment.value) return []
+  if (activeSegment.value === 'invest') {
+    return (rows.value || []).map(row => ({
+      id: Number(row.id || 0),
+      icon: '📈',
+      name: String(row.name || ''),
+      amount: Number(row.value || 0),
+      curr: String(row.curr || 'CNY'),
+      type: 'invest' as const,
+      code: String(row.code || '')
+    }))
+  }
+  if (activeSegment.value === 'cash') return cashAssets.value.map(a => ({ ...a, type: 'cash' as const, code: undefined }))
+  if (activeSegment.value === 'other') return otherAssets.value.map(a => ({ ...a, type: 'other' as const, code: undefined }))
+  if (activeSegment.value === 'liability') return liabilities.value.map(a => ({ ...a, type: 'liability' as const, code: undefined }))
+  return []
+})
+
+function toggleSegment(type: AssetType | 'invest') {
+  if (activeSegment.value === type) {
+    activeSegment.value = null
+  } else {
+    activeSegment.value = type
+  }
+}
 
 // Derived asset value based on selected currency
 const displayTotalAssets = computed(() => {
@@ -253,8 +282,14 @@ function closeModal() {
   modalVisible.value = false
 }
 
-function openFormModal(item?: SimpleAsset & { icon?: string }) {
-  modalMode.value = item ? 'edit' : 'add'
+function openFormModal(item?: any) {
+  if (item?.type && item.type !== 'invest') {
+    modalType.value = item.type
+  } else if (activeSegment.value && activeSegment.value !== 'invest') {
+    modalType.value = activeSegment.value
+  }
+  
+  modalMode.value = (item && item.id) ? 'edit' : 'add'
   form.id = item?.id ?? null
   form.icon = item?.icon ?? '🏦'
   form.name = item?.name ?? ''
@@ -408,68 +443,114 @@ onBeforeUnmount(() => {
         </template>
       </div>
 
-      <!-- Total Asset Hero -->
-      <div class="home-hero" style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;position:relative">
-          <div class="hero-label" style="margin:0">总资产</div>
-          <div @click.stop="currencyOpen = !currencyOpen" style="display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.06);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none">
-            <span>{{ currentCurrency }}</span>
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)' }"><polyline points="6 9 12 15 18 9"/></svg>
+      <!-- Scenario 3 Asset Overview -->
+      <div class="c3-wrap">
+        <div class="c3-top">
+          <div class="c3-hero">
+            <div style="font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:8px">
+              总资产
+              <div @click.stop="currencyOpen = !currencyOpen" style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.06);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none;position:relative">
+                <span>{{ currentCurrency }}</span>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)' }"><polyline points="6 9 12 15 18 9"/></svg>
+                
+                <!-- Currency Dropdown -->
+                <div v-show="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--s2);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:modalIn .18s ease">
+                  <div class="ccy-option" :class="{ active: currentCurrency === 'CNY' }" @click.stop="currentCurrency = 'CNY'; currencyOpen = false">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">CNY</span>
+                    <span style="font-size:9px;color:var(--muted)">人民币</span>
+                  </div>
+                  <div class="ccy-option" :class="{ active: currentCurrency === 'USD' }" @click.stop="currentCurrency = 'USD'; currencyOpen = false">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">USD</span>
+                    <span style="font-size:9px;color:var(--muted)">美元</span>
+                  </div>
+                  <div class="ccy-option" :class="{ active: currentCurrency === 'HKD' }" @click.stop="currentCurrency = 'HKD'; currencyOpen = false">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">HKD</span>
+                    <span style="font-size:9px;color:var(--muted)">港币</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="c3-total">{{ masked(currMeta.sym + Math.round(displayTotalAssets).toLocaleString('zh-CN')) }}</div>
+            <div class="c3-stats">
+              <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">{{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }} 今日</span>
+              <span class="mono" style="font-size:11px;color:var(--sub)">净资产 <span :style="{ color: (totalAssetsCny||0) >= 0 ? 'var(--green)' : 'var(--red)' }">{{ formatCny(totalAssetsCny) }}</span></span>
+            </div>
           </div>
-          <!-- Dropdown -->
-          <div v-show="currencyOpen" style="position:absolute;top:28px;left:50px;background:var(--s2);border:1px solid var(--border-b);border-radius:12px;padding:4px;min-width:130px;z-index:50;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:modalIn .18s ease">
-            <div class="ccy-option" :class="{ active: currentCurrency === 'CNY' }" @click="currentCurrency = 'CNY'; currencyOpen = false">
-              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700">CNY</span>
-              <span style="font-size:10px;color:var(--muted)">人民币</span>
-            </div>
-            <div class="ccy-option" :class="{ active: currentCurrency === 'USD' }" @click="currentCurrency = 'USD'; currencyOpen = false">
-              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700">USD</span>
-              <span style="font-size:10px;color:var(--muted)">美元</span>
-            </div>
-            <div class="ccy-option" :class="{ active: currentCurrency === 'HKD' }" @click="currentCurrency = 'HKD'; currencyOpen = false">
-              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700">HKD</span>
-              <span style="font-size:10px;color:var(--muted)">港币</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+            <div style="font-size:10px;color:var(--muted)">近30天走势</div>
+            <div class="c1-period-tabs">
+              <button class="c1-pt active">1M</button>
+              <button class="c1-pt">3M</button>
+              <button class="c1-pt">1Y</button>
+              <button class="c1-pt">全部</button>
             </div>
           </div>
         </div>
-        <div class="hero-val">{{ masked(currMeta.sym + Math.round(displayTotalAssets).toLocaleString('zh-CN')) }}</div>
-        
-        <div class="home-acct-row">
-          <div class="acct-mini">
-            <div class="am-label">今日收益</div>
-            <div class="am-val" :class="valueClass(investTotal?.dayPnl||0)">{{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }}</div>
-            <div class="am-sub fs11" :class="valueClass(investTotal?.dayRate||0)">{{ formatPct(investTotal?.dayRate||0) }}</div>
-          </div>
-          <div class="acct-mini">
-            <div class="am-label">本月收益</div>
-            <div class="am-val text-up">--</div>
-            <div class="am-sub text-sub fs11">--</div>
-          </div>
-          <div class="acct-mini">
-            <div class="am-label">累计收益</div>
-            <div class="am-val" :class="valueClass(investTotal?.totalPnl||0)">{{ masked(formatSignedCny(toNumber(investTotal?.totalPnl))) }}</div>
-            <div class="am-sub text-sub fs11" :class="valueClass(investTotal?.totalRate||0)">{{ formatPct(investTotal?.totalRate||0) }}</div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Asset Type Breakdown -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-        <div style="background:rgba(62,207,130,0.06);border:1px solid rgba(62,207,130,0.14);border-radius:12px;padding:14px 16px;cursor:pointer;transition:background 0.15s" @click="$router.push('/app/invest')" onmouseover="this.style.background='rgba(62,207,130,0.1)'" onmouseout="this.style.background='rgba(62,207,130,0.06)'">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;letter-spacing:.04em">投资资产</div>
-          <div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:600;color:var(--text)">{{ masked(formatCny(investTotal?.mv||0)) }}</div>
+        <!-- Sparkline Trend Chart -->
+        <div class="c3-chart">
+          <svg viewBox="0 0 1044 120" preserveAspectRatio="none" fill="none">
+            <defs>
+              <linearGradient id="c3grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" :stop-color="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stop-opacity=".15"/>
+                <stop offset="100%" :stop-color="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7" :stroke="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'" stroke-width="2.5" fill="none"/>
+            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7 L1044,120 L0,120 Z" fill="url(#c3grad)"/>
+            <circle cx="1044" cy="7" r="4.5" :fill="(investTotal?.dayPnl||0)>=0?'#3ecf82':'#f05a55'"/>
+            <line x1="1044" y1="7" x2="1044" y2="120" :stroke="(investTotal?.dayPnl||0)>=0?'rgba(62,207,130,0.2)':'rgba(240,90,85,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
+          </svg>
         </div>
-        <div style="background:rgba(91,141,239,0.06);border:1px solid rgba(91,141,239,0.14);border-radius:12px;padding:14px 16px;cursor:pointer;transition:background 0.15s" @click="openModal('cash')" onmouseover="this.style.background='rgba(91,141,239,0.1)'" onmouseout="this.style.background='rgba(91,141,239,0.06)'">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;letter-spacing:.04em">现金资产</div>
-          <div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:600;color:var(--text)">{{ masked(formatCny(cashTotal)) }}</div>
+
+        <!-- Bottom Segments -->
+        <div class="c3-bottom">
+          <div class="c3-segment" :class="{ active: activeSegment === 'invest' }" @click="toggleSegment('invest')">
+            <div class="c3-active-bar" :style="{ background: activeSegment === 'invest' ? 'var(--green)' : '' }"></div>
+            <div class="c3-segment-label">投资资产</div>
+            <div class="c3-segment-val">{{ masked(formatCny(investTotal?.mv||0)) }}</div>
+            <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">{{ formatPct(investTotal?.dayRate||0) }} 今日</div>
+          </div>
+          <div class="c3-segment" :class="{ active: activeSegment === 'cash' }" @click="toggleSegment('cash')">
+            <div class="c3-active-bar" :style="{ background: activeSegment === 'cash' ? 'var(--blue)' : '' }"></div>
+            <div class="c3-segment-label">现金资产</div>
+            <div class="c3-segment-val">{{ masked(formatCny(cashTotal)) }}</div>
+            <div class="c3-segment-change text-muted">{{ cashAssets.length }}个账户</div>
+          </div>
+          <div class="c3-segment" :class="{ active: activeSegment === 'other' }" @click="toggleSegment('other')">
+            <div class="c3-active-bar" :style="{ background: activeSegment === 'other' ? 'var(--gold)' : '' }"></div>
+            <div class="c3-segment-label">其他资产</div>
+            <div class="c3-segment-val">{{ masked(formatCny(otherTotal)) }}</div>
+            <div class="c3-segment-change text-muted">{{ otherAssets.length }}条记录</div>
+          </div>
+          <div class="c3-segment" :class="{ active: activeSegment === 'liability' }" @click="toggleSegment('liability')">
+            <div class="c3-active-bar" :style="{ background: activeSegment === 'liability' ? 'var(--red)' : '' }"></div>
+            <div class="c3-segment-label">我的负债</div>
+            <div class="c3-segment-val" style="color:var(--red)">{{ masked(formatCny(-(liabilityTotal||0))) }}</div>
+            <div class="c3-segment-change text-red">{{ liabilities.length }}条负债</div>
+          </div>
         </div>
-        <div style="background:rgba(212,175,100,0.06);border:1px solid rgba(212,175,100,0.14);border-radius:12px;padding:14px 16px;cursor:pointer;transition:background 0.15s" @click="openModal('other')" onmouseover="this.style.background='rgba(212,175,100,0.1)'" onmouseout="this.style.background='rgba(212,175,100,0.06)'">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;letter-spacing:.04em">其他资产</div>
-          <div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:600;color:var(--text)">{{ masked(formatCny(otherTotal)) }}</div>
-        </div>
-        <div style="background:rgba(240,90,85,0.06);border:1px solid rgba(240,90,85,0.14);border-radius:12px;padding:14px 16px;cursor:pointer;transition:background 0.15s" @click="openModal('liability')" onmouseover="this.style.background='rgba(240,90,85,0.1)'" onmouseout="this.style.background='rgba(240,90,85,0.06)'">
-          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;letter-spacing:.04em">我的负债</div>
-          <div style="font-family:JetBrains Mono,monospace;font-size:16px;font-weight:600;color:var(--red)">{{ masked(formatCny(-(liabilityTotal||0))) }}</div>
+
+        <!-- Expandable Drawer -->
+        <div class="c3-drawer" :class="{ open: !!activeSegment }">
+          <div class="c3-drawer-inner">
+            <div v-for="item in activeDrawerData" :key="item.id" class="c5-detail-pill" @click="item.code ? $router.push(`/app/asset/${item.code}`) : openFormModal(item)">
+              <span class="c5-pill-icon">{{ item.icon }}</span>
+              <div>
+                <div class="c5-pill-name">{{ item.name }}</div>
+                <div class="c5-pill-amt" :style="{ color: item.type === 'liability' ? 'var(--red)' : 'var(--sub)' }">
+                  {{ masked(formatCny(toCny(item.amount, item.curr))) }}
+                </div>
+              </div>
+              <span v-if="item.type !== 'invest'" class="c5-pill-edit" @click.stop="openFormModal(item)">✏</span>
+            </div>
+            
+            <!-- Contextual Add Action in Drawer -->
+            <div v-if="activeSegment && activeSegment !== 'invest'" class="c5-add-pill" @click="openFormModal()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              添加{{ activeSegment === 'cash' ? '现金账户' : activeSegment === 'other' ? '其他资产' : '负债记录' }}
+            </div>
+          </div>
         </div>
       </div>
 
