@@ -179,12 +179,13 @@ def _exchange_fund_candidates(code: str) -> List[str]:
     suffix = lower[2:].strip()
     if not re.fullmatch(r"\d{6}", suffix):
         return []
-    # 11xxxx 明确保留场外基金路径
-    if suffix.startswith("11"):
+    # 11xxxx 里既有场外基金，也有沪市场内 ETF（如 511xxx）。
+    # 只对已知场内段做交易所候选，避免把普通场外基金误纠正。
+    if suffix.startswith("11") and not suffix.startswith(("511",)):
         return []
     if suffix.startswith(("15", "18")):
         return [f"sz{suffix}"]
-    if suffix.startswith(("50", "51", "52", "56", "58")):
+    if suffix.startswith(("50", "51", "52", "56", "58", "511")):
         return [f"sh{suffix}"]
     return []
 
@@ -240,14 +241,18 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
     _mark_metric("network_fetch")
 
     if code.startswith('f_'):
-        price_data = get_fund_price(code)
-        if not price_data or float(price_data[0] or 0.0) <= 0:
-            # 场内 QDII/ETF 误标为 f_ 时，回退到交易所行情链路，避免长期显示无价。
-            for candidate in _exchange_fund_candidates(code):
-                exchange_price = get_stock_price(candidate)
-                if exchange_price and float(exchange_price[0] or 0.0) > 0:
-                    price_data = exchange_price
-                    break
+        mapped_code = _map_fund_code_to_exchange_if_tradable(code)
+        if mapped_code != code:
+            price_data = get_stock_price(mapped_code)
+        else:
+            price_data = get_fund_price(code)
+            if not price_data or float(price_data[0] or 0.0) <= 0:
+                # 场内 QDII/ETF 误标为 f_ 时，回退到交易所行情链路，避免长期显示无价。
+                for candidate in _exchange_fund_candidates(code):
+                    exchange_price = get_stock_price(candidate)
+                    if exchange_price and float(exchange_price[0] or 0.0) > 0:
+                        price_data = exchange_price
+                        break
     
     # 其他（股票、指数等）
     else:

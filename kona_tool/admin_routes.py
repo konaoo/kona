@@ -20,8 +20,21 @@ from flask import Blueprint, jsonify, request, g, current_app, make_response
 
 import config
 from core.auth import admin_required
-from core.price import batch_get_prices, get_price_runtime_metrics, get_price_source_health, get_forex_rates
-from core.fund import get_fund_eastmoney_f10
+from core.price import batch_get_prices, get_price_runtime_metrics, get_price_source_health, get_forex_rates, get_price
+from core.fund import (
+    get_fund_eastmoney_f10,
+    get_fund_tiantian_price,
+    get_fund_tencent_jj,
+    get_fund_eastmoney_mobile,
+    get_fund_overseas_html,
+)
+from core.stock import (
+    get_blackrock_fund_price,
+    get_marketscreener_fund_price,
+    get_boursorama_fund_price,
+    get_ft_fund_price,
+    get_stock_price,
+)
 from core.snapshot import take_snapshot
 from core.system import system_manager
 from core.admin.user_admin import reset_user_password, revoke_user_sessions
@@ -197,6 +210,7 @@ _ADMIN_READ_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_READ_CACHE_LOCK = threading.Lock()
 _ADMIN_PORTFOLIO_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_PORTFOLIO_CACHE_LOCK = threading.Lock()
+_ADMIN_DB = None
 _API_TEST_CASES: List[Dict[str, str]] = [
     {"name": "工商银行", "code": "sh601398", "asset_type": "a"},
     {"name": "比亚迪", "code": "sz002594", "asset_type": "a"},
@@ -230,6 +244,292 @@ OPS_IOS_QR_IMAGE_URL_MAX_LENGTH = 2048
 OPS_APP_UPDATE_TEXT_MAX_LENGTH = 500
 OPS_APP_UPDATE_DOWNLOAD_URL_MAX_LENGTH = 2048
 ADMIN_PORTFOLIO_CACHE_TTL_SECONDS = 24 * 60 * 60
+PRICE_ALERT_ROUTE_NAME = "admin_apis_price_alerts"
+PRICE_ALERT_DELTA_PCT_WARNING = 0.15
+PRICE_ALERT_DELTA_PCT_CRITICAL = 0.5
+PRICE_ALERT_REPORT_TIMEZONE = timezone(timedelta(hours=8))
+
+
+def _price_alert_exchange_candidates(code: str) -> List[str]:
+    lower = str(code or "").strip().lower()
+    if not lower.startswith("f_"):
+        return []
+    suffix = lower[2:].strip()
+    if not suffix.isdigit() or len(suffix) != 6:
+        return []
+    if suffix.startswith("11") and not suffix.startswith(("511",)):
+        return []
+    if suffix.startswith(("15", "18")):
+        return [f"sz{suffix}"]
+    if suffix.startswith(("50", "51", "52", "56", "58", "511")):
+        return [f"sh{suffix}"]
+    return []
+
+
+def _price_alert_abs_delta_pct(current: float, baseline: float) -> float:
+    if current <= 0 or baseline <= 0:
+        return 0.0
+    return abs(current - baseline) / baseline * 100
+
+
+def _price_alert_severity(delta_pct: float) -> str:
+    if delta_pct >= PRICE_ALERT_DELTA_PCT_CRITICAL:
+        return "critical"
+    if delta_pct >= PRICE_ALERT_DELTA_PCT_WARNING:
+        return "warning"
+    return "info"
+
+
+def _load_price_alert_holdings() -> List[Dict[str, Any]]:
+    if _ADMIN_DB is None:
+        raise RuntimeError("admin database is not initialized")
+    conn = _ADMIN_DB.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT p.code, p.name, p.curr, p.user_id, u.username
+            FROM portfolio p
+            LEFT JOIN users u ON u.id = p.user_id
+            WHERE ABS(COALESCE(p.qty, 0)) > 1e-9
+            ORDER BY p.code ASC
+            """
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        code = str(row["code"] or "").strip()
+        if not code:
+            continue
+        item = grouped.setdefault(
+            code,
+            {
+                "code": code,
+                "name": str(row["name"] or "").strip() or code,
+                "curr": str(row["curr"] or "").strip().upper() or "CNY",
+                "usernames": [],
+                "user_count": 0,
+            },
+        )
+        username = str(row["username"] or "").strip() or "本地资产"
+        if username not in item["usernames"]:
+            item["usernames"].append(username)
+    for item in grouped.values():
+        item["user_count"] = len(item["usernames"])
+    return list(grouped.values())
+
+
+def _probe_price_alert_sources(code: str) -> Tuple[Tuple[float, float, float, float], List[Dict[str, Any]]]:
+    current = get_price(code, use_cache=False)
+    sources: List[Dict[str, Any]] = []
+    lower = str(code or "").strip().lower()
+
+    def add_source(source_key: str, source_label: str, quote: Tuple[float, float, float, float]) -> None:
+        price, yclose, amt, chg = quote
+        sources.append(
+            {
+                "source_key": source_key,
+                "source_label": source_label,
+                "price": float(price or 0.0),
+                "yclose": float(yclose or 0.0),
+                "amt": float(amt or 0.0),
+                "chg": float(chg or 0.0),
+            }
+        )
+
+    if lower.startswith("ft_"):
+        isin = lower.replace("ft_", "").upper()
+        add_source("blackrock_official", "贝莱德官方", get_blackrock_fund_price(isin))
+        add_source("marketscreener", "MarketScreener", get_marketscreener_fund_price(isin))
+        add_source("boursorama", "Boursorama", get_boursorama_fund_price(isin))
+        add_source("financial_times", "Financial Times", get_ft_fund_price(isin))
+        return current, sources
+
+    if lower.startswith("f_"):
+        clean_code = lower.replace("f_", "")
+        exchange_candidates = _price_alert_exchange_candidates(lower)
+        if exchange_candidates:
+            for candidate in exchange_candidates:
+                add_source(f"exchange:{candidate}", f"交易所 {candidate}", get_stock_price(candidate))
+            return current, sources
+        add_source("eastmoney_f10", "东财 F10", get_fund_eastmoney_f10(clean_code))
+        if clean_code.startswith("968"):
+            add_source("overseas_1234567", "海外基金页", get_fund_overseas_html(clean_code))
+        add_source("eastmoney_mobile", "东财手机端", get_fund_eastmoney_mobile(clean_code))
+        add_source("tiantian", "天天基金", get_fund_tiantian_price(lower))
+        add_source("tencent_jj", "腾讯基金", get_fund_tencent_jj(clean_code))
+        return current, sources
+
+    return current, sources
+
+
+def _build_price_alert_for_holding(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    code = str(item.get("code") or "").strip()
+    if not code:
+        return []
+    lower = code.lower()
+    exchange_candidates = _price_alert_exchange_candidates(lower)
+    if lower.startswith("ft_"):
+        pass
+    elif lower.startswith("f_"):
+        clean_code = lower.replace("f_", "")
+        if not clean_code.startswith("968") and not exchange_candidates:
+            return []
+    else:
+        return []
+
+    current, source_rows = _probe_price_alert_sources(code)
+    current_price = float(current[0] or 0.0)
+    available = [row for row in source_rows if float(row.get("price") or 0.0) > 0]
+    alerts: List[Dict[str, Any]] = []
+
+    def append_alert(
+        *,
+        alert_type: str,
+        reason: str,
+        baseline: Dict[str, Any],
+        suggestion: str,
+    ) -> None:
+        baseline_price = float(baseline.get("price") or 0.0)
+        delta_pct = _price_alert_abs_delta_pct(current_price, baseline_price)
+        alerts.append(
+            {
+                "code": code,
+                "name": item.get("name") or code,
+                "curr": item.get("curr") or "CNY",
+                "user_count": int(item.get("user_count") or 0),
+                "usernames": list(item.get("usernames") or []),
+                "current_price": current_price,
+                "current_yclose": float(current[1] or 0.0),
+                "baseline_price": baseline_price,
+                "baseline_yclose": float(baseline.get("yclose") or 0.0),
+                "baseline_source": baseline.get("source_label") or baseline.get("source_key") or "",
+                "baseline_source_key": baseline.get("source_key") or "",
+                "delta_pct": round(delta_pct, 4),
+                "severity": _price_alert_severity(delta_pct),
+                "alert_type": alert_type,
+                "reason": reason,
+                "suggestion": suggestion,
+                "sources": available,
+            }
+        )
+
+    exchange_candidates = [
+        row for row in available if str(row.get("source_key") or "").startswith("exchange:")
+    ]
+    if code.lower().startswith("f_") and exchange_candidates:
+        baseline = exchange_candidates[0]
+        exchange_code = str(baseline.get("source_key") or "").split("exchange:", 1)[-1]
+        if exchange_code and exchange_code != code:
+            append_alert(
+                alert_type="normalization",
+                reason=f"当前资产疑似场内基金误存为 {code}，应改走 {exchange_code} 场内行情。",
+                baseline=baseline,
+                suggestion=f"将资产代码标准化为 {exchange_code}，并优先使用交易所价格链路。",
+            )
+            return alerts
+
+    trusted: Dict[str, Any] | None = None
+    if lower.startswith("ft_"):
+        for source_key in ("blackrock_official", "marketscreener", "boursorama", "financial_times"):
+            trusted = next((row for row in available if row.get("source_key") == source_key), None)
+            if trusted:
+                break
+    elif lower.startswith("f_"):
+        clean_code = lower.replace("f_", "")
+        preferred_order = (
+            ("exchange:",) if exchange_candidates else ()
+        )
+        if clean_code.startswith("968"):
+            order = ["overseas_1234567", "eastmoney_f10", "eastmoney_mobile", "tiantian", "tencent_jj"]
+        else:
+            order = ["eastmoney_f10", "eastmoney_mobile", "tiantian", "tencent_jj"]
+        if preferred_order:
+            trusted = exchange_candidates[0]
+        if trusted is None:
+            for source_key in order:
+                trusted = next((row for row in available if row.get("source_key") == source_key), None)
+                if trusted:
+                    break
+
+    if trusted and current_price > 0:
+        delta_pct = _price_alert_abs_delta_pct(current_price, float(trusted.get("price") or 0.0))
+        if delta_pct >= PRICE_ALERT_DELTA_PCT_WARNING:
+            append_alert(
+                alert_type="price_mismatch",
+                reason=f"当前主价格与可信基准源 {trusted.get('source_label')} 偏差过大。",
+                baseline=trusted,
+                suggestion=f"检查 {trusted.get('source_label')} 是否应提升优先级，或将当前价格回退到该源。",
+            )
+    elif current_price <= 0 and trusted:
+        append_alert(
+            alert_type="missing_price",
+            reason="当前主价格无返回，但存在可用备源。",
+            baseline=trusted,
+            suggestion=f"回退到 {trusted.get('source_label')}，避免前端显示空价。",
+        )
+
+    return alerts
+
+
+def _load_price_alerts_payload() -> Dict[str, Any]:
+    holdings = _load_price_alert_holdings()
+    items: List[Dict[str, Any]] = []
+    for holding in holdings:
+        items.extend(_build_price_alert_for_holding(holding))
+
+    items.sort(
+        key=lambda row: (
+            {"critical": 0, "warning": 1, "info": 2}.get(str(row.get("severity") or "info"), 9),
+            -float(row.get("delta_pct") or 0.0),
+            str(row.get("code") or ""),
+        )
+    )
+    summary = {"critical": 0, "warning": 0, "info": 0}
+    for row in items:
+        severity = str(row.get("severity") or "info")
+        summary[severity] = int(summary.get(severity, 0)) + 1
+
+    return {
+        "tested_at_utc": datetime.now(timezone.utc).isoformat(),
+        "total_assets": len(holdings),
+        "alert_count": len(items),
+        "summary": summary,
+        "items": items,
+    }
+
+
+def _save_price_alert_report_snapshot(payload: Dict[str, Any]) -> None:
+    if _ADMIN_DB is None:
+        return
+    tested_at_utc = str(payload.get("tested_at_utc") or "").strip()
+    if not tested_at_utc:
+        return
+    try:
+        report_date = datetime.now(PRICE_ALERT_REPORT_TIMEZONE).date().isoformat()
+        _ADMIN_DB.save_price_alert_report(
+            report_date=report_date,
+            tested_at_utc=tested_at_utc,
+            total_assets=int(payload.get("total_assets") or 0),
+            alert_count=int(payload.get("alert_count") or 0),
+            summary=dict(payload.get("summary") or {}),
+            items=list(payload.get("items") or []),
+        )
+    except Exception:
+        current_app.logger.exception("save_price_alert_report failed")
+
+
+def _list_price_alert_report_history(limit: int = 7) -> List[Dict[str, Any]]:
+    if _ADMIN_DB is None:
+        return []
+    try:
+        return _ADMIN_DB.list_price_alert_reports(limit=limit)
+    except Exception:
+        current_app.logger.exception("list_price_alert_reports failed")
+        return []
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -1154,6 +1454,8 @@ def _get_active_session_count(cursor, user_id: str) -> int:
 
 
 def create_admin_blueprint(db, admin_write_audit):
+    global _ADMIN_DB
+    _ADMIN_DB = db
     bp = Blueprint("admin_routes", __name__, url_prefix="/api/admin")
 
     @bp.after_request
@@ -2514,6 +2816,26 @@ def create_admin_blueprint(db, admin_write_audit):
             return jsonify(payload)
 
         payload = _run_market_provider_test(provider_key)
+        return jsonify(payload)
+
+    @bp.route("/apis/price_alerts", methods=["GET"])
+    @admin_required
+    def admin_apis_price_alerts():
+        force = _admin_parse_force_arg()
+        payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
+            PRICE_ALERT_ROUTE_NAME,
+            dict(request.args or {}),
+            force,
+            _load_price_alerts_payload,
+        )
+        if cache_state in {"MISS", "BYPASS"}:
+            _save_price_alert_report_snapshot(payload)
+        payload["history"] = _list_price_alert_report_history()
+        _admin_log_read(PRICE_ALERT_ROUTE_NAME, cache_state, elapsed_ms, params_hash)
+        payload["cache"] = {
+            "state": cache_state.lower(),
+            "elapsed_ms": elapsed_ms,
+        }
         return jsonify(payload)
 
     @bp.route("/apis/smoke_test", methods=["POST"])

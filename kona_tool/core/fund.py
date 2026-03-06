@@ -313,27 +313,27 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     if price > 0:
         return price, yclose, amt, chg
 
-    # 2. 兜底：天天基金（dwjz优先，gsz兜底）
+    # 2. 968xxx 海外基金优先走海外基金网页；天天/腾讯对这类基金经常滞后。
+    if clean_code.startswith('968'):
+        price, yclose, amt, chg = get_fund_overseas_html(clean_code)
+        if price > 0:
+            return price, yclose, amt, chg
+
+    # 3. 兜底：天天基金（dwjz优先，gsz兜底）
     if code_str.startswith('f_'):
         price, yclose, amt, chg = get_fund_tiantian_price(code_str)
         if price > 0:
             return price, yclose, amt, chg
 
-    # 3. 兜底：腾讯 jj，仅补现价，不再信任其累计净值字段为昨收。
-    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
-    if price > 0:
-        return price, yclose, amt, chg
-
     # 4. 兜底：东财手机端（适合互认基金）
     price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)
     if price > 0:
         return price, yclose, amt, chg
-    
-    # 5. 尝试海外基金网页（适合968xxx等海外基金）
-    if clean_code.startswith('968'):
-        price, yclose, amt, chg = get_fund_overseas_html(clean_code)
-        if price > 0:
-            return price, yclose, amt, chg
+
+    # 5. 最后兜底：腾讯 jj，仅补现价，不再信任其累计净值字段为昨收。
+    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
+    if price > 0:
+        return price, yclose, amt, chg
     
     logger.warning(f"Failed to get price for fund {code}")
     return 0.0, 0.0, 0.0, 0.0

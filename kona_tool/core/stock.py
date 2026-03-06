@@ -6,6 +6,7 @@ import re
 import logging
 import time
 import threading
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Tuple, Optional, Dict, Any, List
 from bs4 import BeautifulSoup
@@ -456,6 +457,153 @@ def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float]:
     return 0.0, 0.0, 0.0, 0.0
 
 
+@retry_on_failure(max_retries=2, delay=0.5)
+def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float]:
+    """
+    通过 MarketScreener 搜索页按 ISIN 解析海外基金净值。
+
+    这里优先拿 schema.org 的 Offer price，通常比 Boursorama 更接近基金公司确认净值。
+    若页面未暴露昨收/涨跌，则保守回填为 0，避免伪造日涨跌。
+    """
+    try:
+        query = str(isin or "").strip().upper()
+        if not query:
+            return 0.0, 0.0, 0.0, 0.0
+
+        url = f"https://www.marketscreener.com/search/?q={query}"
+        headers = {
+            "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.marketscreener.com/",
+        }
+
+        r = monitored_http_get(
+            "marketscreener_fund",
+            url,
+            headers=headers,
+            timeout=config.API_TIMEOUT,
+        )
+        if r.status_code != 200:
+            return 0.0, 0.0, 0.0, 0.0
+
+        text = str(r.text or "")
+        link_match = re.search(r'(/quote/fund/[^"\']+)', text, re.I)
+        if not link_match:
+            return 0.0, 0.0, 0.0, 0.0
+
+        detail_url = f"https://www.marketscreener.com{link_match.group(1)}"
+        detail = monitored_http_get(
+            "marketscreener_fund",
+            detail_url,
+            headers=headers,
+            timeout=config.API_TIMEOUT,
+        )
+        if detail.status_code != 200:
+            return 0.0, 0.0, 0.0, 0.0
+
+        detail_text = str(detail.text or "")
+        identifier_pattern = re.compile(
+            r'"identifier"\s*:\s*"%s"' % re.escape(query),
+            re.I,
+        )
+        match = identifier_pattern.search(detail_text)
+        if not match:
+            return 0.0, 0.0, 0.0, 0.0
+
+        window_start = max(0, match.start() - 600)
+        window_end = min(len(detail_text), match.end() + 1200)
+        window = detail_text[window_start:window_end]
+
+        price_match = re.search(r'"price"\s*:\s*"([^"]+)"', window, re.I)
+        curr = safe_float(price_match.group(1)) if price_match else 0.0
+        if curr <= 0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        prev_match = re.search(
+            r'"(?:previousClose|previous_close|yclose)"\s*:\s*"([^"]+)"',
+            window,
+            re.I,
+        )
+        yclose = safe_float(prev_match.group(1)) if prev_match else curr
+        if yclose <= 0:
+            yclose = curr
+
+        amt = curr - yclose
+        chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
+        return curr, yclose, amt, chg_pct
+    except Exception as e:
+        _log_warn_throttled(
+            "marketscreener_fund_api",
+            f"MarketScreener fund API error: {e}",
+        )
+
+    return 0.0, 0.0, 0.0, 0.0
+
+
+@retry_on_failure(max_retries=2, delay=0.5)
+def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float]:
+    """
+    解析贝莱德官方产品页的基金净值。
+
+    目前先覆盖线上已持有、且官方页面可稳定访问的 ISIN。
+    官方页有明确“净值截至”与“一天净值变动”字段，优先级应高于三方站点。
+    """
+    pages = {
+        "LU1116320737": "https://www.blackrock.com/cn/products/270404/bgf-global-enhanced-equity-yield-fund-a6-usd",
+    }
+    try:
+        query = str(isin or "").strip().upper()
+        url = pages.get(query)
+        if not url:
+            return 0.0, 0.0, 0.0, 0.0
+
+        headers = {
+            "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Referer": "https://www.blackrock.com/",
+        }
+
+        r = requests.get(url, headers=headers, timeout=max(5, int(config.API_TIMEOUT)))
+        if r.status_code != 200:
+            return 0.0, 0.0, 0.0, 0.0
+
+        text = str(r.text or "")
+        amount_match = re.search(
+            r'<span class="header-nav-label navAmount">\s*净值截至[^<]*</span>\s*'
+            r'<span class="header-nav-data">\s*([^<]*?)\s*([0-9]+(?:\.[0-9]+)?)\s*</span>',
+            text,
+            re.I | re.S,
+        )
+        if not amount_match:
+            return 0.0, 0.0, 0.0, 0.0
+
+        curr = safe_float(amount_match.group(2))
+        if curr <= 0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        change_match = re.search(
+            r'<li class="navAmountChange[^"]*"[^>]*>.*?'
+            r'<span class="header-nav-data">\s*[^<]*?\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*'
+            r'\(\s*([+-]?[0-9]+(?:\.[0-9]+)?)%\s*\)\s*</span>',
+            text,
+            re.I | re.S,
+        )
+        amt = safe_float(change_match.group(1)) if change_match else 0.0
+        chg_pct = safe_float(change_match.group(2)) if change_match else 0.0
+        yclose = curr - amt
+        if yclose <= 0:
+            yclose = curr
+            amt = 0.0
+            chg_pct = 0.0
+        return curr, yclose, amt, chg_pct
+    except Exception as e:
+        _log_warn_throttled("blackrock_fund_api", f"BlackRock fund API error: {e}")
+
+    return 0.0, 0.0, 0.0, 0.0
+
+
 def get_us_asset_type(code: str) -> Optional[str]:
     """
     判断美股资产类型：ETF -> fund / 股票 -> us
@@ -669,6 +817,12 @@ def get_stock_price(code: str) -> Tuple[float, float, float, float]:
     # FT基金
     if code.startswith('ft_'):
         isin = code.replace('ft_', '')
+        curr, yclose, amt, chg = get_blackrock_fund_price(isin)
+        if curr > 0:
+            return curr, yclose, amt, chg
+        curr, yclose, amt, chg = get_marketscreener_fund_price(isin)
+        if curr > 0:
+            return curr, yclose, amt, chg
         curr, yclose, amt, chg = get_boursorama_fund_price(isin)
         if curr > 0:
             return curr, yclose, amt, chg
