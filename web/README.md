@@ -301,4 +301,206 @@ rsync -a --delete \
 
 ## 12. 变更归档建议
 
-后续每次 UI/口径调整，请在本 README 追加一条“变更记录（日期 + 文件 + 验收命令）”，避免口头同步造成偏差。
+后续每次 UI/口径调整，请在本 README 追加一条”变更记录（日期 + 文件 + 验收命令）”，避免口头同步造成偏差。
+
+---
+
+# 🎨 设计系统与类型系统（2026-03 重构）
+
+## 📖 概述
+
+从 `kakka-app_1.html` 原型完整提取的设计系统和类型定义，确保 UI 一致性和代码质量。
+
+---
+
+## 🎨 设计系统文件
+
+### 新增文件
+
+```
+src/styles/
+├── tokens.css      # 设计变量（颜色、字体、间距等）
+├── base.css        # 基础样式重置和全局样式
+├── mixins.css      # 通用样式类和混合
+└── animations.css  # 动画效果
+```
+
+### 设计 Token 快速参考
+
+```css
+/* 颜色 */
+--bg: #0a0b0e;          /* 主背景 */
+--text: #e4e5ea;        /* 主文本 */
+--green: #3ecf82;       /* 上涨 */
+--red: #f05a55;         /* 下跌 */
+--blue: #5b8def;        /* 主品牌 */
+
+/* 间距 */
+--space-1: 4px
+--space-4: 16px
+--space-6: 24px
+
+/* 圆角 */
+--radius-lg: 12px
+--radius-xl: 16px
+--radius-2xl: 18px
+```
+
+---
+
+## 🔷 类型系统文件
+
+### 新增文件
+
+```
+src/types/
+├── index.ts       # 主入口
+├── api.ts         # API 接口类型（80+ 类型）
+├── portfolio.ts   # 投资组合类型（30+ 类型）
+├── quote.ts       # 行情类型（20+ 类型）
+├── user.ts        # 用户类型（15+ 类型）
+└── ui.ts          # UI 组件类型（40+ 类型）
+```
+
+### 核心类型示例
+
+```typescript
+// 市场
+type MarketCode = 'a' | 'hk' | 'us' | 'fund'
+
+// 用户
+type User = {
+  id: string
+  username: string
+  nickname?: string
+  is_admin: boolean
+}
+
+// 持仓
+type PositionRow = {
+  code: string
+  name?: string
+  market: MarketCode
+  qty: number
+  price: number
+  total_pnl: number
+  // ...
+}
+```
+
+---
+
+## 🔧 配置文件
+
+### 新增配置
+
+```json
+// package.json - 新增依赖
+{
+  “dependencies”: {
+    “pinia”: “^2.1.0”,           // 状态管理
+    “@vueuse/core”: “^10.0.0”,   // 工具库
+    “dayjs”: “^1.11.0”           // 日期处理
+  },
+  “devDependencies”: {
+    “@vue/test-utils”: “^2.4.0”, // 测试工具
+    “eslint”: “^8.0.0”,
+    “prettier”: “^3.0.0”
+  },
+  “scripts”: {
+    “lint”: “eslint . --ext .vue,.ts,.tsx”,
+    “format”: “prettier --write \”src/**/*.{vue,ts,tsx,css,scss}\””
+  }
+}
+```
+
+```
+
+### ESLint + Prettier
+
+- ESLint: `.eslintrc.cjs` - TypeScript 严格模式
+- Prettier: `.prettierrc` - 代码格式化
+
+---
+
+## ✅ 第一阶段验收清单
+
+### 代码质量
+- [ ] TypeScript strict 模式无错误
+- [ ] ESLint 检查通过（0 errors, 0 warnings）
+- [ ] 所有类型定义完整
+- [ ] 可以成功导入所有类型
+
+### 设计一致性
+- [ ] 颜色系统与 HTML 原型一致
+- [ ] 间距系统与 HTML 原型一致
+- [ ] 字体系统与 HTML 原型一致
+- [ ] 动画效果与 HTML 原型一致
+
+### 使用验证
+- [ ] 可以正确导入设计 Token
+- [ ] 工具类样式正常工作
+- [ ] 类型定义有完整的 JSDoc 注释
+
+---
+
+## 📚 使用指南
+
+### 样式使用
+
+```vue
+<!-- 使用 Token -->
+<div :style=”{ color: 'var(--text)', padding: 'var(--space-4)' }”>
+
+<!-- 使用工具类 -->
+<div class=”flex flex-between gap-4 p-4”>
+  <h2 class=”text-xl font-semibold”>标题</h2>
+</div>
+```
+
+### 类型使用
+
+```typescript
+import type { User, MarketCode, PositionRow } from '@/types'
+
+const user = ref<User | null>(null)
+const market = ref<MarketCode>('us')
+```
+
+---
+
+## 🚀 下一步
+
+第一阶段完成后，将进入：
+- **第二阶段**：基础组件库（20+ 组件）
+- **第三阶段**：Pinia 状态管理
+- **第四阶段**：布局系统重构
+
+---
+
+## 📝 变更记录
+
+### 2026-03-06 - 设计系统与类型系统
+
+**文件**：
+- 新增：`src/styles/{tokens,base,mixins,animations}.css`
+- 新增：`src/types/{index,api,portfolio,quote,user,ui}.ts`
+- 更新：`package.json`（新增依赖）
+- 新增：`.eslintrc.cjs`, `.prettierrc`
+
+**验收命令**：
+```bash
+# 检查类型
+cd web && npx tsc --noEmit
+
+# 检查代码规范
+npm run lint
+
+# 格式化代码
+npm run format
+```
+
+**说明**：
+- 从 `kakka-app_1.html` 提取完整设计系统
+- 建立 TypeScript strict 模式类型体系
+- 配置 ESLint + Prettier 代码规范

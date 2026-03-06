@@ -1,0 +1,297 @@
+/* ═══════════════════════════════════════════════════════════════
+   MIXINS - 通用样式类和混合
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────
+   LAYOUT - 布局工具类
+   ─────────────────────────────────────────────────────────────── */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-row { flex-direction: row; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-start { display: flex; align-items: center; justify-content: flex-start; }
+.flex-end { display: flex; align-items: center; justify-content: flex-end; }
+.flex-1 { flex: 1; }
+
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+.gap-5 { gap: var(--space-5); }
+.gap-6 { gap: var(--space-6); }
+
+/* ───────────────────────────────────────────────────────────────
+   SPACING - 间距工具类
+   ─────────────────────────────────────────────────────────────── */
+.p-1 { padding: var(--space-1); }
+.p-2 { padding: var(--space-2); }
+.p-3 { padding: var(--space-3); }
+.p-4 { padding: var(--space-4); }
+.p-5 { padding: var(--space-5); }
+.p-6 { padding: var(--space-6); }
+
+.px-1 { padding-left: var(--space-1); padding-right: var(--space-1); }
+.px-2 { padding-left: var(--space-2); padding-right: var(--space-2); }
+.px-3 { padding-left: var(--space-3); padding-right: var(--space-3); }
+.px-4 { padding-left: var(--space-4); padding-right: var(--space-4); }
+.px-5 { padding-left: var(--space-5); padding-right: var(--space-5); }
+.px-6 { padding-left: var(--space-6); padding-right: var(--space-6); }
+
+.py-1 { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+.py-2 { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.py-3 { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.py-4 { padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.py-5 { padding-top: var(--space-5); padding-bottom: var(--space-5); }
+.py-6 { padding-top: var(--space-6); padding-bottom: var(--space-6); }
+
+.m-1 { margin: var(--space-1); }
+.m-2 { margin: var(--space-2); }
+.m-3 { margin: var(--space-3); }
+.m-4 { margin: var(--space-4); }
+.m-5 { margin: var(--space-5); }
+.m-6 { margin: var(--space-6); }
+
+.mx-auto { margin-left: auto; margin-right: auto; }
+.my-auto { margin-top: auto; margin-bottom: auto; }
+
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-5 { margin-top: var(--space-5); }
+.mt-6 { margin-top: var(--space-6); }
+
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-5 { margin-bottom: var(--space-5); }
+.mb-6 { margin-bottom: var(--space-6); }
+
+/* ───────────────────────────────────────────────────────────────
+   TEXT - 文本工具类
+   ─────────────────────────────────────────────────────────────── */
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-base { font-size: var(--font-size-base); }
+.text-md { font-size: var(--font-size-md); }
+.text-lg { font-size: var(--font-size-lg); }
+.text-xl { font-size: var(--font-size-xl); }
+.text-2xl { font-size: var(--font-size-2xl); }
+.text-3xl { font-size: var(--font-size-3xl); }
+.text-4xl { font-size: var(--font-size-4xl); }
+
+.font-normal { font-weight: var(--font-weight-normal); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }
+
+.text-left { text-align: left; }
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+
+.text-muted { color: var(--muted); }
+.text-sub { color: var(--sub); }
+.text-primary { color: var(--text); }
+
+.text-up { color: var(--color-up); }
+.text-down { color: var(--color-down); }
+.text-neutral { color: var(--color-neutral); }
+
+.mono { font-family: var(--font-family-mono); }
+
+/* ───────────────────────────────────────────────────────────────
+   COLOR - 颜色工具类
+   ─────────────────────────────────────────────────────────────── */
+.text-blue { color: var(--blue); }
+.text-green { color: var(--green); }
+.text-red { color: var(--red); }
+.text-gold { color: var(--gold); }
+
+.bg-blue { background-color: var(--blue); }
+.bg-green { background-color: var(--green); }
+.bg-red { background-color: var(--red); }
+.bg-gold { background-color: var(--gold); }
+
+/* ───────────────────────────────────────────────────────────────
+   BORDERS - 边框工具类
+   ─────────────────────────────────────────────────────────────── */
+.border { border: 1px solid var(--border); }
+.border-b { border-bottom: 1px solid var(--border); }
+.border-t { border-top: 1px solid var(--border); }
+.border-l { border-left: 1px solid var(--border); }
+.border-r { border-right: 1px solid var(--border); }
+
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+.rounded-2xl { border-radius: var(--radius-2xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* ───────────────────────────────────────────────────────────────
+   DISPLAY - 显示工具类
+   ─────────────────────────────────────────────────────────────── */
+.hidden { display: none; }
+.block { display: block; }
+.inline-block { display: inline-block; }
+.inline { display: inline; }
+
+/* ───────────────────────────────────────────────────────────────
+   POSITION - 定位工具类
+   ─────────────────────────────────────────────────────────────── */
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed { position: fixed; }
+.sticky { position: sticky; }
+
+/* ───────────────────────────────────────────────────────────────
+   SIZING - 尺寸工具类
+   ─────────────────────────────────────────────────────────────── */
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.min-h-screen { min-height: 100vh; }
+
+/* ───────────────────────────────────────────────────────────────
+   OVERFLOW - 溢出工具类
+   ─────────────────────────────────────────────────────────────── */
+.overflow-hidden { overflow: hidden; }
+.overflow-auto { overflow: auto; }
+.overflow-scroll { overflow: scroll; }
+
+/* ───────────────────────────────────────────────────────────────
+   OPACITY - 透明度工具类
+   ─────────────────────────────────────────────────────────────── */
+.opacity-0 { opacity: 0; }
+.opacity-50 { opacity: 0.5; }
+.opacity-100 { opacity: 1; }
+
+/* ───────────────────────────────────────────────────────────────
+   CURSOR - 光标工具类
+   ─────────────────────────────────────────────────────────────── */
+.cursor-pointer { cursor: pointer; }
+.cursor-not-allowed { cursor: not-allowed; }
+.cursor-default { cursor: default; }
+
+/* ───────────────────────────────────────────────────────────────
+   TRANSITIONS - 过渡工具类
+   ─────────────────────────────────────────────────────────────── */
+.transition { transition: all var(--duration-base) var(--easing-default); }
+.transition-fast { transition: all var(--duration-fast) var(--easing-default); }
+.transition-slow { transition: all var(--duration-slow) var(--easing-default); }
+
+/* ───────────────────────────────────────────────────────────────
+   SPECIFIC MIXINS - 专用混合
+   ─────────────────────────────────────────────────────────────── */
+
+/* 卡片样式 */
+.card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 输入框样式 */
+.input {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  transition: all var(--duration-base) var(--easing-default);
+}
+
+.input:hover {
+  border-color: var(--border-b);
+}
+
+.input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.1);
+}
+
+/* 按钮基础样式 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: all var(--duration-base) var(--easing-default);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #5b8def, #4a7be0);
+  color: white;
+  box-shadow: 0 4px 14px rgba(74, 123, 224, 0.28);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(74, 123, 224, 0.38);
+}
+
+.btn-ghost {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  color: var(--sub);
+}
+
+.btn-ghost:hover {
+  background: var(--s3);
+  color: var(--text);
+}
+
+/* 徽章样式 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.badge-up {
+  color: var(--red);
+  background: rgba(240, 90, 85, 0.12);
+}
+
+.badge-down {
+  color: var(--green);
+  background: rgba(62, 207, 130, 0.12);
+}
+
+.badge-neutral {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 标签样式 */
+.tag {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+}
+
+.tag-hk { color: #e06b3a; background: rgba(224, 107, 58, 0.13); }
+.tag-us { color: var(--blue); background: rgba(91, 141, 239, 0.13); }
+.tag-a { color: var(--green); background: rgba(62, 207, 130, 0.12); }
+.tag-fund { color: var(--gold); background: rgba(212, 175, 100, 0.12); }

@@ -79,6 +79,106 @@
       </div>
     </AdminCard>
 
+    <AdminCard class="block" variant="surface">
+      <AdminSectionHeader title="价格异常巡检" subtitle="全局扫描持仓价格异常、源优先级错位和疑似错分类资产" />
+      <div class="snapshot-actions">
+        <AdminButton :disabled="priceAlerts.loading" pill @click="runPriceAlertCheck(true)">
+          {{ priceAlerts.loading ? '巡检中...' : '运行巡检' }}
+        </AdminButton>
+        <span v-if="priceAlerts.data" class="snapshot-badge" :class="priceAlerts.data.alert_count ? 'badge-critical' : 'badge-healthy'">
+          {{ priceAlerts.data.alert_count ? `发现 ${priceAlerts.data.alert_count} 条异常` : '未发现异常' }}
+        </span>
+      </div>
+      <p v-if="priceAlerts.error" class="down" style="margin-top:8px">{{ priceAlerts.error }}</p>
+      <div v-if="priceAlerts.data" class="snapshot-result">
+        <div class="snapshot-summary">
+          <div class="summary-item">
+            <span class="summary-label">扫描资产数</span>
+            <span class="summary-value">{{ priceAlerts.data.total_assets }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">严重</span>
+            <span class="summary-value down">{{ priceAlerts.data.summary.critical }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">警告</span>
+            <span class="summary-value">{{ priceAlerts.data.summary.warning }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">提示</span>
+            <span class="summary-value">{{ priceAlerts.data.summary.info }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">缓存</span>
+            <span class="summary-value">{{ priceAlerts.data.cache.state }} / {{ priceAlerts.data.cache.elapsed_ms }}ms</span>
+          </div>
+        </div>
+        <AdminTable compact style="margin-top:12px">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>巡检时间</th>
+              <th>扫描资产</th>
+              <th>异常数</th>
+              <th>严重</th>
+              <th>警告</th>
+              <th>提示</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in priceAlerts.data.history" :key="item.report_date">
+              <td>{{ item.report_date }}</td>
+              <td>{{ formatDateTime(item.tested_at_utc) }}</td>
+              <td>{{ item.total_assets }}</td>
+              <td :class="item.alert_count ? 'down' : 'up'">{{ item.alert_count }}</td>
+              <td class="down">{{ item.summary.critical || 0 }}</td>
+              <td>{{ item.summary.warning || 0 }}</td>
+              <td>{{ item.summary.info || 0 }}</td>
+            </tr>
+            <tr v-if="!priceAlerts.data.history.length">
+              <td colspan="7" class="muted">最近还没有巡检历史。</td>
+            </tr>
+          </tbody>
+        </AdminTable>
+        <AdminTable compact style="margin-top:12px">
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>问题</th>
+              <th>当前价</th>
+              <th>基准价</th>
+              <th>偏差</th>
+              <th>基准源</th>
+              <th>影响用户</th>
+              <th>建议</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in priceAlerts.data.items" :key="`${item.code}-${item.alert_type}-${item.baseline_source_key}`">
+              <td>{{ item.code }}</td>
+              <td>{{ item.name }}</td>
+              <td :class="item.severity === 'critical' ? 'down' : item.severity === 'warning' ? '' : 'muted'">
+                {{ alertTypeLabel(item.alert_type) }}
+              </td>
+              <td>{{ formatPrice(item.current_price) }}</td>
+              <td>{{ formatPrice(item.baseline_price) }}</td>
+              <td :class="item.delta_pct >= 0.5 ? 'down' : ''">{{ formatDeltaPct(item.delta_pct) }}</td>
+              <td>{{ item.baseline_source }}</td>
+              <td :title="item.usernames.join(' / ')">{{ item.user_count }} 人</td>
+              <td class="suggestion-cell">
+                <div>{{ item.reason }}</div>
+                <div class="muted">{{ item.suggestion }}</div>
+              </td>
+            </tr>
+            <tr v-if="!priceAlerts.data.items.length">
+              <td colspan="9" class="muted">当前未发现价格异常。</td>
+            </tr>
+          </tbody>
+        </AdminTable>
+      </div>
+    </AdminCard>
+
     <div v-if="modal.visible && currentProvider" class="detail-mask" @click.self="closeModal">
       <AdminCard class="detail-panel" variant="surface">
         <div class="detail-head">
@@ -158,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
 import AdminCard from '../../components/admin/ui/AdminCard.vue'
 import AdminButton from '../../components/admin/ui/AdminButton.vue'
@@ -307,6 +407,55 @@ const snapshotHealth = reactive<{
   showUsers: false,
 })
 
+interface PriceAlertItem {
+  code: string
+  name: string
+  curr: string
+  user_count: number
+  usernames: string[]
+  current_price: number
+  baseline_price: number
+  baseline_source: string
+  baseline_source_key: string
+  delta_pct: number
+  severity: 'critical' | 'warning' | 'info'
+  alert_type: 'normalization' | 'price_mismatch' | 'missing_price'
+  reason: string
+  suggestion: string
+}
+
+interface PriceAlertData {
+  tested_at_utc: string
+  total_assets: number
+  alert_count: number
+  summary: Record<string, number>
+  items: PriceAlertItem[]
+  history: PriceAlertHistoryItem[]
+  cache: {
+    state: string
+    elapsed_ms: number
+  }
+}
+
+interface PriceAlertHistoryItem {
+  report_date: string
+  tested_at_utc: string
+  total_assets: number
+  alert_count: number
+  updated_at: string
+  summary: Record<string, number>
+}
+
+const priceAlerts = reactive<{
+  loading: boolean
+  error: string
+  data: PriceAlertData | null
+}>({
+  loading: false,
+  error: '',
+  data: null,
+})
+
 function snapshotStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     healthy: '✅ 正常运行',
@@ -329,6 +478,52 @@ async function runSnapshotHealthCheck() {
     snapshotHealth.loading = false
   }
 }
+
+function alertTypeLabel(alertType: string): string {
+  const labels: Record<string, string> = {
+    normalization: '资产分类错误',
+    price_mismatch: '价格偏差过大',
+    missing_price: '主价缺失',
+  }
+  return labels[alertType] || alertType
+}
+
+function formatDeltaPct(value: unknown): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '-'
+  return `${n.toFixed(2)}%`
+}
+
+function formatDateTime(value: string): string {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+async function runPriceAlertCheck(force = false) {
+  if (priceAlerts.loading) return
+  priceAlerts.loading = true
+  priceAlerts.error = ''
+  try {
+    const suffix = force ? '?force=1' : ''
+    priceAlerts.data = await api.get<PriceAlertData>(`/api/admin/apis/price_alerts${suffix}`)
+  } catch (e) {
+    priceAlerts.error = e instanceof Error ? e.message : '巡检失败'
+  } finally {
+    priceAlerts.loading = false
+  }
+}
+
+onMounted(() => {
+  void runPriceAlertCheck(false)
+})
 </script>
 
 <style scoped>
@@ -425,6 +620,12 @@ async function runSnapshotHealthCheck() {
   font-size: 14px;
   font-weight: 500;
   color: #1f252b;
+}
+
+.suggestion-cell {
+  min-width: 280px;
+  max-width: 420px;
+  white-space: normal;
 }
 
 .up {
