@@ -863,3 +863,29 @@ a {
 .c5-detail-pill:hover .c5-pill-edit{opacity:1;}
 .c5-add-pill{display:flex;align-items:center;gap:6px;padding:10px 16px;border:1px dashed rgba(255,255,255,0.1);border-radius:14px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .14s;}
 .c5-add-pill:hover{border-color:rgba(91,141,239,.4);color:var(--blue);background:rgba(91,141,239,0.04);}
+
+/* Missing Period Tab Styles */
+.c1-period-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 3px;
+}
+.c1-pt {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .14s;
+  white-space: nowrap;
+}
+.c1-pt.active {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}

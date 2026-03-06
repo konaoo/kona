@@ -11,6 +11,7 @@ import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useWebTheme } from '@/shared/webTheme'
+import { useMarketStore } from '@/stores/market'
 
 
 // Types
@@ -21,6 +22,7 @@ type SimpleAsset = { id: number; icon?: string; name: string; amount: number; cu
 const store = useKonaStore()
 const { theme, toggleTheme } = useWebTheme()
 const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
+const marketStore = useMarketStore()
 
 // State
 const isLoading = ref(true)
@@ -237,6 +239,7 @@ async function refreshAll() {
   try {
     await Promise.all([
       store.refreshAll(),
+      marketStore.loadRates(),
       loadLists(),
       loadMarketIndices()
     ])
@@ -338,6 +341,7 @@ onMounted(async () => {
   try {
     await store.bootstrap()
     await Promise.all([
+      marketStore.loadRates(),
       loadLists(),
       loadMarketIndices()
     ])
@@ -454,7 +458,7 @@ onBeforeUnmount(() => {
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)' }"><polyline points="6 9 12 15 18 9"/></svg>
                 
                 <!-- Currency Dropdown -->
-                <div v-show="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--s2);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:modalIn .18s ease">
+                <div v-if="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--s2);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:modalIn .18s ease">
                   <div class="ccy-option" :class="{ active: currentCurrency === 'CNY' }" @click.stop="currentCurrency = 'CNY'; currencyOpen = false">
                     <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">CNY</span>
                     <span style="font-size:9px;color:var(--muted)">人民币</span>
@@ -475,8 +479,7 @@ onBeforeUnmount(() => {
               <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">今日 {{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }}</span>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-            <div style="font-size:10px;color:var(--muted)">近30天走势</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center">
             <div class="c1-period-tabs">
               <button class="c1-pt active">近1月</button>
               <button class="c1-pt">近3月</button>
@@ -679,5 +682,34 @@ onBeforeUnmount(() => {
 
 <style>
 @import '@/styles/homepage-original.css';
+
+/* Nested scoping for period tabs to ensure they match Concept 3 expectations */
+.c1-period-tabs {
+  display: flex !important;
+  gap: 4px !important;
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 9px !important;
+  padding: 3px !important;
+  width: fit-content;
+}
+.c1-pt {
+  padding: 5px 14px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background: transparent !important;
+  font-family: inherit !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--muted) !important;
+  cursor: pointer !important;
+  transition: all .14s !important;
+  white-space: nowrap !important;
+  line-height: 1 !important;
+}
+.c1-pt.active {
+  background: rgba(255,255,255,0.08) !important;
+  color: var(--text) !important;
+}
 /* 使用全局样式以确保 :root 和 布局类生效 */
 </style>

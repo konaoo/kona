@@ -93,7 +93,7 @@ export function useKonaStore() {
           await portfolioStore.loadPortfolio()
         }
       } catch {
-        await Promise.all([marketStore.loadMarketStatus(), portfolioStore.loadPortfolio()])
+        await Promise.all([marketStore.loadMarketStatus(), marketStore.loadRates(), portfolioStore.loadPortfolio()])
       }
       await loadQuotes()
     } finally {
