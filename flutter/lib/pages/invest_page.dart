@@ -78,12 +78,20 @@ class _S {
   static final cardProgressLabel = GoogleFonts.jetBrainsMono(fontSize: 9);
   static final cardPnlLabel = GoogleFonts.dmSans(fontSize: 10);
   static final cardPnlVal = GoogleFonts.jetBrainsMono(
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: FontWeight.w600,
+    height: 1.0,
+  );
+  static final cardPnlPending = GoogleFonts.dmSans(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.01,
+    height: 1.0,
   );
   static final cardPnlPct = GoogleFonts.dmSans(
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: FontWeight.w500,
+    height: 1.0,
   );
 }
 
@@ -487,7 +495,7 @@ class InvestPageState extends State<InvestPage> {
 
     // Calculate category-level PnL from filtered list
     double catDayPnl = 0, catDayBase = 0;
-    double catHoldPnl = 0, catCostAbs = 0;
+    double catHoldPnl = 0, catAdjustedCostAbs = 0;
 
     for (final item in filtered) {
       final priceInfo = appState.resolvePriceInfoByCode(
@@ -501,8 +509,9 @@ class InvestPageState extends State<InvestPage> {
       final rate = appState.getCurrencyRate(item.curr);
       final mv = price * item.qty * rate;
       final cost = item.price * item.qty * rate;
+      final adjustedCost = cost - item.adjustment * rate;
       catHoldPnl += mv - cost + item.adjustment * rate;
-      catCostAbs += cost.abs();
+      catAdjustedCostAbs += adjustedCost.abs();
 
       if (appState.isAssetDayPnlEnabled(item, priceInfo: priceInfo) &&
           hasValidPrice) {
@@ -513,8 +522,8 @@ class InvestPageState extends State<InvestPage> {
     }
 
     final catDayPnlRate = catDayBase > 0 ? (catDayPnl / catDayBase * 100) : 0.0;
-    final catHoldPnlRate = catCostAbs > 0
-        ? (catHoldPnl / catCostAbs * 100)
+    final catHoldPnlRate = catAdjustedCostAbs > 0
+        ? (catHoldPnl / catAdjustedCostAbs * 100)
         : 0.0;
 
     final dayColor = AppState.getPnlColor(catDayPnl);
@@ -551,7 +560,7 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden
                             ? '****'
-                            : appState.formatPnlInt(catDayPnl),
+                            : appState.formatPnlIntWithCurrency(catDayPnl, '¥'),
                         style: _S.sumVal.copyWith(color: dayColor),
                       ),
                       Text(
@@ -585,7 +594,10 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden
                             ? '****'
-                            : appState.formatPnlInt(catHoldPnl),
+                            : appState.formatPnlIntWithCurrency(
+                                catHoldPnl,
+                                '¥',
+                              ),
                         style: _S.sumVal.copyWith(color: holdColor),
                       ),
                       Text(
@@ -692,22 +704,23 @@ class InvestPageState extends State<InvestPage> {
 
     final mv = currentPrice * qty;
     final costTotal = rawCostPrice * qty;
+    final adjustedCostTotal = costTotal - adjustment;
     final holdingPnl = mv - costTotal + adjustment;
-    final holdingPnlPct = costTotal.abs() > 0
-        ? (holdingPnl / costTotal.abs() * 100)
+    final holdingPnlPct = adjustedCostTotal.abs() > 0
+        ? (holdingPnl / adjustedCostTotal.abs() * 100)
         : 0.0;
     final pnlColor = AppState.getPnlColor(holdingPnl);
 
-    final rate = appState.getCurrencyRate(item.curr);
+    final navUpdatePending = appState.isNavUpdatePendingAsset(item);
     final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(
       item,
       priceInfo: priceInfo,
     );
     final dailyPnl = (dayPnlEnabled && hasValidPrice)
-        ? priceInfo.change * qty * rate
+        ? priceInfo.change * qty
         : 0.0;
     final dailyBase = (dayPnlEnabled && hasValidPrice && priceInfo.yclose > 0)
-        ? priceInfo.yclose * qty * rate
+        ? priceInfo.yclose * qty
         : 0.0;
     final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
     final dailyColor = AppState.getPnlColor(dailyPnl);
@@ -911,9 +924,9 @@ class InvestPageState extends State<InvestPage> {
                 Expanded(
                   child: _pnlBox(
                     label: '当日盈亏',
-                    value: _fmtPnl(dailyPnl, '¥'),
-                    pct: _fmtPct(dailyPnlPct),
-                    color: dailyColor,
+                    value: navUpdatePending ? '待净值更新' : _fmtPnl(dailyPnl, sym),
+                    pct: navUpdatePending ? '' : _fmtPct(dailyPnlPct),
+                    color: navUpdatePending ? AppTheme.textMuted : dailyColor,
                     hidden: appState.amountHidden,
                   ),
                 ),
@@ -942,6 +955,7 @@ class InvestPageState extends State<InvestPage> {
     required Color color,
     required bool hidden,
   }) {
+    final isPending = value == '待净值更新' && pct.isEmpty;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
@@ -953,23 +967,48 @@ class InvestPageState extends State<InvestPage> {
         ),
         color: AppTheme.isLight ? const Color(0x05222C40) : AppTheme.surface2,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: _S.cardPnlLabel.copyWith(color: AppTheme.textMuted),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            hidden ? '****' : value,
-            style: _S.cardPnlVal.copyWith(color: color),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(hidden ? '' : pct, style: _S.cardPnlPct.copyWith(color: color)),
-        ],
+      child: SizedBox(
+        height: 54,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: _S.cardPnlLabel.copyWith(color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: isPending
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        hidden ? '****' : value,
+                        style: _S.cardPnlPending.copyWith(color: color),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.left,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          hidden ? '****' : value,
+                          style: _S.cardPnlVal.copyWith(color: color),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          hidden ? '' : pct,
+                          style: _S.cardPnlPct.copyWith(color: color),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1026,10 +1065,13 @@ class _PnlProgressBarState extends State<PnlProgressBar>
   Widget build(BuildContext context) {
     if (widget.costPrice <= 0) return const SizedBox(height: 3);
 
-    final changeRate = (widget.currentPrice - widget.costPrice) / widget.costPrice;
+    final changeRate =
+        (widget.currentPrice - widget.costPrice) / widget.costPrice;
     final fillRatio = (changeRate.abs() / widget.maxRate).clamp(0.0, 1.0) * 0.5;
     final isProfit = changeRate > 0;
-    final fillColor = isProfit ? const Color(0xFFF05A55) : const Color(0xFF2ECC8A);
+    final fillColor = isProfit
+        ? const Color(0xFFF05A55)
+        : const Color(0xFF2ECC8A);
 
     return SizedBox(
       height: 3,
@@ -1076,9 +1118,7 @@ class _PnlBarPainter extends CustomPainter {
     canvas.drawRRect(
       RRect.fromLTRBR(0, 0, w, h, radius),
       Paint()
-        ..color = isLight
-            ? const Color(0x1A222C40)
-            : const Color(0x14FFFFFF),
+        ..color = isLight ? const Color(0x1A222C40) : const Color(0x14FFFFFF),
     );
 
     // 2. Fill bar
@@ -1088,10 +1128,22 @@ class _PnlBarPainter extends CustomPainter {
       final right = isProfit ? midX + fillW : midX;
 
       final rrect = isProfit
-          ? RRect.fromLTRBAndCorners(left, 0, right, h,
-              topRight: radius, bottomRight: radius)
-          : RRect.fromLTRBAndCorners(left, 0, right, h,
-              topLeft: radius, bottomLeft: radius);
+          ? RRect.fromLTRBAndCorners(
+              left,
+              0,
+              right,
+              h,
+              topRight: radius,
+              bottomRight: radius,
+            )
+          : RRect.fromLTRBAndCorners(
+              left,
+              0,
+              right,
+              h,
+              topLeft: radius,
+              bottomLeft: radius,
+            );
 
       canvas.drawRRect(rrect, Paint()..color = fillColor);
     }
@@ -1100,9 +1152,7 @@ class _PnlBarPainter extends CustomPainter {
     canvas.drawRect(
       Rect.fromLTWH(midX - 0.75, 0, 1.5, h),
       Paint()
-        ..color = isLight
-            ? const Color(0x33222C40)
-            : const Color(0x66FFFFFF),
+        ..color = isLight ? const Color(0x33222C40) : const Color(0x66FFFFFF),
     );
   }
 

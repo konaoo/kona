@@ -162,8 +162,14 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertAlmostEqual(yclose, curr / 1.0029, places=4)
         self.assertAlmostEqual(amt, curr - yclose, places=4)
 
-    def test_ft_fund_prefers_boursorama_before_ft(self):
+    def test_ft_fund_prefers_blackrock_before_boursorama_and_ft(self):
         with patch(
+            "core.stock.get_blackrock_fund_price",
+            return_value=(9.41, 9.38, 0.03, 0.32),
+        ) as blackrock_mock, patch(
+            "core.stock.get_marketscreener_fund_price",
+            return_value=(0.0, 0.0, 0.0, 0.0),
+        ) as marketscreener_mock, patch(
             "core.stock.get_boursorama_fund_price",
             return_value=(9.38, 9.3529, 0.0271, 0.29),
         ) as boursorama_mock, patch(
@@ -172,9 +178,11 @@ class TestStockSourceOrder(unittest.TestCase):
         ) as ft_mock:
             curr, yclose, *_ = get_stock_price("ft_LU1116320737")
 
-        self.assertAlmostEqual(curr, 9.38, places=2)
-        self.assertAlmostEqual(yclose, 9.3529, places=4)
-        boursorama_mock.assert_called_once_with("LU1116320737")
+        self.assertAlmostEqual(curr, 9.41, places=2)
+        self.assertAlmostEqual(yclose, 9.38, places=2)
+        blackrock_mock.assert_called_once_with("LU1116320737")
+        marketscreener_mock.assert_not_called()
+        boursorama_mock.assert_not_called()
         ft_mock.assert_not_called()
 
 

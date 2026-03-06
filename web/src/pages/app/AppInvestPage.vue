@@ -111,9 +111,18 @@
               </td>
               <td class="holding-cell td-holding">{{ formatMoneyInt(toNumber(row.value), rowCurrency(row)) }}</td>
               <td class="td-day-pnl">
-                <div class="pnl-cell" :class="valueClass(toNumber(row.dayPnlDisplay))">
-                  <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnlDisplay, rowCurrency(row)) }}</span>
-                  <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRateDisplay) }}</span>
+                <div
+                  class="pnl-cell"
+                  :class="row.navUpdatePending ? '' : valueClass(toNumber(row.dayPnlDisplay))"
+                >
+                  <template v-if="row.navUpdatePending">
+                    <span class="table-pnl-amount">待净值更新</span>
+                    <span class="table-pnl-rate"></span>
+                  </template>
+                  <template v-else>
+                    <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnlDisplay, rowCurrency(row)) }}</span>
+                    <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRateDisplay) }}</span>
+                  </template>
                   <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
                 </div>
               </td>

@@ -358,6 +358,11 @@ function firstPositiveNumber(...values: unknown[]): number {
   return 0
 }
 
+function isNavUpdatePendingAsset(item: PortfolioItem): boolean {
+  const code = String(item.code || '').trim().toLowerCase()
+  return code.startsWith('f_') || code.startsWith('ft_')
+}
+
 const rows = computed(() => {
   return state.portfolio.map((item) => {
     const quote = state.quotes[item.code] || {}
@@ -377,11 +382,12 @@ const rows = computed(() => {
     const marketStatus = state.marketStatus[market]
     const open = Boolean(marketStatus?.open)
     const marketTradingDay = Boolean(marketStatus?.trading_day)
+    const navUpdatePending = isNavUpdatePendingAsset(item)
     const effectiveSession = normalizeSession(quote.effective_session ?? quote.session)
     const usExtendedActive =
       market === 'us' &&
       (Boolean(quote.extended_active) || effectiveSession === 'pre' || effectiveSession === 'post')
-    const dayPnlDisplayEnabled = currentPrice > 0 && yclose > 0
+    const dayPnlDisplayEnabled = !navUpdatePending && currentPrice > 0 && yclose > 0
     const dayPnlAggregateEnabled = dayPnlDisplayEnabled && (marketTradingDay || usExtendedActive)
 
     const value = currentPrice * qty
@@ -417,6 +423,7 @@ const rows = computed(() => {
       marketTradingDay,
       marketStatusReason: marketStatus?.reason || '',
       usExtendedActive,
+      navUpdatePending,
       dayPnlDisplayEnabled,
       dayPnlAggregateEnabled,
     }
