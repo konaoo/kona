@@ -231,11 +231,17 @@ jobs:
             echo "Static web target: $WEB_DIR"
 
             PYTHON_BIN="python3"
+            IS_VENV=0
             if [ -f "kona_tool/.venv/bin/python3" ]; then
               PYTHON_BIN="kona_tool/.venv/bin/python3"
+              IS_VENV=1
             fi
             
-            $PYTHON_BIN -m pip install -r kona_tool/requirements.txt --user
+            if [ "$IS_VENV" -eq 1 ]; then
+              $PYTHON_BIN -m pip install -r kona_tool/requirements.txt
+            else
+              $PYTHON_BIN -m pip install -r kona_tool/requirements.txt --user
+            fi
 
             if [ ! -f /tmp/web-dist.tar.gz ]; then
               echo "Missing /tmp/web-dist.tar.gz"
@@ -245,12 +251,27 @@ jobs:
             tar -xzf /tmp/web-dist.tar.gz -C "$TMP_WEB_DIR"
             rm -f /tmp/web-dist.tar.gz
             
+            BACKUP_WEB_DIR="${WEB_DIR}.bak.$(date +%s)"
+            if [ -d "$WEB_DIR" ]; then
+              cp -a "$WEB_DIR" "$BACKUP_WEB_DIR"
+            fi
+
             rm -rf "$WEB_DIR"
             mkdir -p "$WEB_DIR"
             cp -a "$TMP_WEB_DIR"/. "$WEB_DIR"/
             rm -rf "$TMP_WEB_DIR"
             echo "Frontend assets updated in $WEB_DIR"
-            ls -l "$WEB_DIR/index.html"
+            
+            rollback_web() {
+              if [ -d "$BACKUP_WEB_DIR" ]; then
+                echo "Rolling back web artifact from $BACKUP_WEB_DIR ..."
+                rm -rf "$WEB_DIR"
+                cp -a "$BACKUP_WEB_DIR" "$WEB_DIR"
+                sudo systemctl restart kona || true
+              else
+                echo "No web backup directory found, skip rollback."
+              fi
+            }
 
             sudo systemctl restart kona
             echo "Systemd service kona restarted."
