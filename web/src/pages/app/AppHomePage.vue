@@ -34,6 +34,7 @@ const isFormModalVisible = ref(false)
 const modalType = ref<AssetType>('cash')
 const modalMode = ref<'add' | 'edit'>('add')
 const selectedTab = ref('all')
+const holdingsView = ref<'card'|'row'>('card')
 const marketIndices = ref<any[]>([])
 const activeSegment = ref<AssetType | 'invest' | null>(null)
 
@@ -208,6 +209,13 @@ function valueClass(value: number | undefined): 'up' | 'dn' | 'neutral' {
 
 function masked(text: string): string {
   return maskValue(text)
+}
+
+function formatValue(value: number, curr?: string): string {
+  const symbol = getCurrencySymbol(curr)
+  const absVal = Math.abs(value)
+  const formatted = absVal % 1 !== 0 ? absVal.toFixed(2) : absVal.toLocaleString('zh-CN')
+  return `${symbol} ${formatted}`
 }
 
 // Methods
@@ -558,37 +566,121 @@ onBeforeUnmount(() => {
 
         <!-- Holdings -->
         <div style="margin-top: 16px">
-          <div class="section-label" style="margin-bottom: 10px">持仓概览</div>
-          <div class="tabs" style="width: fit-content; margin-bottom: 12px">
-            <button v-for="tab in ['all','hk','us','a','fund']" :key="tab" @click="selectedTab=tab" class="tab" :class="{active:selectedTab===tab}">{{ tab==='all'?'全部':tab==='hk'?'港股':tab==='us'?'美股':tab==='a'?'A股':'基金' }}</button>
+          <!-- Holdings header -->
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px">
+            <div>
+              <div class="section-label" style="margin:0 0 10px">持仓概览</div>
+              <div class="tabs" style="width:fit-content">
+                <button v-for="tab in ['all','hk','us','a','fund']" :key="tab" @click="selectedTab=tab" class="tab" :class="{active:selectedTab===tab}">{{ tab==='all'?'全部':tab==='hk'?'港股':tab==='us'?'美股':tab==='a'?'A股':'基金' }}</button>
+              </div>
+            </div>
+            <!-- View toggle -->
+            <div style="display:flex;gap:4px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:9px;padding:3px;flex-shrink:0;margin-top:2px">
+              <button @click="holdingsView='card'" title="卡片视图" :style="holdingsView==='card'?'background:rgba(255,255,255,0.08);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/></svg>
+              </button>
+              <button @click="holdingsView='row'" title="列表视图" :style="holdingsView==='row'?'background:rgba(255,255,255,0.08);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".6"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".35"/></svg>
+              </button>
+            </div>
           </div>
 
-        <div v-if="!filteredRows || filteredRows.length === 0" class="holding-list" style="align-items:center;justify-content:center;padding:40px">
+        <div v-if="!filteredRows || filteredRows.length === 0" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:16px">
           <div style="font-size:48px;margin-bottom:12px">📭</div>
           <div class="text-muted fs13">暂无持仓数据</div>
         </div>
 
-        <div v-else class="holding-list">
-          <div v-for="(row, idx) in filteredRows" :key="row?.code||`holding-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="holding-row">
-            <div class="h-icon" :class="row?.market==='us'?'blue':row?.market==='hk'?'orange':row?.market==='a'?'green':'gold'">
-              {{ row?.code?.substring(0,4).toUpperCase() || '??' }}
-            </div>
-            <div class="h-meta">
-              <div class="h-name">{{ row?.name || '未知标的' }}</div>
-              <div class="flex-row gap-8 mt-4">
-                <span class="tag" :class="row?.market==='us'?'us':row?.market==='hk'?'hk':row?.market==='a'?'a':'fund'">{{ row?.market==='us'?'NASDAQ·US':row?.market==='hk'?'港交所·HK':row?.market==='a'?'沪深·A':'基金' }}</span>
-                <span class="mono text-muted fs11">{{ Number(row?.qty||0).toLocaleString() }}股</span>
+        <div v-else>
+          <!-- Card View -->
+          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:10px">
+            <div v-for="(row, idx) in filteredRows" :key="row?.code||`card-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hcard">
+              <div style="position:absolute;top:0;left:0;right:0;height:2px" :style="{ background: 'linear-gradient(90deg,transparent,' + (toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)') + ' 40%,transparent)' }"></div>
+              <div class="h-icon" :class="row?.market==='us'?'blue':row?.market==='hk'?'orange':row?.market==='a'?'green':'gold'" style="width:38px;height:38px;font-size:9px;margin-bottom:10px">
+                {{ row?.code?.substring(0,4).toUpperCase() || '??' }}
               </div>
-              <div v-if="row?.totalPnl && Math.abs(row.totalPnl) > 0" class="mt-8">
-                <div class="progress-wrap">
-                  <div class="progress-center"></div>
-                  <div class="progress-fill" :class="(row?.totalPnl||0)>=0?'up':'dn'" :style="{left:(row?.totalPnl||0)>=0?'50%':undefined,right:(row?.totalPnl||0)<0?'50%':undefined,width:Math.min(Math.abs((row?.totalPnl||0)/(Math.max(Number(row?.value)||1,1)))*100,50)+'%'}"></div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">{{ row?.name || '未知标的' }}</div>
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:10px">
+                <span class="tag" :class="row?.market==='us'?'us':row?.market==='hk'?'hk':row?.market==='a'?'a':'fund'">{{ row?.market==='us'?'NASDAQ·US':row?.market==='hk'?'港交所·HK':row?.market==='a'?'沪深·A':'基金' }}</span>
+                <span style="font-size:10px;color:var(--muted)">{{ Number(row?.qty||0).toLocaleString() }}股</span>
+              </div>
+              <!-- Sparkline stub -->
+              <div style="height:38px;margin-bottom:10px;opacity:.85">
+                <svg viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
+                  <path d="M0,20 L30,15 L60,25 L90,10 L120,5" :stroke="toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)'" stroke-width="1.6" fill="none"/>
+                </svg>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:var(--text);margin-bottom:5px">{{ masked(formatCny(toCny(row?.value||0, String(row?.curr)))) }}</div>
+              <div style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:10px" :style="{ background: toNumber(row?.dayPnl)>=0 ? 'rgba(240,90,85,0.12)' : 'rgba(62,207,130,0.12)', color: toNumber(row?.dayPnl)>=0 ? 'var(--red)' : 'var(--green)' }">
+                {{ formatPct(toNumber(row?.dayPnlRate)) }}
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)">
+                <div>
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:2px">今日盈亏</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
+                </div>
+                <div>
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:2px">累计收益</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600" :class="valueClass(toNumber(row?.totalPnlRate))">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
+                </div>
+                <div>
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:2px">成本价</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:var(--sub)">{{ masked(formatValue(toNumber(row?.cost), row?.curr as any)) }}</div>
+                </div>
+                <div>
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">仓位 <span style="color:var(--blue)">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
+                  <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
+                    <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: Math.min(toNumber(row?.pct) * 100, 100) + '%' }"></div>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="h-right">
-              <div class="h-val">{{ masked(formatCny(toCny(row?.value||0, String(row?.curr)))) }}</div>
-              <div class="badge" :class="valueClass(toNumber(row?.totalPnlRate))" style="margin-top:4px">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
+          </div>
+          
+          <!-- Row View -->
+          <div v-else style="display:flex;flex-direction:column;gap:6px">
+            <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hrow">
+              <div style="display:flex;align-items:center;gap:11px">
+                <div class="h-icon" :class="row?.market==='us'?'blue':row?.market==='hk'?'orange':row?.market==='a'?'green':'gold'" style="width:38px;height:38px;font-size:9px;flex-shrink:0">
+                  {{ row?.code?.substring(0,4).toUpperCase() || '??' }}
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text)">{{ row?.name || '未知标的' }}</div>
+                  <div style="display:flex;gap:5px;margin-top:3px">
+                    <span class="tag" :class="row?.market==='us'?'us':row?.market==='hk'?'hk':row?.market==='a'?'a':'fund'">{{ row?.market==='us'?'NASDAQ·US':row?.market==='hk'?'港交所·HK':row?.market==='a'?'沪深·A':'基金' }}</span>
+                    <span style="font-size:10px;color:var(--muted)">{{ Number(row?.qty||0).toLocaleString() }}股</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr 1.2fr 1fr;align-items:center;gap:0">
+                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:3px">现价</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)">{{ masked(formatValue(toNumber(row?.price), row?.curr as any)) }}</div>
+                </div>
+                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:3px">成本价</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:var(--muted)">{{ masked(formatValue(toNumber(row?.cost), row?.curr as any)) }}</div>
+                </div>
+                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:3px">市值</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)">{{ masked(formatCny(toCny(row?.value||0, String(row?.curr)))) }}</div>
+                </div>
+                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
+                  <div style="font-size:10px;margin-top:1px" :class="valueClass(toNumber(row?.dayPnlRate))">{{ formatPct(toNumber(row?.dayPnlRate)) }}</div>
+                </div>
+                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600" :class="valueClass(toNumber(row?.totalPnl))">{{ masked(formatValue(toNumber(row?.totalPnl), row?.curr as any)) }}</div>
+                  <div style="font-size:10px;margin-top:1px" :class="valueClass(toNumber(row?.totalPnlRate))">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
+                </div>
+                <div style="padding:0 0 0 12px">
+                  <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">仓位 <span style="color:var(--blue)">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
+                  <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
+                    <div style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px" :style="{ width: Math.min(toNumber(row?.pct) * 100, 100) + '%' }"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

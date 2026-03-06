@@ -889,3 +889,38 @@ a {
   background: rgba(255,255,255,0.08);
   color: var(--text);
 }
+
+/* Holding Overview Replica Styles */
+.hcard {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: background .18s, transform .18s, box-shadow .18s;
+}
+.hcard:hover {
+  background: rgba(255,255,255,0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  border-color: var(--border-b);
+}
+
+.hrow {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  padding: 13px 18px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background .13s, border-color .13s;
+  gap: 16px;
+}
+.hrow:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--border-b);
+}
