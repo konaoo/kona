@@ -97,6 +97,7 @@ import AdminCard from '../../components/admin/ui/AdminCard.vue'
 import AdminButton from '../../components/admin/ui/AdminButton.vue'
 import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
+import { useKonaStore } from '../../shared/store'
 
 type OpsConfigPayload = {
   text?: string
@@ -415,6 +416,13 @@ async function saveEditor() {
   payloadToSave.text = payloadToSave.text.trim()
   payloadToSave.image_url = payloadToSave.image_url.trim()
 
+  // Add explicit auth check
+  const store = useKonaStore()
+  if (!store.isAuthenticated.value || !store.isAdmin.value) {
+    flashEditor('登录状态已失效，请重新登录', false)
+    return
+  }
+
   editor.saving = true
   editor.message = ''
   try {
@@ -426,7 +434,16 @@ async function saveEditor() {
     flashPage(META[scene].saveSuccess, true)
     closeEditor()
   } catch (e) {
-    flashEditor(e instanceof Error ? e.message : META[scene].saveError, false)
+    const msg = e instanceof Error ? e.message : META[scene].saveError
+    flashEditor(msg, false)
+    if (msg.includes('Authorization') || msg.includes('login')) {
+      // Re-bootstrap or redirect after a delay
+      setTimeout(() => {
+        void store.logout().then(() => {
+          void window.location.reload()
+        })
+      }, 1500)
+    }
   } finally {
     editor.saving = false
   }
@@ -443,6 +460,13 @@ async function saveAppUpdateEditor() {
   payloadToSave.text = payloadToSave.text.trim()
   payloadToSave.download_url = payloadToSave.download_url.trim()
 
+  // Add explicit auth check
+  const store = useKonaStore()
+  if (!store.isAuthenticated.value || !store.isAdmin.value) {
+    flashAppUpdateEditor('登录状态已失效，请重新登录', false)
+    return
+  }
+
   appUpdateEditor.saving = true
   appUpdateEditor.message = ''
   try {
@@ -453,7 +477,15 @@ async function saveAppUpdateEditor() {
     flashPage(APP_UPDATE_META.saveSuccess, true)
     closeAppUpdateEditor()
   } catch (e) {
-    flashAppUpdateEditor(e instanceof Error ? e.message : APP_UPDATE_META.saveError, false)
+    const msg = e instanceof Error ? e.message : APP_UPDATE_META.saveError
+    flashAppUpdateEditor(msg, false)
+    if (msg.includes('Authorization') || msg.includes('login')) {
+      setTimeout(() => {
+        void store.logout().then(() => {
+          void window.location.reload()
+        })
+      }, 1500)
+    }
   } finally {
     appUpdateEditor.saving = false
   }
