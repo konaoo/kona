@@ -300,6 +300,21 @@ class DatabaseManager:
             """
         )
 
+        # 价格异常巡检日报表（每天保留最新一版全局结果）
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_alert_reports (
+                report_date TEXT PRIMARY KEY,
+                tested_at_utc TEXT NOT NULL,
+                total_assets INTEGER NOT NULL DEFAULT 0,
+                alert_count INTEGER NOT NULL DEFAULT 0,
+                summary_json TEXT NOT NULL DEFAULT '{}',
+                items_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         
         # 创建每日快照表
         cursor.execute('''
@@ -399,6 +414,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_expires_at ON auth_refresh_tokens(expires_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_runtime_configs_updated_at ON runtime_configs(updated_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_api_policies_scope_type ON admin_api_policies(scope_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_price_alert_reports_tested_at ON price_alert_reports(tested_at_utc)')
         cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
         # 确保 asset_type 列存在并回填
@@ -4705,6 +4721,99 @@ class DatabaseManager:
         except Exception:
             conn.rollback()
             raise
+        finally:
+            conn.close()
+
+    def save_price_alert_report(
+        self,
+        report_date: str,
+        tested_at_utc: str,
+        total_assets: int,
+        alert_count: int,
+        summary: Dict[str, Any],
+        items: List[Dict[str, Any]],
+    ) -> None:
+        report_date_text = str(report_date or "").strip()
+        tested_at_text = str(tested_at_utc or "").strip()
+        if not report_date_text or not tested_at_text:
+            raise ValueError("Missing price alert report date or tested_at_utc")
+        summary_json = json.dumps(summary or {}, ensure_ascii=False, separators=(",", ":"))
+        items_json = json.dumps(items or [], ensure_ascii=False, separators=(",", ":"))
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO price_alert_reports (
+                    report_date,
+                    tested_at_utc,
+                    total_assets,
+                    alert_count,
+                    summary_json,
+                    items_json,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(report_date) DO UPDATE SET
+                    tested_at_utc = excluded.tested_at_utc,
+                    total_assets = excluded.total_assets,
+                    alert_count = excluded.alert_count,
+                    summary_json = excluded.summary_json,
+                    items_json = excluded.items_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    report_date_text,
+                    tested_at_text,
+                    int(total_assets or 0),
+                    int(alert_count or 0),
+                    summary_json,
+                    items_json,
+                ),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def list_price_alert_reports(self, limit: int = 7) -> List[Dict[str, Any]]:
+        try:
+            safe_limit = max(1, min(int(limit or 7), 30))
+        except Exception:
+            safe_limit = 7
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT report_date, tested_at_utc, total_assets, alert_count, summary_json, updated_at
+                FROM price_alert_reports
+                ORDER BY report_date DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            )
+            rows = cursor.fetchall()
+            items: List[Dict[str, Any]] = []
+            for row in rows:
+                summary_raw = str(row["summary_json"] or "{}").strip() or "{}"
+                try:
+                    summary = json.loads(summary_raw)
+                except Exception:
+                    summary = {}
+                items.append(
+                    {
+                        "report_date": str(row["report_date"] or ""),
+                        "tested_at_utc": str(row["tested_at_utc"] or ""),
+                        "total_assets": int(row["total_assets"] or 0),
+                        "alert_count": int(row["alert_count"] or 0),
+                        "summary": summary if isinstance(summary, dict) else {},
+                        "updated_at": str(row["updated_at"] or ""),
+                    }
+                )
+            return items
         finally:
             conn.close()
 

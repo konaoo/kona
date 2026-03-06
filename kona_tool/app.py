@@ -216,15 +216,16 @@ def _exchange_fund_candidates(code: str) -> list[str]:
     suffix = lower[2:].strip()
     if not re.fullmatch(r'\d{6}', suffix):
         return []
-    # 11xxxx 明确保留为场外基金
-    if suffix.startswith('11'):
+    # 11xxxx 里既有场外基金，也有沪市场内 ETF（如 511xxx）。
+    # 只对白名单段给交易所候选，避免误伤普通场外基金。
+    if suffix.startswith('11') and not suffix.startswith(('511',)):
         return []
     # 交易所基金常见代码段：
     # - 深市 ETF/LOF: 15xxxx / 16xxxx / 18xxxx
     # - 沪市 ETF: 50xxxx / 51xxxx / 52xxxx / 56xxxx / 58xxxx
     if suffix.startswith(('15', '18')):
         return [f"sz{suffix}"]
-    if suffix.startswith(('50', '51', '52', '56', '58')):
+    if suffix.startswith(('50', '51', '52', '56', '58', '511')):
         return [f"sh{suffix}"]
     return []
 

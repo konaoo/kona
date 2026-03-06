@@ -57,6 +57,17 @@ class TestPriceResilience(unittest.TestCase):
         self.assertGreater(got[0], 0.0)
         self.assertAlmostEqual(got[0], 1.719, places=3)
 
+    def test_f_prefix_shanghai_exchange_etf_falls_back_to_stock_quote(self):
+        with patch("core.price.get_fund_price", return_value=(113.1301, 113.1237, 0.0064, 0.01)) as fund_mock, patch(
+            "core.price.get_stock_price",
+            side_effect=lambda code: (113.133, 113.133, 0.0, 0.0) if code == "sh511360" else (0.0, 0.0, 0.0, 0.0),
+        ):
+            got = price.get_price("f_511360", use_cache=False)
+
+        self.assertGreater(got[0], 0.0)
+        self.assertAlmostEqual(got[0], 113.133, places=3)
+        fund_mock.assert_not_called()
+
     def test_otc_fund_stays_on_fund_quote_path(self):
         with patch("core.price.get_fund_price", return_value=(1.2345, 1.2300, 0.0045, 0.36)), patch(
             "core.price.get_stock_price",

@@ -1024,6 +1024,64 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(body.get("provider_key"), "forex_rate")
         self.assertEqual((body.get("items") or [{}])[0].get("name"), "USD/CNY")
 
+    @patch.object(
+        admin_routes,
+        "_load_price_alerts_payload",
+        return_value={
+            "tested_at_utc": "2026-03-06T08:00:00+00:00",
+            "total_assets": 3,
+            "alert_count": 1,
+            "summary": {"critical": 1, "warning": 0, "info": 0},
+            "items": [
+                {
+                    "code": "f_968048",
+                    "name": "摩根基金",
+                    "curr": "CNY",
+                    "user_count": 2,
+                    "usernames": ["kona", "x"],
+                    "current_price": 17.85,
+                    "baseline_price": 17.96,
+                    "baseline_source": "海外基金页",
+                    "baseline_source_key": "overseas_1234567",
+                    "delta_pct": 0.61,
+                    "severity": "critical",
+                    "alert_type": "price_mismatch",
+                    "reason": "当前主价格与可信基准源偏差过大。",
+                    "suggestion": "检查源优先级。",
+                    "sources": [],
+                }
+            ],
+        },
+    )
+    @patch.object(
+        admin_routes,
+        "_list_price_alert_report_history",
+        return_value=[
+            {
+                "report_date": "2026-03-06",
+                "tested_at_utc": "2026-03-06T08:00:00+00:00",
+                "total_assets": 3,
+                "alert_count": 1,
+                "updated_at": "2026-03-06 16:00:00",
+                "summary": {"critical": 1, "warning": 0, "info": 0},
+            }
+        ],
+    )
+    @patch.object(admin_routes, "_save_price_alert_report_snapshot")
+    def test_admin_price_alerts_success(self, _mock_save, _mock_history, _mock_loader):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.get(
+            "/api/admin/apis/price_alerts?force=1",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get("alert_count"), 1)
+        self.assertEqual((body.get("items") or [{}])[0].get("code"), "f_968048")
+        self.assertEqual((body.get("history") or [{}])[0].get("report_date"), "2026-03-06")
+        self.assertEqual((body.get("cache") or {}).get("state"), "bypass")
+        _mock_save.assert_called_once()
+
     def test_admin_provider_test_invalid_provider_returns_400(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.post(

@@ -954,6 +954,25 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(target.get('curr'), 'CNY')
         self.assertEqual(target.get('asset_type'), 'a')
 
+    def test_portfolio_add_shanghai_exchange_etf_code_normalizes_to_exchange_code(self):
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh511360': (113.133, 113.133, 0.0, 0.0)}):
+            add_resp = self.client.post('/api/portfolio/add', json={
+                'code': 'f_511360',
+                'name': '短融ETF',
+                'price': 113.13,
+                'qty': 10.0,
+                'curr': 'CNY',
+            })
+        self.assertEqual(add_resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh511360'), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(target.get('curr'), 'CNY')
+        self.assertEqual(target.get('asset_type'), 'a')
+
     def test_portfolio_add_otc_fund_code_keeps_f_prefix(self):
         with patch.object(app_module, 'batch_get_prices', return_value={}):
             add_resp = self.client.post('/api/portfolio/add', json={

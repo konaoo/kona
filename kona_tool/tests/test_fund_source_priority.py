@@ -84,6 +84,50 @@ class TestFundSourcePriority(unittest.TestCase):
         f10_mock.assert_called_once()
         tencent_mock.assert_called_once()
 
+    def test_968_overseas_fund_prefers_overseas_html_before_tencent(self):
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+            "core.fund.get_fund_tiantian_price",
+            return_value=(0.0, 0.0, 0.0, 0.0),
+        ) as tiantian_mock, patch(
+            "core.fund.get_fund_eastmoney_mobile",
+            return_value=(0.0, 0.0, 0.0, 0.0),
+        ) as mobile_mock, patch(
+            "core.fund.get_fund_overseas_html",
+            return_value=(10.46, 10.44, 0.02, 0.19),
+        ) as overseas_mock, patch(
+            "core.fund.get_fund_tencent_jj",
+            return_value=(10.44, 10.49, -0.05, -0.48),
+        ) as tencent_mock:
+            price, yclose, amt, chg = get_fund_price("f_968163")
+
+        self.assertAlmostEqual(price, 10.46, places=2)
+        self.assertAlmostEqual(yclose, 10.44, places=2)
+        self.assertAlmostEqual(amt, 0.02, places=2)
+        self.assertAlmostEqual(chg, 0.19, places=2)
+        f10_mock.assert_called_once()
+        tiantian_mock.assert_not_called()
+        mobile_mock.assert_not_called()
+        overseas_mock.assert_called_once()
+        tencent_mock.assert_not_called()
+
+    def test_968_overseas_fund_prefers_overseas_html_before_tiantian(self):
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+            "core.fund.get_fund_overseas_html",
+            return_value=(17.96, 17.85, 0.11, 0.62),
+        ) as overseas_mock, patch(
+            "core.fund.get_fund_tiantian_price",
+            return_value=(17.85, 17.85, 0.0, 0.0),
+        ) as tiantian_mock:
+            price, yclose, amt, chg = get_fund_price("f_968048")
+
+        self.assertAlmostEqual(price, 17.96, places=2)
+        self.assertAlmostEqual(yclose, 17.85, places=2)
+        self.assertAlmostEqual(amt, 0.11, places=2)
+        self.assertAlmostEqual(chg, 0.62, places=2)
+        f10_mock.assert_called_once()
+        overseas_mock.assert_called_once()
+        tiantian_mock.assert_not_called()
+
     def test_f10_parser_reads_latest_confirmed_nav(self):
         from core.fund import get_fund_eastmoney_f10
 
