@@ -102,36 +102,7 @@
       </div>
 
       <!-- Right Column: Stats & Misc -->
-      <aside class="me-side-column">
-        <div class="card accounting-days-card">
-          <div class="section-label">我的记账</div>
-          <div class="flex-center-v">
-            <span class="days-num">{{ accountingDays }}</span>
-            <span class="days-unit">天</span>
-          </div>
-          <p class="days-desc">你已经记录了 {{ accountingDays }} 天的资产波动</p>
-          <div class="days-progress-bg">
-            <div class="days-progress-fill" :style="{ width: accountingProgress + '%' }"></div>
-          </div>
-        </div>
-
-        <div class="card support-currencies-card">
-          <div class="section-label">支持货币</div>
-          <div class="flag-grid">
-            <span class="flag-item" title="CNY">🇨🇳</span>
-            <span class="flag-item" title="USD">🇺🇸</span>
-            <span class="flag-item" title="HKD">🇭🇰</span>
-            <span class="flag-item" title="JPY">🇯🇵</span>
-            <span class="flag-item" title="EUR">🇪🇺</span>
-            <span class="flag-item" title="GBP">🇬🇧</span>
-            <span class="flag-item" title="BTC">₿</span>
-          </div>
-          <p class="mkt-row" style="margin-top:12px; border:none; padding:0; font-size:11px">
-            <span class="mkt-name">汇率更新</span>
-            <span class="mkt-val muted">实时自动同步</span>
-          </p>
-        </div>
-      </aside>
+      <!-- No content for now (Removed accounting and currency cards) -->
 
       <!-- Password Change Modal (Simplified) -->
       <div v-if="showPwdModal" class="modal-overlay" @click.self="showPwdModal = false">
@@ -211,8 +182,6 @@ const winRate = computed(() => {
   return Math.round((winners.length / rows.length) * 100)
 })
 
-const accountingDays = ref(128)
-const accountingProgress = computed(() => Math.min(100, (accountingDays.value / 365) * 100))
 
 function toggleEditName() {
   isEditingName.value = !isEditingName.value
@@ -328,10 +297,7 @@ async function logout() {
 
 <style scoped>
 .me-page-layout {
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 16px;
-  align-items: start;
+  display: block; /* Changed to block as the right column is removed */
 }
 
 .me-main-column {
@@ -440,18 +406,6 @@ button.s-arrow {
   transform: none; opacity: 1; width: auto; height: auto;
 }
 
-/* Side Column */
-.me-side-column { display: flex; flex-direction: column; gap: 16px; }
-.flex-center-v { display: flex; align-items: baseline; gap: 4px; margin: 4px 0 12px; }
-.days-num { font-family: var(--font-family-mono); font-size: 40px; font-weight: 800; color: var(--gold); line-height: 1; }
-.days-unit { font-size: 14px; font-weight: 700; color: var(--muted); }
-.days-desc { font-size: 12px; color: var(--sub); line-height: 1.5; margin-bottom: 12px; }
-
-.days-progress-bg { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
-.days-progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), #f3d492); border-radius: 2px; }
-
-.flag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px; }
-.flag-item { font-size: 24px; cursor: help; text-align: center; }
 
 /* Modal */
 .modal-overlay {
