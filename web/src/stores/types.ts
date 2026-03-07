@@ -36,6 +36,7 @@ export type PortfolioItem = {
   price?: number
   curr?: string
   asset_type?: string
+  logo_url?: string | null
   adjustment?: number
   [k: string]: unknown
 }
@@ -115,6 +116,8 @@ export type PositionRow = {
   navUpdatePending: boolean
   dayPnlDisplayEnabled: boolean
   dayPnlAggregateEnabled: boolean
+  asset_type?: string
+  logo_url?: string | null
   [k: string]: unknown
 }
 

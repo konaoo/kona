@@ -61,7 +61,8 @@ const modalClass = computed(() => {
     'modal',
     {
       'modal-fullscreen': props.fullscreen,
-      'modal-centered': props.centered
+      'modal-centered': props.centered,
+      'modal-content-visible': visible.value
     }
   ]
 })
@@ -87,6 +88,7 @@ const maskClass = computed(() => {
 })
 
 const handleMaskClick = () => {
+  if (animating.value) return // 锁定动画弹出期间的误触
   if (props.maskClosable) {
     close()
   }
@@ -170,7 +172,7 @@ onBeforeUnmount(() => {
 <template>
   <teleport to="body">
     <transition name="modal-fade">
-      <div v-if="show || visible" :class="maskClass" @click="handleMaskClick">
+      <div v-if="show || visible" :class="maskClass" @click.self="handleMaskClick">
         <transition name="modal-slide">
           <div
             v-if="show || visible || !destroyOnClose"
@@ -186,7 +188,7 @@ onBeforeUnmount(() => {
               <button
                 v-if="closable"
                 class="modal-close"
-                @click="close"
+                @click="close()"
                 type="button"
               >
                 ×
