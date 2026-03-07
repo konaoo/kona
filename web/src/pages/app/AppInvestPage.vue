@@ -3,6 +3,7 @@
  * AppInvestPage - 投资分析与明细 (Refactored Modern Style)
  */
 import { computed, onMounted, ref } from 'vue'
+import html2canvas from 'html2canvas'
 import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
@@ -216,6 +217,21 @@ function formatLocal(v: any) {
   return Number(v || 0).toLocaleString()
 }
 
+function saveAsImage() {
+  const target = document.getElementById('capture-area')
+  if (!target) return
+  html2canvas(target, {
+    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
+    scale: 2,
+    useCORS: true,
+  }).then(canvas => {
+    const link = document.createElement('a')
+    link.download = `kaka-invest-${Date.now()}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  })
+}
+
 onMounted(async () => {
     try {
         await store.refreshAll()
@@ -274,13 +290,13 @@ onMounted(async () => {
           <button @click="togglePrivacy" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
             {{ isPrivacyMode ? '🙈' : '👁️' }}
           </button>
-          <div class="ccy-switcher" @click="currentCurrency = (currentCurrency === 'CNY' ? 'USD' : currentCurrency === 'USD' ? 'HKD' : 'CNY')">
-            {{ currentCurrency }}
-          </div>
+          <button @click="saveAsImage" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
+            📸
+          </button>
         </div>
       </div>
 
-      <div class="kk-page invest-page" style="padding-top: 20px">
+      <div id="capture-area" class="page active kk-page invest-page" style="padding-top: 20px">
         <div class="modern-shell">
 
       <!-- Main Statistics Grid -->
