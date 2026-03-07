@@ -58,7 +58,7 @@ function formatCurrency(cnyValue: number, signed = false): string {
 // Utility
 
 // Data Processing
-const rows = computed(() => store?.rows?.value || [])
+const rows = computed(() => (store?.rows as any)?.value || [])
 
 const investTotal = computed(() => {
   let mv = 0
@@ -96,7 +96,7 @@ const marketCards = computed(() => {
     fund: { name: '基金', dayPnl: 0, totalPnl: 0, mv: 0, cost: 0, icon: '📈' }
   }
   
-  rows.value.forEach(row => {
+  rows.value.forEach((row: any) => {
     const m = row.market as string
     if (result[m]) {
       const rate = rateToCny(String(row.curr))
@@ -160,9 +160,9 @@ const filteredRows = computed(() => {
   const s = selectedTab.value
   let base = rows.value || []
   if (s !== 'all') {
-    base = base.filter(r => r.market === s)
+    base = base.filter((r: any) => r.market === s)
   }
-  return base.map((row, idx) => {
+  return base.map((row: any, idx: number) => {
     const qty = Number(row.qty) || 0
     const last = Number(row.last) || 0
     const costPrice = Number(row.costPrice) || 0
@@ -180,6 +180,8 @@ const filteredRows = computed(() => {
 
     return {
       ...row,
+      logo_url: row.logo_url,
+      asset_type: row.asset_type,
       qty,
       amount: qty, // Add compatibility with template
       last,
