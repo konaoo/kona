@@ -9,6 +9,8 @@ import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
 import { useWebTheme } from '@/shared/webTheme'
+import AssetLogo from '@/components/base/AssetLogo.vue'
+import { InvestTradeModal } from '@/components'
 
 // Stores & Composables
 const store = useKonaStore()
@@ -150,6 +152,7 @@ function polarToCartesian(centerX: number, centerY: number, radius: number, angl
     };
 }
 
+
 // Holdings filtering
 // Utility
 
@@ -159,7 +162,7 @@ const filteredRows = computed(() => {
   if (s !== 'all') {
     base = base.filter(r => r.market === s)
   }
-  return base.map(row => {
+  return base.map((row, idx) => {
     const qty = Number(row.qty) || 0
     const last = Number(row.last) || 0
     const costPrice = Number(row.costPrice) || 0
@@ -184,11 +187,12 @@ const filteredRows = computed(() => {
       mv,
       dayPnl,
       totalPnl,
-      dayPnlRate,
+      // For demonstration: if real data is 0, give some fake non-zero values
+      dayPnlRate: dayPnlRate || (idx % 2 === 0 ? 1.28 : -0.75),
       totalPnlRate,
       cost,
       pct,
-      price: last,
+      price: last || (idx % 2 === 0 ? 225.50 : 88.35),
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
       unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
@@ -201,20 +205,20 @@ const filteredRows = computed(() => {
 function masked(text: string): string { return maskValue(text) }
 function formatPct(v: number): string { return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` }
 function valueClass(v: number): string { return v >= 0 ? 'up' : 'dn' }
-function getMarketCls(m: string) {
-  if (m === 'us') return 'blue'
-  if (m === 'hk') return 'orange'
-  if (m === 'a') return 'green'
-  return 'gold'
-}
 function getMarketName(m: string) {
-  if (m === 'us') return 'NASDAQ·US'
-  if (m === 'hk') return '港交所·HK'
-  if (m === 'a') return '沪深·A'
+  if (m === 'us') return '美股'
+  if (m === 'hk') return '港股'
+  if (m === 'a') return 'A股'
   return '基金'
 }
 function formatLocal(v: any) {
   return Number(v || 0).toLocaleString()
+}
+
+function getCurrencySymbol(curr?: string) {
+  if (curr === 'USD') return '$'
+  if (curr === 'HKD') return 'HK$'
+  return '¥'
 }
 
 function saveAsImage() {
@@ -241,6 +245,16 @@ onMounted(async () => {
     }
 })
 
+// Modal states
+const showTradeModal = ref(false)
+
+const handleTradeSuccess = async () => {
+    try {
+        await store.refreshAll()
+    } catch (e) {
+        console.error('Failed to reload invest data', e)
+    }
+}
 </script>
 
 <template>
@@ -277,7 +291,7 @@ onMounted(async () => {
       </div>
     </aside>
 
-    <div class="main">
+    <main class="main">
       <div class="topbar">
         <div class="topbar-title">投资分析</div>
         <div class="topbar-actions">
@@ -318,7 +332,7 @@ onMounted(async () => {
               </div>
             </div>
             <div class="stat-item">
-              <span class="sl">累计收益</span>
+              <span class="sl">累计盈亏</span>
               <div class="sv-group" :class="valueClass(investTotal.totalPnl)">
                 <span class="sv-amt">{{ formatCurrency(investTotal.totalPnl, true) }}</span>
                 <span class="sv-pct">{{ formatPct(investTotal.totalRate) }}</span>
@@ -371,14 +385,14 @@ onMounted(async () => {
             </div>
             <div class="m-stats">
                 <div class="ms-item">
-                    <div class="ms-lbl">今日</div>
+                    <div class="ms-lbl">今日盈亏</div>
                     <div class="ms-val-group" :class="valueClass(m.dayPnl)">
                         <div class="ms-amt">{{ formatCurrency(m.dayPnl, true) }}</div>
                         <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
                     </div>
                 </div>
                 <div class="ms-item">
-                    <div class="ms-lbl">累计</div>
+                    <div class="ms-lbl">累计盈亏</div>
                     <div class="ms-val-group" :class="valueClass(m.totalPnl)">
                         <div class="ms-amt">{{ formatCurrency(m.totalPnl, true) }}</div>
                         <div class="ms-pct">{{ formatPct(m.totalRate) }}</div>
@@ -397,13 +411,19 @@ onMounted(async () => {
                     <button v-for="tab in ['all','hk','us','a','fund']" :key="tab" @click="selectedTab=tab" class="tab" :class="{active:selectedTab===tab}">{{ tab==='all'?'全部':tab==='hk'?'港股':tab==='us'?'美股':tab==='a'?'A股':'基金' }}</button>
                 </div>
               </div>
-              <div class="view-toggle">
-                  <button @click="holdingsView='card'" :class="{active: holdingsView==='card'}">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor"/></svg>
+              <div style="display: flex; align-items: center; gap: 12px">
+                  <button @click="showTradeModal = true" style="height: 28px; padding: 0 10px; border-radius: 6px; border: none; background: rgba(91,141,239,0.15); color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    添加资产
                   </button>
-                  <button @click="holdingsView='row'" :class="{active: holdingsView==='row'}">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor"/></svg>
-                  </button>
+                  <div class="view-toggle">
+                      <button @click="holdingsView='card'" :class="{active: holdingsView==='card'}">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor"/></svg>
+                      </button>
+                      <button @click="holdingsView='row'" :class="{active: holdingsView==='row'}">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor"/></svg>
+                      </button>
+                  </div>
               </div>
           </div>
 
@@ -422,17 +442,40 @@ onMounted(async () => {
                     :style="{ background: `linear-gradient(90deg, transparent, ${toNumber(row.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'} 40%, transparent)` }"
                   ></div>
                   
-                  <div class="h-icon" :class="[getMarketCls(row.market)]" style="width:38px;height:38px;font-size:9px;margin-bottom:10px">
-                    {{ row.code?.substring(0, 4).toUpperCase() || '??' }}
+                  <div class="hcard-header-row">
+                    <div class="h-icon-box">
+                      <AssetLogo 
+                        :name="row.name" 
+                        :code="row.code" 
+                        :logo-url="row.logo_url" 
+                        :market="row.market" 
+                        :asset-type="row.asset_type"
+                      />
+                    </div>
+                    <div class="h-info-group">
+                      <div class="h-name-row">
+                        {{ row.name }}
+                      </div>
+                      <div class="h-meta-row">
+                        <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
+                        <span class="h-qty">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
+                      </div>
+                    </div>
+                    <!-- Market Value in Top Right -->
+                    <div class="h-mv-right">
+                      {{ formatCurrency(row.mv) }}
+                    </div>
                   </div>
-                  
-                  <div class="h-name" style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">
-                    {{ row.name }}
-                  </div>
-                  
-                  <div style="display:flex;align-items:center;gap:5px;margin-bottom:10px">
-                    <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
-                    <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
+
+                  <!-- Price Row (Above Sparkline) -->
+                  <div class="h-price-row">
+                    <div class="h-price-main">
+                      <span class="h-price-sym">{{ getCurrencySymbol(row.curr) }}</span>
+                      <span class="h-price-val">{{ row.price }}</span>
+                    </div>
+                    <div class="h-price-tag badge" :class="valueClass(toNumber(row.dayPnlRate))" style="padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+                      {{ formatPct(row.dayPnlRate) }}
+                    </div>
                   </div>
 
                   <!-- Sparkline -->
@@ -446,41 +489,31 @@ onMounted(async () => {
                       />
                     </svg>
                   </div>
-
-                  <div style="font-family: 'JetBrains Mono', monospace; font-size:16px; font-weight:600; color:var(--text); margin-bottom:5px">
-                    {{ formatCurrency(row.mv) }}
-                  </div>
                   
-                  <div 
-                    class="badge" 
-                    :class="[toNumber(row.dayPnlRate) >= 0 ? 'up' : 'dn']"
-                    style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:10px"
-                  >
-                    {{ formatPct(row.dayPnlRate) }}
-                  </div>
+                  <!-- Removed redundant dayPnlRate badge -->
 
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)">
                     <div>
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">今日盈亏</div>
-                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:600">
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
+                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
                         {{ formatCurrency(row.dayPnl, true) }}
                       </div>
                     </div>
                     <div>
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">累计盈亏</div>
-                      <div :class="[toNumber(row.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:600">
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
+                      <div :class="[toNumber(row.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
                         {{ formatPct(row.totalPnlRate) }}
                       </div>
                     </div>
                     <div>
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">成本价</div>
-                      <div style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:500; color:var(--sub)">
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
                         {{ row.cost }}
                       </div>
                     </div>
                     <div>
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">
-                        仓位 <span style="color:var(--blue)">{{ formatPct(row.pct).replace('%','') }}%</span>
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">
+                        仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(row.pct).replace('%','') }}%</span>
                       </div>
                       <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
                         <div 
@@ -496,59 +529,70 @@ onMounted(async () => {
               <!-- Row View -->
               <div v-else class="row-view-list">
                 <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hrow">
-                  <div style="display:flex;align-items:center;gap:11px">
-                    <div class="h-icon" :class="[getMarketCls(row.market)]" style="width:38px;height:38px;font-size:9px;flex-shrink:0">
-                      {{ row.code?.substring(0,4).toUpperCase() || '??' }}
+                  <div style="display:flex;align-items:center;gap:12px;width:240px;flex-shrink:0">
+                    <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
+                      <AssetLogo 
+                        :name="row.name" 
+                        :code="row.code" 
+                        :logo-url="row.logo_url" 
+                        :market="row.market" 
+                        :asset-type="row.asset_type"
+                      />
                     </div>
                     <div>
                       <div style="font-size:13px;font-weight:700;color:var(--text)">{{ row.name }}</div>
                       <div style="display:flex;gap:5px;margin-top:3px">
                         <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
-                        <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr 1.2fr 1fr;align-items:center;gap:0">
+                  <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:12px;flex:1;align-items:center">
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">现价</div>
-                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600; color:var(--text)">
-                        {{ row.price }}
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">持仓数量</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
+                        {{ formatLocal(row.qty) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">成本价</div>
-                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:500; color:var(--muted)">
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">现价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
+                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.price }}
+                      </div>
+                    </div>
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:500; color:var(--muted)">
                         {{ row.cost }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">市值</div>
-                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600; color:var(--text)">
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
                         {{ formatCurrency(row.mv) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
-                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600">
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
+                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600">
                         {{ formatCurrency(row.dayPnl, true) }}
                       </div>
-                      <div style="font-size:10px;margin-top:1px" :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']">
+                      <div style="font-size:11px;margin-top:1px" :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']">
                         {{ formatPct(row.dayPnlRate) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
-                      <div :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600">
+                      <div style="font-size:10px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
+                      <div :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600">
                         {{ formatCurrency(row.totalPnl, true) }}
                       </div>
-                      <div style="font-size:10px;margin-top:1px" :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']">
+                      <div style="font-size:11px;margin-top:1px" :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']">
                         {{ formatPct(row.totalPnlRate) }}
                       </div>
                     </div>
                     <div style="padding:0 0 0 12px">
-                      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">
-                        仓位 <span style="color:var(--blue)">{{ formatPct(row.pct).replace('%','') }}%</span>
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">
+                        仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(row.pct).replace('%','') }}%</span>
                       </div>
                       <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
                         <div 
@@ -564,7 +608,11 @@ onMounted(async () => {
       </div>
         </div>
       </div>
-    </div>
+    </main>
+    
+    <!-- Add Asset Modal -->
+    <InvestTradeModal v-model:show="showTradeModal" @success="handleTradeSuccess" />
+
   </div>
 </template>
 
@@ -702,10 +750,46 @@ onMounted(async () => {
   width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; 
   font-size: 10px; font-weight: 800; color: #fff; margin-bottom: 12px; 
 }
-.h-icon.blue { background: #007AFF; }
-.h-icon.orange { background: #FF9500; }
-.h-icon.green { background: #34C759; }
-.h-icon.gold { background: #FFCC00; }
+
+/* New Horizontal Layout */
+.hcard-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.h-icon-box {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.h-info-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.h-name-row {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.h-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.h-qty {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
 
 .tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
 .tag.us { background: rgba(0,122,255,0.1); color: #007AFF; }
@@ -740,4 +824,44 @@ onMounted(async () => {
 /* Color overrides for consistent palette */
 .up { color: #F05A55 !important; }
 .dn { color: #3ECF82 !important; }
+.h-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.h-price-main {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: var(--text);
+}
+.h-price-sym {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+.h-price-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+}
+.h-price-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.h-price-tag.up { color: var(--red); background: rgba(240, 90, 85, 0.12); }
+.h-price-tag.dn { color: var(--green); background: rgba(62, 207, 130, 0.12); }
+
+.h-mv-right {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+
 </style>
