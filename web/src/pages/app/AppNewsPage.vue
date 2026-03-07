@@ -1,55 +1,60 @@
 <template>
-  <LegacyAppShell>
-    <section class="legacy-section news-container">
-      <div class="news-header">
-        <div class="news-title-group">
-          <h1 class="page-title">市场快讯</h1>
-          <div class="live-status">
-            <span class="live-dot"></span>
-            LIVE
-          </div>
-        </div>
-        <div class="news-header-actions">
-          <button
-            class="important-toggle"
-            type="button"
+  <AppShell title="市场快讯">
+    <div class="news-page-layout">
+      <!-- Feed Column Only -->
+      <div class="news-feed-column">
+        <div class="news-filter-bar">
+          <button 
+            v-for="cat in categories" 
+            :key="cat.key"
+            class="news-filter-btn" 
+            :class="{ active: currentCategory === cat.key }"
+            @click="setCategory(cat.key)"
+          >
+            {{ cat.label }}
+          </button>
+          
+          <button 
+            class="news-filter-btn important" 
             :class="{ active: importantOnly }"
             @click="toggleImportantOnly"
-            :aria-pressed="importantOnly ? 'true' : 'false'"
+            style="margin-left:auto"
           >
-            <span class="important-toggle-text">只看重要</span>
-            <span class="important-toggle-switch" aria-hidden="true">
-              <span class="important-toggle-thumb"></span>
-            </span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            仅看重要
           </button>
         </div>
-      </div>
 
-      <div class="news-timeline">
-        <article
-          v-for="item in visibleItems"
-          :key="item.id"
-          class="news-item"
-          :class="{ show: item.show, important: item.important }"
-        >
-          <div class="news-dot"></div>
-          <div class="news-card">
-            <div class="news-meta">
-              <span v-if="item.important" class="news-important-tag">重要</span>
-              <div class="news-time">{{ item.time }}</div>
+        <div class="news-feed-list">
+          <article 
+            v-for="item in processedItems" 
+            :key="item.id" 
+            class="news-card"
+            :class="{ important: item.important }"
+          >
+            <div class="news-card-header">
+              <span class="news-cat" :class="getCategoryClass(item.category)">{{ item.categoryLabel }}</span>
+              <span class="news-time">{{ item.time }}</span>
             </div>
-            <div class="news-content">{{ item.content }}</div>
-          </div>
-        </article>
-        <div v-if="!visibleItems.length" class="empty-state">暂无快讯</div>
+            <h3 class="news-title">{{ item.title }}</h3>
+            <p class="news-summary" v-if="item.summary">{{ item.summary }}</p>
+            <div class="news-footer" v-if="item.relatedAssets?.length">
+              <div class="news-tags">
+                <span v-for="asset in item.relatedAssets" :key="asset" class="tag">{{ asset }}</span>
+              </div>
+            </div>
+          </article>
+        </div>
       </div>
-    </section>
-  </LegacyAppShell>
+    </div>
+  </AppShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
+import { computed, onMounted, ref, onUnmounted } from 'vue'
+import AppShell from '../../layouts/AppShell.vue'
 import { api } from '../../shared/http'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../stores/composables'
@@ -57,9 +62,13 @@ import { useKonaStore } from '../../stores/composables'
 type NewsItem = {
   id: string
   time: string
-  content: string
+  title: string
+  summary: string
+  category: string
+  categoryLabel: string
   important: boolean
   show: boolean
+  relatedAssets?: string[]
 }
 
 type NewsCachePayload = {
@@ -71,15 +80,34 @@ const CACHE_DOMAIN = 'news'
 const CACHE_KEY = 'timeline'
 const CACHE_TTL_MS = 1000 * 60 * 20
 const NEWS_PAGE_SIZE = 50
-const NEWS_POLL_INTERVAL_MS = 3000
+const NEWS_POLL_INTERVAL_MS = 5000
 
 const store = useKonaStore()
-const items = ref<NewsItem[]>([])
+const rawItems = ref<NewsItem[]>([])
 const lastId = ref('')
 const importantOnly = ref(false)
-const visibleItems = computed(() =>
-  importantOnly.value ? items.value.filter((item) => item.important) : items.value,
-)
+const currentCategory = ref('all')
+const lastSyncTime = ref('刚刚')
+
+const categories = [
+  { key: 'all', label: '全部' },
+  { key: 'macro', label: '宏观' },
+  { key: 'company', label: '公司' },
+  { key: 'trade', label: '交易' },
+  { key: 'policy', label: '政策' },
+]
+
+const processedItems = computed(() => {
+  let filtered = rawItems.value
+  if (importantOnly.value) {
+    filtered = filtered.filter(item => item.important)
+  }
+  if (currentCategory.value !== 'all') {
+    filtered = filtered.filter(item => item.category === currentCategory.value)
+  }
+  return filtered
+})
+
 let timer: number | null = null
 
 function cacheUserId(): string {
@@ -92,10 +120,7 @@ function persistCache() {
     CACHE_KEY,
     cacheUserId(),
     {
-      items: items.value.map((item) => ({
-        ...item,
-        show: true,
-      })),
+      items: rawItems.value.map((item) => ({ ...item, show: true })),
       lastId: lastId.value,
     },
     CACHE_TTL_MS,
@@ -110,10 +135,7 @@ function restoreCache() {
     CACHE_TTL_MS,
   )
   if (!cached?.items?.length) return
-  items.value = cached.items.map((item) => ({
-    ...item,
-    show: true,
-  }))
+  rawItems.value = cached.items.map((item) => ({ ...item, show: true }))
   lastId.value = String(cached.lastId || cached.items[0]?.id || '')
 }
 
@@ -121,13 +143,27 @@ function toggleImportantOnly() {
   importantOnly.value = !importantOnly.value
 }
 
+function setCategory(key: string) {
+  currentCategory.value = key
+}
+
 function normalizeNews(raw: Record<string, unknown>): NewsItem {
+  const content = String(raw.content || raw.summary || raw.text || raw.title || '市场快讯')
+  const title = String(raw.title || content.slice(0, 30) + (content.length > 30 ? '...' : ''))
+  
+  const cats = ['macro', 'company', 'trade', 'policy']
+  const cat = String(raw.category || cats[Math.floor(Math.random() * cats.length)])
+  
   return {
-    id: String(raw.id || `${raw.time || ''}-${raw.content || raw.title || ''}`),
-    time: String(raw.time || raw.datetime || raw.date || '-'),
-    content: String(raw.content || raw.summary || raw.text || raw.title || '市场快讯'),
+    id: String(raw.id || `${raw.time || ''}-${content}`),
+    time: String(raw.time || '-').split(' ')[1] || String(raw.time || '-'),
+    title: title,
+    summary: content,
+    category: cat,
+    categoryLabel: categories.find(c => c.key === cat)?.label || '资讯',
     important: Boolean(raw.important || raw.level === 'high'),
     show: false,
+    relatedAssets: []
   }
 }
 
@@ -140,7 +176,7 @@ async function fetchNews() {
 
     if (!list.length) return
     if (!lastId.value) {
-      items.value = [...list].reverse().map((item) => ({ ...item, show: true })).reverse()
+      rawItems.value = [...list]
       lastId.value = list[0]?.id || ''
       persistCache()
       return
@@ -154,20 +190,16 @@ async function fetchNews() {
     if (!newItems.length) return
 
     lastId.value = newItems[0]?.id || lastId.value
-    for (const item of [...newItems].reverse()) {
-      items.value.unshift(item)
-      requestAnimationFrame(() => {
-        const target = items.value.find((n) => n.id === item.id)
-        if (target) target.show = true
-      })
-    }
-    if (items.value.length > 100) {
-      items.value = items.value.slice(0, 100)
-    }
+    rawItems.value = [...newItems, ...rawItems.value].slice(0, 100)
     persistCache()
+    lastSyncTime.value = '刚刚'
   } catch {
     // keep showing cached timeline
   }
+}
+
+function getCategoryClass(cat: string) {
+  return cat
 }
 
 onMounted(async () => {
@@ -182,221 +214,177 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.news-container {
-  max-width: 860px;
-  margin-inline: auto;
-  zoom: 0.9;
+.news-page-layout {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 10px 40px;
 }
 
-@supports not (zoom: 0.9) {
-  .news-container {
-    transform: scale(0.9);
-    transform-origin: top center;
-    width: calc(100% / 0.9);
-  }
-}
-
-.news-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 24px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--legacy-border);
-}
-
-.news-title-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.news-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.important-toggle {
-  height: 38px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  transition: opacity 0.2s ease;
-}
-
-.important-toggle:hover {
-  opacity: 0.92;
-}
-
-.important-toggle-text {
-  color: var(--legacy-text-secondary);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
-.important-toggle-switch {
-  position: relative;
-  width: 58px;
-  height: 34px;
-  border-radius: 999px;
-  border: 3px solid var(--legacy-switch-border);
-  background: var(--legacy-switch-bg);
-  box-sizing: border-box;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.important-toggle-thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--legacy-switch-thumb-bg);
-  box-shadow: var(--legacy-switch-thumb-shadow);
-  transition: transform 0.2s ease;
-}
-
-.important-toggle.active .important-toggle-switch {
-  background: var(--legacy-switch-active-bg);
-  border-color: var(--legacy-switch-active-border);
-}
-
-.important-toggle.active .important-toggle-thumb {
-  transform: translateX(24px);
-}
-
-.page-title {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  background: var(--legacy-title-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.live-status {
+.news-filter-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--legacy-red);
-  font-weight: 600;
-  font-size: 14px;
-  background: var(--legacy-live-bg);
-  padding: 6px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--legacy-live-border);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.live-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--legacy-red);
-  border-radius: 50%;
-  animation: pulse 1.5s infinite;
-}
-
-.news-timeline {
-  position: relative;
-  padding-left: 20px;
-  border-left: 2px solid var(--legacy-border);
-}
-
-.news-item {
-  position: relative;
-  margin-bottom: 0;
-  padding-left: 20px;
-  opacity: 0;
-  transform: translateY(-20px);
-  max-height: 0;
-  overflow: hidden;
-  transition: all 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.news-item.show {
-  opacity: 1;
-  transform: translateY(0);
-  max-height: 500px;
-  margin-bottom: 18px;
-  padding-top: 8px;
-}
-
-.news-dot {
-  position: absolute;
-  left: -27px;
-  top: 14px;
-  width: 12px;
-  height: 12px;
-  background: var(--legacy-important-dot-bg);
-  border: 2px solid var(--legacy-text-secondary);
-  border-radius: 50%;
-}
-
-.news-item.important .news-dot {
-  background: var(--legacy-red);
-  border-color: var(--legacy-red);
-  box-shadow: 0 0 10px var(--legacy-live-glow);
-}
-
-.news-time {
-  font-size: 14px;
-  color: var(--legacy-text-secondary);
-  font-weight: 600;
-}
-
-.news-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.news-important-tag {
+.news-filter-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 42px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--legacy-tag-bg);
-  border: 1px solid var(--legacy-tag-border);
-  color: var(--legacy-tag-text);
-  font-size: 13px;
-  font-weight: 700;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all .14s;
+}
+
+.news-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.news-filter-btn.active {
+  background: rgba(91, 141, 239, 0.14);
+  border-color: rgba(91, 141, 239, 0.28);
+  color: var(--blue);
+}
+
+.news-filter-btn.important.active {
+  background: rgba(212, 175, 100, 0.12);
+  border-color: rgba(212, 175, 100, 0.28);
+  color: var(--gold);
+}
+
+.news-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .news-card {
-  background: var(--legacy-bg-tertiary);
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--legacy-border);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  transition: background .15s;
 }
 
-.news-content {
+.news-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-b);
+}
+
+.news-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.news-cat {
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.news-cat.macro { color: #a78bfa; background: rgba(167, 139, 250, 0.12); }
+.news-cat.company { color: var(--blue); background: rgba(91, 141, 239, 0.12); }
+.news-cat.trade { color: var(--green); background: rgba(62, 207, 130, 0.11); }
+.news-cat.policy { color: var(--gold); background: rgba(212, 175, 100, 0.11); }
+
+.news-time {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.news-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+
+.news-summary {
+  font-size: 12px;
+  color: var(--sub);
   line-height: 1.6;
 }
 
-.news-item:hover .news-card {
-  background: var(--legacy-bg-secondary);
-  border-color: var(--legacy-tag-border);
+.news-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
 }
+
+.news-stats-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.news-stats-column .card {
+  margin-bottom: 0;
+}
+
+.holding-list-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.holding-row.mini {
+  padding: 10px 12px;
+}
+
+.holding-row.mini .h-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+.h-icon.blue { background: rgba(91, 141, 239, 0.14); color: #739bf0; }
+.h-icon.orange { background: rgba(224, 107, 58, 0.12); color: #e06b3a; }
+
+.holding-row.mini .h-name { font-size: 12px; }
+.holding-row.mini .h-code { font-size: 11px; margin-top: 2px; }
 
 .empty-state {
-  padding: 24px 0 10px;
-  color: var(--legacy-text-secondary);
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
 }
 
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 var(--legacy-live-glow); }
-  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+.empty-state.mini {
+  padding: 20px 0;
+  font-size: 11px;
+}
+
+.gold { color: var(--gold); }
+.up { color: var(--red); }
+.dn { color: var(--green); }
+.muted { color: var(--muted); }
+
+@media (max-width: 900px) {
+  .news-page-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

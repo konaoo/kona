@@ -1,276 +1,286 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useKonaStore } from '../stores/composables'
+import html2canvas from 'html2canvas'
+
+import { useWebTheme } from '../shared/webTheme'
+import { usePrivacyMode } from '../shared/privacyMode'
+
+const props = defineProps<{
+  title?: string
+  hideTopbar?: boolean
+}>()
+
+const router = useRouter()
+const route = useRoute()
+const store = useKonaStore()
+
+const { theme, toggleTheme } = useWebTheme()
+const { isPrivacyMode, togglePrivacy } = usePrivacyMode()
+
+const currentPath = computed(() => route.path)
+
+const displayName = computed(() => {
+  const user = store.state.user || {}
+  return String(user.nickname || user.username || '用户')
+})
+
+const avatarSrc = computed(() => {
+  const user = store.state.user || {}
+  const avatar = String(user.avatar || '').trim()
+  return avatar || ''
+})
+
+const userInitial = computed(() => {
+  const chars = [...displayName.value]
+  return chars.length ? chars[0] : 'U'
+})
+
+const navItems = [
+  { path: '/app/home', label: '首页', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+  { path: '/app/invest', label: '投资', icon: 'M2 3h20v14H2z' },
+  { path: '/app/analysis', label: '分析', icon: 'M18 20V10M12 20V4M6 20v-6' },
+  { path: '/app/news', label: '快讯', icon: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z' },
+  { path: '/app/me', label: '我的', icon: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },
+]
+
+function navigate(path: string) {
+  router.push(path)
+}
+
+async function saveAsImage() {
+  const area = document.getElementById('capture-area') || document.body
+  try {
+    const canvas = await html2canvas(area, {
+      backgroundColor: theme.value === 'dark' ? '#0a0b0e' : '#ffffff',
+      scale: 2,
+    })
+    const link = document.createElement('a')
+    link.download = `kaka-snapshot-${new Date().getTime()}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  } catch (err) {
+    console.error('Failed to capture:', err)
+  }
+}
+
+async function handleLogout() {
+  await store.logout()
+  router.replace('/app/login')
+}
+</script>
+
 <template>
-  <div class="shell">
-    <aside class="side panel">
-      <div class="brand-wrap">
-        <div class="brand-mark" aria-hidden="true">K</div>
+  <div class="layout" :data-theme="theme">
+    <!-- Unified Sidebar -->
+    <aside class="sidebar">
+      <router-link to="/app/home" class="sidebar-logo">
+        <div class="s-logo-icon">
+          <svg width="16" height="12" viewBox="0 0 18 14" fill="none">
+            <polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
         <div>
-          <p class="brand-kicker">GLOBAL ASSET DESK</p>
-          <div class="brand">咔咔记账 Web</div>
+          <div class="s-logo-name">咔咔记账</div>
+          <div class="s-logo-tag">GLOBAL ASSET DESK</div>
+        </div>
+      </router-link>
+
+      <nav class="sidebar-nav">
+        <template v-for="item in navItems" :key="item.path">
+          <div 
+            class="nav-item" 
+            :class="{ active: currentPath === item.path || (item.path === '/app/me' && currentPath === '/app/profile') }"
+            @click="navigate(item.path)"
+          >
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path v-if="item.icon.includes('M')" :d="item.icon" />
+                <rect v-if="item.label === '投资'" x="2" y="3" width="20" height="14" rx="2" />
+                <line v-if="item.label === '投资'" x1="8" y1="21" x2="16" y2="21" />
+                <line v-if="item.label === '投资'" x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </span>
+            {{ item.label }}
+          </div>
+        </template>
+      </nav>
+
+      <!-- Sidebar Bottom: Profile & Logout -->
+      <div class="sidebar-bottom">
+        <div class="profile-mini" @click="navigate('/app/me')">
+          <img v-if="avatarSrc" :src="avatarSrc" class="mini-avatar" />
+          <div v-else class="mini-avatar fallback">{{ userInitial }}</div>
+          <div class="mini-info">
+            <div class="mini-name">{{ displayName }}</div>
+            <div class="mini-status">已连接</div>
+          </div>
+          <button class="logout-btn" @click.stop="handleLogout" title="退出登录">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main">
+      <!-- Topbar: Only show if not explicitly hidden -->
+      <div v-if="!hideTopbar" class="topbar">
+        <div class="topbar-title">{{ title || route.meta.title || '工作台' }}</div>
+        <div class="topbar-actions">
+          <button @click="toggleTheme" class="icon-btn" :title="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">
+            {{ theme === 'dark' ? '🌙' : '☀️' }}
+          </button>
+          <button @click="togglePrivacy" class="icon-btn" :title="isPrivacyMode ? '现实数值' : '隐私模式'">
+            {{ isPrivacyMode ? '🙈' : '👁️' }}
+          </button>
+          <button @click="saveAsImage" class="icon-btn" title="保存截图">
+            📸
+          </button>
         </div>
       </div>
 
-      <nav class="nav-list" aria-label="主导航">
-        <RouterLink v-for="item in nav" :key="item.path" :to="item.path" class="nav-item" active-class="active">
-          <span class="dot" aria-hidden="true"></span>
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </nav>
-
-      <button class="btn danger logout-btn" @click="onLogout">退出登录</button>
-    </aside>
-
-    <main class="content">
-      <header class="top panel">
-        <div class="head-copy">
-          <p class="head-kicker">WORKSPACE</p>
-          <div class="title">{{ title }}</div>
-          <div class="subtitle">{{ subtitle }}</div>
-        </div>
-        <div class="user-chip">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span>{{ username }}</span>
-        </div>
-      </header>
-      <slot />
+      <!-- Page Content Slot -->
+      <div id="capture-area" class="page active">
+        <slot />
+      </div>
     </main>
   </div>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
-import { useKonaStore } from '../stores/composables'
-
-defineProps<{ title: string; subtitle?: string }>()
-
-const router = useRouter()
-const store = useKonaStore()
-
-const username = computed(() => String(store.state.user?.nickname || store.state.user?.username || '用户'))
-
-const nav = [
-  { path: '/app/home', label: '首页' },
-  { path: '/app/invest', label: '投资' },
-  { path: '/app/analysis', label: '分析' },
-  { path: '/app/news', label: '快讯' },
-  { path: '/app/profile', label: '我的' },
-]
-
-async function onLogout() {
-  await store.logout()
-  await router.push('/app/login')
-}
-</script>
-
 <style scoped>
-.shell {
-  display: grid;
-  grid-template-columns: 258px minmax(0, 1fr);
-  min-height: 100vh;
-  gap: 14px;
-  padding: 14px;
+@import '@/styles/homepage-original.css';
+
+.layout {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }
 
-.side {
-  padding: 18px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: calc(100vh - 28px);
-  position: sticky;
-  top: 14px;
+/* Sidebar Overrides & Extensions */
+.sidebar {
+  background: rgba(12, 13, 18, 0.98);
 }
 
-.brand-wrap {
+.sidebar-nav {
+  user-select: none;
+}
+
+.sidebar-bottom {
+  padding: 16px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-mini {
   display: flex;
-  gap: 10px;
   align-items: center;
-  padding: 6px 4px 12px;
-  border-bottom: 1px solid rgba(109, 136, 181, 0.25);
-}
-
-.brand-mark {
-  width: 36px;
-  height: 36px;
+  gap: 10px;
+  padding: 8px;
   border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #18315d, #2155a5);
-  color: #d6e8ff;
-  font-weight: 800;
-  box-shadow: 0 10px 24px rgba(12, 33, 67, 0.35);
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.brand-kicker {
-  margin: 0;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+.profile-mini:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.brand {
-  font-size: 17px;
+.mini-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.mini-avatar.fallback {
+  background: var(--s3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  color: var(--blue);
 }
 
-.nav-list {
-  display: grid;
-  gap: 6px;
-  margin-top: 4px;
+.mini-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.nav-item {
+.mini-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-status {
+  font-size: 10px;
+  color: var(--green);
+  font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 10px;
-  border: 1px solid transparent;
-  color: var(--muted);
-  padding: 11px 12px;
-  border-radius: 12px;
-  transition: all var(--motion-fast);
+  gap: 4px;
 }
 
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(165, 193, 243, 0.34);
-}
-
-.nav-item.active {
-  border-color: #36578f;
-  color: var(--text);
-  background: linear-gradient(120deg, rgba(48, 73, 117, 0.44), rgba(30, 50, 86, 0.44));
-}
-
-.nav-item.active .dot {
-  background: #8bb5ff;
-  box-shadow: 0 0 0 4px rgba(126, 173, 255, 0.14);
-}
-
-.nav-item:hover {
-  border-color: rgba(89, 120, 173, 0.55);
-  color: #dce9ff;
+.mini-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
 }
 
 .logout-btn {
-  margin-top: auto;
-}
-
-.content {
-  min-width: 0;
-  padding: 0 0 24px;
-}
-
-.top {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
-  padding: 16px 20px;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.head-kicker {
-  margin: 0;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
+.logout-btn:hover {
+  background: rgba(240, 90, 85, 0.1);
+  color: var(--red);
 }
 
-.title {
-  margin-top: 4px;
-  font-size: 24px;
-  font-weight: 780;
-  letter-spacing: -0.02em;
+.logout-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-.subtitle {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
+/* Page transitions/scroll fixes */
+.main {
+  background: var(--bg);
 }
 
-.user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line-soft);
-  background: rgba(13, 24, 42, 0.86);
-  color: var(--text-soft);
-  font-size: 13px;
+.page {
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  padding: 0; /* Let pages define their own padding if needed, or unify here */
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #60d5af;
-  box-shadow: 0 0 0 5px rgba(75, 189, 152, 0.14);
+/* Scrollbar styling */
+.page::-webkit-scrollbar {
+  width: 5px;
 }
-
-
-@media (max-width: 900px) {
-  .shell {
-    grid-template-columns: 1fr;
-    padding: 10px;
-    gap: 10px;
-  }
-
-  .side {
-    min-height: auto;
-    position: static;
-    padding: 14px;
-  }
-
-  .content {
-    padding: 0;
-  }
-
-  .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .nav-item {
-    justify-content: center;
-    padding: 10px 8px;
-  }
-
-  .nav-item .dot {
-    display: none;
-  }
-
-  .logout-btn {
-    margin-top: 2px;
-    width: 100%;
-  }
-
-  .top {
-    padding: 14px;
-  }
-
-  .title {
-    font-size: 22px;
-  }
-
-  .user-chip {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-}
-
-@media (max-width: 640px) {
-  .nav-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
+.page::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
 }
 </style>

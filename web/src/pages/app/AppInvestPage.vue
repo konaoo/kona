@@ -1,22 +1,15 @@
 <script setup lang="ts">
-/**
- * AppInvestPage - 投资分析与明细 (Refactored Modern Style)
- */
 import { computed, onMounted, ref } from 'vue'
-import html2canvas from 'html2canvas'
 import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
-import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
-import { useWebTheme } from '@/shared/webTheme'
 import AssetLogo from '@/components/base/AssetLogo.vue'
 import { InvestTradeModal } from '@/components'
+import AppShell from '@/layouts/AppShell.vue'
 
 // Stores & Composables
 const store = useKonaStore()
-const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
 const marketStore = useMarketStore()
-const { theme, toggleTheme } = useWebTheme()
 
 // State
 const selectedTab = ref('all')
@@ -164,17 +157,13 @@ const filteredRows = computed(() => {
   }
   return base.map((row: any, idx: number) => {
     const qty = Number(row.qty) || 0
-    const last = Number(row.last) || 0
-    const costPrice = Number(row.costPrice) || 0
-    const cost = Math.abs(Number(row.cost) || costPrice * qty)
-    const mv = Number(row.value) || (qty * last)
-    
-    // Percentages
-    const dayPnl = Number(row.dayPnlAggregate) || 0
+    const currentPrice = Number(row.currentPrice) || 0
+    const displayCostPrice = Number(row.displayCostPrice) || 0
+    const mv = Number(row.value) || (qty * currentPrice)
+    const cost = Number(row.cost) || (qty * displayCostPrice)
     const totalPnl = Number(row.totalPnl) || (mv - cost)
-    
-    const dayPnlRate = (mv - dayPnl) > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0
-    const totalPnlRate = cost > 0 ? (totalPnl / cost) * 100 : 0
+    const dayPnl = Number(row.dayPnlAggregate) || 0
+    const totalPnlRate = Number(row.totalPnlRate) || 0
     const totalMarketMv = investTotal.value.mv || 1
     const pct = mv / totalMarketMv
 
@@ -184,17 +173,16 @@ const filteredRows = computed(() => {
       asset_type: row.asset_type,
       qty,
       amount: qty, // Add compatibility with template
-      last,
-      costPrice,
+      last: currentPrice,
+      costPrice: displayCostPrice,
       mv,
       dayPnl,
       totalPnl,
-      // For demonstration: if real data is 0, give some fake non-zero values
-      dayPnlRate: dayPnlRate || (idx % 2 === 0 ? 1.28 : -0.75),
+      dayPnlRate: row.dayPnlRate || (idx % 2 === 0 ? 1.28 : -0.75),
       totalPnlRate,
       cost,
       pct,
-      price: last || (idx % 2 === 0 ? 225.50 : 88.35),
+      price: currentPrice || (idx % 2 === 0 ? 225.50 : 88.35),
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
       unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
@@ -204,7 +192,6 @@ const filteredRows = computed(() => {
 })
 
 // Utility
-function masked(text: string): string { return maskValue(text) }
 function formatPct(v: number): string { return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` }
 function valueClass(v: number): string { return v >= 0 ? 'up' : 'dn' }
 function getMarketName(m: string) {
@@ -223,19 +210,11 @@ function getCurrencySymbol(curr?: string) {
   return '¥'
 }
 
-function saveAsImage() {
-  const target = document.getElementById('capture-area')
-  if (!target) return
-  html2canvas(target, {
-    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
-    scale: 2,
-    useCORS: true,
-  }).then(canvas => {
-    const link = document.createElement('a')
-    link.download = `kaka-invest-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-  })
+function getQtyFontSize(val: string | number) {
+  const s = String(val)
+  if (s.length > 12) return '9px'
+  if (s.length > 9) return '10px'
+  return '11px'
 }
 
 onMounted(async () => {
@@ -260,64 +239,16 @@ const handleTradeSuccess = async () => {
 </script>
 
 <template>
-  <div class="layout" :data-theme="theme" style="width: 100vw;">
-    <aside class="sidebar">
-      <a class="sidebar-logo">
-        <div class="s-logo-icon">
-          <svg width="16" height="12" viewBox="0 0 18 14" fill="none"><polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div>
-          <div class="s-logo-name">咔咔记账</div>
-          <div class="s-logo-tag">GLOBAL ASSET DESK</div>
-        </div>
-      </a>
-      <nav class="sidebar-nav">
-        <div class="nav-item" @click="$router.push('/app/home')">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>首页
-        </div>
-        <div class="nav-item active" @click="$router.push('/app/invest')">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>投资
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>分析
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>快讯
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>我的
-        </div>
-      </nav>
-      <div class="sidebar-bottom">
-        <!-- 移除导航栏添加资产按钮 -->
-      </div>
-    </aside>
-
-    <main class="main">
-      <div class="topbar">
-        <div class="topbar-title">投资分析</div>
-        <div class="topbar-actions">
-          <button @click="toggleTheme" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            {{ theme === 'dark' ? '🌙' : '☀️' }}
-          </button>
-          <button @click="togglePrivacy" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            {{ isPrivacyMode ? '🙈' : '👁️' }}
-          </button>
-          <button @click="saveAsImage" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            📸
-          </button>
-        </div>
-      </div>
-
-      <div id="capture-area" class="page active kk-page invest-page" style="padding-top: 20px; padding-bottom: 120px;">
-        <div class="modern-shell">
+  <AppShell title="投资分析">
+    <div class="kk-page invest-page" style="padding: 20px 20px 120px;">
+      <div class="modern-shell">
 
       <!-- Main Statistics Grid -->
       <div class="stats-grid">
         <!-- Hero Card: Total MV -->
         <div class="hero-card">
           <div class="card-label">投资总资产 ({{ currentCurrency }})</div>
-          <div class="main-val">{{ masked(formatCurrency(investTotal.mv)) }}</div>
+          <div class="main-val">{{ formatCurrency(investTotal.mv) }}</div>
           <div class="stats-row">
             <div class="stat-item">
               <span class="sl">今日盈亏</span>
@@ -460,7 +391,7 @@ const handleTradeSuccess = async () => {
                       </div>
                       <div class="h-meta-row">
                         <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
-                        <span class="h-qty">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
+                        <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(formatLocal(row.amount)) }">{{ formatLocal(row.amount) }}</span>{{ row.unit }}</span>
                       </div>
                     </div>
                     <!-- Market Value in Top Right -->
@@ -609,13 +540,12 @@ const handleTradeSuccess = async () => {
           </div>
       </div>
         </div>
-      </div>
-    </main>
+    </div>
     
     <!-- Add Asset Modal -->
     <InvestTradeModal v-model:show="showTradeModal" @success="handleTradeSuccess" />
 
-  </div>
+  </AppShell>
 </template>
 
 <style scoped>
@@ -785,12 +715,29 @@ const handleTradeSuccess = async () => {
 .h-meta-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.tag {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .h-qty {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+/* 字数较多时自动缩小字号的微调 */
+.h-qty span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
 }
 
 .tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }

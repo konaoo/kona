@@ -5,14 +5,13 @@
  */
 
 import { computed, onMounted, onBeforeUnmount, ref, reactive } from 'vue'
-import html2canvas from 'html2canvas'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
-import { useWebTheme } from '@/shared/webTheme'
 import { useMarketStore } from '@/stores/market'
 import AssetLogo from '@/components/base/AssetLogo.vue'
+import AppShell from '../../layouts/AppShell.vue'
 
 
 // Types
@@ -21,8 +20,7 @@ type SimpleAsset = { id: number; icon?: string; name: string; amount: number; cu
 
 // Stores & Composables
 const store = useKonaStore()
-const { theme, toggleTheme } = useWebTheme()
-const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
+const { maskValue } = usePrivacyMode()
 const marketStore = useMarketStore()
 
 // State
@@ -209,18 +207,23 @@ function formatCurrency(cnyValue: number, signed = false): string {
 const filteredRows = computed(() => {
   const validRows = (rows.value || []).filter(row => row && typeof row === 'object')
   const base = selectedTab.value === 'all' ? validRows : validRows.filter(row => row?.market === selectedTab.value)
-  return base.map((row: any, idx) => ({
-    ...row,
-    // Inject fake data for demonstration if real values are missing
-    price: Number(row?.last || 0) || (idx % 2 === 0 ? 225.50 : 88.35),
-    dayPnlRate: Number(row?.dayPnlRate || 0) || (idx % 2 === 0 ? 1.28 : -0.75),
-    // Ensure all original fields are preserved for TS
-    curr: row?.curr,
-    cost: row?.cost,
-    pct: row?.pct,
-    value: row?.value,
-    dayPnl: row?.dayPnl
-  }))
+  return base.map((row: any, idx) => {
+    const qty = Number(row?.qty || 0)
+    const displayCostPrice = Number(row?.displayCostPrice || 0)
+    const currentPrice = Number(row?.currentPrice || 0)
+    
+    return {
+      ...row,
+      qty,
+      costPrice: displayCostPrice, // 首页展示摊薄后成本
+      price: currentPrice || (idx % 2 === 0 ? 225.50 : 88.35),
+      dayPnlRate: Number(row?.dayPnlRate || 0) || (idx % 2 === 0 ? 1.28 : -0.75),
+      // 保持 Store 中的原始字段
+      cost: row?.cost || (qty * displayCostPrice),
+      mv: row?.value || (qty * currentPrice),
+      spark: 'M0,15 L20,12 L40,14 L60,8 L80,6 L100,5'
+    }
+  })
 })
 
 // Helpers
@@ -231,7 +234,7 @@ function formatPct(value: number | undefined): string {
 }
 
 function valueClass(value: number | undefined): 'up' | 'dn' | 'neutral' {
-  if (typeof value !== 'number' || isNaN(value)) return 'neutral'
+  if (value === undefined || value === 0) return 'neutral'
   return value >= 0 ? 'up' : 'dn'
 }
 
@@ -253,6 +256,12 @@ function formatValue(value: number, curr?: string): string {
   const absVal = Math.abs(value)
   const formatted = absVal % 1 !== 0 ? absVal.toFixed(2) : absVal.toLocaleString('zh-CN')
   return `${symbol} ${formatted}`
+}
+const getQtyFontSize = (val: string | number) => {
+  const s = String(val)
+  if (s.length > 12) return '9px'
+  if (s.length > 9) return '10px'
+  return '11px'
 }
 
 // Methods
@@ -291,21 +300,6 @@ async function refreshAll() {
   } catch (e) {
     console.error('Failed to refresh:', e)
   }
-}
-
-function saveAsImage() {
-  const target = document.getElementById('capture-area')
-  if (!target) return
-  html2canvas(target, {
-    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
-    scale: 2,
-    useCORS: true,
-  }).then(canvas => {
-    const link = document.createElement('a')
-    link.download = `kaka-assets-${Date.now()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-  })
 }
 
 function getCurrencySymbol(curr?: string) {
@@ -402,55 +396,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="layout" :data-theme="theme" style="width: 100vw;">
-    <aside class="sidebar">
-      <a class="sidebar-logo">
-        <div class="s-logo-icon">
-          <svg width="16" height="12" viewBox="0 0 18 14" fill="none"><polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div>
-          <div class="s-logo-name">咔咔记账</div>
-          <div class="s-logo-tag">GLOBAL ASSET DESK</div>
-        </div>
-      </a>
-      <nav class="sidebar-nav">
-        <div class="nav-item active" @click="$router.push('/app/home')">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>首页
-        </div>
-        <div class="nav-item" @click="$router.push('/app/invest')">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>投资
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>分析
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>快讯
-        </div>
-        <div class="nav-item">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>我的
-        </div>
-      </nav>
-      <div class="sidebar-bottom">
-        <!-- 移除导航栏添加资产按钮 -->
-      </div>
-    </aside>
-
-    <div class="main">
-      <div class="topbar">
-        <div class="topbar-title">首页</div>
-        <div class="topbar-actions">
-          <button @click="toggleTheme" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            {{ theme === 'dark' ? '🌙' : '☀️' }}
-          </button>
-          <button @click="togglePrivacy" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            {{ isPrivacyMode ? '🙈' : '👁️' }}
-          </button>
-          <button @click="saveAsImage" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
-            📸
-          </button>
-        </div>
-      </div>
-
+  <AppShell title="我的资产">
     <!-- Loading State -->
     <div v-if="isLoading" class="page active" style="display:flex;align-items:center;justify-content:center;height:100%">
       <div style="text-align:center">
@@ -460,7 +406,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Content -->
-    <div v-else id="capture-area" class="page active">
+    <template v-else>
 
       <!-- Market Index Cards -->
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px">
@@ -632,8 +578,8 @@ onBeforeUnmount(() => {
 
         <div v-else>
           <!-- Card View -->
-          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:10px">
-            <div v-for="(row, idx) in filteredRows" :key="row?.code||`card-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hcard">
+          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px">
+            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard">
               <div style="position:absolute;top:0;left:0;right:0;height:2px" :style="{ background: 'linear-gradient(90deg,transparent,' + (toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)') + ' 40%,transparent)' }"></div>
               <div class="hcard-header-row">
                 <div class="h-icon-box">
@@ -649,7 +595,7 @@ onBeforeUnmount(() => {
                   <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
                   <div class="h-meta-row">
                     <span class="tag" :class="row?.market">{{ row?.market==='us'?'美股':row?.market==='hk'?'港股':row?.market==='a'?'A股':'基金' }}</span>
-                    <span class="h-qty">{{ Number(row?.qty||0).toLocaleString() }}股</span>
+                    <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(Number(row?.qty||0).toLocaleString()) }">{{ Number(row?.qty||0).toLocaleString() }}</span>{{ row?.market === 'fund' ? '份' : '股' }}</span>
                   </div>
                 </div>
                 <!-- Market Value in Top Right -->
@@ -701,7 +647,7 @@ onBeforeUnmount(() => {
           
           <!-- Row View -->
           <div v-else style="display:flex;flex-direction:column;gap:6px">
-            <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hrow">
+            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`row-${idx}`" class="hrow">
               <div style="display:flex;align-items:center;gap:12px;width:240px;flex-shrink:0">
                 <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
                   <AssetLogo 
@@ -834,16 +780,14 @@ onBeforeUnmount(() => {
               </select>
             </div>
           </div>
-          
           <div style="display:flex;gap:8px;margin-top:8px">
             <button @click="closeFormModal" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
             <button @click="submitModal" :disabled="!form.name" style="flex:2;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#5b8def,#4a7be0);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(74,123,224,0.25)" :style="{ opacity: !form.name ? 0.5 : 1 }">保存</button>
           </div>
         </div>
       </div>
-      </div>
-    </div>
-  </div>
+    </template>
+  </AppShell>
 </template>
 
 <style>
@@ -910,12 +854,24 @@ onBeforeUnmount(() => {
 .h-meta-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .h-qty {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.h-qty span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
 }
 
 /* Price Row Styles */

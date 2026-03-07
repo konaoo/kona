@@ -67,6 +67,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
       const value = currentPrice * qty
       const cost = rawCostPrice * qty
+      const rawCostTotal = cost
       const displayCostPrice = computeDisplayCostPrice(rawCostPrice, qty, adjustment)
       const totalPnl = value - cost + adjustment
       const dayPnlDisplay = dayPnlDisplayEnabled ? (currentPrice - yclose) * qty : 0
@@ -80,6 +81,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         market,
         qty,
         costPrice: rawCostPrice,
+        cost,
+        rawCostTotal,
         rawCostPrice,
         displayCostPrice,
         currentPrice,

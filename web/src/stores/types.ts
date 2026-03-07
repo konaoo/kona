@@ -97,6 +97,8 @@ export type PositionRow = {
   costPrice: number
   rawCostPrice: number
   displayCostPrice: number
+  cost: number
+  rawCostTotal: number
   currentPrice: number
   yclose: number
   value: number

@@ -450,7 +450,7 @@ onUnmounted(() => {
 .invite-link:hover { color: var(--gold); opacity: 0.9; }
 
 .invite-popover {
-  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%) translateY(10px);
+  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%) translateY(-10px);
   width: 240px; background: rgba(18,20,28,0.95); backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.4);
@@ -458,8 +458,8 @@ onUnmounted(() => {
   pointer-events: none; z-index: 100;
 }
 .invite-popover::after {
-  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  border: 6px solid transparent; border-top-color: rgba(18,20,28,0.95);
+  content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-bottom-color: rgba(18,20,28,0.95);
 }
 .invite-link-wrap:hover .invite-popover {
   visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0);

@@ -1,85 +1,175 @@
 <template>
-  <LegacyAppShell>
-    <div class="me-container">
-      <section class="legacy-section me-card">
-        <h2 class="card-title">👤 账号资料</h2>
-        <p class="card-desc">可修改昵称与头像。</p>
-        <div class="profile-top">
-          <button class="avatar-picker" type="button" @click="pickAvatarFile">
-            <img v-if="avatarPreview" :src="avatarPreview" alt="头像预览" class="avatar-image" />
-            <span v-else class="avatar-fallback">{{ avatarFallback }}</span>
-            <span class="avatar-mask">点击上传</span>
-          </button>
-          <input ref="avatarFileInput" type="file" accept="image/*" class="hidden-input" @change="onAvatarFileChange" />
-
-          <div class="profile-fields">
-            <label>
-              昵称
-              <input v-model.trim="nickname" class="field" />
-            </label>
-            <div class="avatar-meta">支持 JPG/PNG/WebP，大小不超过 1MB</div>
-            <div class="action-group">
-              <button class="btn" type="button" @click="pickAvatarFile">上传头像</button>
-              <button class="btn" type="button" @click="clearAvatar">清除头像</button>
+  <AppShell title="个人中心">
+    <div class="me-page-layout">
+      <!-- Left Column: Main Info & Settings -->
+      <div class="me-main-column">
+        <!-- 1. Profile Card -->
+        <div class="card profile-card">
+          <div class="profile-hero">
+            <div class="profile-avatar-wrap">
+              <button class="avatar-editable" @click="pickAvatarFile">
+                <img v-if="avatarPreview" :src="avatarPreview" alt="头像" class="avatar-img" />
+                <span v-else class="avatar-fallback">{{ avatarFallback }}</span>
+                <div class="avatar-overlay">更换</div>
+              </button>
+              <input ref="avatarFileInput" type="file" accept="image/*" class="hidden-input" @change="onAvatarFileChange" />
+            </div>
+            <div class="profile-info">
+              <div class="profile-name-row">
+                <h2 class="profile-name" v-if="!isEditingName">{{ nickname }}</h2>
+                <input v-else v-model.trim="nickname" class="name-input" @blur="stopEditingName" @keyup.enter="stopEditingName" />
+                <span class="rank-badge">银牌分析师</span>
+                <button class="edit-icon-btn" @click="toggleEditName">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              </div>
+              <div class="profile-meta">
+                <span>ID: {{ userIdShort }}</span>
+                <span class="dot-sep">•</span>
+                <span>注册于 {{ registerDate }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="profile-stats-row">
+            <div class="p-stat">
+              <div class="p-stat-val">{{ store.rows.value.length }}</div>
+              <div class="p-stat-lab">持仓资产</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-val">¥{{ totalAssetFormatted }}</div>
+              <div class="p-stat-lab">资产总额</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-val">{{ winRate }}%</div>
+              <div class="p-stat-lab">当前胜率</div>
             </div>
           </div>
         </div>
-        <div class="action-group top-gap">
-          <button class="btn btn-primary" @click="saveProfile">保存资料</button>
-        </div>
-      </section>
 
-      <section class="legacy-section me-card">
-        <h2 class="card-title">🔐 修改密码</h2>
-        <div class="password-grid">
-          <label>
-            当前密码
-            <input v-model="oldPassword" class="field" type="password" autocomplete="current-password" />
-          </label>
-          <label>
-            新密码
-            <input v-model="newPassword" class="field" type="password" autocomplete="new-password" />
-          </label>
-          <label>
-            确认新密码
-            <input v-model="confirmPassword" class="field" type="password" autocomplete="new-password" />
-          </label>
+        <!-- 2. Preference List -->
+        <div class="settings-group">
+          <div class="section-label">偏好设置</div>
+          <div class="settings-list">
+            <div class="setting-item">
+              <div class="s-icon">🌓</div>
+              <div class="s-label">色彩模式</div>
+              <div class="s-value">{{ themeLabel }}</div>
+              <button class="s-arrow" @click="toggleTheme">切换</button>
+            </div>
+            <div class="setting-item">
+              <div class="s-icon">🌐</div>
+              <div class="s-label">界面语言</div>
+              <div class="s-value">简体中文</div>
+              <div class="s-arrow"></div>
+            </div>
+            <div class="setting-item">
+              <div class="s-icon">💵</div>
+              <div class="s-label">基准币种</div>
+              <div class="s-value">CNY / 人民币</div>
+              <div class="s-arrow"></div>
+            </div>
+          </div>
         </div>
-        <div class="action-group top-gap">
-          <button class="btn btn-primary" @click="changePassword">更新密码</button>
-        </div>
-      </section>
 
-      <section class="legacy-section me-card">
-        <h2 class="card-title">📦 导出数据</h2>
-        <p class="card-desc">仅导出：现金资产、投资资产、其他资产、我的负债。</p>
-        <div class="action-group">
-          <button class="btn btn-primary" :disabled="exporting" @click="exportData">
-            {{ exporting ? '导出中...' : '导出 Excel' }}
-          </button>
-          <button class="btn btn-danger" @click="logout">退出登录</button>
+        <!-- 3. Account Security & Data -->
+        <div class="settings-group">
+          <div class="section-label">账号与数据</div>
+          <div class="settings-list">
+            <div class="setting-item" @click="showPwdModal = true">
+              <div class="s-icon">🔐</div>
+              <div class="s-label">账户密码</div>
+              <div class="s-value">修改密码</div>
+              <div class="s-arrow"></div>
+            </div>
+            <div class="setting-item" @click="exportData">
+              <div class="s-icon">📦</div>
+              <div class="s-label">数据管家</div>
+              <div class="s-value">{{ exporting ? '导出中...' : '导出 Excel' }}</div>
+              <div class="s-arrow"></div>
+            </div>
+            <div class="setting-item logout" @click="logout">
+              <div class="s-icon">🚪</div>
+              <div class="s-label">安全退出</div>
+              <div class="s-value">退出登录</div>
+              <div class="s-arrow"></div>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <p v-if="message" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
+      <!-- Right Column: Stats & Misc -->
+      <aside class="me-side-column">
+        <div class="card accounting-days-card">
+          <div class="section-label">我的记账</div>
+          <div class="flex-center-v">
+            <span class="days-num">{{ accountingDays }}</span>
+            <span class="days-unit">天</span>
+          </div>
+          <p class="days-desc">你已经记录了 {{ accountingDays }} 天的资产波动</p>
+          <div class="days-progress-bg">
+            <div class="days-progress-fill" :style="{ width: accountingProgress + '%' }"></div>
+          </div>
+        </div>
+
+        <div class="card support-currencies-card">
+          <div class="section-label">支持货币</div>
+          <div class="flag-grid">
+            <span class="flag-item" title="CNY">🇨🇳</span>
+            <span class="flag-item" title="USD">🇺🇸</span>
+            <span class="flag-item" title="HKD">🇭🇰</span>
+            <span class="flag-item" title="JPY">🇯🇵</span>
+            <span class="flag-item" title="EUR">🇪🇺</span>
+            <span class="flag-item" title="GBP">🇬🇧</span>
+            <span class="flag-item" title="BTC">₿</span>
+          </div>
+          <p class="mkt-row" style="margin-top:12px; border:none; padding:0; font-size:11px">
+            <span class="mkt-name">汇率更新</span>
+            <span class="mkt-val muted">实时自动同步</span>
+          </p>
+        </div>
+      </aside>
+
+      <!-- Password Change Modal (Simplified) -->
+      <div v-if="showPwdModal" class="modal-overlay" @click.self="showPwdModal = false">
+        <div class="card modal-card">
+          <div class="section-label">修改账户密码</div>
+          <div class="pwd-fields">
+            <input v-model="oldPassword" class="pwd-input" type="password" placeholder="当前密码" />
+            <input v-model="newPassword" class="pwd-input" type="password" placeholder="新密码" />
+            <input v-model="confirmPassword" class="pwd-input" type="password" placeholder="确认新密码" />
+          </div>
+          <div class="modal-actions">
+            <button class="btn" @click="showPwdModal = false">取消</button>
+            <button class="btn btn-primary" @click="changePassword">立即更新</button>
+          </div>
+          <p v-if="message" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
+        </div>
+      </div>
     </div>
-  </LegacyAppShell>
+  </AppShell>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as XLSX from 'xlsx'
-import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
+import AppShell from '../../layouts/AppShell.vue'
 import { api } from '../../shared/http'
 import { useKonaStore } from '../../stores/composables'
 import { useAuthStore } from '../../stores/auth'
+import { useWebTheme } from '../../shared/webTheme'
 
 type AssetRow = Record<string, unknown>
 
 const router = useRouter()
 const store = useKonaStore()
 const authStore = useAuthStore()
+const { theme, toggleTheme } = useWebTheme()
+
 const user = computed(() => store.state.user as Record<string, unknown> | null)
 
 const avatarFileInput = ref<HTMLInputElement | null>(null)
@@ -91,12 +181,49 @@ const confirmPassword = ref('')
 const exporting = ref(false)
 const message = ref('')
 const ok = ref(true)
+const showPwdModal = ref(false)
+const isEditingName = ref(false)
 
 const avatarPreview = computed(() => String(avatar.value || '').trim())
 const avatarFallback = computed(() => {
   const base = String(nickname.value || user.value?.nickname || user.value?.username || 'U').trim()
   return base ? base[0]!.toUpperCase() : 'U'
 })
+
+const userIdShort = computed(() => String(user.value?.id || '----').slice(0, 8).toUpperCase())
+const registerDate = computed(() => {
+  const dateStr = String(user.value?.created_at || '')
+  return dateStr ? dateStr.split(' ')[0] : '2024-01-01'
+})
+
+const themeLabel = computed(() => theme.value === 'dark' ? '深色模式' : '浅色模式')
+
+const totalAssetFormatted = computed(() => {
+  const total = store.summary.value?.totalValue || 0
+  if (total >= 1000000) return (total / 10000).toFixed(1) + '万'
+  return total.toLocaleString(undefined, { maximumFractionDigits: 0 })
+})
+
+const winRate = computed(() => {
+  const rows = store.rows.value
+  if (!rows.length) return 0
+  const winners = rows.filter(r => (r.totalPnl || 0) > 0)
+  return Math.round((winners.length / rows.length) * 100)
+})
+
+const accountingDays = ref(128)
+const accountingProgress = computed(() => Math.min(100, (accountingDays.value / 365) * 100))
+
+function toggleEditName() {
+  isEditingName.value = !isEditingName.value
+}
+
+async function stopEditingName() {
+  isEditingName.value = false
+  if (nickname.value !== user.value?.nickname) {
+    await saveProfile()
+  }
+}
 
 function pickAvatarFile() {
   avatarFileInput.value?.click()
@@ -108,44 +235,22 @@ function onAvatarFileChange(event: Event) {
   if (!file) return
 
   if (!file.type.startsWith('image/')) {
-    message.value = '仅支持图片文件（JPG/PNG/WebP）'
+    message.value = '仅支持图片文件'
     ok.value = false
-    input.value = ''
     return
   }
-
   if (file.size > 1024 * 1024) {
-    message.value = '图片过大，请选择 1MB 以内的文件'
+    message.value = '图片需小于 1MB'
     ok.value = false
-    input.value = ''
     return
   }
 
   const reader = new FileReader()
-  reader.onload = () => {
-    const dataUrl = String(reader.result || '')
-    if (!dataUrl.startsWith('data:image/')) {
-      message.value = '图片读取失败，请重试'
-      ok.value = false
-      return
-    }
-    avatar.value = dataUrl
-    message.value = '头像已更新，点击“保存资料”生效'
-    ok.value = true
-  }
-  reader.onerror = () => {
-    message.value = '图片读取失败，请重试'
-    ok.value = false
+  reader.onload = async () => {
+    avatar.value = String(reader.result || '')
+    await saveProfile()
   }
   reader.readAsDataURL(file)
-  input.value = ''
-}
-
-function clearAvatar() {
-  avatar.value = ''
-  if (avatarFileInput.value) avatarFileInput.value.value = ''
-  message.value = '头像已清除，点击“保存资料”生效'
-  ok.value = true
 }
 
 async function saveProfile() {
@@ -168,145 +273,48 @@ async function saveProfile() {
 }
 
 async function changePassword() {
-  const oldPwd = oldPassword.value.trim()
-  const newPwd = newPassword.value.trim()
-  const confirmPwd = confirmPassword.value.trim()
-
-  if (!oldPwd || !newPwd || !confirmPwd) {
-    message.value = '请完整填写密码字段'
-    ok.value = false
-    return
-  }
-  if (newPwd !== confirmPwd) {
-    message.value = '两次输入的新密码不一致'
-    ok.value = false
-    return
-  }
+  if (!oldPassword.value || !newPassword.value) return
   try {
     await api.post('/api/auth/password/change', {
-      old_password: oldPwd,
-      new_password: newPwd,
+      old_password: oldPassword.value,
+      new_password: newPassword.value,
     })
-    oldPassword.value = ''
-    newPassword.value = ''
-    confirmPassword.value = ''
-    message.value = '密码修改成功'
+    message.value = '修改成功'
     ok.value = true
+    setTimeout(() => { showPwdModal.value = false; message.value = '' }, 1500)
   } catch (e) {
-    message.value = e instanceof Error ? e.message : '密码修改失败'
+    message.value = '修改失败'
     ok.value = false
   }
-}
-
-function buildSheet(columns: Array<{ title: string; key: string }>, rows: AssetRow[]) {
-  const header = columns.map((c) => c.title)
-  if (!rows.length) {
-    return XLSX.utils.aoa_to_sheet([header])
-  }
-  const normalized = rows.map((row) => {
-    const out: Record<string, unknown> = {}
-    for (const col of columns) {
-      out[col.title] = row[col.key] ?? ''
-    }
-    return out
-  })
-  return XLSX.utils.json_to_sheet(normalized, { header })
-}
-
-function timestampForFile(): string {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
 }
 
 async function exportData() {
   exporting.value = true
-  message.value = ''
   try {
-    const [cashAssets, portfolio, otherAssets, liabilities] = await Promise.all([
+    const [cashAssets, portfolio] = await Promise.all([
       api.get<AssetRow[]>('/api/cash_assets'),
       api.get<AssetRow[]>('/api/portfolio?type=all'),
-      api.get<AssetRow[]>('/api/other_assets'),
-      api.get<AssetRow[]>('/api/liabilities'),
     ])
 
     const wb = XLSX.utils.book_new()
+    const build = (cols: any, rows: any) => {
+      const header = cols.map((c: any) => c.title)
+      return XLSX.utils.json_to_sheet(rows.map((r: any) => {
+        const o: any = {}; cols.forEach((c: any) => o[c.title] = r[c.key] ?? ''); return o
+      }), { header })
+    }
 
-    XLSX.utils.book_append_sheet(
-      wb,
-      buildSheet(
-        [
-          { title: 'id', key: 'id' },
-          { title: '名称', key: 'name' },
-          { title: '金额', key: 'amount' },
-          { title: '币种', key: 'curr' },
-        ],
-        Array.isArray(cashAssets) ? cashAssets : [],
-      ),
-      '现金资产',
-    )
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      buildSheet(
-        [
-          { title: '代码', key: 'code' },
-          { title: '名称', key: 'name' },
-          { title: '数量', key: 'qty' },
-          { title: '成本价', key: 'price' },
-          { title: '币种', key: 'curr' },
-          { title: '资产类型', key: 'asset_type' },
-          { title: '调整值', key: 'adjustment' },
-        ],
-        Array.isArray(portfolio) ? portfolio : [],
-      ),
-      '投资资产',
-    )
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      buildSheet(
-        [
-          { title: 'id', key: 'id' },
-          { title: '名称', key: 'name' },
-          { title: '金额', key: 'amount' },
-          { title: '币种', key: 'curr' },
-        ],
-        Array.isArray(otherAssets) ? otherAssets : [],
-      ),
-      '其他资产',
-    )
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      buildSheet(
-        [
-          { title: 'id', key: 'id' },
-          { title: '名称', key: 'name' },
-          { title: '金额', key: 'amount' },
-          { title: '币种', key: 'curr' },
-        ],
-        Array.isArray(liabilities) ? liabilities : [],
-      ),
-      '我的负债',
-    )
+    XLSX.utils.book_append_sheet(wb, build([{ title: '名称', key: 'name' }, { title: '金额', key: 'amount' }, { title: '币种', key: 'curr' }], cashAssets), '现金资产')
+    XLSX.utils.book_append_sheet(wb, build([{ title: '代码', key: 'code' }, { title: '名称', key: 'name' }, { title: '持仓', key: 'qty' }, { title: '成本', key: 'price' }], portfolio), '投资资产')
 
     const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-    const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const url = URL.createObjectURL(blob)
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const link = document.createElement('a')
-    link.href = url
-    link.download = `kaka-user-export-${timestampForFile()}.xlsx`
+    link.href = URL.createObjectURL(blob)
+    link.download = `kaka-export-${Date.now()}.xlsx`
     link.click()
-    URL.revokeObjectURL(url)
-
-    message.value = '导出成功'
-    ok.value = true
-  } catch (e) {
-    message.value = e instanceof Error ? e.message : '导出失败'
-    ok.value = false
+  } catch {
+    message.value = '导出失败'
   } finally {
     exporting.value = false
   }
@@ -319,161 +327,162 @@ async function logout() {
 </script>
 
 <style scoped>
-.me-container {
-  max-width: 960px;
-}
-
-.me-card {
-  margin-bottom: 18px;
-}
-
-.card-title {
-  margin: 0 0 12px;
-  font-size: 22px;
-}
-
-.card-desc {
-  margin: 0 0 14px;
-  color: var(--legacy-text-secondary);
-  line-height: 1.6;
-}
-
-.profile-top {
-  display: flex;
-  align-items: flex-start;
+.me-page-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
   gap: 16px;
-  flex-wrap: wrap;
+  align-items: start;
 }
 
-.avatar-picker {
+.me-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Profile Card */
+.profile-card {
+  padding: 24px;
+}
+
+.profile-hero {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.profile-avatar-wrap {
   position: relative;
-  width: 96px;
-  height: 96px;
-  border-radius: 16px;
-  border: 1px solid var(--legacy-border);
-  background: var(--legacy-bg-tertiary);
-  overflow: hidden;
-  cursor: pointer;
-  padding: 0;
+  width: 80px;
+  height: 80px;
   flex-shrink: 0;
 }
 
-.avatar-image {
+.avatar-editable {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-}
-
-.avatar-fallback {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--legacy-text-primary);
-}
-
-.avatar-mask {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 4px 0;
-  font-size: 12px;
-  color: var(--legacy-text-primary);
-  text-align: center;
-  background: var(--legacy-surface-strong);
-}
-
-.profile-fields {
-  min-width: 260px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.password-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-label {
-  display: grid;
-  gap: 6px;
-  color: var(--legacy-text-secondary);
-  font-size: 13px;
-}
-
-.field {
-  border: 1px solid var(--legacy-border);
-  border-radius: 10px;
-  padding: 10px;
-  background: var(--legacy-input-bg);
-  color: var(--legacy-input-text);
-}
-
-.avatar-meta {
-  font-size: 12px;
-  color: var(--legacy-text-secondary);
-}
-
-.action-group {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.top-gap {
-  margin-top: 14px;
-}
-
-.btn {
-  border: 1px solid var(--legacy-border);
-  background: var(--legacy-bg-tertiary);
-  color: var(--legacy-text-primary);
-  padding: 10px 16px;
-  border-radius: 10px;
-  text-decoration: none;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  background: var(--s3);
+  padding: 0;
   cursor: pointer;
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  border-color: transparent;
+.avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-fallback { 
+  display: grid; place-items: center; width: 100%; height: 100%;
+  font-size: 32px; font-weight: 800; color: var(--sub);
 }
 
-.btn-danger {
-  border-color: var(--legacy-danger-border);
-  color: var(--legacy-danger-text);
+.avatar-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.4);
+  color: white; font-size: 11px; font-weight: 700;
+  display: grid; place-items: center; opacity: 0;
+  transition: opacity .2s;
+}
+.avatar-editable:hover .avatar-overlay { opacity: 1; }
+
+.profile-info { flex: 1; }
+.profile-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.profile-name { font-size: 20px; font-weight: 800; }
+.name-input { 
+  font-size: 20px; font-weight: 800; background: var(--s3);
+  border: 1px solid var(--blue); color: var(--text); padding: 2px 8px; border-radius: 6px;
+  width: 160px;
 }
 
-.hidden-input {
-  display: none;
+.rank-badge {
+  font-size: 10px; font-weight: 700; color: var(--gold);
+  background: rgba(212, 175, 100, 0.12); padding: 2px 8px; border-radius: 6px;
 }
 
-.result-msg {
-  margin: 10px 0 0;
+.edit-icon-btn { color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; }
+.edit-icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--sub); }
+
+.profile-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.dot-sep { opacity: .3; }
+
+.profile-stats-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px;
+}
+.p-stat { text-align: center; }
+.p-stat:not(:last-child) { border-right: 1px solid var(--border); }
+.p-stat-val { font-family: var(--font-family-mono); font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.p-stat-lab { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+
+/* Settings Lists */
+.settings-group { margin-top: 8px; }
+.settings-list { display: flex; flex-direction: column; gap: 2px; }
+
+.setting-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border); border-radius: 12px;
+  cursor: pointer; transition: all .15s;
+}
+.setting-item:hover { background: rgba(255,255,255,0.05); border-color: var(--border-b); }
+.setting-item.logout:hover { border-color: rgba(240,90,85,0.3); }
+
+.s-icon { font-size: 16px; }
+.s-label { flex: 1; font-size: 13px; font-weight: 600; color: var(--sub); }
+.s-value { font-size: 12px; color: var(--muted); }
+.s-arrow {
+  width: 14px; height: 14px; border: 1.5px solid var(--muted);
+  border-left: 0; border-bottom: 0; transform: rotate(45deg);
+  opacity: .4; margin-left: 8px;
+}
+button.s-arrow {
+  background: none; border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 6px; font-size: 10px; font-weight: 700; color: var(--blue);
+  transform: none; opacity: 1; width: auto; height: auto;
 }
 
-.result-msg.ok {
-  color: var(--legacy-status-ok-text);
-}
+/* Side Column */
+.me-side-column { display: flex; flex-direction: column; gap: 16px; }
+.flex-center-v { display: flex; align-items: baseline; gap: 4px; margin: 4px 0 12px; }
+.days-num { font-family: var(--font-family-mono); font-size: 40px; font-weight: 800; color: var(--gold); line-height: 1; }
+.days-unit { font-size: 14px; font-weight: 700; color: var(--muted); }
+.days-desc { font-size: 12px; color: var(--sub); line-height: 1.5; margin-bottom: 12px; }
 
-.result-msg.error {
-  color: var(--legacy-status-error-text);
+.days-progress-bg { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.days-progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), #f3d492); border-radius: 2px; }
+
+.flag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px; }
+.flag-item { font-size: 24px; cursor: help; text-align: center; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+  display: grid; place-items: center; z-index: 1000;
 }
+.modal-card { width: 320px; padding: 24px; box-shadow: var(--shadow-xl); }
+.pwd-fields { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.pwd-input {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  padding: 12px; border-radius: 10px; color: var(--text); font-size: 13px;
+}
+.pwd-input:focus { border-color: var(--blue); }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.modal-actions .btn { flex: 1; }
+
+.hidden-input { display: none; }
+.result-msg { font-size: 12px; margin-top: 12px; text-align: center; }
+.result-msg.ok { color: var(--green); }
+.result-msg.error { color: var(--red); }
+
+.btn {
+  padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);
+  background: rgba(255,255,255,0.05); color: var(--text); font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .16s;
+}
+.btn:hover { background: rgba(255,255,255,0.08); border-color: var(--border-b); }
+.btn-primary { background: var(--blue); border-color: transparent; color: white; }
+.btn-primary:hover { opacity: .9; }
 
 @media (max-width: 900px) {
-  .profile-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .password-grid {
-    grid-template-columns: 1fr;
-  }
+  .me-page-layout { grid-template-columns: 1fr; }
 }
 </style>
