@@ -175,6 +175,7 @@ const filteredRows = computed(() => {
     return {
       ...row,
       qty,
+      amount: qty, // Add compatibility with template
       last,
       costPrice,
       mv,
@@ -186,9 +187,9 @@ const filteredRows = computed(() => {
       pct,
       price: last,
       curr: String(row.curr || 'CNY'),
-      market: row.market,
-      unit: row.unit || (row.market === 'fund' ? '份' : '股'),
-      spark: row.spark || 'M0,30 L20,26 L40,28 L60,18 L80,14 L100,8 L120,5' // Default mock spark
+      market: String(row.market || ''),
+      unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
+      spark: String(row.spark || 'M0,30 L20,26 L40,28 L60,18 L80,14 L100,8 L120,5') // Explicitly cast to string
     }
   })
 })
@@ -209,7 +210,7 @@ function getMarketName(m: string) {
   if (m === 'a') return '沪深·A'
   return '基金'
 }
-function formatLocal(v: any, cur?: string) {
+function formatLocal(v: any) {
   return Number(v || 0).toLocaleString()
 }
 
@@ -374,7 +375,7 @@ onMounted(async () => {
                   
                   <div style="display:flex;align-items:center;gap:5px;margin-bottom:10px">
                     <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
-                    <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount, '') }}{{ row.unit }}</span>
+                    <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
                   </div>
 
                   <!-- Sparkline -->
@@ -446,7 +447,7 @@ onMounted(async () => {
                       <div style="font-size:13px;font-weight:700;color:var(--text)">{{ row.name }}</div>
                       <div style="display:flex;gap:5px;margin-top:3px">
                         <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
-                        <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount, '') }}{{ row.unit }}</span>
+                        <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount) }}{{ row.unit }}</span>
                       </div>
                     </div>
                   </div>
