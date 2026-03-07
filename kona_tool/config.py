@@ -5,7 +5,10 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
+# 加载 .env 文件
+load_dotenv()
 
 def _derive_build_number_from_version(version_text: str, fallback: int = 1) -> int:
     value = str(version_text or "").strip()

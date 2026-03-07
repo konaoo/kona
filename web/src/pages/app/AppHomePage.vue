@@ -409,7 +409,7 @@ onBeforeUnmount(() => {
     <template v-else>
 
       <!-- Market Index Cards -->
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;margin-bottom:14px">
         <template v-if="marketIndices && marketIndices.length > 0">
           <div v-for="idx in marketIndices" :key="idx.name" class="card" style="padding:12px 14px">
             <div class="section-label" style="font-size:11px;margin-bottom:6px">{{ idx.name }}</div>
@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
 
         <div v-else>
           <!-- Card View -->
-          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px">
+          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:10px">
             <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard">
               <div style="position:absolute;top:0;left:0;right:0;height:2px" :style="{ background: 'linear-gradient(90deg,transparent,' + (toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)') + ' 40%,transparent)' }"></div>
               <div class="hcard-header-row">

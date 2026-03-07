@@ -129,23 +129,27 @@ async function handleLogout() {
     <main class="main">
       <!-- Topbar: Only show if not explicitly hidden -->
       <div v-if="!hideTopbar" class="topbar">
-        <div class="topbar-title">{{ title || route.meta.title || '工作台' }}</div>
-        <div class="topbar-actions">
-          <button @click="toggleTheme" class="icon-btn" :title="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">
-            {{ theme === 'dark' ? '🌙' : '☀️' }}
-          </button>
-          <button @click="togglePrivacy" class="icon-btn" :title="isPrivacyMode ? '现实数值' : '隐私模式'">
-            {{ isPrivacyMode ? '🙈' : '👁️' }}
-          </button>
-          <button @click="saveAsImage" class="icon-btn" title="保存截图">
-            📸
-          </button>
+        <div class="container-inner topbar-content">
+          <div class="topbar-title">{{ title || route.meta.title || '工作台' }}</div>
+          <div class="topbar-actions">
+            <button @click="toggleTheme" class="icon-btn" :title="theme === 'dark' ? '切换浅色模式' : '切换深色模式'">
+              {{ theme === 'dark' ? '🌙' : '☀️' }}
+            </button>
+            <button @click="togglePrivacy" class="icon-btn" :title="isPrivacyMode ? '现实数值' : '隐私模式'">
+              {{ isPrivacyMode ? '🙈' : '👁️' }}
+            </button>
+            <button @click="saveAsImage" class="icon-btn" title="保存截图">
+              📸
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Page Content Slot -->
       <div id="capture-area" class="page active">
-        <slot />
+        <div class="container-inner">
+          <slot />
+        </div>
       </div>
     </main>
   </div>
@@ -265,14 +269,37 @@ async function handleLogout() {
 }
 
 /* Page transitions/scroll fixes */
-.main {
-  background: var(--bg);
+.topbar {
+  height: 56px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10,11,14,0.8);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.container-inner {
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 .page {
   height: calc(100vh - 56px);
   overflow-y: auto;
-  padding: 0; /* Let pages define their own padding if needed, or unify here */
+  padding: 24px 0; /* Vertical padding only, horiz handled by inner */
 }
 
 /* Scrollbar styling */

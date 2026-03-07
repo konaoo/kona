@@ -16,9 +16,11 @@ import config  # 添加导入
 try:
     from .market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
     from .parser import parse_code
+    from .logo_utils import suggest_logo_url
 except ImportError:  # 兼容被单文件动态加载的测试场景
     from core.market_calendar import all_markets_closed, is_markets_closed_on_date, market_from_asset
     from core.parser import parse_code
+    from core.logo_utils import suggest_logo_url
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
@@ -360,6 +362,7 @@ class DatabaseManager:
                 cursor.execute(f'ALTER TABLE {table} ADD COLUMN {col_def}')
 
         _ensure_column('portfolio', 'user_id', "user_id TEXT NOT NULL DEFAULT ''")
+        _ensure_column('portfolio', 'logo_url', "logo_url TEXT")
         _ensure_column('transactions', 'user_id', 'user_id TEXT')
         _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
@@ -1825,21 +1828,21 @@ class DatabaseManager:
 
         if asset_type == 'all':
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment, asset_type
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
                 FROM portfolio
                 WHERE {user_condition}{qty_condition}
                 ORDER BY code
             ''', user_param)
         elif asset_type in ('a', 'us', 'hk', 'fund'):
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment, asset_type
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
                 FROM portfolio
                 WHERE {user_condition}{qty_condition} AND asset_type = ?
                 ORDER BY code
             ''', user_param + (asset_type,))
         else:
             cursor.execute(f'''
-                SELECT code, name, qty, price, curr, adjustment, asset_type
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
                 FROM portfolio
                 WHERE {user_condition}{qty_condition}
                 ORDER BY code
@@ -1854,7 +1857,8 @@ class DatabaseManager:
                 'price': float(row['price']),
                 'curr': row['curr'],
                 'adjustment': float(row['adjustment']),
-                'asset_type': row['asset_type'] if 'asset_type' in row.keys() else ''
+                'asset_type': row['asset_type'] if 'asset_type' in row.keys() else '',
+                'logo_url': row['logo_url'] if 'logo_url' in row.keys() else None
             })
 
         logger.info(f"get_portfolio returned {len(data)} records for type {asset_type}")
@@ -1903,6 +1907,10 @@ class DatabaseManager:
         
         try:
             incoming_name = str(data.get('name') or '').strip()
+            
+            # 如果没有提供 logo_url，尝试自动生成一个建议的
+            if not data.get('logo_url'):
+                data['logo_url'] = suggest_logo_url(data.get('code'), incoming_name)
             if user_id:
                 cursor.execute(
                     '''
