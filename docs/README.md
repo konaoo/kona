@@ -1,0 +1,158 @@
+# 文档导航
+
+## 1. 先说结论
+
+你说得对，现在 `docs/` 目录确实很乱。
+
+问题主要有 3 个：
+
+1. 文件名大量是英文
+2. 同时混着长期文档、交接文档、接口文档、原型文档
+3. 普通人第一眼不知道该先看哪一个
+
+所以这份文件的作用就是：
+
+`把 docs 目录翻译成人能看懂的导航页。`
+
+以后你先看这份，不要直接在 `docs/` 里硬猜。
+
+---
+
+## 2. 如果你是要快速了解项目，先看这些
+
+### 第一优先级
+
+- [项目总览（主仓库 README）](/Users/kona/Desktop/kaka/kona_repo/README.md)
+  作用：看项目是干什么的、技术栈是什么、主仓库结构是什么
+
+- [工作区骨架说明](/Users/kona/Desktop/kaka/项目结构.md)
+  作用：看整个 `kaka` 工作区怎么组织
+
+- [版本记录](/Users/kona/Desktop/kaka/kona_repo/CHANGELOG.md)
+  作用：看每一版到底改了什么
+
+- [资产识别与价格逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产识别与价格逻辑.md)
+  作用：看代码怎么识别 A股、港股、美股、基金，以及分别去哪取价格
+
+- [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
+  作用：看成本价、adjustment、当日盈亏、累计盈亏、快照和分析页口径
+
+---
+
+## 3. 如果你是要看产品和业务逻辑，优先看这些
+
+- [资产同步与盈亏算法口径](/Users/kona/Desktop/kaka/kona_repo/docs/资产同步与盈亏算法口径.md)
+  作用：看资产、收益、刷新这类核心口径
+
+- [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
+  作用：看成本、摊薄后成本、当日盈亏、累计盈亏和历史快照的关系
+
+- [价格源 / 基金净值 / 快照与盈亏口径交接](/Users/kona/Desktop/kaka/kona_repo/docs/价格源与快照盈亏口径说明.md)
+  作用：看价格源、基金净值、快照、价格异常巡检这些逻辑
+
+- [分析页日历与分市场收益说明](/Users/kona/Desktop/kaka/kona_repo/docs/分析页日历与分市场收益说明.md)
+  作用：看分析页日历和分市场收益怎么算
+
+- [投资页 UI v2 与摊薄成本说明](/Users/kona/Desktop/kaka/kona_repo/docs/投资页UI与摊薄成本说明.md)
+  作用：看投资页 UI 和摊薄成本展示逻辑
+
+- [登录态、生物识别与持久化说明](/Users/kona/Desktop/kaka/kona_repo/docs/登录态与生物识别说明.md)
+  作用：看登录、会话保持、生物识别相关逻辑
+
+---
+
+## 4. 如果你是要看运维和部署，优先看这些
+
+- [运维手册](/Users/kona/Desktop/kaka/kona_repo/docs/运维手册.md)
+  作用：常规运维怎么做
+
+- [维护说明](/Users/kona/Desktop/kaka/kona_repo/docs/维护说明.md)
+  作用：偏维护、巡检、排障
+
+- [部署说明](/Users/kona/Desktop/kaka/kona_repo/docs/部署说明.md)
+  作用：怎么发版、怎么部署
+
+- [腾讯云迁移交接](/Users/kona/Desktop/kaka/kona_repo/docs/腾讯云迁移说明.md)
+  作用：看现在线上环境怎么来的、迁移时做了什么
+
+- [腾讯云切换检查清单](/Users/kona/Desktop/kaka/kona_repo/docs/腾讯云切换检查清单.md)
+  作用：偏切换和迁移检查，不是日常第一入口
+
+---
+
+## 5. 如果你是要看接口，优先看这些
+
+- [接口总览](/Users/kona/Desktop/kaka/kona_repo/docs/接口总览.md)
+  作用：后端接口清单
+
+- [接口详细说明](/Users/kona/Desktop/kaka/kona_repo/docs/接口详情.md)
+  作用：接口参数和返回细节
+
+- [接口导入说明](/Users/kona/Desktop/kaka/kona_repo/docs/接口导入说明.md)
+  作用：接口导入或接入相关说明
+
+- [Swagger 说明](/Users/kona/Desktop/kaka/kona_repo/docs/Swagger说明.md)
+  作用：Swagger 文档入口说明
+
+- [OpenAPI 文件](/Users/kona/Desktop/kaka/kona_repo/docs/openapi.yaml)
+  作用：给工具、接口平台或自动化使用
+
+- [Swagger 页面](/Users/kona/Desktop/kaka/kona_repo/docs/swagger-ui.html)
+  作用：本地查看接口文档页面
+
+---
+
+## 6. 如果你是要看 Web / 前端改动历史，优先看这些
+
+- [Web 变更时间线](/Users/kona/Desktop/kaka/kona_repo/docs/Web变更时间线.md)
+  作用：看 Web 这块过去怎么改过
+
+- [前端搭建说明](/Users/kona/Desktop/kaka/kona_repo/docs/前端搭建说明.md)
+  作用：看 Web/前端环境怎么起
+
+- [管理后台功能手册 V2](/Users/kona/Desktop/kaka/kona_repo/docs/管理后台功能手册V2.md)
+  作用：看后台页面和功能
+
+---
+
+## 7. 这些文档名字看着硬，但你现在可以先不用管
+
+- [核心模块说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/核心模块说明.md)
+  作用：偏模块结构说明，给开发看更多
+
+- [项目概览.md](/Users/kona/Desktop/kaka/kona_repo/docs/项目概览.md)
+  作用：旧版项目概览，信息和主 README 有重复
+
+- [结构说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/结构说明.md)
+  作用：旧版结构说明，和现在新整理的结构文档有重叠
+
+- [新电脑待办说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/新电脑待办说明.md)
+  作用：偏阶段性 TODO，不是日常入口
+
+- [行情快讯性能与CI说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/行情快讯性能与CI说明.md)
+  作用：偏一次行情/快讯性能优化交接，查专项问题时再看
+
+---
+
+## 8. `docs/` 目录现在最大的问题
+
+说白了，现在这里不是“没有文档”，而是“文档太多但没有中文总导航”。
+
+所以当前最合理的策略不是马上全改文件名，而是：
+
+1. 先保留原文件，避免打断现有链接
+2. 用这份 `README.md` 做中文导航
+3. 后面再慢慢把真正长期有价值的文档改成中文命名
+4. 旧的、重复的、阶段性文档，再考虑归档
+
+---
+
+## 9. 你现在最值得先看的 5 份
+
+如果你现在只想快速掌控项目，先看这 5 份就够：
+
+1. [主仓库 README](/Users/kona/Desktop/kaka/kona_repo/README.md)
+2. [项目结构](/Users/kona/Desktop/kaka/项目结构.md)
+3. [版本记录](/Users/kona/Desktop/kaka/kona_repo/CHANGELOG.md)
+4. [资产识别与价格逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产识别与价格逻辑.md)
+5. [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)

@@ -1,1443 +1,838 @@
-# Changelog
+# 版本记录
 
-本文件是项目版本历史的唯一标准记录。
+这份文件专门用来记录每一版到底改了什么。
 
-- 版本起点：`v1.0.0`
-- 默认迭代：`Patch`
-- 大版本升级（`Minor`/`Major`）需你明确确认
+我把规则改成了大白话：
 
----
+1. 先说这版主要解决什么问题。
+2. 再说你能直接感受到什么变化。
+3. 最后只保留少量必要的技术说明。
 
-## v1.0.31 - 行情与快讯性能提速、源优先级重排、部署稳定性加固
-- 发布状态: Released
-- 发布类型: Patch
-- 范围: Backend | Flutter | Web | CI | Docs
-- 关联日期: 2026-03-05
+以后看版本，你只需要重点看这 4 项：
 
-### Summary
-- **基金净值口径纠偏**：基金主源调整为“确认净值优先”，先走东方财富 F10 历史净值，失败后回退腾讯 `jj` 备源，避免估算净值导致的日期滞后与偏差放大。
-- **四市场速度优先重排**：A 股/港股/美股/基金分别设置主次源顺序与超时上限，形成“快源先返回，慢源兜底不拖主链路”的统一策略。
-- **批量价格接口降尾延迟**：`/api/prices/batch` 新增 fast 路径，支持请求级 `timeout_ms`，并引入 cache-first，显著降低前端首屏报价等待。
-- **快讯改造为“预载+增量”**：后端快讯缓存重构为固定窗口；前端进入快讯页先拿近 50 条，再按增量刷新，减少白屏与列表抖动。
-- **多端刷新节奏对齐**：Flutter 将 market status 拉取与报价刷新解耦；Web 对齐刷新 cadence，并补充交易 optimistic rollback，避免失败后前端状态脏写。
-- **CI/部署稳定性收口**：部署流程增加 market status 冷启动重试；补齐 baseline/mock 与 widget 测试稳定性，降低 GitHub Actions 偶发红灯。
+- `这版一句话`
+- `主要变化`
+- `影响范围`
+- `验收重点`
 
-### Added
-- `kona_tool/tests/test_fund_source_priority.py`：新增基金源优先级与回退行为覆盖（确认净值优先、腾讯备源、异常分支）。
-- `kona_tool/tests/test_stock_source_order.py`：新增 A/HK/US 源顺序与超时回退测试。
-- 快讯后端缓存能力增强：支持启动预热、增量合并、容量裁剪（默认保留近 50+，可扩展）。
-- Web 交易失败回滚机制：买卖请求失败时撤销 optimistic 变更并恢复缓存快照。
+版本规则也写死：
 
-### Changed
-- `kona_tool/core/fund.py`：
-  - 调整基金数据优先级：Eastmoney F10（确认净值） -> Tencent `jj` -> 其他补链路；
-  - 优化 `dwjz/gsz` 取值策略，优先确认值，估算值仅作为兜底。
-- `kona_tool/core/stock.py` / `kona_tool/core/price.py` / `kona_tool/core/system.py`：
-  - 按市场重排源优先级与超时；
-  - 增加美股扩展行情聚合链路的节流与告警降噪。
-- `kona_tool/core/source_health.py` / `kona_tool/core/utils.py` / `kona_tool/config.py`：
-  - 增加慢源（如 Nasdaq/FT）熔断阈值、冷却窗口与单源超时上限；
-  - 将“慢源不阻塞主链路”固化为统一可配置策略。
-- `kona_tool/app.py`：
-  - `/api/prices/batch` 接入 fast 获取器、请求级超时；
-  - market status 缓存与 bootstrap 流程细节优化，减少冷启动时误判失败。
-- `flutter/lib/providers/app_state.dart`：
-  - 将 market status 刷新从报价主流程拆分，避免首页/投资页被状态接口串行拖慢。
-- `flutter/lib/pages/news_page.dart` / `flutter/lib/services/api_service.dart`：
-  - 快讯页面切为“预加载 + 增量刷新 + 主题兼容”新实现。
-- `web/src/pages/app/AppInvestPage.vue` / `web/src/pages/app/AppHomePage.vue` / `web/src/shared/store.ts`：
-  - 对齐刷新频率策略、改进缓存命中与恢复逻辑；
-  - 增加交易 optimistic rollback 与错误恢复。
-- `.github/workflows/deploy.yml`：
-  - market status 冒烟校验增加重试窗口，提升冷启动阶段部署成功率。
+- `v1.0.0` 是起点
+- 默认每次小更新都是 `Patch`
+- 如果要升大版本，必须明确确认
+- APK 版本号以 `flutter/pubspec.yaml` 为准
+- 发布新版本时，要同步更新环境配置里的 `CLIENT_APP_DOWNLOAD_URL`
 
-### Fixed
-- 修复基金个别代码（如 `025209`）出现旧日期净值优先的问题。
-- 修复快讯页主题 Token 兼容问题（`news_page` hero decoration getter 缺失）。
-- 修复 batch/mock 与 bootstrap 相关测试在 CI 环境的随机失败。
-- 修复 widget 测试中 Provider/Timer 未释放导致的偶发失败。
+## 2026-03-07 更新
 
-### Verification
-- Backend:
-  - `pytest kona_tool/tests/test_fund_source_priority.py kona_tool/tests/test_stock_source_order.py kona_tool/tests/test_api_baseline.py`
-- Web:
-  - `cd web && npm run build`
-- Flutter:
-  - `cd flutter && flutter test test/news_page_refresh_test.dart test/auth_boot_flow_test.dart`
-- 部署链路:
-  - GitHub Actions deploy + health + market status smoke 通过。
+### 这版一句话
+
+这版主要对 Web 端首页和投资页进行了 UI 重构，并补齐了全系统的项目结构说明文档。
+
+### 主要变化
+
+- Web 端首页和投资页焕然一新，大幅度清理冗余 CSS，交互更流畅。
+- 补齐了 `kaka` 工作区和 `kona_repo` 的完整目录说明文档和技术骨架说明。
+- 清理了仓库历史遗留的清理项归档。
+
+### 影响范围
+
+- Web 首页、投资页
+- 项目全体文档
+- 仓库根目录
+
+### 验收重点
+
+- Web 页面视觉是否符合预期
+- `docs/` 下的文档是否清晰完整
+- 仓库内不再包含 `archive/` 目录
 
 ---
 
-## v1.0.30 - 主题一致性与闪烁治理、日期交互优化、版本解析修复
-- 发布状态: Released
-- 发布类型: Patch
-- 范围: Flutter | Web | CI | Docs
-- 关联日期: 2026-03-04 ~ 2026-03-05
+## v1.0.31
 
-### Summary
-- **跨页面主题统一修复**：修复首页头像闪烁、添加资产分类切换闪烁、底部导航上沿生硬边线、投资弹窗浅色按钮错色等问题。
-- **日期选择器交互优化**：分析页日期轮盘与区间交互重构，减少布局抖动与构建噪音。
-- **版本显示鲁棒性增强**：客户端版本解析支持忽略 `v` 前缀（如 `v1.0.30`），避免版本文案错判。
-- **编辑弹窗删除入口回归**：恢复编辑资产场景头部删除入口并统一删除交互样式。
-- **CI 用例收敛**：修复 9 处前后端测试失败，补 mock 与断言，恢复主干稳定绿勾。
+### 这版一句话
 
-### Added
-- profile 页面测试补充 `getWebConfig` mock，避免邀请文案断言受远端配置影响。
-- 用户群弹窗断言同步到新 UI 文案。
+这版重点修了“基金价格不准、快讯偏慢、刷新节奏不稳定、部署偶尔抽风”这几件事。
 
-### Changed
-- `flutter/lib/config/theme.dart` 与多页面（home/invest/news/profile/analysis/login）主题 token 同步修正。
-- `flutter/lib/widgets/invest_trade_dialog.dart` / `flutter/lib/widgets/add_asset_dialog.dart`：删除按钮、按钮态与视觉层级收敛。
-- `web/src/pages/app/AppInvestPage.vue` / `web/src/pages/app/AppNewsPage.vue`：主题与刷新细节同步。
-- `flutter/lib/pages/profile_page.dart`：版本号解析逻辑兼容 `v` 前缀。
+### 主要变化
 
-### Fixed
-- 修复多页面白/黑主题切换时的闪烁与颜色跳变。
-- 修复投资弹窗删除入口缺失与删除交互不一致问题。
-- 修复 analysis/profile/login/后端周末日历等 CI 失败用例。
+- 基金价格优先使用更可信的确认净值，减少价格看起来不对的情况。
+- A 股、港股、美股、基金的取价顺序重新整理，优先快、优先准。
+- 批量价格接口更快了，首页和投资页首屏等待更短。
+- 快讯页改成“先给你一批，再慢慢补新内容”，打开更顺。
+- Web 和 App 的刷新节奏更一致，失败后的回退也更稳。
+- 部署流程更稳了，冷启动时不容易误判失败。
 
-### Verification
-- `flutter test`
-- `pytest`
-- `flutter analyze`
-- 主干 GitHub Actions 绿勾验证通过。
+### 影响范围
+
+- 投资页
+- 快讯页
+- 后端价格接口
+- 自动部署
+
+### 验收重点
+
+- 基金现价是否更接近外部官方页面
+- 快讯打开是否更快
+- 投资页刷新时是否更顺
+- 部署后服务是否稳定启动
 
 ---
 
-## v1.0.29 - 用户群交互深度纠偏与图片保存稳定性加固
-- 发布状态: Released
-- 发布类型: Patch
-- 范围: Flutter | Docs
-- 关联日期: 2026-03-04
+## v1.0.30
 
-### Summary
-- **用户群 UI 极简重塑**: 彻底精简了“咔咔用户群”弹窗界面：
-    - **文案纠偏**: 移除了冗余的固定引导文案, 仅保留动态运营配置。
-    - **布局对齐**: 将运营文案精准移至二维码右侧, 字号统一为 11px 对齐视觉重心。
-    - **层级增强**: 在标题下方引入浅色分割线, 明确划分为“标题-内容-操作”三层级结构。
-- **保存功能稳健化**: 引入 `path_provider` 重构图片下载存储链路。
-    - **流程优化**: 采用“网络流 -> 临时文件 -> 系统相册”的二级中转方案, 规避了部分 Android 系统对字节流直接写入相册的兼容性限制。
-    - **防护增强**: 增加 15s 超时控制与显式文件命名规则,彻底解决 `GalException` 导致的保存失败。
-- **数据迁移补全**: 完成了从旧 AWS 节点至腾讯云节点的 `kona` 用户历史快照（2026-03-01 至 2026-03-03）数据补流, 确保了收益日历数据的连续性。
-- **交互逻辑进化**: 
-    - 移除了弹窗右上角的物理“X”按钮。
-    - 启用了背景空白区域点击关闭（Barrier Dismiss）, 交互体验更加流畅自然。
+### 这版一句话
 
-### Added
-- `profile_page.dart`: 
-    - 引入 `path_provider` 包。
-    - 在 `_openUserGroupPage` 中实现基于 `File` 的稳健保存逻辑。
-- `pubspec.yaml`: 新增 `path_provider` 依赖。
+这版主要修页面闪烁、颜色不一致、日期选择不好用、版本号显示不稳这些体验问题。
 
-### Changed
-- `profile_custom_dialog.dart`: 
-    - 新增 `showDivider` 开关, 实现标题下方的层级分割。
-    - 新增 `showClose` 开关, 支持移除右上角关闭按钮。
-- `profile_page.dart`:
-    - 调整 `opsText` 样式为 11px, `AppTheme.textSecondary`。
-    - 移除原本的 `subTitle` 和底部固定文案。
+### 主要变化
 
-### Fixed
-- **图片保存 Bug**: 修复了 Android 手机点击保存无反应或报错的问题。
-- **对话框语法错误**: 补全了由于 UI 注入导致的括号和分号匹配偏差。
+- 首页、投资、快讯、个人中心、分析页的主题更统一了。
+- 一些白一下、闪一下、边线怪怪的问题被修掉了。
+- 分析页日期选择更顺，不容易乱跳。
+- 版本号显示兼容带 `v` 前缀的写法。
+- 编辑资产弹窗里的删除入口恢复了。
 
-### Verification
-- Android 16 真机 Release 构建验收 — 成功 ✓
-- 保存图片到系统相册功能连测 — 成功 ✓
-- 弹窗背景点击关闭交互验证 — 通过 ✓
+### 影响范围
+
+- Flutter 页面体验
+- Web 视觉一致性
+- 日期选择交互
+
+### 验收重点
+
+- 切换页面时还会不会闪
+- 弹窗颜色是不是顺眼了
+- 分析页日期切换是否顺手
 
 ---
 
-## v1.0.28 - 分析页 UI 旗舰级对齐与盈亏逻辑精密化
-- 发布状态: Released
-- 发布类型: Patch
-- 范围: Flutter | Docs
+## v1.0.29
 
-### Summary
-- **UI 旗舰级对齐**: 分析页顶部的盈亏大卡片升级为与首页/投资页一致的“旗舰”风格: 引入了 3 色深蓝线性渐变、18px 圆角以及淡蓝色微光边框。
-- **文案布局优化**: 遵照用户反馈, 将大卡片内的所有文案（标题、金额、收益率）改为居中对齐, 视觉更加聚焦。
-- **盈亏汇总栏重构**: 收益日历下方的盈亏汇总卡片由两行改为单行横向布局, 实现 PnL 金额左对齐、盈亏率右对齐的专业级排版。
-- **排行逻辑精密化**: 彻底修复了“盈利榜/亏损榜”按当日变动排序的逻辑偏移, 改为按“累计盈亏”由高到低降序排列, 真实反映资产长期价值。
-- **数据计算链路修复**: 解决了汇总栏显示为 0 的 Bug, 通过手动推演实时市价与持仓均价, 确保了在多币种、多账户场景下的数据准确性。
+### 这版一句话
 
-### Added
-- `analysis_page.dart`:
-    - 在 `_buildOverviewCard` 中引入了 `FittedBox` 以确保大金额数值在卡片内自动缩放显示。
-    - 统一了 `_RankItem` 结构体, 用于在多级子页面间传递一致的结算数据。
+这版主要把“用户群弹窗”和“保存图片到相册”做顺了。
 
-### Changed
-- `analysis_page.dart`:
-    - `_buildOverviewCard`: 圆角从 24px 优化为 18px, 背景升级为 3 色线性渐变 (#171C2E -> #111520 -> #0F1219), 边框色调对齐 `0x265B8DEF`。
-    - `_buildCalendarSummary`: 重构为单行 `Row` 布局。
-    - `_buildRankItemsData`: 重写了数据生成逻辑, 实时计算累计盈亏 `(现价 - 均价) * 数量 + 调整额`。
-- `pubspec.yaml`: 版本号由 `1.0.27` 升级为 `1.0.28`。
+### 主要变化
 
-### Fixed
-- **数据回显 Bug**: 修复了盈亏汇总栏因为后端字段解析路径不匹配导致的 0 值展示问题。
-- **排行榜排序 Bug**: 修复了 Profit Board 错误按当日涨跌排序的问题。
-- **编译性能**: 清理了代码中冗余的辅助函数定义, 解决了热重载失效的潜在冲突。
+- 用户群弹窗更简洁，不再堆太多废话。
+- 运营文案位置更合理，层次更清楚。
+- 保存二维码图片到相册的成功率明显提高。
+- 弹窗右上角的关闭按钮去掉了，点空白就能关。
+- 同时补齐了部分历史快照数据。
 
-### Verification
-- Android 真机 (PLG110) 热重载测试 — 成功 ✓
-- 视觉一致性验收: 三页面（首/投/分）大卡片视觉语言完全统一 ✓
-- 逻辑验证: 累计盈亏计算准确, 排行榜排序符合预期 ✓
+### 影响范围
+
+- Flutter 个人中心
+- 用户群弹窗
+- 图片保存功能
+
+### 验收重点
+
+- 图片能不能正常保存到相册
+- 弹窗排版是否清楚
+- 点击空白关闭是否符合预期
 
 ---
 
-## v1.0.27 - 分析页面 1:1 UI 复刻与极致视觉升级
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Docs
+## v1.0.28
 
-### Summary
-- **分析页面 1:1 UI 复刻**：参照 `cash-asset-detail-v2-preview.html` 原型对「分析」页面进行了全方位的深度重构，实现了从配色到交互的极致还原。
-- **纯黑主题与微光材质**：页面背景升级为真黑 (#000000)，卡片采用 `rgba(255,255,255,0.05)` 的暗色透明设计，搭配 iOS 风格的蓝色分段控件。
-- **盈亏日历交互增强**：重构为 7 列标准网格，支持点击选中高亮，并新增「本月累计」与「收益率」双 KPI 汇总展示。
-- **勋章排行榜系统**：为盈利与亏损榜单前三名引入了金/银/铜渐变勋章，优化了排名项的字号与排版，提升了专业度。
-- **全局一致性适配**：同步重构了「查看全部排行」页面，确保分析功能全链路视觉一致。
+### 这版一句话
 
-### Added
-- `analysis_page.dart`：
-    - 新增 `_buildHeaderToggle` 分段切换组件，用于日历维度切换。
-    - 新增 `_buildCalendarSummary` 汇总展示组件。
-    - 新增 `_rankBadge` 勋章组件（支持金/银/铜渐变圆环）。
-- `AnalysisRankAllPage`：新增列表分割线与 1:1 卡片样式适配。
+这版主要把分析页做得更像正式产品，同时把排行和盈亏汇总算准了。
 
-### Changed
-- `analysis_page.dart`：
-    - `build`：外层包裹 `Scaffold` 设置黑底，`SingleChildScrollView` 增加 `AlwaysScrollableScrollPhysics`。
-    - `_buildOverviewCard`：重构为预览图风格，加大文字字号，改用 `SlidingSegmentedControl` 风格周期切换。
-    - `_buildCalendarSection`：`GridView` 改为固定 7 列。
-    - `_buildRankCard`：布局改为更紧凑的横向排列，金额使用 `700` 字重加粗。
-- `pubspec.yaml`：版本号由 `1.0.25` 升级为 `1.0.27`。
+### 主要变化
 
-### Fixed
-- 修复了 `analysis_page.dart` 中由于新增 `Scaffold` 导致的语法括号匹配错误。
-- 修复了过时的 `withOpacity` 调用，统一替换为最新的 `withValues` 接口。
-- 修复了排行页面标题未居中、背景非黑色的视觉偏差。
+- 分析页顶部大卡片视觉升级，和首页、投资页更统一。
+- 文案和金额排版更聚焦，信息层级更清楚。
+- 日历下面的盈亏汇总改成更紧凑的一行布局。
+- 盈利榜和亏损榜的排序逻辑修正，改成按累计盈亏看，不再乱排。
+- 修复了有些汇总显示成 0 的问题。
 
-### Verification
-- `flutter analyze` — 0 error ✓
-- Android 真机 (PLG110) 安装部署 — 成功 ✓
-- 视觉还原验收：纯黑背景、蓝色分段控件、勋章图标、日历 7 列对齐均符合预期。
+### 影响范围
+
+- Flutter 分析页
+- 盈亏排行
+- 汇总卡片
+
+### 验收重点
+
+- 分析页视觉是否统一
+- 排行顺序是否合理
+- 汇总金额是否不再显示 0
 
 ---
 
-## v1.0.26 - 投资列表 UI 精细化、账户选择器 HTML 1:1 还原与 PnL 排序增强
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Docs
+## v1.0.27
 
-### Summary
-- **投资详情 UI 1:1 还原**：参考 `cash-asset-detail-v2-preview.html` 彻底重构了 `InvestTradeDialog` 的现金账户选择组件，包括发光边框交互、金额层级、以及“添加账户”按钮的视觉还原。
-- **持仓排序逻辑增强**：投资列表现在默认按“当日盈亏”金额进行**降序排列**（盈利最多在前），并自动处理了跨币种转换。
-- **PnL 进度条视觉精修**：重构为独立的 `PnlProgressBar` 组件，使用 `CustomPainter` 精准绘制 **1.5px 宽的中心锚点线**，并新增 **600ms 平滑扩展动画**（Curves.easeOutCubic），显著提升 UI 灵动感。
-- **字段显示优化**：股票/资产名称增加 20 字符长度限制（超出显示 `...`）；修复了当日盈亏负数场景下丢失符号 "-" 的显示 Bug。
-- **稳定性与交互优化**：修复了 `InvestTradeDialog` 中现金账户列表的 `BoxDecoration` 渲染崩溃；优化了添加资产时的默认账户选中逻辑。
+### 这版一句话
 
-### Added
-- `invest_page.dart` 新增持仓列表自定义排序函数，支持实时汇率换算的当日盈亏排序。
-- `invest_trade_dialog.dart` 现金账户下拉列表新增“+ 添加账户”快捷入口，视觉对齐 HTML 原型。
+这版主要是把分析页按目标样式大改了一轮，重点是视觉还原和排行榜观感。
 
-### Changed
-- `invest_page.dart`：
-    - 列表渲染前增加 `filtered.sort` 逻辑。
-    - 名称显示增加 `.length > 20` 截断逻辑。
-    - `_fmtPnl` 修复 `value < 0` 时硬编码 `prefix = ''` 导致负号丢失的问题。
-- `invest_trade_dialog.dart`：
-    - 重构 `_buildCashOverlayCard`，样式完全对齐 `.aa-acct-dropdown`。
-    - 成本价输入框增加 `onFocus` 发光效果逻辑，保持与数量/金额一致。
-    - 自动选中逻辑优化：优先选中 ID > 0 的真实账户而非“-999”外部资金。
+### 主要变化
 
-### Fixed
-- 修复 `Container` 同时设置 `color` 和 `decoration` 导致的 `Cannot provide both a color and a decoration` 崩溃。
-- 修复 PnL 显示负数时符号丢失的逻辑问题。
+- 分析页整体按目标原型重做。
+- 背景、卡片、切换控件、日历、榜单都更统一。
+- 盈亏排行前几名加了更明显的勋章样式。
+- 查看全部排行页也一起同步了风格。
 
-### Verification
-- `flutter analyze` — 0 error ✓
-- 真机交互验收：当日盈亏负号显示正常、列表按收益排序正常、长名称截断正常、账户选择器视觉一致。
+### 影响范围
 
-## v1.0.25 - 登录页 UI 1:1 升级、邀请码弹窗功能完善与渲染性能优化
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Docs
+- Flutter 分析页
+- 排行页面
 
-### Summary
-- 登录页 UI 完全重写，1:1 还原 `docs/prototypes/login.html` 原型设计：暗色主题、M 形渐变 Logo、登录/注册 Tab 切换、自定义输入框组件（聚焦发光描边）、渐变按钮状态机、密码强度条、入场动画等。
-- 全局暗色主题（`AppPalette.dark`）配色更新，对齐原型设计规范。
-- 邀请码弹窗功能完善：从后端加载文案、保存图片到相册（新增 `gal` 依赖）、点击空白关闭弹窗。
-- 登录页渲染性能优化：19 处 `GoogleFonts` 调用提取为静态缓存，启动时预加载字体，消除输入框聚焦与 Tab 切换时的卡顿。
-- Gradle wrapper 升级 7.3.1 → 8.13 修复 Kotlin 2.2.20 编译兼容性问题。
+### 验收重点
 
-### Added
-- 新增 `_LogoMPainter`：使用 `CustomPainter` 绘制 M 形渐变圆角 Logo。
-- 新增 `_InputWrap` 组件：统一输入框样式（左图标、聚焦/错误发光描边、密码可见切换、JetBrains Mono 字体支持）。
-- 新增 `_S` 缓存样式类：18 个 `static final` TextStyle 常量，避免每次 `build` 重复调用 `GoogleFonts`。
-- 新增 `gal: ^2.3.2` 依赖：支持邀请码二维码图片保存到手机相册。
-- `main.dart` 新增 `GoogleFonts.pendingFonts()` 预加载 DM Sans 和 JetBrains Mono 字体。
-- `theme.dart` 新增 `textDim` 颜色字段（placeholder / 次要图标色）。
-
-### Changed
-- `login_page.dart`：完全重写（~860 行），替换旧版 Material 风格登录页，1:1 还原原型：
-  - 品牌区：M 形 Logo + 应用名「咔咔记账」+ 副标题
-  - Tab 切换器：登录/注册并列标签 + `AnimatedContainer` 动画
-  - 登录表单：账号 + 密码 + 记住用户名/忘记密码（toast 提示"功能开发中"）+ 渐变按钮
-  - 注册表单：邀请码提示条（「获取邀请码」白色高亮链接）+ 邀请码 + 用户名 + 密码（含强度条）+ 确认密码 + 「立即注册」按钮
-  - 字段级错误提示（替代旧 banner 错误）
-  - 底部法律声明（预留用户协议/隐私政策入口）
-  - 入场 fadeUp 交错动画
-  - 字体：DM Sans（主体）+ JetBrains Mono（密码/邀请码输入框）
-  - 生物识别保留后端逻辑，前端隐藏入口
-- `theme.dart`：`AppPalette.dark` 全部配色更新（bgPrimary `#0C0D11`、bgCard `#13151C`、accent `#5B8DEF`、success `#2ECC8A`、danger `#F05A55` 等）。
-- 邀请码弹窗（`_InviteCodeDialog`）：
-  - 去掉标题「联系我们获取邀请码」和 X 关闭按钮
-  - 文案改为左对齐，内容从后端 `invite_acquire_text` 动态获取
-  - 按钮文案「保存二维码」→「保存图片」，实现下载保存到相册功能
-  - 支持点击弹窗外空白区域关闭（`barrierDismissible: true`）
-- `widget_test.dart`：更新登录页 smoke test 断言对齐新 UI Key 和文案。
-- `gradle-wrapper.properties`：Gradle 7.3.1 → 8.13（修复 Kotlin 2.2.20 + AGP 8.11.1 编译）。
-
-### Fixed
-- 修复输入框内 `TextField` 的 `fillColor` 与外层容器底色不一致导致图标区域出现色差的问题。
-- 修复输入框聚焦时 Material 内层光圈/椭圆叠加外层发光描边导致双重高亮的问题。
-- 修复记住用户名/忘记密码行上下间距过窄的问题（4px → 12px/8px）。
-- 修复 Gradle 7.3.1 与 Kotlin 2.2.20 不兼容导致 `FlutterPlugin.kt: Unresolved reference: filePermissions` 编译失败的问题。
-
-### Verification
-- `flutter analyze` — 0 error ✓
-- `flutter test test/widget_test.dart` — 4/4 passed ✓
-- 真机验收（PLG110 无线调试 ×6 轮）：登录/注册 Tab 切换、输入框聚焦发光、忘记密码 toast、密码强度条、邀请码弹窗文案/图片/保存、法律声明展示均通过。
-
-### Notes
-- 登录页仅支持暗色模式，与原型保持一致。
-- 法律链接（用户协议/隐私政策）预留点击入口，暂无实际跳转页面。
-- `image_gallery_saver` 和 `image_gallery_saver_plus` 均不兼容 Kotlin 2.2.20，最终采用 `gal` 包实现相册保存。
+- 页面风格是否统一
+- 日历是否整齐
+- 榜单是否比以前更清楚
 
 ---
 
-## v1.0.24 - 投资弹窗 UI v2 统一、摊薄成本展示、资金账户规则收口
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Web | Backend | Docs
+## v1.0.26
 
-### Summary
-- 投资页（Flutter + Web）成本位改为“卖出后摊薄成本”展示，编辑/修正仍使用原始录入成本，保持会计口径不变。
-- Flutter `InvestTradeDialog` 全面升级为 v2 视觉与交互：统一居中弹窗、搜索框内嵌按钮、账户下拉简化、模式交互统一。
-- 卖出场景资金账户规则收口：仅允许同币种现金账户回款；缺账户时通过下拉内 `+ 添加现金账户` 即地补建并自动选中。
-- `AddAssetDialog` 重构为全局复用的新 UI 组件（新增/编辑统一），并支持资金账户场景的现金-only包装调用。
-- 修复“其他资产/我的负债币种不可选”和“币种下拉偏移重叠”问题，币种选择与后端入参全链路打通。
-- 客户端版本升级为 `1.0.24`，后端默认客户端版本同步 `1.0.24`。
+### 这版一句话
 
-### Added
-- Web 新增摊薄成本计算模块：`web/src/shared/costBasis.ts`。
-- Web 新增单测：`web/tests/costBasis.test.ts`（覆盖正值、负值、`qty=0` 回退）。
-- Flutter 新增资金账户创建包装弹窗：`flutter/lib/widgets/add_funding_account_dialog.dart`（复用 `AddAssetDialog`）。
-- Flutter 投资页新增摊薄成本回归测试：`flutter/test/invest_page_diluted_cost_test.dart`。
+这版主要优化了投资列表和账户选择器，让交易时更顺手、更好看。
 
-### Changed
-- 成本展示口径：
-  - Flutter `invest_page.dart` 成本位显示 `displayCostPrice = (qty*price-adjustment)/qty`；
-  - Web `store.ts` 增加 `rawCostPrice/displayCostPrice` 双字段，列表显示使用 `displayCostPrice`；
-  - Web 编辑弹窗默认值改为 `rawCostPrice`（原始均价），避免误把展示值写回。
-- 投资弹窗交互（Flutter）：
-  - 入口统一 `showInvestTradeSheet`，并在首页/投资页交易入口切为 `presentation: centered`；
-  - 搜索结果仅在点击“搜索”后显示；输入/聚焦阶段不自动下拉；
-  - 搜索按钮改为输入框内嵌 suffix，去掉外置拼接按钮；
-  - 账户下拉去掉搜索与币种筛选 UI，仅保留选择列表（可滚动）；
-  - `add/buy` 允许 `外部资金/初始转入`，并仅展示同币种现金账户；
-  - `sell` 仅允许同币种现金账户，缺账户时下拉内引导 `+ 添加现金账户`。
-- 统一资产弹窗（Flutter）：
-  - `AddAssetDialog` 升级为新 UI，首页添加资产、资产详情新增/编辑、资金账户补建全部复用；
-  - 币种展示改为 emoji 国旗（`🇨🇳/🇺🇸/🇭🇰`）；
-  - 现金/其他/负债三类均可选择币种并透传。
-- `AppState` 资产链路：
-  - `addAsset/updateAsset` 对 `other/liability` 也传递 `curr`；
-  - optimistic add/update 对三类资产统一保留 `curr`。
+### 主要变化
 
-### Fixed
-- 修复卖出无同币种账户时主界面冗余红色告警卡片问题（改为下拉内引导，不打断主流程）。
-- 修复搜索未触发前出现下拉结果的问题（严格改为“点击搜索触发”）。
-- 修复币种下拉 Overlay 锚点偏移导致与触发框重叠的问题（锚点改绑触发框本体）。
-- 修复“其他资产/我的负债”选择币种后未真正持久化的问题（前端状态层已透传 API）。
+- 投资弹窗里的账户选择器按目标样式重做。
+- 持仓列表默认按当日盈亏从高到低排，更方便先看最重要的。
+- PnL 进度条单独做成组件，视觉更细。
+- 长名称会自动截断，不再把布局挤坏。
+- 修掉了负数盈亏有时不显示负号的问题。
 
-### Verification
-- Flutter：
-  - `flutter test test/widget_test.dart test/invest_trade_dialog_test.dart test/invest_page_diluted_cost_test.dart`
-- Web：
-  - `cd web && npm run test`
-  - `cd web && npm run build`
-- 真机：
-  - 无线调试验收多轮通过（投资弹窗交互、资金账户规则、下拉布局）。
+### 影响范围
 
-### Notes
-- 本次仅改展示口径，不改后端投资会计入账字段：`price` 仍为原始均价，`adjustment` 仍为累计调整值。
-- 卖出回款同币种约束仍在前端执行；后续可补后端硬校验进一步收口。
+- Flutter 投资页
+- 交易弹窗
+
+### 验收重点
+
+- 列表排序是否合理
+- 账户选择器是否顺手
+- 负数是否正常显示负号
 
 ---
 
-## v1.0.23 - 现金账户币种完善、交易同币种结算收敛、零余额账户支持
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Backend | Docs
+## v1.0.25
 
-### Summary
-- Flutter 现金资产弹窗新增币种选择，默认 `CNY`，支持 `CNY/USD/HKD`，并透传到后端。
-- 交易弹窗（添加/买入/卖出）改为按目标交易币种过滤资金账户，避免错币种账户误选。
-- 卖出缺少同币种回款账户时新增“一键创建账户”入口，创建后自动选中。
-- 后端现金资产金额校验放宽为 `>= 0`（其他资产/负债仍 `> 0`），支持零余额现金账户。
-- 版本号升级为 `1.0.23`，并补齐 README 详细验收说明。
+### 这版一句话
 
-### Added
-- Flutter `InvestTradeDialog` 新增目标币种推导与账户过滤逻辑：
-  - 仅展示同币种现金账户；
-  - 无匹配账户时展示一键创建入口；
-  - 创建后自动刷新并选中新账户。
-- Flutter 测试新增卖出场景回归：
-  - `Sell mode quick creates same-currency payout cash account`。
-- 后端测试新增：
-  - `test_cash_asset_amount_allows_zero`
-  - `test_cash_asset_negative_amount_rejected`
+这版主要把登录页重做了，同时把邀请码弹窗、图片保存和启动卡顿这些问题一起处理了。
 
-### Changed
-- `flutter/pubspec.yaml`：版本 `1.0.22` -> `1.0.23`。
-- `kona_tool/config.py`：`CLIENT_APP_VERSION` 默认 `1.0.22` -> `1.0.23`。
-- `flutter/lib/widgets/add_asset_dialog.dart`：
-  - 现金资产新增币种下拉；
-  - 默认 `CNY`；
-  - 编辑场景回填已有币种。
-- `flutter/lib/providers/app_state.dart`：
-  - `addAsset/updateAsset` 增加 `curr` 入参透传；
-  - 现金资产 optimistic 数据带 `curr`；
-  - 买入/卖出现金账户增加同币种强校验（不匹配直接拦截）。
-- `flutter/lib/widgets/invest_trade_dialog.dart`：
-  - 账户列表按交易币种过滤；
-  - 一键创建账户初始金额调整为 `0.0`。
-- `kona_tool/app.py`：
-  - 现金资产 add/update 金额校验改为允许 `0`；
-  - 负数继续拦截。
+### 主要变化
 
-### Fixed
-- 修复“现金账户只支持人民币默认值”导致外币账户录入成本高的问题。
-- 修复“卖出外币资产时无回款账户只能手工绕行”的操作断点。
-- 修复一键建户初始金额必须为正导致业务语义不一致的问题（现支持 0）。
+- 登录页和注册页按新视觉全部重做。
+- 输入框、按钮、Logo、密码强度条、动画都换成新样式。
+- 邀请码弹窗支持保存图片到相册。
+- 登录页字体和样式做了缓存，减少卡顿。
+- 构建环境升级，解决新版工具链编译不稳定的问题。
 
-### Verification
-- Flutter：
-  - `flutter test test/invest_trade_dialog_test.dart test/widget_test.dart`
-- Backend：
-  - `JWT_SECRET=dummy python3 -m unittest` 定向执行：
-    - `test_cash_asset_amount_allows_zero`
-    - `test_cash_asset_negative_amount_rejected`
-    - `test_liability_invalid_amount_has_code`
+### 影响范围
 
-### Notes
-- 本次仅落地 Flutter + 后端，Web 端按你的要求暂不处理。
-- 资金同币种规则在 Flutter 端已强制，后端后续可继续补齐 `buy_with_cash/sell_to_cash` 的同币种服务端硬约束以彻底收口。
+- Flutter 登录页
+- 注册页
+- 邀请码弹窗
+- Android 构建
+
+### 验收重点
+
+- 登录注册流程是否顺
+- 输入框聚焦是否不卡
+- 邀请码弹窗图片能否保存
 
 ---
 
-## v1.0.22 - 添加资产交互升级、收益日历回跳修复、B股币种全端修正
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Web | Backend | Docs
+## v1.0.24
 
-### Summary
-- Flutter 添加资产弹窗升级为“手动触发搜索 + 自定义数字键盘”交互：不再输入即搜，数量/价格输入规则更稳。
-- 分析页收益日历修复“从历史月切换后无法回到当月”的问题（Web + Flutter + 后端可选周期口径联动）。
-- B股币种口径全端修复：
-  - `sh900xxx`/`900xxx` -> `USD`
-  - `sz200xxx`/`200xxx` -> `HKD`
-  - 其余 A 股仍 `CNY`
-- 增加 B股历史脏数据自动回填，避免老持仓继续显示人民币。
+### 这版一句话
 
-### Added
-- Flutter `InvestTradeDialog` 新增自定义数字键盘输入流与字段级约束（负号、小数点、两位小数、删除/清空/确认）。
-- Flutter 测试补齐：
-  - 手动搜索触发/失败重试
-  - 数字键盘输入规则
-  - 负成本与模式切换行为
-- 后端新增 B股历史币种幂等回填：`_ensure_b_share_currency`。
-- 后端与端侧新增 B股币种识别回归测试。
+这版重点收口了投资弹窗和成本展示规则，让“显示给你看的成本”和“真实录入成本”不再打架。
 
-### Changed
-- `flutter/pubspec.yaml`：版本 `1.0.21` -> `1.0.22`。
-- `kona_tool/config.py`：
-  - `APP_VERSION` -> `v12.0.1`
-  - `CLIENT_APP_VERSION` 默认 -> `1.0.22`
-- Web `marketDisplayCurrency` 调整为优先信任合法 `curr`，再按 market 回退，避免 B股被 `market='a'` 覆盖成 CNY。
-- Flutter `normalizeInvestmentCurrency` 与后端币种归一规则对齐（B股优先）。
+### 主要变化
 
-### Fixed
-- 修复收益日历历史周期缓存后重建页面不回源导致 selectable 陈旧的问题。
-- 修复当月无快照时日历返回不可访问状态的问题（应允许进入当前月空视图）。
-- 修复 B股在持仓/分析展示中错误显示人民币的问题。
-- 修复老模板页手动输入代码时 B股请求币种推断错误的问题。
+- 投资页开始显示“摊薄后成本”，更贴近真实持仓状态。
+- 但编辑时仍然保留原始录入成本，不把展示值写回去。
+- 交易弹窗整体 UI 升级。
+- 卖出时只允许回到同币种现金账户。
+- 没有可用现金账户时，支持弹窗里直接补建。
+- 其他资产和负债的币种也正式打通了。
 
-### Data / Migration
-- 启动时自动执行 B股币种幂等回填：
-  - `portfolio.code LIKE 'sh900%'` -> `curr='USD'`
-  - `portfolio.code LIKE 'sz200%'` -> `curr='HKD'`
-- 仅修正不匹配记录，不改 schema，不影响非 B股数据。
+### 影响范围
 
-### Verification
-- `python3 -m unittest kona_tool/tests/test_market_code_normalization.py kona_tool/tests/test_api_baseline.py`
-- `flutter test test/app_state_smoke_test.dart`
-- `flutter test test/invest_trade_dialog_test.dart test/analysis_calendar_picker_test.dart`
-- `npm run build`（web）
+- Flutter 投资页
+- Web 投资页
+- 后端资产逻辑
 
-### Notes
-- B股仍归类在 `asset_type='a'`，本次仅修正币种，不拆分市场分类。
+### 验收重点
+
+- 列表显示成本是否合理
+- 编辑资产时原始成本有没有被误改
+- 卖出回款是否只到同币种账户
 
 ---
 
-## v1.0.21 - 登录与版本规则统一、投资页碎股支持
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Backend | Docs
+## v1.0.23
 
-### Summary
-- 登录失败提示统一为用户可理解文案：`用户名/密码错误，请重试`。
-- 客户端版本号规范切换为无 `+build` 形式（`1.0.x`），并保持安卓可覆盖升级。
-- “邀请码页 / 咔咔用户群页”文案默认左对齐；我的页面移除“问题反馈”入口。
-- 投资页补齐碎股体验：持仓数量支持最多 2 位小数显示（自动去零）；添加资产弹窗价格文案改为“买入成本价”。
+### 这版一句话
 
-### Changed
-- `flutter/pubspec.yaml`：版本由 `1.0.20+20` 调整为 `1.0.21`。
-- `flutter/android/app/build.gradle.kts`：安卓内部安装序号改为从 `versionName` 的 patch 段解析（例如 `1.0.21 -> 21`）。
-- `kona_tool/config.py`：`CLIENT_APP_BUILD_NUMBER` 默认与 `CLIENT_APP_VERSION` patch 段对齐，兼容 `/api/app/version` 旧字段。
-- `flutter/lib/providers/app_state.dart`、`flutter/lib/services/api_service.dart`：登录 401 映射文案统一。
-- `flutter/lib/pages/invest_page.dart`、`flutter/lib/widgets/invest_trade_dialog.dart`：数量显示与输入、价格文案优化（碎股支持 + 买入成本价）。
+这版把现金账户币种和交易回款规则补完整了。
 
-### Fixed
-- 修复登录密码错误时出现“会话校验失败...”的误导提示。
-- 修复投资页数量被强制整数显示导致“看起来不支持碎股”的问题。
-- 修复添加资产场景中价格字段语义不清的问题（改为“买入成本价”）。
+### 主要变化
 
-### Ops / Deployment
-- 相关提交：`7a0bde1`、`9141a5b`、`03c3831`。
-- 已推送 `main` 并完成自动部署，GitHub Actions `Deploy to Production` 全部通过。
+- 现金账户支持选 `CNY / USD / HKD`。
+- 买入和卖出时，只显示同币种资金账户。
+- 卖出缺少同币种账户时，可以一键新建。
+- 现金账户支持 0 余额，不再强制必须大于 0。
 
-### Verification
-- `cd flutter && flutter test test/invest_trade_dialog_test.dart` 通过。
-- `main` 部署流水线（run: `22543463788`）通过：`Frontend Gate`、`Backend Gate (3.9/3.11)`、`Deploy` 均为绿色。
-- Android 真机（PLG110）安装验收通过。
+### 影响范围
 
-### Notes
-- 当前对外客户端版本为 `1.0.21`；后续 patch 继续递增 `1.0.22/1.0.23...`。
+- Flutter 交易弹窗
+- 后端现金账户逻辑
+
+### 验收重点
+
+- 外币现金账户能不能正常新建
+- 卖出时回款账户过滤是否正确
+- 0 余额账户是否能保存
 
 ---
 
-## v1.0.20 - 邀请码站内化与运营配置上线
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Backend | Web | Infra
+## v1.0.22
 
-### Summary
-- 注册页“没有邀请码，点我获取”从外跳改为 App 内页面展示（文案 + 图片）。
-- 管理后台新增“运营配置”，支持在线维护邀请码页配置。
-- 邀请码页与“咔咔用户群”页面能力复用、配置解耦：两套文案与图片独立维护。
-- 补齐版本检查链路与下载地址回退逻辑，提升更新提示和下载稳定性。
+### 这版一句话
 
-### Added
-- 后端新增运行时配置存储：`runtime_configs`（持久化运营配置）。
-- 后端新增管理员接口：
-  - `GET/POST /api/admin/ops/invite_acquire*`
-  - `GET/POST /api/admin/ops/user_group*`
-- `GET /api/web/config` 增加：
-  - `invite_acquire_text`、`invite_acquire_image_url`
-  - `user_group_text`、`user_group_image_url`
-- Flutter 新增站内展示页：`InviteAcquirePage`（`invite` / `user_group` 两个场景）。
-- Web 管理端 `运营配置` 页改为双区块独立保存（邀请码/用户群）。
+这版主要修了添加资产交互和收益日历回跳问题，同时把 B 股币种口径纠正了。
 
-### Changed
-- `flutter/pubspec.yaml`：版本由 `1.0.19+19` 升级为 `1.0.20+20`。
-- 我的页面新增“咔咔用户群”入口，注册页入口与其共用展示能力但读取不同配置。
-- `about` 页面改为独立页面，更新入口链路更清晰。
-- `/api/app/version` 与下载链接回退策略联动 `CLIENT_APP_DOWNLOAD_URL`。
+### 主要变化
 
-### Fixed
-- 修复注册入口跳转外部平台导致不可控的问题（改为站内可运营页面）。
-- 修复邀请码配置与用户群配置耦合问题（拆分为两套独立键）。
-- 修复 CI 部署阶段 `git fetch` 偶发空响应导致失败的问题（增加重试并强制 HTTP/1.1）。
+- 添加资产弹窗改成手动点搜索，不再边打字边乱搜。
+- 数字输入规则更稳，减少误输入。
+- 收益日历从历史月切回当月的问题修好了。
+- B 股币种规则统一：
+  - `sh900xxx` 记作美元
+  - `sz200xxx` 记作港币
+- 老数据里错的 B 股币种也会自动修正。
 
-### Ops / Deployment
-- 相关提交：`72e3230`、`e3fc8c7`、`65bcd66`、`01e680d`、`a492a0f`、`8665dd3`、`03392d9`。
-- 已推送 `main` 并完成线上部署与验收。
+### 影响范围
 
-### Verification
-- 后端单测覆盖新增运营配置接口与 `/api/web/config` 扩展字段（`tests/test_admin_api_foundation.py`、`tests/test_api_baseline.py`）。
-- Flutter 与 Web 相关变更通过 CI gate，功能已完成真机验收。
+- Flutter 添加资产弹窗
+- Web/Flutter 分析页
+- 后端币种识别
 
-### Notes
-- `v1.0.20` 仍使用 `+build` 写法；`v1.0.21` 起切换到无 `+build` 规范。
+### 验收重点
+
+- 搜索是否改成手动触发
+- 收益日历能否正常切回当月
+- B 股币种展示是否正确
 
 ---
 
-## v1.0.19 - 登录网络异常修复与构建环境升级
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Backend(Caddy) | Infra
+## v1.0.21
 
-### Summary
-- 修复 Flutter 客户端登录报"网络连接异常（TLS 握手失败）"的问题。
-- 根因：Clash TUN 代理劫持域名 DNS 导致 HTTPS 连接不到真实服务器；Caddy 无 HTTP 直连降级通道。
-- 服务器 Caddy 新增 `:80` HTTP 直连入口，Flutter 端 `baseUrl` 临时切换为 `http://114.132.238.12` IP 直连。
-- 构建环境升级：Gradle 7.3.1 → 8.13，JDK 21（Flutter 3.41 必须）。
+### 这版一句话
 
-### Changed
-- `flutter/lib/config/api_config.dart`：`baseUrl` 从 `https://kakawallet.fun` 改为 `http://114.132.238.12`；域名 URL 保留为登录 fallback 备选。
-- `flutter/android/gradle/wrapper/gradle-wrapper.properties`：Gradle 7.3.1 → 8.13（适配 Flutter 3.41 + Kotlin 2.2.20 + AGP 8.11.1）。
-- `flutter/pubspec.yaml`：版本号 `1.0.17+17` → `1.0.19+19`。
-- 服务器 `/etc/caddy/Caddyfile`：新增 `:80 { reverse_proxy 127.0.0.1:5003 }` 块，IP HTTP 请求直通后端。
+这版主要统一了登录提示和版本规则，同时补上了碎股支持。
 
-### Fixed
-- 修复 Clash/TUN 环境下域名 DNS 被劫持（解析到 `198.18.x.x`）导致 App 登录 TLS 握手失败的问题。
-- 修复 Caddy 在 IP 直连场景下强制 `308 → HTTPS` 但 TLS 证书无匹配 SNI 导致连接拒绝的问题。
-- 修复 Flutter 3.41 下 Gradle 7.3.1 构建失败（`FlutterPlugin.kt: Unresolved reference: filePermissions`）的问题。
+### 主要变化
 
-### Ops / Deployment
-- 服务器 Caddy 配置已生效（`systemctl reload caddy`），旧配置已备份为 `Caddyfile.bak.20260301`。
-- 新电脑已安装 OpenJDK 21（`brew install openjdk@21`）。
-- APK 已构建并安装到 PLG110 真机验证。
+- 登录失败提示改成普通人能看懂的话。
+- 版本号格式统一成 `1.0.x`，不再带那种看着乱的后缀。
+- 投资页数量支持小数，更符合碎股场景。
+- 添加资产里的价格文案改成“买入成本价”，更清楚。
 
-### Verification
-- `curl http://114.132.238.12/health` → `200 OK`
-- `curl http://114.132.238.12/api/auth/login` → `401`（业务正常拒绝）
-- `flutter test test/api_service_login_failover_test.dart` → 3/3 All tests passed
-- 真机登录验证通过
+### 影响范围
 
-### Notes
-- DNS 记录本身是正确的（`@` 和 `www` 均指向 `114.132.238.12`），问题出在客户端 Clash TUN 代理劫持。
-- 后续 DNS/代理环境稳定后可切回 `https://kakawallet.fun`。
+- Flutter 登录页
+- Flutter 投资页
+- 版本管理
+
+### 验收重点
+
+- 登录失败提示是否清楚
+- 碎股数量是否正常显示
+- 版本号展示是否统一
 
 ---
 
-## v1.0.18 - 腾讯云迁移与公网入口收敛（Nginx + Redis）
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Infra | Backend | Flutter | Docs
+## v1.0.20
 
-### Summary
-- 生产环境从 AWS 单机迁移到腾讯云轻量服务器（广州），线上入口统一为 `http://114.132.238.12`。
-- 入口架构收敛为正式形态：`Nginx(80) -> Gunicorn(127.0.0.1:5003)`，业务端口 `5003` 不再对公网暴露。
-- 修复迁移后登录 `500`：补齐 Redis 并恢复限流存储到本地 Redis。
-- Flutter 客户端默认 API 地址切换至新公网入口。
+### 这版一句话
 
-### Added
-- 腾讯云主机新增 systemd 服务：
-  - `kona.service`
-  - `nginx.service`
-  - `redis.service`
-- 新增迁移交接文档：
-  - `docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md`
+这版把“获取邀请码”和“用户群”从外部跳转改成了站内可运营页面。
 
-### Changed
-- Gunicorn 监听地址从 `0.0.0.0:5003` 调整为 `127.0.0.1:5003`。
-- Nginx 主配置改为默认反向代理站点，统一转发到 `127.0.0.1:5003`。
-- `.env` 中限流存储恢复为 `RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0`。
-- Flutter `ApiConfig.baseUrl` 从旧 AWS 地址切换为新腾讯云地址。
-- 运维文档统一收敛到当前生产入口：`docs/MAINTENANCE.md`、`docs/RUNBOOK.md`、`docs/API_IMPORT.md`、`docs/FRONTEND_SETUP.md`、`docs/PROJECT_OVERVIEW.md`、`docs/openapi.yaml`。
+### 主要变化
 
-### Fixed
-- 修复迁移后登录接口 `POST /api/auth/login` 返回 `500`（根因：Redis 未安装导致 Flask-Limiter 连接拒绝）。
-- 修复 OpenCloudOS 默认 Nginx 站点抢占导致首页显示系统 404 的问题。
+- 注册页获取邀请码改成 App 内页，不再外跳。
+- 管理后台可以直接改邀请码页和用户群页的文案、图片。
+- 邀请码页和用户群页虽然长得像，但配置已经拆开，不会互相影响。
+- 版本更新和下载地址的配置链路更完整了。
 
-### Ops / Deployment
-- 新服务器：`114.132.238.12`（广州）。
-- 公网验收：
-  - `GET /health` -> `200`
-  - `GET /` -> 前端首页正常返回
-  - `GET :5003/health` -> 公网不可达（符合“仅内网监听”预期）
-- 腾讯云防火墙已放通 `80/22`；`5003` 已可删除/不再需要对公网放行。
+### 影响范围
 
-### Data / Migration
-- 已从旧机同步代码、`.env` 与 `portfolio.db` 至新机目录：
-  - `/opt/kaka/portfolio`
-  - `/opt/kaka/portfolio/kona_tool/.env`
-  - `/opt/kaka/portfolio/kona_tool/portfolio.db`
-- 注意：旧 AWS 停机前应确保无新增写入，避免新旧库分叉。
+- Flutter 注册页
+- Flutter 个人中心
+- 管理后台
+- 后端配置接口
 
-### Verification
-- `curl -i http://114.132.238.12/health`
-- `curl -i http://114.132.238.12/`
-- `curl -i -H 'Content-Type: application/json' -d '{\"username\":\"kona\",\"password\":\"x\"}' http://114.132.238.12/api/auth/login`（应返回 401/业务错误，不应 500）
-- `flutter test test/api_service_web_test.dart`
+### 验收重点
 
-### Notes
-- 当前线上入口仍为 IP，建议下一步接入域名 + HTTPS（443）并将 App 基地址改为域名，彻底摆脱 IP 迁移成本。
+- 邀请码页和用户群页是否都能站内打开
+- 后台改配置后前端是否生效
+- 下载地址是否正确
 
 ---
 
-## v1.0.17 - 管理后台排序分页、活跃地区与首屏体验修复
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Web | Backend | Flutter | Infra | Docs
+## v1.0.19
 
-### Summary
-- 管理后台用户页完成服务端排序 + 分页统一，支持按最近活跃、总资产、注册时间降序查看。
-- 管理后台时间展示统一北京时间，地区展示统一中文 `省-市`，并补齐历史回填链路。
-- Web 管理端硬刷新黑屏问题修复，首屏增加加载占位与超时保护。
-- 服务器完成最小扩容（2 worker + 预取降频 + 2GB swap），提升抗压能力。
+### 这版一句话
 
-### Added
-- `GET /api/admin/users` 新增排序参数：`sort_by`、`sort_dir`。
-- 用户页新增排序下拉与分页条（10/20/50/100）。
-- 新增活跃地区字段链路：`last_active_ip`、`last_active_region`（管理后台展示）。
-- 新增并执行地区回填脚本（按历史 IP 回填规范化地区）。
+这版主要修了登录时“明明有网但连不上”的问题。
 
-### Changed
-- 用户页查询从固定 `limit=100` 改为服务端分页。
-- 后端用户列表查询改为排序白名单，排序键进入缓存 key，避免串缓存。
-- 地区显示策略统一：有值显示中文省市，无值显示 `未知`。
-- Web 首屏按路径区分 boot 背景（门户/业务端/管理端），并增加 `auth/me` 启动超时保护。
-- 线上 Gunicorn 从 `workers=1` 调整为 `workers=2`（threads 维持 4）；预取间隔上调为 300 秒。
+### 主要变化
 
-### Fixed
-- 修复管理后台用户页“单页拉全量”导致的查询和交互不稳定问题。
-- 修复管理后台时间非北京时间、地区中英混杂及空值展示不统一问题。
-- 修复管理端硬刷新时出现大面积黑页的首屏体验问题。
+- App 默认接口地址改成直接连 IP，绕开某些代理环境下的域名问题。
+- 服务器补了 HTTP 入口，避免 HTTPS 在特殊环境下握手失败。
+- 构建工具一起升级，解决新版 Flutter 编译问题。
 
-### Ops / Deployment
-- 已推送 `main`：`cb935ed`、`5fb4a91`、`d1a9ec0` 等。
-- 已完成线上部署与服务重启，回填生效。
-- 已启用 swap（2GB）并写入 `/etc/fstab` 持久化。
+### 影响范围
 
-### Data / Migration
-- 用户表地区数据执行历史回填：
-  - 可回填记录已更新到 `last_active_region`。
-  - 无公网 IP 或不可解析记录保持 `未知`。
+- Flutter 登录
+- 线上入口
+- Android 构建
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests/test_admin_api_foundation.py`
-- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`
-- 线上抽样：
-  - `/api/admin/users` 排序分页返回正确
-  - 活跃地区字段返回并规范化
-  - `/admin/users` 强刷不再纯黑屏
+### 验收重点
 
-### Notes
-- 当前服务器为 `t3.micro`，20 人同时高频刷新行情仍会出现高延迟与部分超时；建议下一步升配 `t3.small` 或 `t3.medium`。
+- 手机在代理环境下能不能正常登录
+- 构建是否不再报工具链错误
 
 ---
 
-## v1.0.16 - 资产分类规则收敛与美股ETF代码链路修复
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Backend | Docs
+## v1.0.18
 
-### Summary
-- 收敛资产分类口径，前端保持四类展示不变：`A股 / 美股 / 港股 / 基金`。
-- 修复 `NUGT/QQQ/BOXX` 等美股 ETF 被错误识别为基金、导致价格链路异常的问题。
-- 增加入库标准化与搜索过滤，阻断 `f_` 字母代码再次落库。
+### 这版一句话
 
-### Added
-- 新增持仓标准化函数：统一处理 `code/curr/asset_type`，入库前强制标准化。
-- 新增回归测试：
-  - `test_infer_asset_type_us_etf_remains_us`
-  - `test_search_filters_letter_prefixed_fund_codes`
-  - `test_portfolio_add_invalid_f_prefix_letters_normalizes_to_us`
+这版是一次正式迁云，把服务从旧环境搬到了腾讯云。
 
-### Changed
-- 资产类型推断规则：
-  - `gb_` 统一按美股；
-  - `f_` 仅纯数字按基金；
-  - `sh/sz/bj`（含场内 ETF）统一按 A 股。
-- 搜索结果过滤字母型 `f_` 代码（例如 `f_NUGT`、`f_BOXX`）。
-- `portfolio/add` 与 `buy_with_cash` 统一走标准化入库逻辑。
+### 主要变化
 
-### Fixed
-- 修复美股 ETF 误入基金链路导致的“有持仓但价格为 0”问题。
-- 修复历史脏数据 `f_` 字母代码导致的分类与币种错误。
+- 生产环境迁到腾讯云。
+- 公网入口统一成新 IP。
+- 服务改成反向代理 + 后端服务的正式结构。
+- 补上 Redis，修掉迁移后登录报错的问题。
+- Flutter 默认接口地址改到新服务器。
 
-### Ops / Deployment
-- 代码已推送 `main`：`449dee0`。
-- 后端已部署并重启：`kona` 服务 `active`。
-- 线上已执行历史数据修复：`f_` 字母代码批量转 `gb_`（并修正 `curr=USD, asset_type=us`）。
+### 影响范围
 
-### Data / Migration
-- 已生成修复前备份：
-  - `archive/backups/portfolio_pre_symbol_fix_20260228_030518.db`
-- 已修复记录：2 条（`f_NUGT` -> `gb_nugt`）。
+- 线上部署
+- 后端服务
+- Flutter 接口地址
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests.test_market_code_normalization tests.test_search_timeout tests.test_api_baseline`
-- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && .venv/bin/python -m unittest -q tests.test_portfolio_schema_migration tests.test_portfolio_user_scope tests.test_search_timeout tests.test_market_code_normalization`
-- 线上冒烟：
-  - `GET /api/search?q=nugt` 返回仅 `gb_*` 美股结果
-  - `get_price('gb_nugt')` 可取价，`f_NUGT` 不再作为有效入库代码
+### 验收重点
 
-### Notes
-- 业务规则固定：
-  - A股：A股股票 + 场内基金（ETF/LOF/REITs）
-  - 美股：美股股票 + 美股 ETF
-  - 港股：港股股票 + 港股 ETF
-  - 基金：仅场外基金（`f_` 纯数字）
+- 首页、登录、健康检查是否正常
+- 新服务器是否稳定
+- 老库数据是否完整迁过去
 
 ---
 
-## v1.0.15 - 跨端会话稳定性与门户下载体验修复
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Web | Backend | Docs
+## v1.0.17
 
-### Summary
-- 修复同账号跨端使用时的会话稳定性问题：避免 token 过期后 App 出现“空数据假象”与 Web 端误登出。
-- 完成门户 APK 下载链路落地：支持固定下载路由与本地 APK 回退。
-- 优化门户首屏体验：修复强刷时先黑屏再渲染的问题；浏览器标题统一为产品名。
+### 这版一句话
 
-### Added
-- 后端新增 `/download/apk` 固定下载路由。
-- 新增后端鉴权回归测试：无效 Bearer token 访问 `optional_auth` 资源时返回 `401`。
+这版主要把管理后台用户页做实用了，同时补了首屏体验和服务器稳定性。
 
-### Changed
-- `optional_auth` 策略调整：当请求携带失效/非法 token 时返回 `401`，不再静默降级为游客态。
-- Flutter `ApiService` 新增 401 自动刷新会话与单次重放机制，并加入 refresh 并发锁。
-- Web `refreshTokenIfNeeded` 新增并发互斥，避免并发刷新导致本地登录态被清空。
-- 门户首屏增加预置背景（portal boot），减少强刷闪黑。
+### 主要变化
 
-### Fixed
-- 修复 App 在 access token 失效时偶发返回空资产列表的问题（根因：后端游客态回退）。
-- 修复 Web 在并发请求触发 refresh 时可能被动退出登录的问题。
-- 修复门户 APK 按钮“暂无提供”与下载链路不一致问题。
-- 修复门户浏览器标签页标题仍显示 `web` 的问题。
+- 用户页支持排序和分页，不再一次性拉一大堆。
+- 时间和地区显示更统一，更像给人看的后台。
+- 强刷管理后台不再大面积黑屏。
+- 服务器小幅扩容，抗压稍微强一点。
 
-### Ops / Deployment
-- 本版本已推送 `main`，并完成线上 AWS 同步（后端服务重启 + Web 静态资源更新 + APK 文件上传）。
+### 影响范围
 
-### Data / Migration
-- None
+- Web 管理后台
+- 后端用户接口
+- 线上服务器
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/kona_tool && ./.venv/bin/python -m unittest tests.test_api_baseline -v`
-- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter test test/auth_persistence_test.dart test/profile_page_test.dart test/app_settings_page_test.dart`
-- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`
-- 线上接口验证：
-  - `GET /api/portfolio` + invalid bearer token 返回 `401`
-  - `GET /download/apk` 返回 `200`
+### 验收重点
 
-### Notes
-- 保持“允许多端同时在线”策略：Web 与 App 不互踢，仅失效 token 会触发各端本地续期或重新登录。
+- 用户页排序分页是否正确
+- 活跃地区是否正常显示
+- 强刷后台是否不再黑屏
 
 ---
 
-## v1.0.14 - Flutter 个人中心与投资交互体验优化
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Docs
+## v1.0.16
 
-### Summary
-- 个人中心与系统设置入口重构完成：`问题反馈` 从系统设置迁移到我的页面一级入口。
-- 投资页交互体验优化：修复底部大面积留空，收敛尾部安全间距。
-- 下拉刷新体验统一：保留顶部小动画，去除中部大 Loading，刷新时保持已有内容不闪白。
+### 这版一句话
 
-### Added
-- Flutter 新增 `AppSettingsPage` 页面与设置项结构（主题、生物识别、改密、检查更新占位、关于我们、退出登录）。
-- 个人中心新增 `问题反馈` 入口并支持外部浏览器拉起。
-- 新增/更新 Widget 测试覆盖设置页与个人中心关键行为。
+这版主要修了资产分类规则，特别是把一些美股 ETF 被误当基金的问题处理掉了。
 
-### Changed
-- 投资页“添加资产/买入”账户选择弹窗改为更清晰的排版与字号层级，适配账户较多场景。
-- 投资页底部内容预留高度收缩，减少滚动到底后的空白区域。
-- 个人中心顶部名称规则保持“仅显示一行主标题（昵称优先，昵称为空回退用户名）”。
+### 主要变化
 
-### Fixed
-- 修复系统设置与我的页面反馈入口层级不一致的问题。
-- 修复下拉刷新时“顶部+中部双 Loading”导致的打断体验问题。
+- 美股 ETF 不再错走基金逻辑。
+- 搜索和入库前会先做更严格的代码标准化。
+- 历史上错入库的数据也做了修正。
 
-### Ops / Deployment
-- Flutter 改动已安装到 Android 真机验收，并同步推送到 `main`。
+### 影响范围
 
-### Data / Migration
-- None
+- 后端搜索
+- 持仓入库
+- 价格获取
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter test test/profile_page_test.dart test/app_settings_page_test.dart`
-- `cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter run -d 3B15B400J3F00000 --no-resident`
+### 验收重点
 
-### Notes
-- 同步更新 Flutter 模块 README 与版本号，便于后续发布管理。
+- 美股 ETF 是否能正常取价
+- 搜索结果是否不再混进奇怪的基金代码
 
 ---
 
-## v1.0.13 - 后端行情预取缓存（秒回优化）
-- 发布状态：Released
-- 发布类型：Minor
-- 范围：Backend
+## v1.0.15
 
-### Summary
-- 新增后台行情预取线程，每 30 秒自动批量拉取所有持仓证券的行情并写入内存缓存。
-- API 请求始终命中热缓存，响应时间从 500ms~2s 降至 <50ms。
+### 这版一句话
 
-### Changed
-- `price.py` 新增 `PricePreloader` 类（后台守护线程 + SQLite 代码收集 + 定时 `batch_get_prices`）。
-- `config.py` 新增 `PRELOAD_INTERVAL_SECONDS` 配置项（默认 30 秒）。
-- `app.py` 和 `wsgi.py` 启动时自动启动预取线程。
+这版主要修了 Web 和 App 同时登录时的会话稳定性，还把 APK 下载入口补完整了。
 
-### Verification
-- 重启后端后日志出现 `PricePreloader started`，之后 App 刷新时日志应全部为 `Cache hit`。
+### 主要变化
 
-### Notes
-- 可通过环境变量 `PRELOAD_INTERVAL_SECONDS` 调整预取间隔。
+- token 失效时，App 和 Web 都更容易自动续上，不会轻易掉成空数据。
+- 门户页 APK 下载链路正式打通。
+- 门户强刷时首屏体验更稳。
 
----
+### 影响范围
 
-## v1.0.12 - 启动即时同步与排行汇率修正
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter
+- Web 登录态
+- App 登录态
+- 门户下载页
 
-### Summary
-- 修复 App 冷启动后数据不自动更新、需要手动下拉刷新的问题。
-- 修复盈亏排行榜未做跨币种汇率换算的问题。
+### 验收重点
 
-### Changed
-- `main.dart` 中 `_startSyncTimer` 改为 `immediate: true`，App 启动后立即执行一次后台增量同步。
-- `analysis_page.dart` 中两处 `_buildRankItems` 加入 `getCurrencyRate` 汇率换算，排行榜统一归一化为人民币比较。
-
-### Fixed
-- 修复冷启动后 120 秒内数据不同步的问题（SWR 模式生效延迟）。
-- 修复跨币种持仓在盈亏排行中未按统一币种比较的问题。
-
-### Ops / Deployment
-- 本次改动直接推送到 `main`。
-
-### Data / Migration
-- None
-
-### Verification
-- 冷启动 App 后无需手动操作，2-3 秒后数据自动更新。
-
-### Notes
-- None
-
----
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Backend
-
-### Summary
-- 修正了收益率（pnl_rate）的计算逻辑，分母优先使用期初本金（而非期末总本金），从根本上解决了当日追加投资（入金）导致当日收益率被严重稀释的 Bug。
-
-### Added
-- None
-
-### Changed
-- `kona_tool/core/db.py` 中的收益率统计：计算分母逻辑从使用当日期末总投入，修正为了优先使用期初本金（前序快照），并配以首日入金兜底机制。
-
-### Fixed
-- 修复加仓/入金现金流作为分母导致收益率计算畸变的问题（金融算法修正）。
-
-### Ops / Deployment
-- 本次改动直接推送到 `main`。
-
-### Data / Migration
-- None
-
-### Verification
-- 经代码逻辑推演，算法更符合真实盈亏比例。
-
-### Notes
-- 核心补丁由用户直接编写并提供，质量极高。
-
----
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Backend
-
-### Summary
-- 新增“外部资金/初始转入”选项，支持无现金账户下的投资填报或划转。
-- 优化 Flutter 端添加资产时的股票代码搜索：降低搜索频率、防竞态刷新，提升 UI 流畅度。
-- 后端股票搜索逻辑增加精确匹配优先排序算法。
-- 客户端持仓界面搜素结果的市场类型标签替换为纯中文标识（A股/美股/港股/基金）。
-
-### Added
-- Flutter 端投资界面的资金源下拉列表在非“卖出”动作下自动内置 `id: -999` 的“外部资金 / 初始转入”选项，免去强制添加现金账户限制。
-- AppState 的购买/卖出操作内部适配 `-999` 的静默跳过（降级为单纯记录购买）。
-- Backend（`price.py`）针对搜索关键词的完全匹配（忽略特定后缀后匹配代码及拼音前缀等）添加了置顶排序权重。
-
-### Changed
-- Flutter 投资搜索栏防抖时间从 300ms 提高到 800ms。
-- 搜索防抖触发加入严格上下文守卫：若文字框已被清空，立级取消计时器并不渲染过期到达的网络层请求。
-- Flutter 层面市场类型的显示标取代原英文字母缩写。
-
-### Fixed
-- 修复搜索延时回调导致的 UI（清空后依然展示幽灵搜索结果）竞态 Bug。
-- 修复买入与添加记录时不规范传入 `-999` ID 导致的 Validator 验证拦截 Bug。
-
-### Ops / Deployment
-- 本次改动直接推送到 `main`。
-
-### Data / Migration
-- None
-
-### Verification
-- AAPL 精准匹配测试与 APP 搜索狂划/狂删体验验证完成。
-
-### Notes
-- None
-
----
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Docs
-
-### Summary
-- App 端实现了基于本地生物识别的锁屏保护（冷启动与后台唤醒）。
-- 端侧登录页视觉重构：新增独立动画、密码明暗文切换、错误反馈动效。
-- 登录页新增“记住用户名”可选能力。
-- 修复并优化了生物识别按钮及其周边元素的视觉间距。
-- 修改了邀请码获取引导外部跳转链接为小红书地址。
-
-### Added
-- `AppState` 配置新增了 `isAppLocked` 全局锁屏控制变量。
-- 登录界面的入场、震动报错与成功提示打钩三大辅助动画体系。
-
-### Changed
-- 调整了指纹登录的大图标渲染尺寸（26px）及关联上下文间距。
-- `api_config.dart` 中的 `inviteAcquireUrl` 改为小红书外链。
-
-### Fixed
-- 修复了旧版 iOS 模拟器因为 UI 空间过窄导致的生物识别不明显问题。
-
-### Ops / Deployment
-- 本次改动直接推送到 `main`。
-
-### Data / Migration
-- None
-
-### Verification
-- iOS 模拟器/真机冷启与登录页相关行为验证完毕。
-
-### Notes
-- 核心修改文件涵盖 `main.dart`（全局监听）、`login_page.dart` 和 `api_config.dart`。
+- 多端同时在线时会不会莫名掉登录
+- 下载 APK 是否正常
 
 ---
 
-## v1.0.8 - Web 门户/认证改版、主题体系与投资分析隐私工具统一
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Web | Docs
+## v1.0.14
 
-### Summary
-- Web 门户首页整体替换为新视觉（品牌、主标题、双按钮与产品展示区），并保持 APK 动态下载配置可用。
-- 登录/注册页改为同风格单卡布局，完善返回交互、记住我、注册链接与中文错误提示。
-- `/app/*` 新增深浅主题切换体系（默认深色），主题状态本地持久化并跨页面保持一致。
-- 首页顶部操作区统一为图标按钮，视觉回退并还原到你确认的 1:1 版本。
-- 投资页浅色主题完成统一收敛，去除当日/累计盈亏胶囊感，表格风格与浅色体系一致。
-- `home/invest/analysis` 引入缓存优先 + 后台刷新（SWR）与请求去重，显著降低 F5 重复请求。
-- 投资页与分析页新增顶部工具行（隐藏金额 + 拍照），并与首页共用隐私状态，支持“隐藏金额保留百分比”。
+### 这版一句话
 
-### Added
-- 新增共享隐私模块：`web/src/shared/privacyMode.ts`（`privacy_mode` 持久化、跨标签同步、统一掩码函数）。
-- 新增全局 store 持久化缓存结构：`web_store_cache_v1`（`portfolio/quotes/rates/marketStatus/quotePolicy` 等）。
-- `/app/invest` 与 `/app/analysis` 新增页面级截图能力（仅截主内容区域，不含侧边栏）。
-- 首页新增主题按钮 + 隐私按钮 + 截图按钮的固定工具行。
+这版主要优化了 Flutter 的个人中心和投资页交互。
 
-### Changed
-- 门户页：改为新 Hero 结构与风格，Logo 资源从仓库静态资源引用。
-- 认证页：拆分路由（`/app/login` + `/app/register`），移除顶部胶囊切换。
-- 登录流程：去除登录成功后的阻塞式全量刷新，先进入业务页再后台刷新。
-- 自动刷新策略：`startAutoRefresh` 不再 0ms 立即触发，避免首屏阶段与手动刷新并发打接口。
-- 首页投资模块：移除右上角三张“今日/持仓/累计盈亏”统计小卡。
-- 投资页浅色模式：整体卡片、表头、行 hover、数值层级按统一视觉规则重排。
+### 主要变化
 
-### Fixed
-- 修复 `/app/home` 在浅色主题下多轮样式尝试导致的页面错位/空白问题，并最终回退到确认版本。
-- 修复 F5 后首页/投资页首屏重复触发 bootstrap 与静态请求的问题。
-- 修复登录错误文案出现英文 raw message 的问题（如 `Invalid username or password`）。
-- 修复注册场景缺少确认密码与邀请码必填中文提示的问题。
-- 修复投资页与分析页缺少统一隐私工具入口的问题。
+- 系统设置入口和问题反馈入口重新整理。
+- 投资页底部大块留白问题修掉了。
+- 下拉刷新时不再中间冒出很打断人的大 Loading。
 
-### Ops / Deployment
-- 全部改动按 Web 直推规则发布到 `main`，无需后端迁移。
-- 推送波次覆盖提交：`bc1a0a8` → `681ecbf`（含中间回退提交）。
+### 影响范围
 
-### Data / Migration
-- None（无数据库迁移）
+- Flutter 个人中心
+- Flutter 投资页
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`（通过）
-- 页面验收路径：
-  - `/` 门户视觉与按钮
-  - `/app/login`、`/app/register` 登录注册链路
-  - `/app/home` 主题切换与顶部工具按钮
-  - `/app/invest` 浅色风格与隐私/截图按钮
-  - `/app/analysis` 隐私/截图按钮与金额掩码
+### 验收重点
 
-### Notes
-- 本版本为当天 Web 多轮迭代的收敛版本，文档按“上线波次”合并记录，不按单 commit 拆分。
-- 关联文档：`docs/README_WEB_CHANGELOG_TIMELINE.md`
+- 个人中心入口是否更顺
+- 投资页底部空白是否减少
+- 下拉刷新是否更自然
 
 ---
 
-## v1.0.7 - Web 登录注册体验与中文错误提示完善
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Web | Docs
+## v1.0.13
 
-### Summary
-- Web 认证页拆分为独立登录/注册路由（`/app/login`、`/app/register`），去除顶部胶囊切换。
-- 登录页交互改版：左上角返回箭头、顶部品牌“咔咔记账”、注册引导文案优化。
-- 登录支持“记住我”本地回填（仅登录模式写入），注册流程明确不保存登录信息。
-- 注册页新增“确认密码”输入与前端先验校验，减少无效请求。
-- 登录和注册错误提示统一中文化，避免英文 raw 错误直接暴露给用户。
-- 登录成功链路移除阻塞式全量刷新，显著缩短点击“登录”到进入首页的等待时长。
+### 这版一句话
 
-### Added
-- 新增独立注册路由：`/app/register`（复用认证页组件，注册模式展示邀请码与确认密码）。
-- 注册模式新增字段：`confirmPassword`（确认密码）。
-- 新增注册前端校验规则：
-  - 用户名格式校验（小写字母开头，4-24 位，仅小写/数字/下划线）。
-  - 密码规则校验（8-64 位，且同时包含字母和数字）。
-  - 两次密码一致性校验。
-  - 邀请码必填校验。
+这版主要让后端提前把行情准备好，用户打开页面时更像“秒回”。
 
-### Changed
-- 认证页布局由“信息区+表单区”改为单卡片聚焦表单布局。
-- 登录页底部文案改为“还没有账户？立即注册”，仅“立即注册”可点击跳转。
-- 认证页返回逻辑固定为：优先 `router.back()`，无历史回退时跳转 `/`。
-- 登录分支错误处理改为中文映射展示；注册分支保持中文映射并补齐空邀请码文案“请填写邀请码”。
-- 登录成功流程调整为直接跳转首页，不再等待 `store.refreshAll()` 完成。
+### 主要变化
 
-### Fixed
-- 修复登录失败时仍显示英文文案（如 `Invalid username or password`）的问题。
-- 修复注册缺少确认密码校验导致可提交不一致密码的问题。
-- 修复注册场景对“邀请码为空/无效”缺乏明确中文提示的问题。
-- 修复登录按钮“提交中”等待时间过长（受同步全量刷新阻塞）的问题。
+- 后端会定时预取持仓行情。
+- 前端请求更容易直接命中缓存。
+- 整体响应速度明显提升。
 
-### Ops / Deployment
-- 变更按 Web 直推规则发布到 `main`。
-- 未引入后端接口与数据库变更，无需额外部署迁移步骤。
+### 影响范围
 
-### Data / Migration
-- None（无数据库迁移）
+- 后端价格接口
+- 首页、投资页等依赖行情的页面
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`（通过）
-- 手工验收：
-  - `/app/login`：记住我、中文错误提示、返回箭头、注册链接
-  - `/app/register`：确认密码、邀请码必填、中文错误提示
-  - 已登录访问 `/app/login` 与 `/app/register` 都会跳转 `/app/home`
+### 验收重点
 
-### Notes
-- 主要来源提交：`b490a51`、`022fe2d`、`feef3ab`、`6ecdecd`
-- 文档规则保持：`CHANGELOG.md` 为唯一版本历史标准，`README.md` 仅保留摘要导航
+- 打开页面是不是明显更快
+- 后端日志里是否能看到缓存命中
 
 ---
 
-## v1.0.6 - Web 页面体验收敛与个人中心入口重构
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Web | Docs
+## v1.0.12
 
-### Summary
-- Web 侧边栏移除“设置”菜单，改为左下角用户区（头像/昵称/退出）交互。
-- `/app/me` 个人中心页面去掉顶部主题卡片，首屏直接展示“账号资料”。
-- 市场快讯页交互对齐移动端：只看重要开关、LIVE 位置调整、重要消息标签化。
-- 我的资产/我的投资/资产分析页面改为缓存优先渲染，降低 F5 后的全量请求与白屏感。
-- Web 导出入口保持仅 4 类资产（现金/投资/其他/负债）能力，页面结构继续精简。
+### 这版一句话
 
-### Added
-- 页面级缓存机制在 Web 资产相关页面落地（Home/Invest/Analysis/News）。
-- 市场快讯项新增“重要”标识渲染样式（重要消息显示标签）。
-- 侧栏资料区新增图标化退出按钮（门+箭头，纯图标）。
+这版主要修了 App 冷启动不同步、排行跨币种不准，以及收益率分母不对这几个口径问题。
 
-### Changed
-- 侧栏左下角资料区改为同一行布局：左侧头像+昵称，右侧退出图标按钮。
-- 市场快讯页头改为“标题+LIVE”同组展示，右侧保留“只看重要”开关。
-- `我的资产` 与 `我的投资` 启动刷新策略由全量优先改为轻量优先（命中缓存时）。
-- `资产分析` 页面挂载时默认先读缓存，手动点击“刷新”才执行强制全量刷新。
-- `我的资产`静态轮询周期调整为 5 分钟，减少重复拉取。
+### 主要变化
 
-### Fixed
-- 修复资产分析/我的投资页面 F5 后重复全量请求的问题。
-- 修复市场快讯页“只看重要”开关样式与交互不一致问题。
-- 修复市场快讯页 LIVE 徽标位置与产品预期不一致问题。
-- 修复侧栏“设置入口已下沉后仍保留按钮”的残留问题。
+- App 启动后会立刻同步一次，不用等很久。
+- 盈亏排行开始按统一币种比较，更公平。
+- 收益率计算改了，避免因为当天加仓把收益率稀释得很离谱。
+- 新增“外部资金 / 初始转入”选项，没有现金账户时也能记投资。
+- 搜索体验更稳，清空后不会冒出幽灵结果。
+- 登录页的生物识别和记住用户名体验也做了一轮优化。
 
-### Ops / Deployment
-- Web 构建门禁持续通过，改动已按“Web 直推 main”流程发布。
-- 相关改动已同步推送远端主分支，无需额外迁移步骤。
+### 影响范围
 
-### Data / Migration
-- None（无数据库迁移）
+- Flutter 启动同步
+- 分析页排行
+- 收益率计算
+- 添加资产和买卖流程
+- 登录页体验
 
-### Verification
-- `cd /Users/kona/Desktop/kaka/kona_repo/web && npm run build`（通过）
-- 手工验收：
-  - 市场快讯：开关样式、LIVE 位置、重要标签显示
-  - 侧栏：头像昵称+图标退出同一行
-  - `/app/me`：去除顶部主题卡片
-  - F5 后 Home/Invest/Analysis 首屏缓存渲染与轻量刷新
+### 验收重点
 
-### Notes
-- 主要来源提交：`55def90`、`2b3bbf3`、`3944ddc`、`250fcb5`、`82d44ac`、`24a6752`、`0f356e4`、`7902906`、`3f2aa73`
-- 文档规范沿用：`README.md` 导航化 + `CHANGELOG.md` 版本化唯一记录
+- 冷启动后数据是否自动更新
+- 排行跨币种是否更合理
+- 收益率是否不再明显失真
+- 没现金账户时能否正常录入投资
 
 ---
 
-## v1.0.5 - Web 分析页对齐与排行口径修复
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Web | Backend | Docs
+## v1.0.8
 
-### Summary
-- Web 端分析页改为更接近 App 的结构化体验。
-- 盈亏排行改为统一榜单，不再分“盈利榜/亏损榜”分类切换。
-- 排行列表支持“默认 Top5 + 查看更多/收起”。
-- 港股/美股（含外币基金）盈亏金额改为按汇率折算后展示人民币。
-- 修复 Web 行情 `price=0` 导致持有金额和盈亏异常的问题。
+### 这版一句话
 
-### Added
-- Web 分析页收益日历新增完整网格交互（`日/月/年` + 周期选择器 + 底部累计摘要）。
-- Web 排行新增“查看更多/收起”交互。
-- `GET /api/analysis/rank` 返回项新增 `curr` 字段，供前端做准确汇率换算。
+这版主要是 Web 端一次比较大的整理，把门户、登录、主题、隐私模式和截图工具一起做顺了。
 
-### Changed
-- Web 资产分析品牌文案与结构统一：侧栏文案更新为“咔咔记账”。
-- Web 排行展示从双榜切换模式调整为单榜排序模式（结合市场筛选）。
-- Web 排行金额显示统一为 CNY 口径（后台返回币种 + 前端汇率换算）。
+### 主要变化
 
-### Fixed
-- 修复 Web `BOXX` 等美股场景现价回传 `0` 时被当作有效价的问题。
-- 修复 Web 排行中港股/美股金额按人民币直接显示导致的数值偏差。
+- 门户首页换了新样式。
+- 登录和注册页改版。
+- Web 业务端加入深浅主题切换。
+- 首页、投资页、分析页都支持隐私模式和截图。
+- 页面开始更强调“先显示缓存，再后台刷新”，减少白屏。
 
-### Ops / Deployment
-- 完成 Web 构建验证，保证前端改造可发布。
-- 相关提交均已推送到 `main`，可由现有 CI/CD 门禁流程自动发布。
+### 影响范围
 
-### Data / Migration
-- None（无数据库迁移）
+- Web 门户
+- Web 登录注册
+- Web 首页 / 投资 / 分析
 
-### Verification
-- `cd web && npm run build`（通过）
-- `python3 -m py_compile kona_tool/app.py`（通过）
-- 手工验收：分析页日历交互、排行 Top5/展开、港美金额折算
+### 验收重点
 
-### Notes
-- 来源提交：`d0a959b`、`7ff3dde`、`18de8cc`
-- 关联文档：`docs/README_WEB_CHANGELOG_TIMELINE.md`
+- 主题切换是否正常
+- 隐私模式是否统一
+- 截图功能是否可用
 
 ---
 
-## v1.0.4 - 增量刷新与休市冻结口径统一
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Flutter | Web | Backend | Infra
+## v1.0.7
 
-### Summary
-- 引入启动阶段版本增量同步，降低重复全量请求。
-- 建立“缓存先渲染 + 后台增量刷新 + 行情独立刷新”的加载链路。
-- 休市场景口径统一：显示冻结值，汇总按开市市场计入。
-- 混合开市日（如 A 休市 / HK 开市）“今日收益”污染问题被修复。
-- Web 与 Flutter 市场状态判断逻辑统一。
+### 这版一句话
 
-### Added
-- 新增接口：`POST /api/sync/bootstrap`（版本驱动增量域刷新）。
-- 新增前端刷新策略：按域版本决定是否拉取数据。
-- 新增休市保底价格回退策略（实时 -> 缓存 -> 快照 -> 成本）。
+这版主要把 Web 登录注册流程做清楚了，错误提示也改成中文了。
 
-### Changed
-- 启动时不再无条件全量刷新全部资产域。
-- 行情刷新与静态资产刷新彻底分层。
-- 日收益展示与汇总逻辑分离：单只可展示冻结值，汇总仅统计开市市场。
+### 主要变化
 
-### Fixed
-- 修复混合开市场景下冻结值污染“今日收益”汇总的问题。
-- 修复市场状态 `trading_day` 判断在多端不一致导致的显示偏差。
+- 登录和注册拆成两个独立页面。
+- 新增确认密码和邀请码校验。
+- 错误提示改成中文。
+- 登录成功后更快进入首页。
 
-### Ops / Deployment
-- 调整 CI 策略：APK debug smoke 按 Android 目录变更触发。
-- 减少非 Android 改动时的无效构建开销。
+### 影响范围
 
-### Data / Migration
-- None
+- Web 登录页
+- Web 注册页
 
-### Verification
-- 后端：`python -m unittest discover ...`（门禁覆盖）
-- Flutter：真机重启、下拉刷新、休市/开市切换验收
-- Web：市场状态与今日收益一致性验收
+### 验收重点
 
-### Notes
-- 来源章节：旧 README §23、§22（刷新与休市口径）
-- 关联文档：`docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md`
+- 中文提示是否清楚
+- 注册校验是否完整
+- 登录成功是否更快
 
 ---
 
-## v1.0.3 - 收益日历口径修复与分市场明细回填
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Backend | Flutter | Web | Docs
+## v1.0.6
 
-### Summary
-- 修复收益日历在特定日期被错误压零的问题。
-- 增加分市场收益明细能力（A/HK/US/Fund/unallocated）。
-- 补齐历史回填脚本，支持 dry-run/apply。
-- 明确历史缺证据时归入 `unallocated`，不做伪精确分摊。
-- 管理后台与 App/Web 日历口径完成对齐。
+### 这版一句话
 
-### Added
-- 新表：`daily_snapshot_market_breakdowns`。
-- 新接口：`GET /api/analysis/calendar/market_breakdown`。
-- 新脚本：
-  - `kona_tool/scripts/backfill_day_pnl_from_total_delta.py`
-  - `kona_tool/scripts/backfill_market_breakdown.py`
+这版主要收了 Web 侧边栏、个人中心和快讯页体验。
 
-### Changed
-- 日历读取逻辑：`closed_at_snapshot` 由“直接归零条件”改为“仅阻止 backfill”。
-- 快照写入逻辑：去掉“写入时全市场休市强制 day_pnl=0”的错误覆盖。
-- 历史分市场回补改为“可证据优先 + 残差进 unallocated”。
+### 主要变化
 
-### Fixed
-- 修复 2026-02-17~2026-02-20 等交易日 `day_pnl=0` 错误。
-- 修复“有 total_pnl 变化但日历看不到收益”的口径冲突。
+- 侧边栏把设置入口下沉到用户区。
+- 个人中心首屏更直接。
+- 快讯页的“只看重要”和 LIVE 标识更合理。
+- 多个页面开始更偏缓存优先，减少强刷卡顿。
 
-### Ops / Deployment
-- 生产执行回填脚本支持分批、幂等与范围控制。
-- 已纳入备份/恢复流程前置校验。
+### 影响范围
 
-### Data / Migration
-- 需要执行回填脚本（先 dry-run 后 apply）。
-- 历史数据回填可按用户/时间窗口分批处理。
+- Web 侧边栏
+- Web 个人中心
+- Web 快讯页
 
-### Verification
-- 后端重点测试：
-  - `test_calendar_weekend.py`
-  - `test_api_baseline.py`
-  - `test_market_calendar.py`
-  - `test_market_breakdown.py`
-- 线上验收：指定日期收益值与数据库一致。
+### 验收重点
 
-### Notes
-- 来源章节：旧 README §19、§3.13
-- 关联文档：`docs/README_ANALYSIS_CALENDAR_MARKET_BREAKDOWN.md`
+- 侧边栏是否更干净
+- 快讯页是否更像产品页
+- F5 后是否没那么容易白屏
 
 ---
 
-## v1.0.2 - 安全限流、监控告警与备份恢复
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Backend | Infra | Docs
+## v1.0.5
 
-### Summary
-- 认证链路加入限流与安全审计。
-- 价格健康监控与告警体系上线。
-- 数据库自动备份与一键恢复流程上线。
-- 生产运行稳定性显著提升。
+### 这版一句话
 
-### Added
-- 认证相关安全审计日志（登录、注册、改密、refresh、logout 等）。
-- 价格健康接口：`GET /api/system/price_health`。
-- 告警任务：服务探活、快照缺失、价格阈值异常。
-- 备份脚本 + 恢复脚本 + 定时器任务。
+这版主要把 Web 分析页做得更完整，同时修了排行和外币金额显示问题。
 
-### Changed
-- 生产配置要求明确化（`JWT_SECRET`、Redis 限流存储、SMTP 告警参数等）。
-- 运维流程从“人工巡检”升级为“定时巡检 + 告警”。
+### 主要变化
 
-### Fixed
-- 修复恢复脚本跨分区临时文件问题（`Errno 18`）。
-- 降低服务异常后人工干预频率。
+- Web 分析页更接近 App 体验。
+- 排行榜改成单榜查看，不再切来切去。
+- 外币盈亏统一折算后展示，金额更可信。
+- 修了价格为 0 时带来的持有金额异常。
 
-### Ops / Deployment
-- `systemd` 服务 + timers 标准化上线。
-- AWS 日志排障命令与恢复演练流程固化。
+### 影响范围
 
-### Data / Migration
-- None（不变更核心业务表结构）
+- Web 分析页
+- Web 排行
+- 后端排行接口
 
-### Verification
-- 后端门禁测试通过。
-- 告警任务日志检查通过。
-- 备份生成/恢复演练通过。
+### 验收重点
 
-### Notes
-- 来源章节：旧 README §3.10~§3.12
-- 关联文档：`docs/MAINTENANCE.md`、`docs/RUNBOOK.md`
+- 分析页日历和排行是否更顺
+- 港股、美股金额是否更合理
 
 ---
 
-## v1.0.1 - CI/CD 门禁与发布流程强化
-- 发布状态：Released
-- 发布类型：Patch
-- 范围：Infra | Backend | Flutter | Web
+## v1.0.4
 
-### Summary
-- 部署流程重构为“后端门禁 + 前端门禁 + 部署”三段式。
-- `main` 分支发布前必须全门禁通过。
-- PR 场景只做门禁，不自动部署。
-- Web 产物发布加入 smoke 校验与失败回滚。
+### 这版一句话
 
-### Added
-- GitHub Actions 分段门禁：`backend-gate`、`frontend-gate`、`deploy`。
-- 前端门禁固定包含：`flutter analyze`、`flutter test`、`web build`。
-- 部署后健康检查与关键路由 smoke。
+这版主要统一了增量刷新和休市口径，减少“今天收益看起来怪怪的”问题。
 
-### Changed
-- 发布策略改为严格门禁，阻断“未通过测试直接上线”。
-- APK smoke 构建按 Android 目录改动触发（默认跳过无关改动）。
+### 主要变化
 
-### Fixed
-- 修复“push 成功但门禁失败仍触发部署”的流程风险。
-- 修复 Web 发布失败缺少可回退路径的问题。
+- 页面启动时不再无脑全量刷新。
+- 行情刷新和静态数据刷新分开。
+- 休市时展示冻结值，但汇总只统计真正开市的市场。
+- Web 和 Flutter 的市场状态判断更统一。
 
-### Ops / Deployment
-- 明确 deploy secrets、分支策略、线上拉取约定。
-- 形成“功能分支 -> main -> 自动部署”标准流程。
+### 影响范围
 
-### Data / Migration
-- None
+- Flutter
+- Web
+- 后端刷新接口
 
-### Verification
-- GitHub Actions 全链路门禁执行通过。
-- 部署阶段健康检查、路由 smoke 校验通过。
+### 验收重点
 
-### Notes
-- 来源章节：旧 README §3.9、§7.1~§7.1.3
-- 关联文档：`docs/DEPLOYMENT.md`
+- 混合开市场景下今日收益是否更准
+- F5 后是否不再重复疯狂请求
 
 ---
 
-## v1.0.0 - 初始稳定基线
-- 发布状态：Released
-- 发布类型：Major
-- 范围：Flutter | Web | Backend | Infra | Docs
+## v1.0.3
 
-### Summary
-- 建立完整的资产管理核心链路（资产、投资、分析、快讯、设置）。
-- 建立认证体系（用户名/密码/邀请码）与会话保持能力。
-- 建立快照统计口径（day/month/year/all）与多端展示能力。
-- 建立后端服务托管与定时快照机制。
-- 建立基础文档体系，支持新机器快速接手。
+### 这版一句话
 
-### Added
-- Flutter 业务端主页面群（资产/投资/分析/快讯/设置）。
-- Web 业务端、管理端、门户端基本能力。
-- Flask API：资产、交易、分析、行情、新闻、认证等。
-- SQLite 核心表：`users`、`portfolio`、`transactions`、`daily_snapshots`。
+这版主要修了收益日历和分市场收益明细。
 
-### Changed
-- 登录与注册流程统一为用户名体系（替代邮箱验证码流程）。
-- 累计收益口径固化：未实现收益 + 已实现收益（含 `adjustment` 承载）。
-- 月/年/全部统计从“实时混算”过渡到“快照优先口径”。
+### 主要变化
 
-### Fixed
-- 修复主题切换、页面切换缓存、快讯加载与投资页展示等一批基础问题。
-- 修复多端口径不一致导致的关键金额误读问题。
+- 修掉了有些日期收益被错误压成 0 的问题。
+- 增加按市场查看收益明细的能力。
+- 历史补数脚本更完整，支持先预演再正式执行。
+- 没证据的历史残差统一归到 `unallocated`，不瞎拆。
 
-### Ops / Deployment
-- 线上服务采用 `systemd + gunicorn` 托管。
-- 快照定时由 `systemd timer` 固定触发。
+### 影响范围
 
-### Data / Migration
-- 初始表结构建立与历史数据承接完成。
-- `portfolio` 清仓资产保留 `qty=0` 以维持累计收益口径连续性。
+- 后端快照
+- 分析页日历
+- 管理后台收益相关能力
 
-### Verification
-- 基础 API 与前端端到端可用。
-- 本地运行、部署链路、线上健康检查均可执行。
+### 验收重点
 
-### Notes
-- 来源章节：旧 README §1~§14、§3.1~§3.8、§15~§23（全量迁移归档）
-- 关联文档：`README.md`、`docs/PROJECT_OVERVIEW.md`、`docs/STRUCTURE.md`
+- 指定日期收益是否正确
+- 分市场明细是否能看
+
+---
+
+## v1.0.2
+
+### 这版一句话
+
+这版主要补了安全、监控、备份恢复这些“平时看不见，但出事时很要命”的底层能力。
+
+### 主要变化
+
+- 登录注册等关键操作有审计记录了。
+- 价格健康监控和告警上线了。
+- 数据库自动备份和恢复流程上线了。
+- 运维从“全靠人盯”变成“系统自己盯一部分”。
+
+### 影响范围
+
+- 后端运维
+- 安全
+- 监控
+- 备份恢复
+
+### 验收重点
+
+- 告警是否能触发
+- 备份能不能生成
+- 恢复流程是否能走通
+
+---
+
+## v1.0.1
+
+### 这版一句话
+
+这版主要把发布流程正规化了，避免“代码没验就上线”。
+
+### 主要变化
+
+- 发布流程拆成“检查通过后再部署”。
+- `main` 分支必须过门禁才能发版。
+- PR 只做检查，不直接上线。
+- 部署后会做健康检查。
+
+### 影响范围
+
+- GitHub Actions
+- 自动部署
+- 前后端发版流程
+
+### 验收重点
+
+- 门禁是否都能正常跑
+- 部署后健康检查是否通过
+
+---
+
+## v1.0.0
+
+### 这版一句话
+
+这是项目第一个可用的稳定基线版本。
+
+### 主要变化
+
+- 建立了资产、投资、分析、快讯、设置这些基础功能。
+- 建立了登录、注册、邀请码、会话保持这些基本能力。
+- 建立了快照、收益统计和多端展示的基础链路。
+- 建立了后端服务、定时任务和基础文档。
+
+### 影响范围
+
+- Flutter
+- Web
+- 后端
+- 运维
+
+### 验收重点
+
+- 整个产品主流程能跑通
+- 资产和投资能正常记
+- 分析和快讯能正常看
+

@@ -52,9 +52,44 @@ kona_repo/
 ├─ web/              # Vue3 Web 端源码（含业务端与管理端）
 ├─ kona_tool/        # Python Flask 后端与核心计算模块
 ├─ docs/             # 深度架构、运维、交接文档 (30+ .md files)
-├─ scripts/          # 运维与调优工具脚本
+├─ scripts/          # 仓库级工具脚本
+├─ .github/          # GitHub Actions / CI/CD
 └─ CHANGELOG.md      # 项目演进的唯一标准标准记录
 ```
+
+### 仓库定位
+
+`kona_repo/` 是咔咔记账项目的主仓库。
+
+这里承载的是项目核心代码与工程资产，当前本质上已经是一个多端 monorepo，里面同时包含：
+
+- 客户端
+- 网页端
+- 后端
+- 文档
+- 脚本
+- CI/CD
+
+### 仓库边界
+
+这个仓库应该长期保留：
+
+- 项目源码
+- 工程配置
+- 文档
+- 测试
+- 构建与部署配置
+
+这个仓库不应该长期积累：
+
+- 无说明的历史垃圾目录
+- 随手导出的临时文件
+- 无命名规则的构建产物
+- 与项目无关的个人备份
+
+一句话：
+
+`kona_repo 应以 flutter / web / kona_tool 为核心，外加少量仓库级支撑目录，而不是继续什么都往里塞。`
 
 ---
 
@@ -91,7 +126,7 @@ npm install && npm run dev
 - **管理端**: `/admin/login`
 
 ### 常用运维操作
-详细记录于 [`docs/RUNBOOK.md`](./docs/RUNBOOK.md):
+详细记录于 [`docs/运维手册.md`](./docs/运维手册.md):
 - **快照补数**: 每 2 小时自动抓取行情快照。若日历无数据，检查 `snapshot.py` 任务。
 - **APK 发布**: 
   ```bash
@@ -99,16 +134,29 @@ npm install && npm run dev
   ```
   下载地址：`http://114.132.238.12/download/apk`
 
+### 发布规则
+
+- 版本历史统一写在 [CHANGELOG.md](./CHANGELOG.md)
+- 重要改动要写版本记录，但不是每次改动都要升版本号
+- 只有准备发布新的 Flutter 客户端安装包时，才升级 `flutter/pubspec.yaml` 里的版本号
+- 如果只是后端修复、Web 修复、数据修复、目录整理，通常不需要升客户端版本号
+- 发布新客户端版本时，必须同步更新环境配置中的 `CLIENT_APP_DOWNLOAD_URL`
+
 ---
 
 ## 📖 文档导航
 
-- [环境准备与迁移说明](./docs/README_HANDOVER_2026_03_TENCENT_MIGRATION.md)
-- [行情与快讯性能交接（v1.0.31）](./docs/README_HANDOVER_2026_03_QUOTE_NEWS_PERF_AND_CI.md)
-- [价格源 / 基金净值 / 快照与盈亏口径交接（2026-03）](./docs/README_HANDOVER_2026_03_PRICE_ALERTS_AND_PNL_LOGIC.md)
-- [资产同步与盈亏算法口径](./docs/README_HANDOVER_2026_02_ASSET_REFRESH_AND_PNL_LOGIC.md)
-- [管理后台功能手册 V2](./docs/README_ADMIN_CONSOLE_V2.md)
-- [生物识别与会话持久化](./docs/README_AUTH_PERSISTENCE_BIOMETRIC.md)
+- [环境准备与迁移说明](./docs/腾讯云迁移说明.md)
+- [行情与快讯性能交接（v1.0.31）](./docs/行情快讯性能与CI说明.md)
+- [价格源 / 基金净值 / 快照与盈亏口径交接（2026-03）](./docs/价格源与快照盈亏口径说明.md)
+- [资产收益计算逻辑](./docs/资产收益计算逻辑.md)
+- [资产同步与盈亏算法口径](./docs/资产同步与盈亏算法口径.md)
+- [管理后台功能手册 V2](./docs/管理后台功能手册V2.md)
+- [生物识别与会话持久化](./docs/登录态与生物识别说明.md)
+- [工作区骨架说明](../项目结构.md)
+- [目录文档规范](../目录文档规范.md)
+- [AI 接手规则](../AGENTS.md)
+- [版本记录规范](./版本记录规范.md)
 
 ---
 

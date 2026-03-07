@@ -4,7 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "kona_tool" / "app.py"
-API_MD = ROOT / "docs" / "API.md"
+API_MD = ROOT / "docs" / "接口总览.md"
 
 route_re = re.compile(r"@app\.route\('([^']+)'(?:,\s*methods=\[([^\]]+)\])?\)")
 
@@ -61,7 +61,7 @@ lines.append("# API Reference (Backend)\n")
 lines.append("This file is auto-generated from `kona_tool/app.py`.\n")
 lines.append("Run: `python3 scripts/generate_api_docs.py`\n")
 lines.append("\n---\n")
-lines.append("## Detailed Request/Response\n\nSee `docs/API_DETAILS.md` for parameters and response formats.\n\n---\n")
+lines.append("## Detailed Request/Response\n\nSee `docs/接口详情.md` for parameters and response formats.\n\n---\n")
 
 for section, items in sections.items():
     if not items:

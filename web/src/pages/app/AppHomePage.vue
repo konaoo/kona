@@ -58,7 +58,7 @@ const rows = computed(() => {
   return Array.isArray(data) ? data : []
 })
 
-const rates = computed(() => (store?.state as any)?.rates || {})
+const rates = computed(() => marketStore.rates)
 
 function rateToCny(curr?: string): number {
   const c = String(curr || 'CNY').toUpperCase()
@@ -165,13 +165,6 @@ function toggleSegment(type: AssetType | 'invest') {
   }
 }
 
-// Derived asset value based on selected currency
-const displayTotalAssets = computed(() => {
-  const cny = totalAssetsCny.value
-  if (currentCurrency.value === 'USD') return cny / rateToCny('USD')
-  if (currentCurrency.value === 'HKD') return cny / rateToCny('HKD')
-  return cny
-})
 
 // Current currency formatting config
 const currMeta = computed(() => {
@@ -179,6 +172,36 @@ const currMeta = computed(() => {
   if (currentCurrency.value === 'HKD') return { sym: 'HK$ ', label: '港币' }
   return { sym: '¥ ', label: '人民币' }
 })
+
+function toDisplay(cnyVal: number): number {
+  if (currentCurrency.value === 'USD') return cnyVal / rateToCny('USD')
+  if (currentCurrency.value === 'HKD') return cnyVal / rateToCny('HKD')
+  return cnyVal
+}
+
+// Helpers
+function formatCny(value: number): string {
+  // We keep this for backward compatibility or rename to formatSelected
+  return formatCurrency(value)
+}
+
+function formatSignedCny(value: number): string {
+  return formatCurrency(value, true)
+}
+
+function formatCurrency(cnyValue: number, signed = false): string {
+  const val = toDisplay(cnyValue)
+  const sym = currMeta.value.sym
+  const sign = signed && cnyValue >= 0 ? '+' : signed && cnyValue < 0 ? '-' : ''
+  const absVal = Math.abs(val)
+  
+  // For non-CNY, we might want 2 decimals if it's small, 
+  // but for the 1:1 look, round numbers are often used in headers.
+  // However, for accuracy we should probably allow 2 decimals if needed.
+  const formatted = absVal >= 1000 ? Math.round(absVal).toLocaleString('zh-CN') : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  
+  return `${sign}${sym}${formatted}`
+}
 
 // 持仓筛选
 const filteredRows = computed(() => {
@@ -188,14 +211,6 @@ const filteredRows = computed(() => {
 })
 
 // Helpers
-function formatCny(value: number): string {
-  return `¥ ${Math.round(value).toLocaleString('zh-CN')}`
-}
-
-function formatSignedCny(value: number): string {
-  const sign = value >= 0 ? '+' : '-'
-  return `${sign}¥ ${Math.abs(Math.round(value)).toLocaleString('zh-CN')}`
-}
 
 function formatPct(value: number | undefined): string {
   if (typeof value !== 'number' || isNaN(value)) return '0.00%'
@@ -212,6 +227,15 @@ function masked(text: string): string {
 }
 
 function formatValue(value: number, curr?: string): string {
+  // If global currency is NOT CNY, we convert the item's value to the global display currency?
+  // User said "切换汇率需要根据实时汇率进行不同币种的计算". 
+  // Usually this means the WHOLE DASHBOARD should flip.
+  
+  if (currentCurrency.value !== 'CNY') {
+    // Convert to CNY first then to Display
+    return formatCurrency(toCny(value, curr))
+  }
+
   const symbol = getCurrencySymbol(curr)
   const absVal = Math.abs(value)
   const formatted = absVal % 1 !== 0 ? absVal.toFixed(2) : absVal.toLocaleString('zh-CN')
@@ -482,7 +506,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
-            <div class="c3-total">{{ masked(currMeta.sym + Math.round(displayTotalAssets).toLocaleString('zh-CN')) }}</div>
+            <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
             <div class="c3-stats">
               <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">今日 {{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }}</span>
             </div>
@@ -518,25 +542,25 @@ onBeforeUnmount(() => {
           <div class="c3-segment" :class="{ active: activeSegment === 'invest' }" @click="toggleSegment('invest')">
             <div class="c3-active-bar" :style="{ background: activeSegment === 'invest' ? 'var(--green)' : '' }"></div>
             <div class="c3-segment-label">投资资产</div>
-            <div class="c3-segment-val">{{ masked(formatCny(investTotal?.mv||0)) }}</div>
+            <div class="c3-segment-val">{{ masked(formatCurrency(investTotal?.mv||0)) }}</div>
             <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">今日 {{ formatPct(investTotal?.dayRate||0) }}</div>
           </div>
           <div class="c3-segment" :class="{ active: activeSegment === 'cash' }" @click="toggleSegment('cash')">
             <div class="c3-active-bar" :style="{ background: activeSegment === 'cash' ? 'var(--blue)' : '' }"></div>
             <div class="c3-segment-label">现金资产</div>
-            <div class="c3-segment-val">{{ masked(formatCny(cashTotal)) }}</div>
+            <div class="c3-segment-val">{{ masked(formatCurrency(cashTotal)) }}</div>
             <div class="c3-segment-change text-muted">{{ cashAssets.length }}个账户</div>
           </div>
           <div class="c3-segment" :class="{ active: activeSegment === 'other' }" @click="toggleSegment('other')">
             <div class="c3-active-bar" :style="{ background: activeSegment === 'other' ? 'var(--gold)' : '' }"></div>
             <div class="c3-segment-label">其他资产</div>
-            <div class="c3-segment-val">{{ masked(formatCny(otherTotal)) }}</div>
+            <div class="c3-segment-val">{{ masked(formatCurrency(otherTotal)) }}</div>
             <div class="c3-segment-change text-muted">{{ otherAssets.length }}条记录</div>
           </div>
           <div class="c3-segment" :class="{ active: activeSegment === 'liability' }" @click="toggleSegment('liability')">
             <div class="c3-active-bar" :style="{ background: activeSegment === 'liability' ? 'var(--red)' : '' }"></div>
             <div class="c3-segment-label">我的负债</div>
-            <div class="c3-segment-val" style="color:var(--red)">{{ masked(formatCny(-(liabilityTotal||0))) }}</div>
+            <div class="c3-segment-val" style="color:var(--red)">{{ masked(formatCurrency(-(liabilityTotal||0))) }}</div>
             <div class="c3-segment-change text-red">{{ liabilities.length }}条负债</div>
           </div>
         </div>
@@ -549,7 +573,7 @@ onBeforeUnmount(() => {
               <div>
                 <div class="c5-pill-name">{{ item.name }}</div>
                 <div class="c5-pill-amt" :style="{ color: item.type === 'liability' ? 'var(--red)' : 'var(--sub)' }">
-                  {{ masked(formatCny(toCny(item.amount, item.curr))) }}
+                  {{ masked(formatCurrency(toCny(item.amount, item.curr))) }}
                 </div>
               </div>
               <span v-if="item.type !== 'invest'" class="c5-pill-edit" @click.stop="openFormModal(item)">✏</span>
@@ -609,7 +633,7 @@ onBeforeUnmount(() => {
                   <path d="M0,20 L30,15 L60,25 L90,10 L120,5" :stroke="toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)'" stroke-width="1.6" fill="none"/>
                 </svg>
               </div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:var(--text);margin-bottom:5px">{{ masked(formatCny(toCny(row?.value||0, String(row?.curr)))) }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:var(--text);margin-bottom:5px">{{ masked(formatCurrency(toCny(row?.value||0, String(row?.curr)))) }}</div>
               <div style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:10px" :style="{ background: toNumber(row?.dayPnl)>=0 ? 'rgba(240,90,85,0.12)' : 'rgba(62,207,130,0.12)', color: toNumber(row?.dayPnl)>=0 ? 'var(--red)' : 'var(--green)' }">
                 {{ formatPct(toNumber(row?.dayPnlRate)) }}
               </div>
@@ -662,7 +686,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:9px;color:var(--muted);margin-bottom:3px">市值</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)">{{ masked(formatCny(toCny(row?.value||0, String(row?.curr)))) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)">{{ masked(formatCurrency(toCny(row?.value||0, String(row?.curr)))) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:9px;color:var(--muted);margin-bottom:3px">今日盈亏</div>

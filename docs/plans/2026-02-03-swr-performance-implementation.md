@@ -322,8 +322,8 @@ git commit -m "perf: cache-first batch pricing"
 ### Task 6: Update docs
 
 **Files:**
-- Modify: `docs/PROJECT_OVERVIEW.md`
-- Modify: `docs/RUNBOOK.md`
+- Modify: `docs/项目概览.md`
+- Modify: `docs/运维手册.md`
 
 **Step 1: Write failing doc check**
 - Ensure new cache/refresh behavior is documented
@@ -334,7 +334,7 @@ git commit -m "perf: cache-first batch pricing"
 
 **Step 3: Commit**
 ```bash
-git add docs/PROJECT_OVERVIEW.md docs/RUNBOOK.md
+git add docs/项目概览.md docs/运维手册.md
 git commit -m "docs: update for swr cache"
 ```
 

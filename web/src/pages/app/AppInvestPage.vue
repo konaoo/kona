@@ -1,1928 +1,703 @@
-<template>
-  <LegacyAppShell>
-    <div id="capture-area-invest" class="kk-invest" :class="{ 'kk-light-v1': theme === 'light' }">
-    <div class="home-action-row" aria-label="投资页工具栏">
-      <button
-        class="home-action-btn"
-        type="button"
-        :title="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
-        :aria-label="isPrivacyMode ? '关闭隐私模式' : '开启隐私模式'"
-        @click="togglePrivacy"
-      >{{ isPrivacyMode ? '🙈' : '👁️' }}</button>
-      <button
-        class="home-action-btn"
-        type="button"
-        title="保存截图"
-        aria-label="保存截图"
-        @click="saveAsImage"
-      >📸</button>
-    </div>
-    <section class="legacy-section">
-      <div class="index-grid">
-        <article v-for="idx in indexCards" :key="idx.id" class="idx-card">
-          <div class="idx-header">
-            <div class="idx-name">{{ idx.name }}</div>
-          </div>
-          <div class="idx-content">
-            <div class="idx-value">{{ formatIndexPrice(idx.price) }}</div>
-            <div class="idx-change" :class="idx.chg >= 0 ? 'up' : 'down'">{{ formatPct(idx.chg || 0) }}</div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="legacy-section">
-      <div class="assets-header">
-        <div class="total-assets-section">
-          <div class="total-mv-label">总持有市值 (CNY)</div>
-          <div class="main-mv">{{ formatCny(investStats.mv) }}</div>
-        </div>
-        <div class="pnl-stats">
-          <article class="pnl-stat-item">
-            <div class="pnl-label">今日盈亏</div>
-            <div class="pnl-value" :class="valueClass(investStats.dayPnl)">{{ formatSignedCny(investStats.dayPnl) }}</div>
-            <div class="pnl-rate" :class="valueClass(investStats.dayRate)">{{ formatPct(investStats.dayRate) }}</div>
-          </article>
-          <article class="pnl-stat-item">
-            <div class="pnl-label">持仓盈亏</div>
-            <div class="pnl-value" :class="valueClass(investStats.floatPnl)">{{ formatSignedCny(investStats.floatPnl) }}</div>
-            <div class="pnl-rate" :class="valueClass(investStats.floatRate)">{{ formatPct(investStats.floatRate) }}</div>
-          </article>
-          <article class="pnl-stat-item">
-            <div class="pnl-label">累计盈亏</div>
-            <div class="pnl-value" :class="valueClass(investStats.totalPnl)">{{ formatSignedCny(investStats.totalPnl) }}</div>
-            <div class="pnl-rate" :class="valueClass(investStats.totalRate)">{{ formatPct(investStats.totalRate) }}</div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section class="legacy-section">
-      <div class="table-header">
-        <h2>持仓明细</h2>
-        <button class="legacy-btn-primary" @click="openModal('add')">+ 添加资产</button>
-      </div>
-      <div class="category-tabs">
-        <button
-          v-for="item in tabs"
-          :key="item.key"
-          class="tab-item"
-          :class="{ active: currentCategory === item.key }"
-          @click="currentCategory = item.key"
-        >
-          {{ item.label }}
-        </button>
-      </div>
-
-      <div class="table-container">
-        <table class="table-legacy">
-          <colgroup>
-            <col class="col-name" />
-            <col class="col-qty" />
-            <col class="col-price" />
-            <col class="col-holding" />
-            <col class="col-day" />
-            <col class="col-total" />
-            <col class="col-action" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="th-name">资产名称</th>
-              <th class="th-qty">持有数量</th>
-              <th class="th-price">成本/现价</th>
-              <th class="th-holding">持有金额</th>
-              <th class="th-day-pnl">当日盈亏</th>
-              <th class="th-total-pnl">累计盈亏</th>
-              <th class="th-action">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in filteredRows" :key="String(row.code)">
-              <td class="name-code-cell td-name">
-                <div class="name-primary" :title="String(row.name || '-')">{{ truncateAssetName(row.name) }}</div>
-                <div class="name-secondary">{{ displayCode(String(row.code || '')) }}</div>
-              </td>
-              <td class="qty-cell td-qty">{{ formatHoldingQty(row.qty, row) }}</td>
-              <td class="td-price">
-                <div class="price-cell">
-                  <span class="price-line cost">{{ formatMoney(row.displayCostPrice ?? row.costPrice, rowCurrency(row)) }}</span>
-                  <span class="price-line current">{{ formatMoney(row.currentPrice, rowCurrency(row)) }}</span>
-                </div>
-              </td>
-              <td class="holding-cell td-holding">{{ formatMoneyInt(toNumber(row.value), rowCurrency(row)) }}</td>
-              <td class="td-day-pnl">
-                <div
-                  class="pnl-cell"
-                  :class="row.navUpdatePending ? '' : valueClass(toNumber(row.dayPnlDisplay))"
-                >
-                  <template v-if="row.navUpdatePending">
-                    <span class="table-pnl-amount">待净值更新</span>
-                    <span class="table-pnl-rate"></span>
-                  </template>
-                  <template v-else>
-                    <span class="table-pnl-amount">{{ formatSignedMoneyOrDash(row.dayPnlDisplay, rowCurrency(row)) }}</span>
-                    <span class="table-pnl-rate">{{ formatPctOrDash(row.dayPnlRateDisplay) }}</span>
-                  </template>
-                  <span v-if="showClosedHint(row)" class="pnl-hint">休市</span>
-                </div>
-              </td>
-              <td class="td-total-pnl">
-                <div class="pnl-cell" :class="valueClass(toNumber(row.totalPnl))">
-                  <span class="table-pnl-amount">{{ formatSignedMoneyIntOrDash(row.totalPnl, rowCurrency(row)) }}</span>
-                  <span class="table-pnl-rate">{{ formatPctOrDash(row.totalPnlRate) }}</span>
-                </div>
-              </td>
-              <td class="actions td-action">
-                <div class="action-menu" @click.stop>
-                  <button class="action-trigger" @click.stop="toggleActionMenu(String(row.code || ''))">操作 ▾</button>
-                  <div v-if="isActionMenuOpen(String(row.code || ''))" class="action-dropdown">
-                    <button class="menu-item" @click="openAction('buy', row)">买入</button>
-                    <button class="menu-item" @click="openAction('sell', row)">卖出</button>
-                    <button class="menu-item" @click="openAction('edit', row)">调整</button>
-                    <button class="menu-item danger" @click="remove(String(row.code || ''))">删除</button>
-                  </div>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!filteredRows.length">
-              <td colspan="7" class="empty">暂无持仓</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <div v-if="modal.visible" class="overlay" @click.self="closeModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>{{ modalTitle }}</h3>
-          <button class="close-btn" @click="closeModal">&times;</button>
-        </div>
-        <form @submit.prevent="submitModal">
-          <div class="input-group" v-if="modal.type === 'add'">
-            <label class="input-label">资产代码</label>
-            <input v-model.trim="form.code" class="modal-input" placeholder="如 sh600000 / hk00700 / gb_aapl" required />
-          </div>
-          <div class="input-group" v-if="modal.type === 'add'">
-            <label class="input-label">资产名称</label>
-            <input v-model.trim="form.name" class="modal-input" placeholder="资产名称（可留空）" />
-          </div>
-          <div v-if="showFundInputMode" class="input-group">
-            <label class="input-label">基金买入方式</label>
-            <div class="fund-mode-switch">
-              <button type="button" class="fund-mode-btn" :class="{ active: form.fundInputMode === 'qty' }" @click="form.fundInputMode = 'qty'">按份额</button>
-              <button type="button" class="fund-mode-btn" :class="{ active: form.fundInputMode === 'amount' }" @click="form.fundInputMode = 'amount'">按金额</button>
-            </div>
-            <div v-if="isFundAmountMode && form.navLoading" class="fund-mode-hint">正在获取最新净值…</div>
-            <div v-if="isFundAmountMode && form.navError" class="fund-mode-error">{{ form.navError }}</div>
-          </div>
-          <div class="input-group">
-            <label class="input-label">{{ modal.type === 'edit' ? '平均成本' : (isFundAmountMode ? '净值' : '成交价格') }}</label>
-            <input v-model.number="form.price" type="number" step="0.0001" class="modal-input" required />
-          </div>
-          <div class="input-group" v-if="showCashAccountSelector">
-            <label class="input-label">资金账户</label>
-            <select v-model.number="form.cashAssetId" class="modal-input" :disabled="cashAccountsLoading || !cashAccountOptions.length">
-              <option v-if="!cashAccountOptions.length" :value="-1">暂无可用账户</option>
-              <option v-for="account in cashAccountOptions" :key="account.id" :value="account.id">
-                {{ account.label }}
-              </option>
-            </select>
-            <div v-if="cashAccountsLoading" class="fund-mode-hint">正在加载资金账户…</div>
-            <div v-else-if="cashAccountError" class="fund-mode-error">{{ cashAccountError }}</div>
-            <div v-else-if="modal.type === 'sell' && !hasMatchingCashAccount" class="fund-mode-error">
-              未找到 {{ targetTradeCurrency }} 现金账户，请先添加对应账户。
-            </div>
-          </div>
-          <div v-if="isFundAmountMode" class="input-group">
-            <label class="input-label">买入金额</label>
-            <input v-model.number="form.amount" type="number" min="0" step="0.01" class="modal-input" required />
-            <div class="fund-mode-hint">预计份额：{{ derivedFundQty() > 0 ? formatFundQty(derivedFundQty()) : '--' }}</div>
-          </div>
-          <div v-if="!isFundAmountMode" class="input-group">
-            <label class="input-label">{{ modal.type === 'edit' ? '数量' : '交易数量' }}</label>
-            <input
-              v-model.number="form.qty"
-              type="number"
-              :min="showFundInputMode ? 0.0001 : 1"
-              :step="showFundInputMode ? 0.0001 : 1"
-              class="modal-input"
-              required
-            />
-          </div>
-          <div class="input-group" v-if="modal.type === 'edit'">
-            <label class="input-label">累计盈亏校准 (调整值)</label>
-            <input v-model.number="form.adjustment" type="number" step="0.01" class="modal-input" />
-          </div>
-          <button class="btn-primary full" type="submit">确认</button>
-        </form>
-      </div>
-    </div>
-    </div>
-  </LegacyAppShell>
-</template>
-
 <script setup lang="ts">
-import html2canvas from 'html2canvas'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
-import { marketDisplayCurrency, toNumber } from '../../shared/format'
-import { api } from '../../shared/http'
-import type { ApiError } from '../../shared/http'
-import { readPageCache, writePageCache } from '../../shared/pageCache'
-import { usePrivacyMode } from '../../shared/privacyMode'
-import { useKonaStore } from '../../shared/store'
-import { useWebTheme } from '../../shared/webTheme'
+/**
+ * AppInvestPage - 投资分析与明细 (Refactored Modern Style)
+ */
+import { computed, onMounted, ref } from 'vue'
+import { toNumber } from '@/shared/format'
+import { useKonaStore } from '@/stores/composables'
+import { usePrivacyMode } from '@/shared/privacyMode'
+import { useMarketStore } from '@/stores/market'
 
-type TabKey = 'all' | 'a' | 'fund' | 'us' | 'hk'
-type ModalType = 'add' | 'buy' | 'sell' | 'edit'
-type ActionMenuState = { openCode: string | null }
-type IndexCard = { id: string; name: string; price: number; chg: number }
-type CashAsset = { id: number; name: string; amount?: number; curr?: string }
-type CashAccountOption = { id: number; label: string }
-type InvestCachePayload = {
-  indexCards: IndexCard[]
-  currentCategory: TabKey
-  portfolio: unknown[]
-  quotes: Record<string, unknown>
-  rates: Record<string, number>
-  marketStatus: Record<string, unknown>
-  allClosed: boolean
-}
-
-const INVEST_CACHE_DOMAIN = 'invest'
-const INVEST_CACHE_KEY = 'page'
-const INVEST_CACHE_TTL_MS = 15 * 60_000
-const INVEST_PAGE_REFRESH_INTERVAL_MS = 120_000
-const EXTERNAL_CASH_ASSET_ID = -999
-
+// Stores
 const store = useKonaStore()
-const { theme } = useWebTheme()
-const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
-const rows = computed(() => store.rows.value)
-const rates = computed(() => store.state.rates)
+const { maskValue } = usePrivacyMode()
+const marketStore = useMarketStore()
 
-const currentCategory = ref<TabKey>('all')
-const indexCards = ref([
-  { id: 's_sh000001', name: '上证指数', price: 0, chg: 0 },
-  { id: 'rt_hkHSTECH', name: '恒生科技', price: 0, chg: 0 },
-  { id: 'gb_ixic', name: '纳斯达克', price: 0, chg: 0 },
-])
+// State
+const selectedTab = ref('all')
+const holdingsView = ref<'card'|'row'>('card')
 
-const tabs = [
-  { key: 'all', label: '全部' },
-  { key: 'a', label: 'A股' },
-  { key: 'fund', label: '基金' },
-  { key: 'us', label: '美股' },
-  { key: 'hk', label: '港股' },
-] as const
-
-const modal = reactive<{ visible: boolean; type: ModalType; code: string }>({
-  visible: false,
-  type: 'add',
-  code: '',
-})
-
-const actionMenu = reactive<ActionMenuState>({
-  openCode: null,
-})
-
-const form = reactive<{
-  code: string
-  name: string
-  qty: number
-  price: number
-  amount: number
-  curr: string
-  market: string
-  fundInputMode: 'qty' | 'amount'
-  navLoading: boolean
-  navError: string
-  adjustment: number
-  cashAssetId: number | null
-}>({
-  code: '',
-  name: '',
-  qty: 0,
-  price: 0,
-  amount: 0,
-  curr: 'CNY',
-  market: 'a',
-  fundInputMode: 'qty',
-  navLoading: false,
-  navError: '',
-  adjustment: 0,
-  cashAssetId: null,
-})
-const cashAccounts = ref<CashAsset[]>([])
-const cashAccountsLoading = ref(false)
-const cashAccountsLoaded = ref(false)
-const cashAccountError = ref('')
-let refreshInflight: Promise<void> | null = null
-let staticRefreshTimer: number | null = null
-let navPrefillTimer: number | null = null
-let navFetchSeq = 0
-
-function normalizeCurrency(curr: unknown): string {
-  const text = String(curr || 'CNY').trim().toUpperCase()
-  if (text === 'USD' || text === 'HKD' || text === 'CNY') return text
-  return 'CNY'
-}
-
-function cacheUserId(): string {
-  return String(store.state.user?.id || 'guest')
-}
-
-function persistInvestCache() {
-  writePageCache<InvestCachePayload>(
-    INVEST_CACHE_DOMAIN,
-    INVEST_CACHE_KEY,
-    cacheUserId(),
-    {
-      indexCards: indexCards.value,
-      currentCategory: currentCategory.value,
-      portfolio: store.state.portfolio as unknown[],
-      quotes: store.state.quotes as Record<string, unknown>,
-      rates: store.state.rates,
-      marketStatus: store.state.marketStatus as Record<string, unknown>,
-      allClosed: Boolean(store.state.allClosed),
-    },
-    INVEST_CACHE_TTL_MS,
-  )
-}
-
-function restoreInvestCache(): boolean {
-  const cached = readPageCache<InvestCachePayload>(
-    INVEST_CACHE_DOMAIN,
-    INVEST_CACHE_KEY,
-    cacheUserId(),
-    INVEST_CACHE_TTL_MS,
-  )
-  if (!cached) return false
-  if (Array.isArray(cached.indexCards) && cached.indexCards.length) {
-    indexCards.value = cached.indexCards
-  }
-  if (['all', 'a', 'fund', 'us', 'hk'].includes(String(cached.currentCategory))) {
-    currentCategory.value = cached.currentCategory
-  }
-  if (Array.isArray(cached.portfolio)) {
-    store.state.portfolio = cached.portfolio as typeof store.state.portfolio
-  }
-  if (cached.quotes && typeof cached.quotes === 'object') {
-    store.state.quotes = cached.quotes as typeof store.state.quotes
-  }
-  if (cached.rates && typeof cached.rates === 'object') {
-    store.state.rates = cached.rates
-  }
-  if (cached.marketStatus && typeof cached.marketStatus === 'object') {
-    store.state.marketStatus = cached.marketStatus as typeof store.state.marketStatus
-  }
-  store.state.allClosed = Boolean(cached.allClosed)
-  return true
-}
+// Computed for rates and conversions
+const rates = computed(() => marketStore.rates)
 
 function rateToCny(curr?: string): number {
-  const code = String(curr || 'CNY').toUpperCase()
-  return toNumber(rates.value[code], 1) || 1
+  const c = String(curr || 'CNY').toUpperCase()
+  return toNumber(rates.value?.[c], 1) || 1
 }
 
-function maskAmount(text: string): string {
-  return maskValue(text)
-}
 
-function formatMoney(value: unknown, curr: string): string {
-  const n = toNumber(value)
-  const text = `${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-  return maskAmount(text)
-}
 
-function formatMoneyInt(value: unknown, curr: string): string {
-  const n = Math.round(toNumber(value))
-  const text = `${currencySymbol(curr)}${Math.abs(n).toLocaleString('zh-CN')}`
-  return maskAmount(text)
-}
-
-function formatSignedMoney(value: number, curr: string): string {
-  const sign = value >= 0 ? '+' : '-'
-  const n = Math.abs(toNumber(value))
-  const text = `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-  return maskAmount(text)
-}
-
-function formatSignedMoneyInt(value: number, curr: string): string {
-  const sign = value >= 0 ? '+' : '-'
-  const n = Math.abs(Math.round(toNumber(value)))
-  const text = `${sign}${currencySymbol(curr)}${n.toLocaleString('zh-CN')}`
-  return maskAmount(text)
-}
-
-function formatSignedMoneyOrDash(value: unknown, curr: string): string {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '--'
-  return formatSignedMoney(n, curr)
-}
-
-function formatSignedMoneyIntOrDash(value: unknown, curr: string): string {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '--'
-  return formatSignedMoneyInt(n, curr)
-}
-
-function currencySymbol(curr: string): string {
-  const code = String(curr || 'CNY').toUpperCase()
-  if (code === 'USD') return '$'
-  if (code === 'HKD') return 'HK$'
-  return '¥'
-}
-
-function formatCny(value: number): string {
-  return maskAmount(`¥ ${Math.round(value).toLocaleString('zh-CN')}`)
-}
-
-function formatSignedCny(value: number): string {
-  const sign = value >= 0 ? '+' : '-'
-  return maskAmount(`${sign}¥ ${Math.abs(Math.round(value)).toLocaleString('zh-CN')}`)
-}
-
-function formatPct(value: number): string {
-  return `${value >= 0 ? '+' : ''}${toNumber(value).toFixed(2)}%`
-}
-
-function formatIndexPrice(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '--'
-  return maskAmount(value.toFixed(2))
-}
-
-function formatPctOrDash(value: unknown): string {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '--'
-  return formatPct(n)
-}
-
-function valueClass(value: number): 'up' | 'down' | 'neutral' {
-  if (!Number.isFinite(value)) return 'neutral'
-  return value >= 0 ? 'up' : 'down'
-}
-
-function displayCode(code: string): string {
-  const lower = String(code || '').toLowerCase()
-  if (lower.startsWith('sh') || lower.startsWith('sz') || lower.startsWith('bj')) return code.slice(2)
-  if (lower.startsWith('gb_')) return code.slice(3).toUpperCase()
-  if (lower.startsWith('f_')) return code.slice(2)
-  if (lower.startsWith('ft_')) return code.slice(3)
-  return code.toUpperCase()
-}
-
-function truncateAssetName(name: unknown): string {
-  const text = String(name || '-')
-  if (text === '-') return text
-  const chars = [...text]
-  const maxChars = 10
-  return chars.length > maxChars ? `${chars.slice(0, maxChars).join('')}...` : text
-}
-
-function rowCurrency(row: Record<string, unknown>): 'CNY' | 'HKD' | 'USD' {
-  return marketDisplayCurrency(row.market, row.curr)
-}
-
-function isFundCode(code: unknown): boolean {
-  const text = String(code || '').trim().toLowerCase()
-  if (!text) return false
-  if (text.startsWith('f_') || text.startsWith('ft_')) return true
-  if (/^\d+$/.test(text) && text.startsWith('11')) return true
-  return false
-}
-
-function inferMarketType(row?: Record<string, unknown>): 'a' | 'hk' | 'us' | 'fund' {
-  const market = String(row?.market || row?.asset_type || '').trim().toLowerCase()
-  if (market === 'a' || market === 'hk' || market === 'us' || market === 'fund') {
-    return market
-  }
-  return isFundCode(row?.code) ? 'fund' : 'a'
-}
-
-function normalizeCodeForSubmit(rawCode: string): string {
-  const input = String(rawCode || '').trim()
-  if (!input) return ''
-  if (/^\d+$/.test(input)) {
-    if (input.startsWith('11')) return `f_${input}`
-    if (input.startsWith('6') || input.startsWith('5') || input.startsWith('9')) return `sh${input}`
-    if (input.startsWith('0') || input.startsWith('3') || input.startsWith('1') || input.startsWith('2')) return `sz${input}`
-    if (input.startsWith('4') || input.startsWith('8')) return `bj${input}`
-  }
-  if (input.toUpperCase().endsWith('.HK')) return input.toUpperCase()
-  if (/^[a-zA-Z]+$/.test(input)) return `gb_${input.toLowerCase()}`
-  return input
-}
-
-function normalizeCodeForCompare(rawCode: unknown): string {
-  return String(rawCode || '').trim().toLowerCase()
-}
-
-function clonePortfolioSnapshot(): Record<string, unknown>[] {
-  return (store.state.portfolio as Record<string, unknown>[]).map((item) => ({ ...item }))
-}
-
-function restorePortfolioSnapshot(snapshot: Record<string, unknown>[]) {
-  store.state.portfolio = snapshot as typeof store.state.portfolio
-}
-
-function findPortfolioIndexByCode(code: string): number {
-  const target = normalizeCodeForCompare(code)
-  if (!target) return -1
-  return (store.state.portfolio as Record<string, unknown>[]).findIndex(
-    (item) => normalizeCodeForCompare(item.code) === target,
-  )
-}
-
-function holdingQtyByCode(code: string): number {
-  const idx = findPortfolioIndexByCode(code)
-  if (idx < 0) return 0
-  return toNumber((store.state.portfolio as Record<string, unknown>[])[idx]?.qty, 0)
-}
-
-function applyOptimisticPortfolioChange(params: {
-  mode: ModalType
-  code: string
-  name: string
-  qty: number
-  price: number
-  adjustment: number
-  curr: string
-  assetType: string
-}) {
-  const { mode, code, name, qty, price, adjustment, curr, assetType } = params
-  const list = [...(store.state.portfolio as Record<string, unknown>[])]
-  const idx = findPortfolioIndexByCode(code)
-
-  if (mode === 'add') {
-    if (idx >= 0) {
-      const existing = list[idx]
-      if (!existing) return
-      const oldQty = toNumber(existing.qty, 0)
-      const oldPrice = toNumber(existing.price, 0)
-      const nextQty = oldQty + qty
-      const nextPrice = nextQty > 0 ? ((oldQty * oldPrice + qty * price) / nextQty) : oldPrice
-      list[idx] = {
-        ...existing,
-        qty: nextQty,
-        price: Number(nextPrice.toFixed(6)),
-      }
-    } else {
-      list.push({
-        code,
-        name: name || code,
-        qty,
-        price,
-        curr,
-        asset_type: assetType,
-        adjustment: 0,
-      })
-    }
-    store.state.portfolio = list as typeof store.state.portfolio
-    return
-  }
-
-  if (mode === 'buy') {
-    if (idx < 0) return
-    const existing = list[idx]
-    if (!existing) return
-    const oldQty = toNumber(existing.qty, 0)
-    const oldPrice = toNumber(existing.price, 0)
-    const nextQty = oldQty + qty
-    const nextPrice = nextQty > 0 ? ((oldQty * oldPrice + qty * price) / nextQty) : oldPrice
-    list[idx] = {
-      ...existing,
-      qty: nextQty,
-      price: Number(nextPrice.toFixed(6)),
-    }
-    store.state.portfolio = list as typeof store.state.portfolio
-    return
-  }
-
-  if (mode === 'sell') {
-    if (idx < 0) return
-    const existing = list[idx]
-    if (!existing) return
-    const oldQty = toNumber(existing.qty, 0)
-    const nextQty = oldQty - qty
-    if (nextQty <= 1e-6) {
-      list.splice(idx, 1)
-    } else {
-      list[idx] = {
-        ...existing,
-        qty: nextQty,
-      }
-    }
-    store.state.portfolio = list as typeof store.state.portfolio
-    return
-  }
-
-  if (mode === 'edit') {
-    if (idx < 0) return
-    list[idx] = {
-      ...list[idx],
-      qty,
-      price,
-      adjustment,
-    }
-    store.state.portfolio = list as typeof store.state.portfolio
-  }
-}
-
-const showFundInputMode = computed(() => {
-  if (modal.type !== 'add' && modal.type !== 'buy') return false
-  if (modal.type === 'buy') {
-    return form.market === 'fund' || isFundCode(modal.code)
-  }
-  return form.market === 'fund' || isFundCode(form.code)
+// Current currency formatting config (Follow Homepage)
+const currentCurrency = ref<'CNY'|'USD'|'HKD'>('CNY')
+const currMeta = computed(() => {
+  if (currentCurrency.value === 'USD') return { sym: '$ ', label: '美元' }
+  if (currentCurrency.value === 'HKD') return { sym: 'HK$ ', label: '港币' }
+  return { sym: '¥ ', label: '人民币' }
 })
 
-const isFundAmountMode = computed(() => showFundInputMode.value && form.fundInputMode === 'amount')
-const showCashAccountSelector = computed(() => modal.type === 'buy' || modal.type === 'sell')
-const targetTradeCurrency = computed(() => normalizeCurrency(form.curr))
-const matchingCashAccounts = computed(() =>
-  cashAccounts.value.filter((asset) => normalizeCurrency(asset.curr) === targetTradeCurrency.value),
-)
-const hasMatchingCashAccount = computed(() => matchingCashAccounts.value.length > 0)
-const cashAccountOptions = computed<CashAccountOption[]>(() => {
-  const options: CashAccountOption[] = []
-  if (modal.type === 'buy') {
-    options.push({
-      id: EXTERNAL_CASH_ASSET_ID,
-      label: `外部资金/初始转入 (${targetTradeCurrency.value})`,
-    })
-  }
-  for (const asset of matchingCashAccounts.value) {
-    options.push({
-      id: Number(asset.id),
-      label: `${asset.name} · ${normalizeCurrency(asset.curr)}`,
-    })
-  }
-  return options
-})
-
-function applyDefaultCashSelection() {
-  if (!showCashAccountSelector.value) {
-    form.cashAssetId = null
-    return
-  }
-  const optionIds = new Set(cashAccountOptions.value.map((item) => item.id))
-  if (modal.type === 'buy') {
-    if (form.cashAssetId != null && optionIds.has(form.cashAssetId)) return
-    form.cashAssetId = EXTERNAL_CASH_ASSET_ID
-    return
-  }
-  if (form.cashAssetId != null && optionIds.has(form.cashAssetId)) return
-  form.cashAssetId = cashAccountOptions.value[0]?.id ?? null
+function toDisplay(cnyVal: number): number {
+  if (currentCurrency.value === 'USD') return cnyVal / rateToCny('USD')
+  if (currentCurrency.value === 'HKD') return cnyVal / rateToCny('HKD')
+  return cnyVal
 }
 
-function isNotFoundError(error: unknown): boolean {
-  return Number((error as ApiError | undefined)?.status) === 404
+function formatCurrency(cnyValue: number, signed = false): string {
+  const val = toDisplay(cnyValue)
+  const sym = currMeta.value.sym
+  const sign = signed && cnyValue >= 0 ? '+' : signed && cnyValue < 0 ? '-' : ''
+  const absVal = Math.abs(val)
+  const formatted = absVal >= 1000 ? Math.round(absVal).toLocaleString('zh-CN') : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return `${sign}${sym}${formatted}`
 }
 
-async function ensureCashAccountsLoaded(force = false) {
-  if (cashAccountsLoading.value) return
-  if (cashAccountsLoaded.value && !force) return
-  cashAccountsLoading.value = true
-  cashAccountError.value = ''
-  try {
-    const list = await api.get<CashAsset[]>('/api/cash_assets')
-    cashAccounts.value = Array.isArray(list) ? list : []
-    cashAccountsLoaded.value = true
-  } catch (error) {
-    cashAccountError.value = (error as Error)?.message || '资金账户加载失败'
-  } finally {
-    cashAccountsLoading.value = false
-    applyDefaultCashSelection()
-  }
-}
+// Utility
 
-function derivedFundQty(): number {
-  const amount = toNumber(form.amount)
-  const nav = toNumber(form.price)
-  if (amount <= 0 || nav <= 0) return 0
-  const rawQty = amount / nav
-  return Math.floor(rawQty * 10000) / 10000
-}
+// Data Processing
+const rows = computed(() => store?.rows?.value || [])
 
-function formatFundQty(value: number): string {
-  const text = value.toFixed(4)
-  return text.replace(/\.?0+$/, '')
-}
-
-function formatHoldingQty(qty: unknown, row?: Record<string, unknown>): string {
-  const n = Math.abs(toNumber(qty))
-  if (!Number.isFinite(n)) return '0'
-  const market = String(row?.market || row?.asset_type || '').toLowerCase()
-  if (market === 'fund' || isFundCode(row?.code)) {
-    return formatFundQty(n)
-  }
-  return Math.round(n).toLocaleString('zh-CN')
-}
-
-function validatePositiveIntegerQty(qty: number): boolean {
-  return Number.isInteger(qty) && qty > 0
-}
-
-function validatePositiveFundQty(qty: number): boolean {
-  if (!Number.isFinite(qty) || qty <= 0) return false
-  const scaled = Math.round(qty * 10000)
-  return Math.abs(scaled - qty * 10000) < 1e-6
-}
-
-function showClosedHint(row: Record<string, unknown>): boolean {
-  const marketTradingDay = row.marketTradingDay
-  if (marketTradingDay === true || marketTradingDay === 1 || marketTradingDay === '1') return false
-  if (String(marketTradingDay ?? '').toLowerCase() === 'true') return false
-  // 仅在“非交易日”提示休市；交易日中的午休/收盘后不显示该提示，避免误导。
-  return marketTradingDay === false || marketTradingDay === 0 || marketTradingDay === '0'
-}
-
-const filteredRows = computed(() => {
-  if (currentCategory.value === 'all') return rows.value
-  return rows.value.filter((row) => {
-    if (currentCategory.value === 'a') return row.market === 'a'
-    if (currentCategory.value === 'fund') return row.market === 'fund'
-    if (currentCategory.value === 'us') return row.market === 'us'
-    if (currentCategory.value === 'hk') return row.market === 'hk'
-    return true
-  })
-})
-
-const investStats = computed(() => {
+const investTotal = computed(() => {
   let mv = 0
   let cost = 0
   let dayPnl = 0
-  let floatPnl = 0
   let totalPnl = 0
-  for (const row of rows.value) {
-    const rate = rateToCny(row.curr)
-    const rowMv = toNumber(row.value) * rate
-    const rowCost = toNumber(row.costPrice) * toNumber(row.qty) * rate
+  const rowsData = rows.value || []
+  for (const row of rowsData) {
+    const rate = rateToCny(String(row.curr))
+    const rowMv = (Number(row.value) || 0) * rate
+    const rowCost = (Number(row.cost) || Number(row.costPrice) * Number(row.qty) || 0) * rate
     mv += rowMv
     cost += Math.abs(rowCost)
-    dayPnl += toNumber(row.dayPnlAggregate) * rate
-    floatPnl += (toNumber(row.value) - toNumber(row.costPrice) * toNumber(row.qty)) * rate
-    totalPnl += toNumber(row.totalPnl) * rate
+    dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
+    totalPnl += (Number(row.totalPnl) || 0) * rate
   }
+  const floatPnl = mv - cost
   return {
     mv,
     dayPnl,
     floatPnl,
     totalPnl,
-    dayRate: mv - dayPnl > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0,
-    floatRate: Math.abs(cost) > 0 ? (floatPnl / Math.abs(cost)) * 100 : 0,
-    totalRate: Math.abs(cost) > 0 ? (totalPnl / Math.abs(cost)) * 100 : 0,
+    dayRate: (mv - dayPnl) > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0,
+    floatRate: cost > 0 ? (floatPnl / cost) * 100 : 0,
+    totalRate: cost > 0 ? (totalPnl / cost) * 100 : 0
   }
 })
 
-const modalTitle = computed(() => {
-  if (modal.type === 'add') return '添加资产'
-  if (modal.type === 'buy') return `买入 ${modal.code}`
-  if (modal.type === 'sell') return `卖出 ${modal.code}`
-  return `调整 ${modal.code}`
-})
-
-function openModal(type: ModalType, row?: Record<string, unknown>) {
-  closeActionMenu()
-  modal.visible = true
-  modal.type = type
-  modal.code = String(row?.code || '')
-  form.code = String(row?.code || '')
-  form.name = String(row?.name || '')
-  form.qty = toNumber(row?.qty, 0)
-  form.price = toNumber(row?.rawCostPrice ?? row?.costPrice ?? row?.price, 0)
-  form.amount = 0
-  form.curr = String(row?.curr || 'CNY')
-  form.market = inferMarketType(row)
-  form.fundInputMode = 'qty'
-  form.navLoading = false
-  form.navError = ''
-  form.adjustment = toNumber(row?.adjustment, 0)
-  form.cashAssetId = null
-  if (type === 'buy' || type === 'sell') {
-    form.qty = 0
-    form.price = toNumber(row?.currentPrice ?? row?.price, 0)
-    applyDefaultCashSelection()
-    void ensureCashAccountsLoaded()
+// Market breakdowns
+const marketCards = computed(() => {
+  const result: Record<string, any> = {
+    a: { name: 'A股', dayPnl: 0, totalPnl: 0, mv: 0, cost: 0, icon: '🇨🇳' },
+    hk: { name: '港股', dayPnl: 0, totalPnl: 0, mv: 0, cost: 0, icon: '🇭🇰' },
+    us: { name: '美股', dayPnl: 0, totalPnl: 0, mv: 0, cost: 0, icon: '🇺🇸' },
+    fund: { name: '基金', dayPnl: 0, totalPnl: 0, mv: 0, cost: 0, icon: '📈' }
   }
-  if ((type === 'add' || type === 'buy') && showFundInputMode.value) {
-    form.fundInputMode = 'amount'
-    scheduleFundNavPrefill()
-  }
-}
-
-function openAction(type: Exclude<ModalType, 'add'>, row: Record<string, unknown>) {
-  openModal(type, row)
-}
-
-function closeModal() {
-  modal.visible = false
-  navFetchSeq += 1
-  if (navPrefillTimer !== null) {
-    window.clearTimeout(navPrefillTimer)
-    navPrefillTimer = null
-  }
-}
-
-function toggleActionMenu(code: string) {
-  actionMenu.openCode = actionMenu.openCode === code ? null : code
-}
-
-function isActionMenuOpen(code: string): boolean {
-  return actionMenu.openCode === code
-}
-
-function closeActionMenu() {
-  actionMenu.openCode = null
-}
-
-function ensureValidQty(): boolean {
-  if (isFundAmountMode.value) return true
-  const qty = toNumber(form.qty)
-  if (showFundInputMode.value) {
-    if (validatePositiveFundQty(qty)) return true
-    alert('基金份额必须大于 0，且最多 4 位小数')
-    return false
-  }
-  if (validatePositiveIntegerQty(toNumber(form.qty))) return true
-  alert('数量必须是正整数')
-  return false
-}
-
-function ensureValidPriceByMode(): boolean {
-  const price = Number(form.price)
-  if (!Number.isFinite(price)) {
-    alert('价格必须是有效数字')
-    return false
-  }
-  if (modal.type !== 'edit' && price <= 0) {
-    alert('成交价格必须大于 0')
-    return false
-  }
-  return true
-}
-
-function scheduleFundNavPrefill() {
-  if (navPrefillTimer !== null) {
-    window.clearTimeout(navPrefillTimer)
-    navPrefillTimer = null
-  }
-  if (!modal.visible || !isFundAmountMode.value) return
-  navPrefillTimer = window.setTimeout(() => {
-    navPrefillTimer = null
-    void prefillFundNav()
-  }, 300)
-}
-
-async function prefillFundNav() {
-  if (!modal.visible || !isFundAmountMode.value) return
-  const code = modal.type === 'add' ? normalizeCodeForSubmit(form.code) : normalizeCodeForSubmit(modal.code || form.code)
-  if (!code) return
-  const apiCode = code.startsWith('gb_') ? code.slice(3) : code
-  const seq = ++navFetchSeq
-  form.navLoading = true
-  form.navError = ''
-  try {
-    const prices = await api.post<Record<string, { price?: number; yclose?: number }>>('/api/prices/batch', { codes: [apiCode] })
-    if (seq !== navFetchSeq) return
-    const quote = prices[apiCode] || {}
-    const nav = toNumber(quote.price, 0) > 0 ? toNumber(quote.price, 0) : toNumber(quote.yclose, 0)
-    if (nav > 0) {
-      form.price = Number(nav.toFixed(4))
-      form.navError = ''
-    } else {
-      form.navError = '净值获取失败，可手动输入'
+  
+  rows.value.forEach(row => {
+    const m = row.market as string
+    if (result[m]) {
+      const rate = rateToCny(String(row.curr))
+      const rowMv = (Number(row.value) || 0) * rate
+      const rowCost = (Number(row.cost) || Number(row.costPrice) * Number(row.qty) || 0) * rate
+      result[m].mv += rowMv
+      result[m].cost += Math.abs(rowCost)
+      result[m].dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
+      result[m].totalPnl += (Number(row.totalPnl) || 0) * rate
     }
-  } catch {
-    if (seq !== navFetchSeq) return
-    form.navError = '净值获取失败，可手动输入'
-  } finally {
-    if (seq === navFetchSeq) {
-      form.navLoading = false
-    }
-  }
-}
-
-async function submitModal() {
-  if (!ensureValidQty()) return
-  if (!ensureValidPriceByMode()) return
-
-  const submitCode = normalizeCodeForSubmit(modal.type === 'add' ? form.code : modal.code)
-  const submitQty = isFundAmountMode.value ? derivedFundQty() : toNumber(form.qty)
-  if (!submitCode) {
-    alert('资产代码无效')
-    return
-  }
-  if (isFundAmountMode.value) {
-    if (toNumber(form.amount) <= 0) {
-      alert('买入金额必须大于 0')
-      return
-    }
-    if (submitQty <= 0) {
-      alert('金额过小，按当前净值不足以买入最小份额（0.0001）')
-      return
-    }
-  }
-  if (modal.type === 'sell') {
-    const holdingQty = holdingQtyByCode(submitCode)
-    if (submitQty > holdingQty + 1e-6) {
-      alert(`卖出数量超过持仓：当前持仓 ${formatHoldingQty(holdingQty)}`)
-      return
-    }
-  }
-
-  const snapshot = clonePortfolioSnapshot()
-  try {
-    applyOptimisticPortfolioChange({
-      mode: modal.type,
-      code: submitCode,
-      name: form.name || modal.code || submitCode,
-      qty: modal.type === 'edit' ? toNumber(form.qty, 0) : submitQty,
-      price: toNumber(form.price, 0),
-      adjustment: toNumber(form.adjustment, 0),
-      curr: form.curr || 'CNY',
-      assetType: form.market || 'a',
-    })
-
-    if (modal.type === 'add') {
-      await api.post('/api/portfolio/add', {
-        code: submitCode,
-        name: form.name || submitCode,
-        qty: submitQty,
-        price: form.price,
-        curr: form.curr || 'CNY',
-      })
-    } else if (modal.type === 'buy') {
-      const selectedCashAssetId = Number(form.cashAssetId)
-      if (!Number.isFinite(selectedCashAssetId)) {
-        restorePortfolioSnapshot(snapshot)
-        alert('请选择资金账户')
-        return
-      }
-      if (selectedCashAssetId === EXTERNAL_CASH_ASSET_ID) {
-        await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
-      } else {
-        try {
-          await api.post('/api/portfolio/buy_with_cash', {
-            code: submitCode,
-            name: form.name || modal.code || submitCode,
-            qty: submitQty,
-            price: form.price,
-            cash_asset_id: selectedCashAssetId,
-            curr: form.curr || 'CNY',
-            asset_type: form.market || 'a',
-          })
-        } catch (error) {
-          if (!isNotFoundError(error)) throw error
-          await api.post('/api/portfolio/buy', { code: submitCode, qty: submitQty, price: form.price })
-        }
-      }
-    } else if (modal.type === 'sell') {
-      const selectedCashAssetId = Number(form.cashAssetId)
-      if (!Number.isFinite(selectedCashAssetId) || selectedCashAssetId <= 0) {
-        restorePortfolioSnapshot(snapshot)
-        alert(`请先选择 ${targetTradeCurrency.value} 回款账户`)
-        return
-      }
-      try {
-        await api.post('/api/portfolio/sell_to_cash', {
-          code: submitCode,
-          qty: submitQty,
-          price: form.price,
-          cash_asset_id: selectedCashAssetId,
-        })
-      } catch (error) {
-        if (!isNotFoundError(error)) throw error
-        await api.post('/api/portfolio/sell', { code: submitCode, qty: submitQty, price: form.price })
-      }
-    } else {
-      await api.post('/api/portfolio/modify', {
-        code: submitCode,
-        qty: form.qty,
-        price: form.price,
-        adjustment: form.adjustment,
-      })
-    }
-  } catch (error) {
-    restorePortfolioSnapshot(snapshot)
-    alert((error as Error)?.message || '保存失败，请稍后重试')
-    return
-  }
-  closeModal()
-  await refresh('force')
-}
-
-watch(
-  () => [modal.visible, modal.type, form.code, form.fundInputMode, form.market] as const,
-  () => {
-    if (showFundInputMode.value && isFundAmountMode.value) {
-      scheduleFundNavPrefill()
-    }
-  },
-)
-
-watch(
-  () => [modal.visible, modal.type, form.curr, cashAccounts.value.length] as const,
-  ([visible, type]) => {
-    if (!visible) return
-    if (type === 'buy' || type === 'sell') {
-      applyDefaultCashSelection()
-      void ensureCashAccountsLoaded()
-    }
-  },
-)
-
-async function remove(code: string) {
-  closeActionMenu()
-  if (!confirm(`确认删除 ${code} ？`)) return
-  await api.post('/api/portfolio/delete', { code })
-  await refresh('force')
-}
-
-async function loadIndexes() {
-  try {
-    const result = await api.post<Record<string, { price?: number; yclose?: number; chg?: number }>>('/api/prices/batch', {
-      codes: indexCards.value.map((item) => item.id),
-    })
-    indexCards.value = indexCards.value.map((item) => {
-      const quote = result[item.id] || {}
-      return {
-        ...item,
-        price: toNumber(quote.price, toNumber(quote.yclose, 0)),
-        chg: toNumber(quote.chg, 0),
-      }
-    })
-  } catch {
-    // ignore index failures
-  }
-}
-
-async function refresh(mode: 'light' | 'force' = 'light') {
-  if (refreshInflight) {
-    return refreshInflight
-  }
-  refreshInflight = (async () => {
-    const refreshStore = mode === 'force' ? store.refreshAll() : store.refreshStaticOnly()
-    await Promise.all([refreshStore, loadIndexes()])
-    persistInvestCache()
-  })()
-  try {
-    await refreshInflight
-  } finally {
-    refreshInflight = null
-  }
-}
-
-function handleDocumentClick() {
-  closeActionMenu()
-}
-
-async function saveAsImage() {
-  const target = document.getElementById('capture-area-invest')
-  if (!target) return
-  const canvas = await html2canvas(target, {
-    backgroundColor: theme.value === 'light' ? '#f7fbff' : '#0a0e27',
-    scale: 2,
-    useCORS: true,
   })
-  const link = document.createElement('a')
-  link.download = `kaka-invest-${Date.now()}.png`
-  link.href = canvas.toDataURL('image/png')
-  link.click()
+  
+  return Object.values(result).map(m => ({
+    ...m,
+    dayRate: (m.mv - m.dayPnl) > 0 ? (m.dayPnl / (m.mv - m.dayPnl)) * 100 : 0,
+    totalRate: m.cost > 0 ? (m.totalPnl / m.cost) * 100 : 0
+  }))
+})
+
+// Distribution Donut Chart
+const distributionData = computed(() => {
+  const total = investTotal.value.mv || 1
+  return marketCards.value.map(m => ({
+    name: m.name,
+    percent: (m.mv / total) * 100,
+    value: m.mv,
+    color: m.name === '美股' ? '#5B8DEF' : m.name === 'A股' ? '#F05A55' : m.name === '港股' ? '#3ECF82' : '#F2C94C'
+  })).filter(d => d.value > 0).sort((a, b) => b.value - a.value)
+})
+
+// Helpers for SVG Chart
+const slices = computed(() => {
+    let currentPercent = 0;
+    return distributionData.value.map(d => {
+        const start = currentPercent;
+        currentPercent += d.percent;
+        return { ...d, start, end: currentPercent };
+    });
+})
+
+function describeArc(x: number, y: number, radius: number, startAngle: number, endAngle: number) {
+    const start = polarToCartesian(x, y, radius, endAngle);
+    const end = polarToCartesian(x, y, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+    return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" ");
 }
 
-function startStaticRefresh() {
-  if (staticRefreshTimer) {
-    window.clearInterval(staticRefreshTimer)
+function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
+    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+    return {
+        x: centerX + (radius * Math.cos(angleInRadians)),
+        y: centerY + (radius * Math.sin(angleInRadians))
+    };
+}
+
+// Holdings filtering
+// Utility
+
+const filteredRows = computed(() => {
+  const s = selectedTab.value
+  let base = rows.value || []
+  if (s !== 'all') {
+    base = base.filter(r => r.market === s)
   }
-  staticRefreshTimer = window.setInterval(() => {
-    void refresh('light')
-  }, INVEST_PAGE_REFRESH_INTERVAL_MS)
+  return base.map(row => {
+    const qty = Number(row.qty) || 0
+    const last = Number(row.last) || 0
+    const costPrice = Number(row.costPrice) || 0
+    const cost = Math.abs(Number(row.cost) || costPrice * qty)
+    const mv = Number(row.value) || (qty * last)
+    
+    // Percentages
+    const dayPnl = Number(row.dayPnlAggregate) || 0
+    const totalPnl = Number(row.totalPnl) || (mv - cost)
+    
+    const dayPnlRate = (mv - dayPnl) > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0
+    const totalPnlRate = cost > 0 ? (totalPnl / cost) * 100 : 0
+    const totalMarketMv = investTotal.value.mv || 1
+    const pct = mv / totalMarketMv
+
+    return {
+      ...row,
+      qty,
+      last,
+      costPrice,
+      mv,
+      dayPnl,
+      totalPnl,
+      dayPnlRate,
+      totalPnlRate,
+      cost,
+      pct,
+      price: last,
+      curr: String(row.curr || 'CNY'),
+      market: row.market,
+      unit: row.unit || (row.market === 'fund' ? '份' : '股'),
+      spark: row.spark || 'M0,30 L20,26 L40,28 L60,18 L80,14 L100,8 L120,5' // Default mock spark
+    }
+  })
+})
+
+// Utility
+function masked(text: string): string { return maskValue(text) }
+function formatPct(v: number): string { return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` }
+function valueClass(v: number): string { return v >= 0 ? 'up' : 'dn' }
+function getMarketCls(m: string) {
+  if (m === 'us') return 'blue'
+  if (m === 'hk') return 'orange'
+  if (m === 'a') return 'green'
+  return 'gold'
+}
+function getMarketName(m: string) {
+  if (m === 'us') return 'NASDAQ·US'
+  if (m === 'hk') return '港交所·HK'
+  if (m === 'a') return '沪深·A'
+  return '基金'
+}
+function formatLocal(v: any, cur?: string) {
+  return Number(v || 0).toLocaleString()
 }
 
 onMounted(async () => {
-  document.addEventListener('click', handleDocumentClick)
-  const restored = restoreInvestCache()
-  try {
-    await refresh(restored ? 'light' : 'force')
-  } finally {
-    store.startAutoRefresh()
-    startStaticRefresh()
-  }
+    try {
+        await store.refreshAll()
+        await marketStore.loadRates()
+    } catch (e) {
+        console.error('Failed to load invest data', e)
+    }
 })
 
-onBeforeUnmount(() => {
-  if (staticRefreshTimer) {
-    window.clearInterval(staticRefreshTimer)
-    staticRefreshTimer = null
-  }
-  if (navPrefillTimer !== null) {
-    window.clearTimeout(navPrefillTimer)
-    navPrefillTimer = null
-  }
-  store.stopAutoRefresh()
-  document.removeEventListener('click', handleDocumentClick)
-})
 </script>
 
+<template>
+  <div class="kk-page invest-page">
+    <div class="modern-shell">
+      <!-- Top Title -->
+      <div class="page-header">
+        <div class="title-group">
+          <h1>投资资产分析</h1>
+          <div class="subtitle">Investment Analysis & Portfolio</div>
+        </div>
+        <div class="ccy-tag" @click="currentCurrency = (currentCurrency === 'CNY' ? 'USD' : currentCurrency === 'USD' ? 'HKD' : 'CNY')">
+          {{ currentCurrency }} 汇率折算
+        </div>
+      </div>
+
+      <!-- Main Statistics Grid -->
+      <div class="stats-grid">
+        <!-- Hero Card: Total MV -->
+        <div class="hero-card">
+          <div class="card-label">投资总资产 ({{ currentCurrency }})</div>
+          <div class="main-val">{{ masked(formatCurrency(investTotal.mv)) }}</div>
+          <div class="stats-row">
+            <div class="stat-item">
+              <span class="sl">今日盈亏</span>
+              <div class="sv-group" :class="valueClass(investTotal.dayPnl)">
+                <span class="sv-amt">{{ formatCurrency(investTotal.dayPnl, true) }}</span>
+                <span class="sv-pct">{{ formatPct(investTotal.dayRate) }}</span>
+              </div>
+            </div>
+            <div class="stat-item">
+              <span class="sl">持仓收益</span>
+              <div class="sv-group" :class="valueClass(investTotal.floatPnl)">
+                <span class="sv-amt">{{ formatCurrency(investTotal.floatPnl, true) }}</span>
+                <span class="sv-pct">{{ formatPct(investTotal.floatRate) }}</span>
+              </div>
+            </div>
+            <div class="stat-item">
+              <span class="sl">累计收益</span>
+              <div class="sv-group" :class="valueClass(investTotal.totalPnl)">
+                <span class="sv-amt">{{ formatCurrency(investTotal.totalPnl, true) }}</span>
+                <span class="sv-pct">{{ formatPct(investTotal.totalRate) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Donut Distribution Card -->
+        <div class="dist-card">
+           <div class="card-title">资产分布</div>
+           <div class="dist-content">
+              <div class="chart-container">
+                  <svg viewBox="0 0 100 100" class="donut-svg">
+                      <circle cx="50" cy="50" r="35" fill="transparent" stroke="rgba(255,255,255,0.05)" stroke-width="12" />
+                      <g v-for="(slice, i) in slices" :key="i">
+                          <path 
+                            :d="describeArc(50, 50, 35, slice.start * 3.6, slice.end * 3.6)" 
+                            :stroke="slice.color" 
+                            stroke-width="12" 
+                            fill="none"
+                            stroke-linecap="round"
+                            class="donut-slice"
+                          />
+                      </g>
+                      <text x="50" y="47" text-anchor="middle" class="chart-center-val">{{ distributionData.length }}</text>
+                      <text x="50" y="62" text-anchor="middle" class="chart-center-lbl">资产</text>
+                  </svg>
+              </div>
+              <div class="legend-list">
+                  <div v-for="item in distributionData" :key="item.name" class="legend-item">
+                      <span class="dot" :style="{ background: item.color }"></span>
+                      <span class="ln">{{ item.name }}</span>
+                      <span class="lp">{{ item.percent.toFixed(1) }}%</span>
+                  </div>
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <!-- Market Breakdown PnL Grid -->
+      <div class="market-grid">
+         <div v-for="m in marketCards" :key="m.name" class="market-card">
+            <div class="m-header">
+                <div class="m-title">
+                    <span class="m-icon">{{ m.icon }}</span>
+                    <span class="m-name">{{ m.name }}</span>
+                </div>
+                <div class="m-mv">{{ formatCurrency(m.mv) }}</div>
+            </div>
+            <div class="m-stats">
+                <div class="ms-item">
+                    <div class="ms-lbl">今日</div>
+                    <div class="ms-val-group" :class="valueClass(m.dayPnl)">
+                        <div class="ms-amt">{{ formatCurrency(m.dayPnl, true) }}</div>
+                        <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
+                    </div>
+                </div>
+                <div class="ms-item">
+                    <div class="ms-lbl">累计</div>
+                    <div class="ms-val-group" :class="valueClass(m.totalPnl)">
+                        <div class="ms-amt">{{ formatCurrency(m.totalPnl, true) }}</div>
+                        <div class="ms-pct">{{ formatPct(m.totalRate) }}</div>
+                    </div>
+                </div>
+            </div>
+         </div>
+      </div>
+
+      <!-- Holdings 1:1 Replica from Homepage -->
+      <div class="holdings-section">
+          <div class="h-header">
+              <div class="h-title-group">
+                <div class="section-label">持仓明细</div>
+                <div class="tabs">
+                    <button v-for="tab in ['all','hk','us','a','fund']" :key="tab" @click="selectedTab=tab" class="tab" :class="{active:selectedTab===tab}">{{ tab==='all'?'全部':tab==='hk'?'港股':tab==='us'?'美股':tab==='a'?'A股':'基金' }}</button>
+                </div>
+              </div>
+              <div class="view-toggle">
+                  <button @click="holdingsView='card'" :class="{active: holdingsView==='card'}">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor"/></svg>
+                  </button>
+                  <button @click="holdingsView='row'" :class="{active: holdingsView==='row'}">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor"/></svg>
+                  </button>
+              </div>
+          </div>
+
+          <div v-if="!filteredRows || filteredRows.length === 0" class="empty-state">
+              <div class="empty-icon">📭</div>
+              <div class="empty-text">暂无持仓数据</div>
+          </div>
+
+          <div v-else>
+              <!-- Card View -->
+              <div v-if="holdingsView === 'card'" class="card-view-grid">
+                <div v-for="(row, idx) in filteredRows" :key="row?.code||`card-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hcard">
+                  <!-- Top Accent Bar -->
+                  <div 
+                    class="hcard-accent-top" 
+                    :style="{ background: `linear-gradient(90deg, transparent, ${toNumber(row.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'} 40%, transparent)` }"
+                  ></div>
+                  
+                  <div class="h-icon" :class="[getMarketCls(row.market)]" style="width:38px;height:38px;font-size:9px;margin-bottom:10px">
+                    {{ row.code?.substring(0, 4).toUpperCase() || '??' }}
+                  </div>
+                  
+                  <div class="h-name" style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">
+                    {{ row.name }}
+                  </div>
+                  
+                  <div style="display:flex;align-items:center;gap:5px;margin-bottom:10px">
+                    <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
+                    <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount, '') }}{{ row.unit }}</span>
+                  </div>
+
+                  <!-- Sparkline -->
+                  <div style="height:38px;margin-bottom:10px;opacity:.85">
+                    <svg viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
+                      <path 
+                        :d="row.spark" 
+                        :stroke="toNumber(row.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'" 
+                        stroke-width="1.6" 
+                        fill="none"
+                      />
+                    </svg>
+                  </div>
+
+                  <div style="font-family: 'JetBrains Mono', monospace; font-size:16px; font-weight:600; color:var(--text); margin-bottom:5px">
+                    {{ formatCurrency(row.mv) }}
+                  </div>
+                  
+                  <div 
+                    class="badge" 
+                    :class="[toNumber(row.dayPnlRate) >= 0 ? 'up' : 'dn']"
+                    style="display:inline-flex;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:10px"
+                  >
+                    {{ formatPct(row.dayPnlRate) }}
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)">
+                    <div>
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">今日盈亏</div>
+                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:600">
+                        {{ formatCurrency(row.dayPnl, true) }}
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">累计盈亏</div>
+                      <div :class="[toNumber(row.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:600">
+                        {{ formatPct(row.totalPnlRate) }}
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:2px">成本价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:11px; font-weight:500; color:var(--sub)">
+                        {{ row.cost }}
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">
+                        仓位 <span style="color:var(--blue)">{{ formatPct(row.pct).replace('%','') }}%</span>
+                      </div>
+                      <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
+                        <div 
+                          style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px"
+                          :style="{ width: `${Math.min(toNumber(row.pct) * 100, 100)}%` }"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row View -->
+              <div v-else class="row-view-list">
+                <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hrow">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <div class="h-icon" :class="[getMarketCls(row.market)]" style="width:38px;height:38px;font-size:9px;flex-shrink:0">
+                      {{ row.code?.substring(0,4).toUpperCase() || '??' }}
+                    </div>
+                    <div>
+                      <div style="font-size:13px;font-weight:700;color:var(--text)">{{ row.name }}</div>
+                      <div style="display:flex;gap:5px;margin-top:3px">
+                        <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
+                        <span style="font-size:10px;color:var(--muted)">{{ formatLocal(row.amount, '') }}{{ row.unit }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr 1.2fr 1fr;align-items:center;gap:0">
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">现价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600; color:var(--text)">
+                        {{ row.price }}
+                      </div>
+                    </div>
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">成本价</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:500; color:var(--muted)">
+                        {{ row.cost }}
+                      </div>
+                    </div>
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">市值</div>
+                      <div style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600; color:var(--text)">
+                        {{ formatCurrency(row.mv) }}
+                      </div>
+                    </div>
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
+                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600">
+                        {{ formatCurrency(row.dayPnl, true) }}
+                      </div>
+                      <div style="font-size:10px;margin-top:1px" :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']">
+                        {{ formatPct(row.dayPnlRate) }}
+                      </div>
+                    </div>
+                    <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
+                      <div :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size:12px; font-weight:600">
+                        {{ formatCurrency(row.totalPnl, true) }}
+                      </div>
+                      <div style="font-size:10px;margin-top:1px" :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']">
+                        {{ formatPct(row.totalPnlRate) }}
+                      </div>
+                    </div>
+                    <div style="padding:0 0 0 12px">
+                      <div style="font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between">
+                        仓位 <span style="color:var(--blue)">{{ formatPct(row.pct).replace('%','') }}%</span>
+                      </div>
+                      <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
+                        <div 
+                          style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px"
+                          :style="{ width: `${Math.min(toNumber(row.pct) * 100, 100)}%` }"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+          </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.home-action-row {
+@import '@/styles/homepage-original.css';
+
+.invest-page {
+  padding: 24px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+
+.modern-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
   display: flex;
-  justify-content: flex-end;
-  gap: calc(12px * var(--legacy-density-space-scale));
-  margin-bottom: calc(14px * var(--legacy-density-space-scale));
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 32px;
 }
-
-.home-action-btn {
-  width: calc(46px * var(--legacy-density-card-minh));
-  height: calc(46px * var(--legacy-density-card-minh));
-  border-radius: 999px;
-  border: 1px solid var(--legacy-action-btn-border);
-  background: var(--legacy-action-btn-bg);
-  color: var(--legacy-text-primary);
-  box-shadow: var(--legacy-shadow);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(20px * var(--legacy-density-font-scale));
+.page-header h1 { font-size: 28px; font-weight: 800; margin: 0; color: var(--text); }
+.subtitle { font-size: 13px; color: var(--sub); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+.ccy-tag {
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: all .2s;
 }
+.ccy-tag:hover { background: rgba(255,255,255,0.08); border-color: var(--blue); }
 
-.home-action-btn:hover {
-  transform: translateY(-1px);
-  background: var(--legacy-action-btn-hover-bg);
-  box-shadow: var(--legacy-shadow-hover);
-}
-
-.index-grid {
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1.8fr 1fr;
   gap: 20px;
+  margin-bottom: 24px;
 }
 
-.idx-card {
-  background: var(--legacy-bg-tertiary);
-  border-radius: var(--legacy-radius-sm);
+.hero-card {
+  background: linear-gradient(135deg, rgba(91,141,239,0.1), rgba(74,123,224,0.05));
+  border: 1px solid rgba(91,141,239,0.2);
+  border-radius: 28px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+}
+.card-label { font-size: 13px; color: var(--sub); margin-bottom: 12px; font-weight: 600; }
+.main-val { font-family: 'JetBrains Mono', monospace; font-size: 42px; font-weight: 800; margin-bottom: 24px; letter-spacing: -1px; }
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding: 4px 0; }
+.stat-item { display: flex; flex-direction: column; gap: 8px; }
+.sl { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.sv-group { display: flex; flex-direction: column; gap: 4px; }
+.sv-amt { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; white-space: nowrap; letter-spacing: -0.5px; }
+.sv-pct { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; opacity: 0.9; }
+.sv-group.up { color: var(--red); }
+.sv-group.dn { color: var(--green); }
+
+.dist-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 28px;
   padding: 20px;
-  border: 2px solid var(--legacy-border);
 }
+.card-title { font-size: 14px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+.dist-content { display: flex; align-items: center; gap: 20px; }
+.chart-container { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+.donut-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.chart-center-val { fill: var(--text); font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace; transform: rotate(90deg); transform-origin: center; }
+.chart-center-lbl { fill: var(--sub); font-size: 8px; font-weight: 600; transform: rotate(90deg); transform-origin: center; }
+.donut-slice { transition: stroke-dasharray 0.5s var(--easing-out); }
 
-.idx-header {
-  margin-bottom: 10px;
+.legend-list { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.legend-item .dot { width: 6px; height: 6px; border-radius: 50%; }
+.legend-item .ln { color: var(--sub); flex: 1; }
+.legend-item .lp { font-weight: 700; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
 }
-
-.idx-name {
-  font-size: calc(13px * var(--legacy-density-font-scale));
-  color: var(--legacy-text-secondary);
-}
-
-.idx-value {
-  font-size: calc(26px * var(--legacy-density-font-scale));
-  font-weight: 700;
-}
-
-.idx-change {
-  font-size: calc(12px * var(--legacy-density-font-scale));
-  margin-top: calc(3px * var(--legacy-density-space-scale));
-}
-
-.up { color: var(--legacy-red); }
-.down { color: var(--legacy-green); }
-
-.assets-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: calc(20px * var(--legacy-density-space-scale));
-}
-
-.total-mv-label {
-  font-size: calc(13px * var(--legacy-density-font-scale));
-  color: var(--legacy-text-secondary);
-  margin-bottom: calc(10px * var(--legacy-density-space-scale));
-}
-
-.main-mv {
-  font-size: clamp(34px, calc(48px * var(--legacy-density-font-scale)), 52px);
-  font-weight: 700;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.pnl-stats {
-  display: flex;
-  gap: calc(10px * var(--legacy-density-space-scale));
-}
-
-.pnl-stat-item {
-  background: var(--legacy-bg-tertiary);
-  border-radius: var(--legacy-radius-sm);
-  padding: calc(12px * var(--legacy-density-space-scale)) calc(14px * var(--legacy-density-space-scale));
-  border: 2px solid var(--legacy-border);
-  min-width: calc(150px * var(--legacy-density-card-minh));
-}
-
-.pnl-label {
-  font-size: calc(11px * var(--legacy-density-font-scale));
-  color: var(--legacy-text-secondary);
-}
-
-.pnl-value {
-  margin-top: calc(6px * var(--legacy-density-space-scale));
-  font-size: calc(16px * var(--legacy-density-font-scale));
-  font-weight: 700;
-}
-
-.pnl-rate {
-  margin-top: calc(3px * var(--legacy-density-space-scale));
-  font-size: calc(12px * var(--legacy-density-font-scale));
-}
-
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: calc(14px * var(--legacy-density-space-scale));
-  padding-bottom: calc(14px * var(--legacy-density-space-scale));
-  border-bottom: 1px solid var(--legacy-border);
-}
-
-.table-header h2 {
-  font-size: calc(18px * var(--legacy-density-font-scale));
-  font-weight: 700;
-  line-height: 1.25;
-  margin: 0;
-}
-
-.category-tabs {
-  display: flex;
-  gap: calc(6px * var(--legacy-density-space-scale));
-  margin-bottom: calc(14px * var(--legacy-density-space-scale));
-  padding: calc(3px * var(--legacy-density-space-scale));
-  background: var(--legacy-bg-tertiary);
-  border-radius: 12px;
-  border: 1px solid var(--legacy-border);
-}
-
-.tab-item {
-  padding: calc(7px * var(--legacy-density-space-scale)) calc(14px * var(--legacy-density-space-scale));
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: calc(12px * var(--legacy-density-font-scale));
-  color: var(--legacy-text-secondary);
-  background: transparent;
-  border: 0;
-}
-
-.tab-item.active {
-  color: var(--legacy-text-primary);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(59, 130, 246, 0.3);
-}
-
-.table-container {
-  overflow-x: auto;
-  --inv-fs-head: calc(12px * var(--legacy-density-font-scale));
-  --inv-fs-name: calc(16px * var(--legacy-density-font-scale));
-  --inv-fs-main: calc(16px * var(--legacy-density-font-scale));
-  --inv-fs-sub: calc(13px * var(--legacy-density-font-scale));
-  --inv-fs-hint: calc(11px * var(--legacy-density-font-scale));
-  --inv-lh-main: 1.25;
-  --inv-lh-sub: 1.2;
-  --inv-cell-py: calc(9px * var(--legacy-density-space-scale));
-  --inv-cell-px: calc(10px * var(--legacy-density-space-scale));
-  --inv-col-gap: calc(16px * var(--legacy-density-space-scale));
-}
-
-.table-legacy {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-}
-
-.col-name,
-.col-qty,
-.col-price,
-.col-holding,
-.col-day,
-.col-total,
-.col-action {
-  width: calc(100% / 7);
-}
-
-.table-legacy th,
-.table-legacy td {
-  font-variant-numeric: tabular-nums;
-}
-
-.table-legacy th {
-  vertical-align: middle;
-  font-size: var(--inv-fs-head);
-  font-weight: 600;
-  line-height: var(--inv-lh-sub);
-  color: var(--legacy-text-secondary);
-  padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
-  text-align: center;
-  border-bottom: none;
-  background: var(--legacy-bg-tertiary);
-}
-
-.table-legacy td {
-  vertical-align: top;
-  padding: var(--inv-cell-py) calc(var(--inv-cell-px) + var(--inv-col-gap) * 0.5);
-  line-height: var(--inv-lh-main);
-  text-align: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-}
-
-.table-legacy th + th,
-.table-legacy td + td {
-  border-left: none;
-}
-
-.table-legacy tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.name-code-cell {
-  min-width: 0;
-}
-
-.name-primary {
-  color: var(--legacy-text-primary);
-  font-size: var(--inv-fs-name);
-  font-weight: 700;
-  line-height: var(--inv-lh-main);
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.name-secondary {
-  margin-top: calc(3px * var(--legacy-density-space-scale));
-  color: var(--legacy-text-secondary);
-  font-size: var(--inv-fs-sub);
-  font-weight: 500;
-  line-height: var(--inv-lh-sub);
-  text-align: left;
-}
-
-.qty-cell {
-  font-size: var(--inv-fs-main);
-  font-weight: 700;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.price-cell,
-.pnl-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  gap: 2px;
-  line-height: var(--inv-lh-sub);
-}
-
-.price-line {
-  font-size: calc(15px * var(--legacy-density-font-scale));
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.price-line.cost {
-  color: var(--legacy-text-secondary);
-}
-
-.price-line.current {
-  color: var(--legacy-text-primary);
-  font-weight: 600;
-}
-
-.holding-cell {
-  font-size: var(--inv-fs-main);
-  font-weight: 700;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.table-pnl-amount,
-.table-pnl-rate {
-  white-space: nowrap;
-}
-
-.table-pnl-amount {
-  font-size: var(--inv-fs-main);
-  font-weight: 700;
-  line-height: var(--inv-lh-main);
-}
-
-.table-pnl-rate {
-  font-size: var(--inv-fs-sub);
-  font-weight: 500;
-  line-height: var(--inv-lh-sub);
-}
-
-.table-legacy th.th-name,
-.table-legacy td.td-name {
-  text-align: left;
-}
-
-.table-legacy th.th-price,
-.table-legacy td.td-price {
-  text-align: right;
-}
-
-.table-legacy th.th-holding,
-.table-legacy td.td-holding {
-  text-align: right;
-}
-
-.table-legacy th.th-day-pnl,
-.table-legacy th.th-total-pnl,
-.table-legacy td.td-day-pnl,
-.table-legacy td.td-total-pnl {
-  text-align: right;
-}
-
-.td-price .price-cell {
-  align-items: flex-end;
-  justify-content: flex-start;
-  gap: calc(3px * var(--legacy-density-space-scale));
-}
-
-.td-price .price-line.cost,
-.td-price .price-line.current {
-  font-weight: 600;
-}
-
-.td-day-pnl .pnl-cell,
-.td-total-pnl .pnl-cell {
-  align-items: flex-end;
-  justify-content: flex-start;
-  min-height: calc(54px * var(--legacy-density-space-scale));
-}
-
-.pnl-hint {
-  color: var(--legacy-text-secondary);
-  font-size: var(--inv-fs-hint);
-  font-weight: 500;
-  line-height: var(--inv-lh-sub);
-}
-
-.actions {
-  white-space: nowrap;
-}
-
-.action-menu {
-  position: relative;
-  display: inline-flex;
-  justify-content: center;
-}
-
-.action-trigger {
-  min-width: calc(68px * var(--legacy-density-card-minh));
-  height: calc(28px * var(--legacy-density-space-scale));
-  border-radius: 8px;
-  border: 1px solid var(--legacy-action-btn-border);
-  background: var(--legacy-action-btn-bg);
-  color: var(--legacy-text-primary);
-  font-size: var(--inv-fs-sub);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.action-trigger:hover {
-  background: var(--legacy-action-btn-hover-bg);
-}
-
-.action-dropdown {
-  position: absolute;
-  top: calc(32px * var(--legacy-density-space-scale));
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(102px * var(--legacy-density-card-minh));
-  background: var(--legacy-dropdown-bg);
-  border: 1px solid var(--legacy-border);
-  border-radius: 10px;
-  padding: calc(5px * var(--legacy-density-space-scale));
-  display: flex;
-  flex-direction: column;
-  gap: calc(3px * var(--legacy-density-space-scale));
-  box-shadow: var(--legacy-dropdown-shadow);
-  z-index: 10;
-}
-
-.menu-item {
-  border: none;
-  background: transparent;
-  color: var(--legacy-text-primary);
-  border-radius: 8px;
-  padding: calc(5px * var(--legacy-density-space-scale)) calc(7px * var(--legacy-density-space-scale));
-  font-size: var(--inv-fs-sub);
-  line-height: var(--inv-lh-sub);
-  text-align: left;
-  cursor: pointer;
-}
-
-.menu-item:hover {
-  background: rgba(59, 130, 246, 0.15);
-}
-
-.menu-item.danger {
-  color: var(--legacy-action-danger-text);
-}
-
-.menu-item.danger:hover {
-  background: var(--legacy-action-danger-hover-bg);
-}
-
-.neutral {
-  color: var(--legacy-text-secondary);
-}
-
-.empty {
-  text-align: center;
-  color: var(--legacy-text-secondary);
-}
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--legacy-overlay-bg);
-  backdrop-filter: blur(10px);
-  z-index: 6000;
-}
-
-.modal {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--legacy-modal-bg);
+.market-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  padding: calc(24px * var(--legacy-density-space-scale));
-  width: min(420px, 92vw);
-  border: 1px solid var(--legacy-border);
-}
-
-.modal-header {
+  padding: 18px;
+  transition: all .2s;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: calc(15px * var(--legacy-density-space-scale));
+  flex-direction: column;
+  gap: 16px;
 }
+.market-card:hover { border-color: rgba(91,141,239,0.3); transform: translateY(-2px); background: rgba(255,255,255,0.01); }
+.m-header { display: flex; justify-content: space-between; align-items: center; }
+.m-title { display: flex; align-items: center; gap: 8px; }
+.m-icon { font-size: 14px; }
+.m-name { font-size: 13px; font-weight: 700; color: var(--text); opacity: 0.9; }
+.m-mv { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; color: var(--muted); }
 
-.close-btn {
-  width: calc(34px * var(--legacy-density-space-scale));
-  height: calc(34px * var(--legacy-density-space-scale));
-  border-radius: 50%;
-  border: none;
-  background: var(--legacy-bg-tertiary);
-  color: var(--legacy-text-primary);
+.m-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ms-item { display: flex; flex-direction: column; gap: 6px; }
+.ms-lbl { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+.ms-val-group { display: flex; flex-direction: column; gap: 2px; }
+.ms-amt { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.ms-pct { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; opacity: 0.85; }
+.ms-val-group.up { color: var(--red); }
+.ms-val-group.dn { color: var(--green); }
+
+.holdings-section { margin-top: 40px; }
+.h-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; }
+.h-title-group .section-label { margin: 0 0 12px; font-size: 16px; }
+.view-toggle {
+  display: flex; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 9px; padding: 3px;
+}
+.view-toggle button {
+  width: 32px; height: 28px; border-radius: 6px; border: none; background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s;
+}
+.view-toggle button.active { background: rgba(255,255,255,0.08); color: var(--text); }
+
+/* Holdings 1:1 Styles */
+.card-view-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.hcard {
+  position: relative;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
   cursor: pointer;
-  font-size: calc(20px * var(--legacy-density-font-scale));
+  transition: all .2s;
+  overflow: hidden;
+}
+.hcard:hover { 
+  background: rgba(255,255,255,0.05); 
+  transform: translateY(-2px); 
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3); 
+  border-color: var(--border-b); 
+}
+.hcard-accent-top { 
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  right: 0; 
+  height: 2px; 
+}
+.h-icon { 
+  width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; 
+  font-size: 10px; font-weight: 800; color: #fff; margin-bottom: 12px; 
+}
+.h-icon.blue { background: #007AFF; }
+.h-icon.orange { background: #FF9500; }
+.h-icon.green { background: #34C759; }
+.h-icon.gold { background: #FFCC00; }
+
+.tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.tag.us { background: rgba(0,122,255,0.1); color: #007AFF; }
+.tag.hk { background: rgba(255,149,0,0.1); color: #FF9500; }
+.tag.a { background: rgba(52,199,89,0.1); color: #34C759; }
+.tag.fund { background: rgba(255,204,0,0.1); color: #FFCC00; }
+
+.row-view-list { display: flex; flex-direction: column; gap: 8px; }
+.hrow { 
+  display: flex; justify-content: space-between; align-items: center; 
+  background: var(--s2); border: 1px solid var(--border); border-radius: 18px; 
+  padding: 14px 20px; cursor: pointer; transition: all .2s; 
+}
+.hrow:hover { background: rgba(255,255,255,0.03); border-color: var(--blue); }
+
+.badge.up { background: rgba(240,90,85,0.12); color: var(--red); }
+.badge.dn { background: rgba(62,207,130,0.12); color: var(--green); }
+
+.text-up { color: var(--red) !important; }
+.text-dn { color: var(--green) !important; }
+
+@media (max-width: 900px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .market-grid { grid-template-columns: 1fr 1fr; }
+  .row-view-list > .hrow > div:nth-child(2) { display: none; }
 }
 
-.input-group { margin-bottom: calc(12px * var(--legacy-density-space-scale)); }
-.input-label {
-  display: block;
-  color: var(--legacy-text-secondary);
-  font-size: calc(12px * var(--legacy-density-font-scale));
-  margin-bottom: calc(6px * var(--legacy-density-space-scale));
-}
-.modal-input {
-  width: 100%;
-  background: var(--legacy-input-bg);
-  border: 1px solid var(--legacy-border);
-  border-radius: 12px;
-  color: var(--legacy-input-text);
-  padding: calc(10px * var(--legacy-density-space-scale));
-}
+.empty-state { padding: 80px 0; text-align: center; background: rgba(255,255,255,0.01); border: 1px dashed var(--border); border-radius: 32px; }
+.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+.empty-text { font-size: 14px; color: var(--muted); }
 
-.fund-mode-switch {
-  display: flex;
-  gap: 8px;
-}
-
-.fund-mode-btn {
-  flex: 1;
-  border: 1px solid var(--legacy-border);
-  border-radius: 10px;
-  background: var(--legacy-input-bg);
-  color: var(--legacy-text-primary);
-  padding: 8px 10px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.fund-mode-btn.active {
-  background: var(--legacy-accent, #3b82f6);
-  color: #fff;
-  border-color: var(--legacy-accent, #3b82f6);
-}
-
-.fund-mode-hint {
-  margin-top: 6px;
-  color: var(--legacy-text-secondary);
-  font-size: 12px;
-}
-
-.fund-mode-error {
-  margin-top: 6px;
-  color: #ef4444;
-  font-size: 12px;
-}
-.btn-primary.full {
-  width: 100%;
-  height: calc(40px * var(--legacy-density-space-scale));
-  border: 0;
-  border-radius: 12px;
-  color: #fff;
-  font-weight: 700;
-  cursor: pointer;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-}
-
-@media (max-width: 1200px) {
-  .index-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .assets-header {
-    flex-direction: column;
-  }
-
-  .pnl-stats {
-    flex-wrap: wrap;
-  }
-}
-
-@media (max-width: 768px) {
-  .main-mv {
-    font-size: 40px;
-  }
-
-  .category-tabs {
-    overflow-x: auto;
-  }
-
-  .modal {
-    width: 90%;
-    padding: 20px;
-  }
-}
-
-@media (max-width: 1280px) {
-  .table-legacy {
-    min-width: 1040px;
-  }
-}
-
-/* 浅色主题：投资页 1:1 风格覆盖（仅本页） */
-.kk-invest.kk-light-v1 {
-  color: #0f172a;
-}
-
-.kk-invest.kk-light-v1 .legacy-section {
-  background: var(--legacy-bg-secondary);
-  border: 1px solid var(--legacy-border);
-  box-shadow: var(--legacy-shadow);
-  border-radius: var(--legacy-radius);
-}
-
-.kk-invest.kk-light-v1 .index-grid {
-  gap: 12px;
-}
-
-.kk-invest.kk-light-v1 .idx-card {
-  background: var(--legacy-bg-tertiary);
-  border: 1px solid var(--legacy-border);
-  border-radius: 18px;
-  padding: 14px;
-  box-shadow: var(--legacy-shadow);
-}
-
-.kk-invest.kk-light-v1 .idx-name,
-.kk-invest.kk-light-v1 .total-mv-label,
-.kk-invest.kk-light-v1 .pnl-label,
-.kk-invest.kk-light-v1 .table-legacy th,
-.kk-invest.kk-light-v1 .name-secondary,
-.kk-invest.kk-light-v1 .pnl-hint,
-.kk-invest.kk-light-v1 .input-label,
-.kk-invest.kk-light-v1 .empty {
-  color: rgba(15, 23, 42, 0.55);
-  font-weight: 900;
-}
-
-.kk-invest.kk-light-v1 .idx-value {
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.kk-invest.kk-light-v1 .up {
-  color: #ef4444;
-}
-
-.kk-invest.kk-light-v1 .down {
-  color: #10b981;
-}
-
-.kk-invest.kk-light-v1 .assets-header {
-  gap: 22px;
-}
-
-.kk-invest.kk-light-v1 .main-mv {
-  font-weight: 900;
-  letter-spacing: -1px;
-  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.kk-invest.kk-light-v1 .pnl-stats {
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.kk-invest.kk-light-v1 .pnl-stat-item {
-  background: var(--legacy-bg-tertiary);
-  border: 1px solid var(--legacy-border);
-  border-radius: 18px;
-  padding: 12px 14px;
-  min-width: 160px;
-  box-shadow: var(--legacy-shadow);
-}
-
-.kk-invest.kk-light-v1 .pnl-value {
-  font-weight: 900;
-}
-
-.kk-invest.kk-light-v1 .pnl-rate {
-  font-weight: 900;
-}
-
-.kk-invest.kk-light-v1 .table-header {
-  margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-}
-
-.kk-invest.kk-light-v1 .table-header h2 {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-}
-
-.kk-invest.kk-light-v1 .legacy-btn-primary {
-  border: 0;
-  border-radius: 999px;
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 900;
-  color: #fff;
-  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
-  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.22);
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
-}
-
-.kk-invest.kk-light-v1 .legacy-btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 55px rgba(99, 102, 241, 0.28);
-}
-
-.kk-invest.kk-light-v1 .category-tabs {
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 18px;
-  padding: 4px;
-}
-
-.kk-invest.kk-light-v1 .tab-item {
-  color: rgba(15, 23, 42, 0.55);
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.kk-invest.kk-light-v1 .tab-item.active {
-  color: var(--legacy-text-primary);
-  background: rgba(59, 130, 246, 0.14);
-  border: 1px solid rgba(59, 130, 246, 0.24);
-}
-
-.kk-invest.kk-light-v1 .table-legacy th {
-  background: rgba(255, 255, 255, 0.45);
-  border-bottom: none;
-}
-
-.kk-invest.kk-light-v1 .table-legacy td {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-}
-
-.kk-invest.kk-light-v1 .name-primary,
-.kk-invest.kk-light-v1 .qty-cell,
-.kk-invest.kk-light-v1 .holding-cell,
-.kk-invest.kk-light-v1 .price-line.current,
-.kk-invest.kk-light-v1 .table-pnl-amount {
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.kk-invest.kk-light-v1 .price-line.cost,
-.kk-invest.kk-light-v1 .table-pnl-rate {
-  color: rgba(15, 23, 42, 0.55);
-}
-
-.kk-invest.kk-light-v1 .td-day-pnl .pnl-cell,
-.kk-invest.kk-light-v1 .td-total-pnl .pnl-cell {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
-}
-
-.kk-invest.kk-light-v1 .action-trigger {
-  border: 1px solid var(--legacy-action-btn-border);
-  background: var(--legacy-action-btn-bg);
-  color: var(--legacy-text-primary);
-}
-
-.kk-invest.kk-light-v1 .action-trigger:hover {
-  background: var(--legacy-action-btn-hover-bg);
-}
-
-.kk-invest.kk-light-v1 .action-dropdown {
-  background: var(--legacy-dropdown-bg);
-  border: 1px solid var(--legacy-border);
-  box-shadow: var(--legacy-dropdown-shadow);
-}
-
-.kk-invest.kk-light-v1 .menu-item {
-  color: rgba(15, 23, 42, 0.85);
-}
-
-.kk-invest.kk-light-v1 .menu-item:hover {
-  background: rgba(99, 102, 241, 0.12);
-}
-
-.kk-invest.kk-light-v1 .menu-item.danger {
-  color: rgba(239, 68, 68, 0.95);
-}
-
-.kk-invest.kk-light-v1 .menu-item.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.kk-invest.kk-light-v1 .overlay {
-  background: rgba(15, 23, 42, 0.2);
-  backdrop-filter: blur(10px);
-}
-
-.kk-invest.kk-light-v1 .modal {
-  background: rgba(255, 255, 255, 0.78);
-  border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.kk-invest.kk-light-v1 .modal-header h3,
-.kk-invest.kk-light-v1 .close-btn {
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.kk-invest.kk-light-v1 .close-btn {
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.kk-invest.kk-light-v1 .modal-input {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.kk-invest.kk-light-v1 .modal-input:focus {
-  border-color: rgba(99, 102, 241, 0.35);
-  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.14);
-}
-
-.kk-invest.kk-light-v1 .btn-primary.full {
-  background: linear-gradient(135deg, #ff4d8d 0%, #6366f1 100%);
-  box-shadow: 0 16px 40px rgba(99, 102, 241, 0.22);
-}
-
+/* Color overrides for consistent palette */
+.up { color: #F05A55 !important; }
+.dn { color: #3ECF82 !important; }
 </style>

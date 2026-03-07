@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 
 APP = Path(__file__).resolve().parents[1] / "kona_tool" / "app.py"
-OUT = Path(__file__).resolve().parents[1] / "docs" / "API_DETAILS.md"
+OUT = Path(__file__).resolve().parents[1] / "docs" / "接口详情.md"
 
 route_re = re.compile(r"@app\.route\('([^']+)'(?:,\s*methods=\[([^\]]+)\])?\)")
 def_re = re.compile(r"def\s+(\w+)\s*\(")
