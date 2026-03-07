@@ -409,9 +409,10 @@ onBeforeUnmount(() => {
     <template v-else>
 
       <!-- Market Index Cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;margin-bottom:14px">
+      <!-- Market Index Cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:12px;margin-bottom:16px">
         <template v-if="marketIndices && marketIndices.length > 0">
-          <div v-for="idx in marketIndices" :key="idx.name" class="card" style="padding:12px 14px">
+          <div v-for="idx in marketIndices" :key="idx.name" class="card" style="padding:14px 16px;background:var(--s1);border-radius:16px">
             <div class="section-label" style="font-size:11px;margin-bottom:6px">{{ idx.name }}</div>
             <div class="mono" :class="valueClass(idx.change)" style="font-size:16px;font-weight:600">
               {{ idx.name === 'USD/CNY' ? idx.value.toFixed(4) : formatPct(idx.change_pct) }}
