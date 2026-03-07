@@ -273,10 +273,7 @@ onMounted(async () => {
         </div>
       </nav>
       <div class="sidebar-bottom">
-        <button class="sidebar-add-btn" @click="$router.push('/app/home')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          添加资产
-        </button>
+        <!-- 移除导航栏添加资产按钮 -->
       </div>
     </aside>
 
@@ -296,7 +293,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div id="capture-area" class="page active kk-page invest-page" style="padding-top: 20px">
+      <div id="capture-area" class="page active kk-page invest-page" style="padding-top: 20px; padding-bottom: 120px;">
         <div class="modern-shell">
 
       <!-- Main Statistics Grid -->
