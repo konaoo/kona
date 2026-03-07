@@ -16,57 +16,31 @@
             </div>
             <div class="profile-info">
               <div class="profile-name-row">
-                <h2 class="profile-name" v-if="!isEditingName">{{ nickname }}</h2>
-                <input v-else v-model.trim="nickname" class="name-input" @blur="stopEditingName" @keyup.enter="stopEditingName" />
-                <span class="rank-badge">银牌分析师</span>
-                <button class="edit-icon-btn" @click="toggleEditName">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
+                <h2 class="profile-name">{{ user?.nickname || user?.username || '用户' }}</h2>
               </div>
-              <div class="profile-meta">
-                <span>ID: {{ userIdShort }}</span>
-                <span class="dot-sep">•</span>
-                <span>注册于 {{ registerDate }}</span>
-              </div>
+              <div class="profile-subtitle">已在咔咔记录 {{ daysActive }} 天</div>
             </div>
+            <button class="edit-icon-btn profile-edit-btn" @click="startEditingName">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
           </div>
           
-          <div class="profile-stats-row">
-            <div class="p-stat">
-              <div class="p-stat-val">{{ store.rows.value.length }}</div>
-              <div class="p-stat-lab">持仓资产</div>
-            </div>
-            <div class="p-stat">
-              <div class="p-stat-val">¥{{ totalAssetFormatted }}</div>
-              <div class="p-stat-lab">资产总额</div>
-            </div>
-            <div class="p-stat">
-              <div class="p-stat-val">{{ winRate }}%</div>
-              <div class="p-stat-lab">当前胜率</div>
-            </div>
-          </div>
         </div>
 
         <!-- 2. Preference List -->
         <div class="settings-group">
           <div class="section-label">偏好设置</div>
           <div class="settings-list">
-            <div class="setting-item">
+            <div class="setting-item" @click="toggleTheme">
               <div class="s-icon">🌓</div>
               <div class="s-label">色彩模式</div>
               <div class="s-value">{{ themeLabel }}</div>
-              <button class="s-arrow" @click="toggleTheme">切换</button>
+              <button class="s-arrow">切换</button>
             </div>
-            <div class="setting-item">
-              <div class="s-icon">🌐</div>
-              <div class="s-label">界面语言</div>
-              <div class="s-value">简体中文</div>
-              <div class="s-arrow"></div>
-            </div>
-            <div class="setting-item">
+            <div class="setting-item" @click="handleCurrencyClick">
               <div class="s-icon">💵</div>
               <div class="s-label">基准币种</div>
               <div class="s-value">CNY / 人民币</div>
@@ -117,9 +91,25 @@
             <button class="btn" @click="showPwdModal = false">取消</button>
             <button class="btn btn-primary" @click="changePassword">立即更新</button>
           </div>
-          <p v-if="message" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
+          <p v-if="message && showPwdModal" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
         </div>
       </div>
+
+      <!-- Nickname Edit Modal -->
+      <div v-if="showNameModal" class="modal-overlay" @click.self="showNameModal = false">
+        <div class="card modal-card">
+          <div class="section-label">修改个人昵称</div>
+          <div class="pwd-fields">
+            <input v-model.trim="tempNickname" class="pwd-input" placeholder="输入新昵称" @keyup.enter="confirmNameEdit" />
+          </div>
+          <div class="modal-actions">
+            <button class="btn" @click="showNameModal = false">取消</button>
+            <button class="btn btn-primary" @click="confirmNameEdit">应用修改</button>
+          </div>
+          <p v-if="message && showNameModal" class="result-msg" :class="{ ok: ok, error: !ok }">{{ message }}</p>
+        </div>
+      </div>
+      <p v-if="message && !showPwdModal && !showNameModal" class="page-toast ok">{{ message }}</p>
     </div>
   </AppShell>
 </template>
@@ -144,8 +134,9 @@ const { theme, toggleTheme } = useWebTheme()
 const user = computed(() => store.state.user as Record<string, unknown> | null)
 
 const avatarFileInput = ref<HTMLInputElement | null>(null)
-const nickname = ref(String(user.value?.nickname || ''))
-const avatar = ref(String(user.value?.avatar || ''))
+const nickname = ref('')
+const avatar = ref('')
+
 const oldPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
@@ -153,44 +144,46 @@ const exporting = ref(false)
 const message = ref('')
 const ok = ref(true)
 const showPwdModal = ref(false)
-const isEditingName = ref(false)
+const showNameModal = ref(false)
+const tempNickname = ref('')
 
-const avatarPreview = computed(() => String(avatar.value || '').trim())
+
+const avatarPreview = computed(() => String(avatar.value || user.value?.avatar || '').trim())
 const avatarFallback = computed(() => {
   const base = String(nickname.value || user.value?.nickname || user.value?.username || 'U').trim()
   return base ? base[0]!.toUpperCase() : 'U'
 })
 
-const userIdShort = computed(() => String(user.value?.id || '----').slice(0, 8).toUpperCase())
-const registerDate = computed(() => {
-  const dateStr = String(user.value?.created_at || '')
-  return dateStr ? dateStr.split(' ')[0] : '2024-01-01'
-})
 
 const themeLabel = computed(() => theme.value === 'dark' ? '深色模式' : '浅色模式')
 
-const totalAssetFormatted = computed(() => {
-  const total = store.summary.value?.totalValue || 0
-  if (total >= 1000000) return (total / 10000).toFixed(1) + '万'
-  return total.toLocaleString(undefined, { maximumFractionDigits: 0 })
+const daysActive = computed(() => {
+  const createdAt = user.value?.created_at as string | undefined
+  if (!createdAt) return 1
+  try {
+    const createdDate = new Date(createdAt.replace(' ', 'T')) // 兼容一些日期格式
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - createdDate.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return Math.max(1, diffDays)
+  } catch (e) {
+    return 1
+  }
 })
 
-const winRate = computed(() => {
-  const rows = store.rows.value
-  if (!rows.length) return 0
-  const winners = rows.filter(r => (r.totalPnl || 0) > 0)
-  return Math.round((winners.length / rows.length) * 100)
-})
 
 
-function toggleEditName() {
-  isEditingName.value = !isEditingName.value
+function startEditingName() {
+  tempNickname.value = String(user.value?.nickname || user.value?.username || '')
+  showNameModal.value = true
 }
 
-async function stopEditingName() {
-  isEditingName.value = false
-  if (nickname.value !== user.value?.nickname) {
-    await saveProfile()
+async function confirmNameEdit() {
+  if (!tempNickname.value) return
+  nickname.value = tempNickname.value
+  await saveProfile()
+  if (ok.value) {
+    showNameModal.value = false
   }
 }
 
@@ -225,8 +218,8 @@ function onAvatarFileChange(event: Event) {
 async function saveProfile() {
   try {
     const payload = await api.post<Record<string, unknown>>('/api/auth/profile', {
-      nickname: nickname.value,
-      avatar: avatar.value,
+      nickname: showNameModal.value ? tempNickname.value : (user.value?.nickname || user.value?.username || ''),
+      avatar: avatar.value || (user.value?.avatar as string) || '',
     })
     if (authStore.user && typeof authStore.user === 'object') {
        Object.assign(authStore.user, payload)
@@ -255,6 +248,16 @@ async function changePassword() {
     message.value = '修改失败'
     ok.value = false
   }
+}
+
+function handleCurrencyClick() {
+  message.value = '币种切换功能正在开发中'
+  ok.value = true
+  setTimeout(() => {
+    if (message.value === '币种切换功能正在开发中') {
+      message.value = ''
+    }
+  }, 2000)
 }
 
 async function exportData() {
@@ -297,7 +300,9 @@ async function logout() {
 
 <style scoped>
 .me-page-layout {
-  display: block; /* Changed to block as the right column is removed */
+  display: block;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .me-main-column {
@@ -315,7 +320,7 @@ async function logout() {
   display: flex;
   gap: 20px;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 0px;
 }
 
 .profile-avatar-wrap {
@@ -353,35 +358,24 @@ async function logout() {
 .profile-info { flex: 1; }
 .profile-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .profile-name { font-size: 20px; font-weight: 800; }
-.name-input { 
-  font-size: 20px; font-weight: 800; background: var(--s3);
-  border: 1px solid var(--blue); color: var(--text); padding: 2px 8px; border-radius: 6px;
-  width: 160px;
-}
+.profile-subtitle { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 2px; }
 
-.rank-badge {
-  font-size: 10px; font-weight: 700; color: var(--gold);
-  background: rgba(212, 175, 100, 0.12); padding: 2px 8px; border-radius: 6px;
+.profile-edit-btn {
+  margin-left: auto;
+  opacity: 0.6;
+  transition: opacity 0.2s;
 }
+.profile-edit-btn:hover { opacity: 1; }
+
 
 .edit-icon-btn { color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; }
 .edit-icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--sub); }
 
-.profile-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.dot-sep { opacity: .3; }
 
-.profile-stats-row {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px;
-}
-.p-stat { text-align: center; }
-.p-stat:not(:last-child) { border-right: 1px solid var(--border); }
-.p-stat-val { font-family: var(--font-family-mono); font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-.p-stat-lab { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 
 /* Settings Lists */
 .settings-group { margin-top: 8px; }
-.settings-list { display: flex; flex-direction: column; gap: 2px; }
+.settings-list { display: flex; flex-direction: column; gap: 12px; }
 
 .setting-item {
   display: flex; align-items: center; gap: 12px;
@@ -426,6 +420,13 @@ button.s-arrow {
 .result-msg { font-size: 12px; margin-top: 12px; text-align: center; }
 .result-msg.ok { color: var(--green); }
 .result-msg.error { color: var(--red); }
+
+.page-toast { 
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: var(--blue); color: white; padding: 12px 24px; border-radius: 12px;
+  font-size: 14px; font-weight: 700; box-shadow: var(--shadow-xl);
+  z-index: 1001; pointer-events: none;
+}
 
 .btn {
   padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);

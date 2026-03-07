@@ -1,92 +1,113 @@
 <template>
   <AppShell title="资产分析">
     <div class="analysis-page-layout">
-      <!-- Main Content Column -->
-      <div class="analysis-main">
-        <!-- 1. Revenue Overview -->
-        <div class="card analysis-overview-card">
-          <div class="card-header-row">
-            <div class="section-label">盈亏概览</div>
-            <div class="summary-tabs">
-              <button class="s-tab" :class="{ active: overviewPeriod === 'week' }" @click="overviewPeriod = 'week'">本周</button>
-              <button class="s-tab" :class="{ active: overviewPeriod === 'month' }" @click="overviewPeriod = 'month'">本月</button>
-              <button class="s-tab" :class="{ active: overviewPeriod === 'year' }" @click="overviewPeriod = 'year'">今年</button>
-              <button class="s-tab" :class="{ active: overviewPeriod === 'all' }" @click="overviewPeriod = 'all'">累计</button>
-            </div>
-            <!-- Header actions removed: now in AppShell's topbar -->
-          </div>
-          
-          <div class="overview-hero">
-            <div class="hero-main">
-               <div class="hero-label">{{ periodLabel }}总计盈亏</div>
-               <div class="hero-val" :class="valueClass(periodPnl)">{{ formatCny(periodPnl) }}</div>
-               <div class="hero-rate" :class="valueClass(periodRate)">{{ formatPct(periodRate) }}</div>
-            </div>
-            <div class="hero-side">
-               <div class="side-stat">
-                  <div class="s-lab">初始投入</div>
-                  <div class="s-val">{{ formatCny(124500) }}</div>
-               </div>
-               <div class="side-stat">
-                  <div class="s-lab">分红再计</div>
-                  <div class="s-val up">+¥ 1,240</div>
-               </div>
-            </div>
+      <!-- 1. 盈亏概览 (Revenue Overview) -->
+      <div class="card analysis-overview-card">
+        <div class="card-header-row">
+          <div class="section-label">盈亏概览</div>
+        </div>
+        
+        <div class="overview-hero">
+           <div class="hero-label">{{ periodLabel }}总计盈亏</div>
+           <div class="hero-val" :class="valueClass(periodPnl)">{{ formatCny(periodPnl) }}</div>
+           <div class="hero-rate" :class="valueClass(periodRate)">
+              {{ periodRate >= 0 ? '+' : '' }}{{ (periodRate || 0).toFixed(2) }}%
+           </div>
+        </div>
+
+        <div class="period-segmented-control">
+          <button class="seg-btn" :class="{ active: overviewPeriod === 'day' }" @click="overviewPeriod = 'day'">当日</button>
+          <button class="seg-btn" :class="{ active: overviewPeriod === 'month' }" @click="overviewPeriod = 'month'">本月</button>
+          <button class="seg-btn" :class="{ active: overviewPeriod === 'year' }" @click="overviewPeriod = 'year'">本年</button>
+          <button class="seg-btn" :class="{ active: overviewPeriod === 'all' }" @click="overviewPeriod = 'all'">全部</button>
+        </div>
+      </div>
+
+      <!-- 2. 收益日历 (Revenue Calendar) -->
+      <div class="card calendar-card analysis-calendar-card">
+        <div class="card-header-row">
+          <div class="section-label">收益日历</div>
+        </div>
+        <div class="calendar-controls">
+           <div class="calendar-picker-wrap" style="position: relative;">
+              <button class="cal-period-btn" v-if="calendarType !== 'year'" @click="showDatePicker = !showDatePicker">
+                {{ calendarPeriodButtonText }}
+                <span class="cal-arrow">{{ showDatePicker ? '▲' : '▼' }}</span>
+              </button>
+              <span class="cal-period-btn" v-else>历史年度</span>
+
+              <!-- 日期选择器下拉面板 -->
+              <div class="date-picker-dropdown" v-if="showDatePicker && calendarType !== 'year'">
+                <div class="dp-columns">
+                  <div class="dp-col">
+                    <div class="dp-col-title">年</div>
+                    <div class="dp-list">
+                      <button
+                        v-for="y in pickerYears"
+                        :key="y"
+                        class="dp-item"
+                        :class="{ active: y === pickerSelectedYear }"
+                        @click="onPickYear(y)"
+                      >{{ y }}</button>
+                    </div>
+                  </div>
+                  <div class="dp-divider"></div>
+                  <div class="dp-col" v-if="calendarType === 'day'">
+                    <div class="dp-col-title">月</div>
+                    <div class="dp-list">
+                      <button
+                        v-for="m in pickerMonths"
+                        :key="m"
+                        class="dp-item"
+                        :class="{ active: m === pickerSelectedMonth }"
+                        @click="onPickMonth(m)"
+                      >{{ m }}月</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+           </div>
+           <div class="view-tabs mini-segment">
+              <button class="view-tab" :class="{ active: calendarType === 'day' }" @click="onCalendarTypeChange('day')">日</button>
+              <button class="view-tab" :class="{ active: calendarType === 'month' }" @click="onCalendarTypeChange('month')">月</button>
+              <button class="view-tab" :class="{ active: calendarType === 'year' }" @click="onCalendarTypeChange('year')">年</button>
+           </div>
+        </div>
+
+        <div class="calendar-grid" :style="{ gridTemplateColumns: `repeat(${calendarColumns}, minmax(0, 1fr))` }">
+          <div v-for="cell in calendarGrid" :key="cell.key" class="cal-cell" :class="calendarCellClass(cell.pnl)">
+             <div class="cal-date">{{ formatCalendarCellLabel(cell.key) }}</div>
+             <div class="cal-pnl">{{ formatCalendarCellPnl(cell.pnl) }}</div>
           </div>
         </div>
 
-        <!-- 2. Revenue Calendar -->
-        <div class="card calendar-card">
-          <div class="card-header-row">
-            <div class="section-label">盈亏日历</div>
-            <div class="calendar-controls">
-               <div class="view-tabs mini">
-                  <button class="view-tab" :class="{ active: calendarType === 'day' }" @click="onCalendarTypeChange('day')">日</button>
-                  <button class="view-tab" :class="{ active: calendarType === 'month' }" @click="onCalendarTypeChange('month')">月</button>
-                  <button class="view-tab" :class="{ active: calendarType === 'year' }" @click="onCalendarTypeChange('year')">年</button>
-               </div>
-               <div class="calendar-picker-wrap" v-if="calendarType !== 'year'">
-                  <select v-if="calendarType === 'day'" v-model.number="selectedDayMonth" @change="onDayMonthChange" class="mini-select">
-                    <option v-for="m in dayMonthOptions" :key="m" :value="m">{{ m }}月</option>
-                  </select>
-                  <select v-model.number="currentSelectedYear" @change="handleYearChange" class="mini-select">
-                    <option v-for="y in selectableYears" :key="y" :value="y">{{ y }}年</option>
-                  </select>
-               </div>
-            </div>
-          </div>
+        <div class="calendar-footer" v-if="calendarState.totalPnl">
+          <span>{{ calendarSummaryLabel }}:</span>
+          <span :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
+          <span class="muted">({{ formatPct(calendarState.totalRate) }})</span>
+        </div>
+      </div>
 
-          <div class="calendar-grid" :style="{ gridTemplateColumns: `repeat(${calendarColumns}, minmax(0, 1fr))` }">
-            <div v-for="cell in calendarGrid" :key="cell.key" class="cal-cell" :class="calendarCellClass(cell.pnl)">
-               <div class="cal-date">{{ formatCalendarCellLabel(cell.key) }}</div>
-               <div class="cal-pnl">{{ formatCalendarCellPnl(cell.pnl) }}</div>
-            </div>
-          </div>
-
-          <div class="calendar-footer" v-if="calendarState.totalPnl">
-            <span>{{ calendarSummaryLabel }}:</span>
-            <span :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
-            <span class="muted">({{ formatPct(calendarState.totalRate) }})</span>
+      <!-- 3. 盈亏排行榜 (PnL Ranking) -->
+      <div class="card rank-card analysis-rank-card">
+        <div class="card-header-row">
+          <div class="section-label">盈亏排行榜</div>
+          <div class="market-filters mini-segment">
+             <button class="view-tab" :class="{ active: rankType === 'profit' }" @click="rankType = 'profit'">盈利榜</button>
+             <button class="view-tab" :class="{ active: rankType === 'loss' }" @click="rankType = 'loss'">亏损榜</button>
           </div>
         </div>
 
-        <!-- 3. PnL Ranking -->
-        <div class="card rank-card">
-          <div class="card-header-row">
-            <div class="section-label">盈亏红黑榜</div>
-            <div class="market-filters">
-               <button v-for="tab in marketTabs" :key="tab.key" 
-                  class="filter-tag" :class="{ active: rankMarket === tab.key }"
-                  @click="onRankMarketChange(tab.key)">
-                  {{ tab.label }}
-               </button>
-            </div>
-          </div>
-
-          <div class="rank-list">
-            <div v-for="(item, idx) in visibleRankItems" :key="item.code" class="rank-item-row">
+        <div class="rank-list">
+          <div v-if="filteredRankItems.length === 0" class="empty-rank">暂无数据</div>
+          <template v-for="(item, idx) in filteredRankItems" :key="item.code">
+            <div v-if="idx < 4 || rankExpanded" class="rank-item-row">
                <div class="rank-info">
-                  <span class="rank-idx" :class="rankBadgeClass(idx + 1)">{{ idx + 1 }}</span>
+                  <span class="rank-badge" :class="rankBadgeClass(idx + 1)">
+                     <div class="badge-bg"></div>
+                     <span class="badge-num" v-if="idx >= 3">{{ idx + 1 }}</span>
+                     <i class="icon-medal" v-else>★</i>
+                  </span>
                   <div class="asset-core">
                     <div class="asset-name">{{ item.name || item.code }}</div>
                     <div class="asset-code">{{ formatDisplayCode(item.code) }}</div>
@@ -97,57 +118,19 @@
                   <div class="val-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
                </div>
             </div>
-          </div>
-          <button v-if="hasMoreRankItems" class="expand-btn" @click="rankExpanded = !rankExpanded">
-            {{ rankExpanded ? '收起榜单' : '查看完整榜单' }}
-          </button>
+          </template>
+          <button
+            v-if="filteredRankItems.length > 4 && !rankExpanded"
+            class="rank-expand-btn"
+            @click="rankExpanded = true"
+          >查看更多</button>
+          <button
+            v-if="rankExpanded && filteredRankItems.length > 4"
+            class="rank-expand-btn"
+            @click="rankExpanded = false"
+          >收起</button>
         </div>
       </div>
-
-      <!-- Side Stats Column -->
-      <aside class="analysis-side">
-        <!-- Multi-period cards -->
-        <div class="period-cards-stack">
-          <div class="card mini-period-card" v-for="p in sidePeriodStats" :key="p.key">
-            <div class="p-label">{{ p.label }}盈亏</div>
-            <div class="p-val" :class="valueClass(p.pnl)">{{ formatCny(p.pnl) }}</div>
-            <div class="p-rate" :class="valueClass(p.rate)">{{ formatPct(p.rate) }}</div>
-          </div>
-        </div>
-
-        <!-- Annual Trend Chart Placeholder -->
-        <div class="card trend-card">
-          <div class="section-label">年度收益趋势</div>
-          <div class="mock-chart-container">
-             <div class="chart-bars">
-                <div v-for="b in 12" :key="b" class="bar-wrap">
-                   <div class="bar-fill" :style="{ height: (20 + Math.random() * 60) + '%', opacity: 0.3 + (b/12)*0.7 }"></div>
-                   <span class="bar-label">{{ b }}月</span>
-                </div>
-             </div>
-          </div>
-          <div class="chart-summary">
-             <div class="c-item">
-                <span class="c-dot up"></span>
-                <span>盈利月: 8个</span>
-             </div>
-             <div class="c-item">
-                <span class="c-dot down"></span>
-                <span>亏损月: 4个</span>
-             </div>
-          </div>
-        </div>
-
-        <!-- Tips / Help -->
-        <div class="card tips-card">
-          <div class="section-label">投资分析说明</div>
-          <ul class="tips-list">
-            <li>• 每周一凌晨自动同步上周汇总</li>
-            <li>• 汇率以持仓时的结算汇率为准</li>
-            <li>• 累计盈亏包含了由于资产卖出产生的已实现损益</li>
-          </ul>
-        </div>
-      </aside>
     </div>
   </AppShell>
 </template>
@@ -161,7 +144,6 @@ import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { useKonaStore } from '../../stores/composables'
 
 type CalendarType = 'day' | 'month' | 'year'
-type RankMarket = 'all' | 'a' | 'hk' | 'us' | 'fund'
 type PeriodKey = 'day' | 'month' | 'year' | 'all'
 
 type OverviewItem = {
@@ -211,7 +193,7 @@ type RankItem = {
   name?: string
   pnl?: number
   pnl_rate?: number
-  market?: RankMarket | string
+  market?: string
   curr?: string
 }
 
@@ -229,7 +211,7 @@ type AnalysisCachePayload = {
   }
   rates: Record<string, number>
   calendarType: CalendarType
-  rankMarket: RankMarket
+  rankType: 'profit' | 'loss'
   selectedDayYear: number | null
   selectedDayMonth: number | null
   selectedMonthYear: number | null
@@ -241,14 +223,6 @@ type AnalysisCachePayload = {
 const ANALYSIS_CACHE_DOMAIN = 'analysis'
 const ANALYSIS_CACHE_KEY = 'page'
 const ANALYSIS_CACHE_TTL_MS = 5 * 60_000
-
-const marketTabs = [
-  { key: 'all', label: '全部' },
-  { key: 'a', label: 'A股' },
-  { key: 'hk', label: '港股' },
-  { key: 'us', label: '美股' },
-  { key: 'fund', label: '基金' },
-] as const
 
 const overview = reactive<Record<PeriodKey, OverviewItem>>({
   day: {},
@@ -275,9 +249,9 @@ const realtimeDayReady = ref(false)
 let reloadInflight: Promise<void> | null = null
 
 const calendarType = ref<CalendarType>('day')
-const rankMarket = ref<RankMarket>('all')
+const rankType = ref<'profit' | 'loss'>('profit')
 const rankExpanded = ref(false)
-const overviewPeriod = ref<'week' | 'month' | 'year' | 'all'>('week')
+const overviewPeriod = ref<'day' | 'month' | 'year' | 'all'>('day')
 
 const selectedDayYear = ref<number | null>(null)
 const selectedDayMonth = ref<number | null>(null)
@@ -286,6 +260,55 @@ const selectedMonthYear = ref<number | null>(null)
 const selectableDayYears = ref<number[]>([])
 const selectableDayMonthsByYear = ref<Record<string, number[]>>({})
 const selectableMonthYears = ref<number[]>([])
+const showDatePicker = ref(false)
+
+const pickerYears = computed(() => {
+  if (calendarType.value === 'day') return selectableDayYears.value
+  if (calendarType.value === 'month') return selectableMonthYears.value
+  return []
+})
+
+const pickerSelectedYear = computed(() => {
+  if (calendarType.value === 'day') return selectedDayYear.value
+  if (calendarType.value === 'month') return selectedMonthYear.value
+  return null
+})
+
+const pickerMonths = computed(() => {
+  if (calendarType.value !== 'day') return []
+  const year = selectedDayYear.value
+  if (!year) return []
+  return selectableDayMonthsByYear.value[String(year)] || []
+})
+
+const pickerSelectedMonth = computed(() => {
+  return selectedDayMonth.value
+})
+
+function onPickYear(year: number) {
+  if (calendarType.value === 'day') {
+    selectedDayYear.value = year
+    // 如果当前选的月不在新年份的可选范围里，自动选最后一个可用月
+    const months = selectableDayMonthsByYear.value[String(year)] || []
+    if (months.length && (!selectedDayMonth.value || !months.includes(selectedDayMonth.value))) {
+      selectedDayMonth.value = months[months.length - 1] ?? null
+    }
+    void loadCalendar()
+    persistAnalysisCache()
+  } else if (calendarType.value === 'month') {
+    selectedMonthYear.value = year
+    showDatePicker.value = false
+    void loadCalendar()
+    persistAnalysisCache()
+  }
+}
+
+function onPickMonth(month: number) {
+  selectedDayMonth.value = month
+  showDatePicker.value = false
+  void loadCalendar()
+  persistAnalysisCache()
+}
 
 const toNum = toNumber
 let calendarRequestId = 0
@@ -309,7 +332,7 @@ function persistAnalysisCache() {
         USD: toNum(rates.USD, 1),
       },
       calendarType: calendarType.value,
-      rankMarket: rankMarket.value,
+      rankType: rankType.value,
       selectedDayYear: selectedDayYear.value,
       selectedDayMonth: selectedDayMonth.value,
       selectedMonthYear: selectedMonthYear.value,
@@ -334,7 +357,7 @@ function restoreAnalysisCache(): boolean {
   Object.assign(rank, cached.rank)
   Object.assign(rates, cached.rates)
   calendarType.value = cached.calendarType
-  rankMarket.value = cached.rankMarket
+  rankType.value = cached.rankType || 'profit'
   selectedDayYear.value = cached.selectedDayYear
   selectedDayMonth.value = cached.selectedDayMonth
   selectedMonthYear.value = cached.selectedMonthYear
@@ -368,51 +391,56 @@ const realtimeDayOverview = computed(() => {
 })
 
 const periodLabel = computed(() => {
-  if (overviewPeriod.value === 'week') return '本周'
+  if (overviewPeriod.value === 'day') return '当日'
   if (overviewPeriod.value === 'month') return '本月'
   if (overviewPeriod.value === 'year') return '今年'
   return '累计'
 })
 
 const periodPnl = computed(() => {
-  const key = overviewPeriod.value === 'week' ? 'day' : overviewPeriod.value
+  const key = overviewPeriod.value
   if (key === 'day') return realtimeDayOverview.value.pnl
   return toNum(overview[key]?.pnl)
 })
 
 const periodRate = computed(() => {
-  const key = overviewPeriod.value === 'week' ? 'day' : overviewPeriod.value
+  const key = overviewPeriod.value
   if (key === 'day') return realtimeDayOverview.value.rate
   return toNum(overview[key]?.pnl_rate)
 })
 
-const sidePeriodStats = computed(() => [
-  { label: '今日', key: 'day', pnl: realtimeDayOverview.value.pnl, rate: realtimeDayOverview.value.rate },
-  { label: '本月', key: 'month', pnl: toNum(overview.month?.pnl), rate: toNum(overview.month?.pnl_rate) },
-  { label: '今年', key: 'year', pnl: toNum(overview.year?.pnl), rate: toNum(overview.year?.pnl_rate) },
-  { label: '累计', key: 'all', pnl: toNum(overview.all?.pnl), rate: toNum(overview.all?.pnl_rate) },
-])
-
 const calendarColumns = computed(() => {
-  if (calendarType.value === 'day') return 6
+  if (calendarType.value === 'day') return 7
   if (calendarType.value === 'month') return 4
   return 5
 })
 
-const dayMonthOptions = computed(() => getDayMonths(selectedDayYear.value))
-const selectableYears = computed(() => calendarType.value === 'day' ? selectableDayYears.value : selectableMonthYears.value)
-const currentSelectedYear = computed({
-  get: () => calendarType.value === 'day' ? selectedDayYear.value : selectedMonthYear.value,
-  set: (v) => { if (calendarType.value === 'day') selectedDayYear.value = v; else selectedMonthYear.value = v }
+const calendarPeriodButtonText = computed(() => {
+  if (calendarType.value === 'day') {
+    if (!selectedDayYear.value || !selectedDayMonth.value) return '暂无周期'
+    return `${selectedDayYear.value}年${String(selectedDayMonth.value).padStart(2, '0')}月`
+  }
+  if (calendarType.value === 'month') {
+    if (!selectedMonthYear.value) return '暂无周期'
+    return `${selectedMonthYear.value}年`
+  }
+  return ''
 })
 
-const displayRankItems = computed(() => {
-  const allItems = [...(rank.gain || []), ...(rank.loss || [])]
-  return allItems.sort((a, b) => toNum(b.pnl) - toNum(a.pnl))
+const filteredRankItems = computed(() => {
+  const source = rankType.value === 'profit' ? rank.gain : rank.loss
+  const items = [...(source || [])].filter(item => {
+     // Optional: fallback filtering if backend returns mixed. We assume backend returns pre-categorized.
+     const rv = rankPnlCny(item)
+     return rankType.value === 'profit' ? rv > 0 : rv < 0
+  })
+  items.sort((a, b) => {
+    const pnlA = rankPnlCny(a)
+    const pnlB = rankPnlCny(b)
+    return rankType.value === 'profit' ? pnlB - pnlA : pnlA - pnlB
+  })
+  return items.slice(0, 10)
 })
-
-const hasMoreRankItems = computed(() => displayRankItems.value.length > 5)
-const visibleRankItems = computed(() => rankExpanded.value ? displayRankItems.value : displayRankItems.value.slice(0, 5))
 
 const calendarSummaryLabel = computed(() => {
   if (calendarType.value === 'day') return '当月累计'
@@ -538,14 +566,6 @@ function ensureMonthSelection() {
   if (years.length && (!selectedMonthYear.value || !years.includes(selectedMonthYear.value))) selectedMonthYear.value = lastOrNull(years)
 }
 
-function handleYearChange() {
-  if (calendarType.value === 'day') {
-    const months = getDayMonths(selectedDayYear.value)
-    if (!months.includes(Number(selectedDayMonth.value))) selectedDayMonth.value = lastOrNull(months)
-  }
-  void loadCalendar()
-}
-
 async function loadOverview() {
   const payload = await api.get<Record<string, OverviewItem>>('/api/analysis/overview?period=all')
   Object.assign(overview, payload)
@@ -591,7 +611,7 @@ async function loadCalendar(recoverOnInvalid = true) {
 }
 
 async function loadRank() {
-  const payload = await api.get<{ gain?: RankItem[]; loss?: RankItem[] }>(`/api/analysis/rank?type=all&market=${rankMarket.value}`)
+  const payload = await api.get<{ gain?: RankItem[]; loss?: RankItem[] }>(`/api/analysis/rank?type=all&market=all`)
   rank.gain = payload.gain || []
   rank.loss = payload.loss || []
 }
@@ -614,13 +634,11 @@ async function reload(mode: 'light' | 'force' = 'light', includeAnalysis = true)
 
 function onCalendarTypeChange(nextType: CalendarType) {
   calendarType.value = nextType
+  showDatePicker.value = false
   if (nextType === 'day') ensureDaySelection()
   else if (nextType === 'month') ensureMonthSelection()
   void loadCalendar()
 }
-
-function onDayMonthChange() { void loadCalendar() }
-function onRankMarketChange(m: RankMarket) { rankMarket.value = m; void loadRank() }
 
 // Redundant masked handler removed
 
@@ -633,31 +651,19 @@ onMounted(() => {
 
 <style scoped>
 .analysis-page-layout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 24px;
-  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 800px;
   margin: 0 auto;
-  padding: 24px;
-}
-
-.analysis-main {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-width: 0;
-}
-
-.analysis-side {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  padding: 16px;
+  min-height: calc(100vh - 64px);
 }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 20px;
   padding: 24px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
@@ -666,56 +672,39 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .section-label {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.action-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.action-btn:hover {
-  background: var(--border-color);
-  transform: translateY(-2px);
-}
-
 /* Overview Card */
+.analysis-overview-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 32px 24px;
+}
+
+[data-theme="dark"] .analysis-overview-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
 .overview-hero {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-}
-
-.hero-main {
-  display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 12px 0 24px;
 }
 
 .hero-label {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .hero-val {
@@ -723,42 +712,147 @@ onMounted(() => {
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   line-height: 1.2;
+  letter-spacing: -1px;
 }
 
 .hero-rate {
-  font-size: 18px;
-  font-weight: 600;
-  margin-top: 4px;
-}
-
-.hero-side {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 8px;
   display: flex;
-  gap: 32px;
-  text-align: right;
+  align-items: center;
+  gap: 4px;
 }
 
-.s-lab {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
+/* Calendar Card */
+.analysis-calendar-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-color);
 }
 
-.s-val {
-  font-size: 18px;
+[data-theme="dark"] .analysis-calendar-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Rank Card */
+.analysis-rank-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .analysis-rank-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* ── Date Picker Dropdown ── */
+.cal-period-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: background 0.15s, border-color 0.15s;
+}
+.cal-period-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.cal-arrow {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.date-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 100;
+  background: var(--s2, #181b24);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+}
+
+.dp-columns {
+  display: flex;
+  gap: 0;
+}
+
+.dp-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #545c72);
+  text-align: center;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dp-divider {
+  width: 1px;
+  margin: 0 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dp-item {
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sub, #828a9e);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, color 0.12s;
+}
+.dp-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+.dp-item.active {
+  background: rgba(91, 141, 239, 0.15);
+  color: #5b8def;
   font-weight: 700;
 }
 
-.summary-tabs {
+/* Segmented Control for Periods */
+.period-segmented-control {
   display: flex;
-  gap: 4px;
   background: var(--bg-secondary);
+  border-radius: 999px;
   padding: 4px;
-  border-radius: 10px;
+  margin-top: 8px;
 }
 
-.s-tab {
-  padding: 6px 16px;
-  border-radius: 8px;
+.seg-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 999px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
@@ -768,79 +862,107 @@ onMounted(() => {
   transition: all 0.2s;
 }
 
-.s-tab.active {
-  background: var(--card-bg);
-  color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.seg-btn.active {
+  background: #3F8CFF;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(63, 140, 255, 0.3);
 }
 
-/* Calendar Card */
+/* Calendar Controls */
 .calendar-controls {
   display: flex;
-  gap: 16px;
-  align-items: center;
-}
-
-.calendar-picker-wrap {
-  display: flex;
-  gap: 8px;
-}
-
-.mini-select {
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 12px;
-}
-
-.calendar-grid {
-  display: grid;
-  gap: 8px;
+  justify-content: space-between;
   margin-bottom: 16px;
 }
 
-.cal-cell {
-  height: 80px;
-  border-radius: 10px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+.cal-period-btn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
   background: var(--bg-secondary);
-  transition: transform 0.2s;
-  cursor: default;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
 }
 
-.cal-cell:hover {
-  transform: scale(1.02);
-  z-index: 1;
+.mini-segment {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 2px;
+}
+[data-theme="dark"] .mini-segment {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.view-tab {
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.view-tab.active {
+  background: var(--text-primary);
+  color: var(--card-bg);
+  font-weight: 600;
+}
+.rank-card .view-tab.active {
+  background: rgba(63, 140, 255, 0.1);
+  color: #3F8CFF;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  position: relative;
+  overflow: hidden;
 }
 
 .cal-date {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
   opacity: 0.6;
+  text-align: center;
 }
 
 .cal-pnl {
-  font-size: 14px;
-  font-weight: 800;
-  text-align: right;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  line-height: 1.1;
+  word-break: break-all;
+  width: 100%;
 }
 
 .cal-cell.up {
   background: rgba(var(--up-rgb, 239, 68, 68), 0.1);
   color: var(--up-color);
-  border: 1px solid rgba(var(--up-rgb, 239, 68, 68), 0.2);
 }
 
 .cal-cell.down {
   background: rgba(var(--down-rgb, 34, 197, 94), 0.1);
   color: var(--down-color);
-  border: 1px solid rgba(var(--down-rgb, 34, 197, 94), 0.2);
 }
 
 .cal-cell.flat {
@@ -856,81 +978,100 @@ onMounted(() => {
 
 .calendar-footer {
   display: flex;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.muted {
-  opacity: 0.6;
-}
-
 /* Rank Card */
-.market-filters {
-  display: flex;
-  gap: 8px;
-}
-
-.filter-tag {
-  padding: 4px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.filter-tag.active {
-  background: var(--text-primary);
-  color: var(--card-bg);
-  border-color: var(--text-primary);
-}
-
 .rank-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+.empty-rank {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.rank-expand-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 8px 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--sub, #828a9e);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.rank-expand-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 .rank-item-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
+  padding: 12px;
   border-radius: 12px;
-  background: var(--bg-secondary);
-  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid transparent;
 }
-
-.rank-item-row:hover {
-  background: var(--border-color);
+[data-theme="dark"] .rank-item-row {
+  background: rgba(0, 0, 0, 0.15);
+  border-color: rgba(255, 255, 255, 0.03);
 }
 
 .rank-info {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
-.rank-idx {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+.rank-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   color: #fff;
+  position: relative;
+  overflow: hidden;
+  background: var(--border-color);
+  color: var(--text-secondary);
 }
 
-.rank-idx.top1 { background: linear-gradient(135deg, #FFD700, #FFA500); }
-.rank-idx.top2 { background: linear-gradient(135deg, #C0C0C0, #808080); }
-.rank-idx.top3 { background: linear-gradient(135deg, #CD7F32, #8B4513); }
-.rank-idx.normal { background: var(--border-color); color: var(--text-secondary); }
+.badge-bg {
+  position: absolute;
+  inset: 0;
+}
+
+.rank-badge.top1 .badge-bg { background: linear-gradient(135deg, #FFD700, #FFA500); }
+.rank-badge.top2 .badge-bg { background: linear-gradient(135deg, #E2E8F0, #94A3B8); }
+.rank-badge.top3 .badge-bg { background: linear-gradient(135deg, #CD7F32, #8B4513); }
+.rank-badge.top1, .rank-badge.top2, .rank-badge.top3 { color: #0F172A; }
+
+.badge-num, .icon-medal {
+  position: relative;
+  z-index: 1;
+  font-style: normal;
+}
+
+.icon-medal {
+  font-size: 12px;
+}
 
 .asset-core {
   display: flex;
@@ -938,170 +1079,46 @@ onMounted(() => {
 }
 
 .asset-name {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .asset-code {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .rank-values {
   text-align: right;
+  display: flex;
+  flex-direction: column;
 }
 
 .val-pnl {
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .val-rate {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-}
-
-.expand-btn {
-  width: 100%;
-  margin-top: 16px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px dashed var(--border-color);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* Sidebar */
-.period-cards-stack {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.mini-period-card {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.p-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.p-val {
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.p-rate {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.trend-card {
-  min-height: 240px;
-}
-
-.mock-chart-container {
-  height: 140px;
-  margin: 20px 0;
-  display: flex;
-  align-items: flex-end;
-}
-
-.chart-bars {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  height: 100%;
-  gap: 4px;
-}
-
-.bar-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.bar-fill {
-  width: 100%;
-  background: var(--text-primary);
-  border-radius: 4px 4px 0 0;
-  transition: height 1s ease-out;
-}
-
-.bar-label {
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-.chart-summary {
-  display: flex;
-  gap: 16px;
-}
-
-.c-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.c-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.c-dot.up { background: var(--up-color); }
-.c-dot.down { background: var(--down-color); }
-
-.tips-list {
-  padding: 0;
-  margin: 16px 0 0;
-  list-style: none;
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.8;
 }
 
 /* Common status */
 .up { color: var(--up-color); }
 .down { color: var(--down-color); }
 .flat { color: var(--text-secondary); }
-
-@media (max-width: 1024px) {
-  .analysis-page-layout {
-    grid-template-columns: 1fr;
-  }
-  .analysis-side {
-    order: -1;
-  }
-}
+.muted { opacity: 0.6; }
 
 @media (max-width: 640px) {
-  .overview-hero {
-    flex-direction: column;
-    align-items: flex-start;
+  .analysis-page-layout {
+    padding: 12px;
     gap: 16px;
   }
-  .hero-side {
-    width: 100%;
-    justify-content: flex-start;
-    text-align: left;
-  }
-  .hero-val {
-    font-size: 32px;
+  .card {
+    padding: 16px;
   }
 }
 </style>

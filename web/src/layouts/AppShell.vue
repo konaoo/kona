@@ -114,7 +114,6 @@ async function handleLogout() {
           <div v-else class="mini-avatar fallback">{{ userInitial }}</div>
           <div class="mini-info">
             <div class="mini-name">{{ displayName }}</div>
-            <div class="mini-status">已连接</div>
           </div>
           <button class="logout-btn" @click.stop="handleLogout" title="退出登录">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -226,23 +225,6 @@ async function handleLogout() {
   text-overflow: ellipsis;
 }
 
-.mini-status {
-  font-size: 10px;
-  color: var(--green);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.mini-status::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 8px currentColor;
-}
 
 .logout-btn {
   width: 28px;

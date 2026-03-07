@@ -207,21 +207,29 @@ function formatCurrency(cnyValue: number, signed = false): string {
 const filteredRows = computed(() => {
   const validRows = (rows.value || []).filter(row => row && typeof row === 'object')
   const base = selectedTab.value === 'all' ? validRows : validRows.filter(row => row?.market === selectedTab.value)
-  return base.map((row: any, idx) => {
+  const totalMarketMv = investTotal.value?.mv || 1;
+  
+  return base.map((row: any) => {
     const qty = Number(row?.qty || 0)
     const displayCostPrice = Number(row?.displayCostPrice || 0)
     const currentPrice = Number(row?.currentPrice || 0)
     
+    const localMv = Number(row?.value) || (qty * currentPrice)
+    const rate = rateToCny(String(row?.curr || 'CNY'))
+    const cnyMv = localMv * rate
+    const pct = (cnyMv / totalMarketMv) * 100
+
     return {
       ...row,
       qty,
       costPrice: displayCostPrice, // 首页展示摊薄后成本
-      price: currentPrice || (idx % 2 === 0 ? 225.50 : 88.35),
-      dayPnlRate: Number(row?.dayPnlRate || 0) || (idx % 2 === 0 ? 1.28 : -0.75),
+      price: currentPrice || 0,
+      dayPnlRate: Number(row?.dayPnlRate || 0),
       // 保持 Store 中的原始字段
       cost: row?.cost || (qty * displayCostPrice),
-      mv: row?.value || (qty * currentPrice),
-      spark: 'M0,15 L20,12 L40,14 L60,8 L80,6 L100,5'
+      mv: localMv,
+      pct,
+      spark: generateSparkline(String(row?.code), Number(row?.dayPnlRate || 0))
     }
   })
 })
@@ -262,6 +270,40 @@ const getQtyFontSize = (val: string | number) => {
   if (s.length > 12) return '9px'
   if (s.length > 9) return '10px'
   return '11px'
+}
+
+function generateSparkline(code: string, dayPnlRate: number): string {
+  if (!code) return ''
+  let hash = 0
+  for (let i = 0; i < code.length; i++) {
+    hash = ((hash << 5) - hash) + code.charCodeAt(i)
+    hash |= 0
+  }
+  
+  const points = 6
+  const width = 120
+  const height = 40
+  const midY = height / 2
+  const range = height * 0.4
+  
+  let path = `M0,${midY.toFixed(1)}`
+  const targetY = midY - (dayPnlRate / 5) * range
+  const finalY = Math.max(5, Math.min(35, targetY))
+  
+  for (let i = 1; i < points; i++) {
+    const x = (width / (points - 1)) * i
+    let y
+    if (i === points - 1) {
+      y = finalY
+    } else {
+      const stepSeed = Math.abs(Math.sin(hash + i) * 10000) % 1
+      const progress = i / (points - 1)
+      const trendY = midY + (finalY - midY) * progress
+      y = trendY + (stepSeed - 0.5) * range * 0.4
+    }
+    path += ` L${x.toFixed(1)},${y.toFixed(1)}`
+  }
+  return path
 }
 
 // Methods
@@ -397,16 +439,7 @@ onBeforeUnmount(() => {
 
 <template>
   <AppShell title="我的资产">
-    <!-- Loading State -->
-    <div v-if="isLoading" class="page active" style="display:flex;align-items:center;justify-content:center;height:100%">
-      <div style="text-align:center">
-        <div style="font-size:48px;margin-bottom:16px">⏳</div>
-        <div class="text-sub">加载中...</div>
-      </div>
-    </div>
-
     <!-- Content -->
-    <template v-else>
 
       <!-- Market Index Cards -->
       <!-- Market Index Cards -->
@@ -418,7 +451,7 @@ onBeforeUnmount(() => {
               {{ idx.name === 'USD/CNY' ? idx.value.toFixed(4) : formatPct(idx.change_pct) }}
             </div>
             <div class="mono text-muted" style="font-size:10px;margin-top:3px">
-              {{ idx.name === 'USD/CNY' ? '汇率' : idx.value.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) }}
+              {{ idx.name === 'USD/CNY' ? '实时汇率' : idx.value.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) }}
             </div>
           </div>
         </template>
@@ -601,7 +634,7 @@ onBeforeUnmount(() => {
                 </div>
                 <!-- Market Value in Top Right -->
                 <div class="h-mv-right">
-                  {{ formatCurrency(row?.value || 0) }}
+                  {{ formatValue(row?.mv || 0, String(row?.curr)) }}
                 </div>
               </div>
 
@@ -634,12 +667,12 @@ onBeforeUnmount(() => {
                 </div>
                 <div>
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 500; color:var(--sub)">{{ masked(formatValue(toNumber(row?.cost), row?.curr as any)) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 500; color:var(--sub)">{{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}</div>
                 </div>
                 <div>
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
                   <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
-                    <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: Math.min(toNumber(row?.pct) * 100, 100) + '%' }"></div>
+                    <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
                   </div>
                 </div>
               </div>
@@ -679,11 +712,11 @@ onBeforeUnmount(() => {
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--muted)">{{ masked(formatValue(toNumber(row?.cost), row?.curr as any)) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--muted)">{{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatCurrency(toCny(row?.value||0, String(row?.curr)))) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatValue(toNumber(row?.mv), row?.curr as any)) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
@@ -698,7 +731,7 @@ onBeforeUnmount(() => {
                 <div style="padding:0 0 0 12px">
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
                   <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
-                    <div style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px" :style="{ width: Math.min(toNumber(row?.pct) * 100, 100) + '%' }"></div>
+                    <div style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
                   </div>
                 </div>
               </div>
@@ -787,8 +820,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </template>
-  </AppShell>
+    </AppShell>
 </template>
 
 <style>

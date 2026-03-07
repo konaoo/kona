@@ -155,17 +155,22 @@ const filteredRows = computed(() => {
   if (s !== 'all') {
     base = base.filter((r: any) => r.market === s)
   }
-  return base.map((row: any, idx: number) => {
+  return base.map((row: any) => {
     const qty = Number(row.qty) || 0
     const currentPrice = Number(row.currentPrice) || 0
     const displayCostPrice = Number(row.displayCostPrice) || 0
-    const mv = Number(row.value) || (qty * currentPrice)
-    const cost = Number(row.cost) || (qty * displayCostPrice)
+    const localMv = Number(row.value) || (qty * currentPrice)
+    const localCost = Number(row.cost) || (qty * displayCostPrice)
+    const mv = localMv
+    const cost = localCost
     const totalPnl = Number(row.totalPnl) || (mv - cost)
     const dayPnl = Number(row.dayPnlAggregate) || 0
     const totalPnlRate = Number(row.totalPnlRate) || 0
+    
+    const rate = rateToCny(String(row.curr || 'CNY'))
+    const cnyMv = localMv * rate
     const totalMarketMv = investTotal.value.mv || 1
-    const pct = mv / totalMarketMv
+    const pct = (cnyMv / totalMarketMv) * 100
 
     return {
       ...row,
@@ -173,20 +178,20 @@ const filteredRows = computed(() => {
       asset_type: row.asset_type,
       qty,
       amount: qty, // Add compatibility with template
-      last: currentPrice,
+      // 保持 Store 中的原始字段
       costPrice: displayCostPrice,
+      cost,
       mv,
       dayPnl,
       totalPnl,
-      dayPnlRate: row.dayPnlRate || (idx % 2 === 0 ? 1.28 : -0.75),
+      dayPnlRate: row.dayPnlRate || 0,
       totalPnlRate,
-      cost,
       pct,
-      price: currentPrice || (idx % 2 === 0 ? 225.50 : 88.35),
+      price: currentPrice || 0,
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
       unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
-      spark: String(row.spark || 'M0,30 L20,26 L40,28 L60,18 L80,14 L100,8 L120,5') // Explicitly cast to string
+      spark: generateSparkline(String(row.code), Number(row.dayPnlRate || 0))
     }
   })
 })
@@ -215,6 +220,40 @@ function getQtyFontSize(val: string | number) {
   if (s.length > 12) return '9px'
   if (s.length > 9) return '10px'
   return '11px'
+}
+
+function generateSparkline(code: string, dayPnlRate: number): string {
+  if (!code) return ''
+  let hash = 0
+  for (let i = 0; i < code.length; i++) {
+    hash = ((hash << 5) - hash) + code.charCodeAt(i)
+    hash |= 0
+  }
+  
+  const points = 6
+  const width = 120
+  const height = 40
+  const midY = height / 2
+  const range = height * 0.4
+  
+  let path = `M0,${midY.toFixed(1)}`
+  const targetY = midY - (dayPnlRate / 5) * range
+  const finalY = Math.max(5, Math.min(35, targetY))
+  
+  for (let i = 1; i < points; i++) {
+    const x = (width / (points - 1)) * i
+    let y
+    if (i === points - 1) {
+      y = finalY
+    } else {
+      const stepSeed = Math.abs(Math.sin(hash + i) * 10000) % 1
+      const progress = i / (points - 1)
+      const trendY = midY + (finalY - midY) * progress
+      y = trendY + (stepSeed - 0.5) * range * 0.4
+    }
+    path += ` L${x.toFixed(1)},${y.toFixed(1)}`
+  }
+  return path
 }
 
 onMounted(async () => {
@@ -297,8 +336,10 @@ const handleTradeSuccess = async () => {
               </div>
               <div class="legend-list">
                   <div v-for="item in distributionData" :key="item.name" class="legend-item">
-                      <span class="dot" :style="{ background: item.color }"></span>
-                      <span class="ln">{{ item.name }}</span>
+                      <div class="legend-left">
+                          <span class="dot" :style="{ background: item.color }"></span>
+                          <span class="ln">{{ item.name }}</span>
+                      </div>
                       <span class="lp">{{ item.percent.toFixed(1) }}%</span>
                   </div>
               </div>
@@ -396,7 +437,7 @@ const handleTradeSuccess = async () => {
                     </div>
                     <!-- Market Value in Top Right -->
                     <div class="h-mv-right">
-                      {{ formatCurrency(row.mv) }}
+                      <span style="font-size:12px;opacity:0.6;margin-right:2px;font-weight:400">{{ getCurrencySymbol(row.curr) }}</span>{{ formatLocal(row.mv) }}
                     </div>
                   </div>
 
@@ -441,7 +482,7 @@ const handleTradeSuccess = async () => {
                     <div>
                       <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
-                        {{ row.cost }}
+                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.costPrice }}
                       </div>
                     </div>
                     <div>
@@ -451,7 +492,7 @@ const handleTradeSuccess = async () => {
                       <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
                         <div 
                           style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px"
-                          :style="{ width: `${Math.min(toNumber(row.pct) * 100, 100)}%` }"
+                          :style="{ width: `${Math.min(toNumber(row.pct), 100)}%` }"
                         ></div>
                       </div>
                     </div>
@@ -496,13 +537,13 @@ const handleTradeSuccess = async () => {
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:500; color:var(--muted)">
-                        {{ row.cost }}
+                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.costPrice }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
-                        {{ formatCurrency(row.mv) }}
+                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ formatLocal(row.mv) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
@@ -530,7 +571,7 @@ const handleTradeSuccess = async () => {
                       <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
                         <div 
                           style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px"
-                          :style="{ width: `${Math.min(toNumber(row.pct) * 100, 100)}%` }"
+                          :style="{ width: `${Math.min(toNumber(row.pct), 100)}%` }"
                         ></div>
                       </div>
                     </div>
@@ -594,20 +635,23 @@ const handleTradeSuccess = async () => {
   background: var(--s1);
   border: 1px solid var(--border);
   border-radius: 28px;
-  padding: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
 }
-.card-title { font-size: 14px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
-.dist-content { display: flex; align-items: center; gap: 20px; }
-.chart-container { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 24px; color: var(--text); }
+.dist-content { display: flex; align-items: center; gap: 32px; flex: 1; }
+.chart-container { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
 .donut-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.chart-center-val { fill: var(--text); font-size: 18px; font-weight: 800; font-family: 'JetBrains Mono', monospace; transform: rotate(90deg); transform-origin: center; }
-.chart-center-lbl { fill: var(--sub); font-size: 8px; font-weight: 600; transform: rotate(90deg); transform-origin: center; }
+.chart-center-val { fill: var(--text); font-size: 20px; font-weight: 800; font-family: 'JetBrains Mono', monospace; transform: rotate(90deg); transform-origin: center; }
+.chart-center-lbl { fill: var(--sub); font-size: 9px; font-weight: 600; transform: rotate(90deg); transform-origin: center; }
 .donut-slice { transition: stroke-dasharray 0.5s var(--easing-out); }
 
-.legend-list { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; }
-.legend-item .dot { width: 6px; height: 6px; border-radius: 50%; }
-.legend-item .ln { color: var(--sub); flex: 1; }
+.legend-list { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.legend-item { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.legend-left { display: flex; align-items: center; gap: 10px; }
+.legend-item .dot { width: 8px; height: 8px; border-radius: 50%; }
+.legend-item .ln { color: var(--sub); font-weight: 500; }
 .legend-item .lp { font-weight: 700; color: var(--text); font-family: 'JetBrains Mono', monospace; }
 
 .market-grid {

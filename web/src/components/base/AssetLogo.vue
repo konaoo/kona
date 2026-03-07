@@ -68,13 +68,21 @@ const placeholder = computed(() => {
 
 // 根据市场类型定义不同的占位图背景色
 const bgClass = computed(() => {
+  // 如果是基金，始终显示基金背景色
   if (isFund.value) return 'bg-fund'
-  switch (props.market?.toLowerCase()) {
-    case 'us': return 'bg-us'
-    case 'hk': return 'bg-hk'
-    case 'a': return 'bg-a'
-    default: return 'bg-default'
+  
+  // 关键修复：只有在图片加载失败（imageError = true），或没有图片尝试加载时，才显示市场背景色进行占位
+  if (imageError.value || !currentUrl.value) {
+    switch (props.market?.toLowerCase()) {
+      case 'us': return 'bg-us'
+      case 'hk': return 'bg-hk'
+      case 'a': return 'bg-a'
+      default: return 'bg-default'
+    }
   }
+  
+  // 图片加载成功时，使用纯白色或透明背景，不再使用蓝色背景干扰视觉
+  return 'bg-white'
 })
 
 function handleImageError() {
@@ -153,6 +161,7 @@ function handleImageError() {
 .bg-hk { background: linear-gradient(135deg, #f59e0b, #d97706); border-color: rgba(245, 158, 11, 0.3); }
 .bg-a { background: linear-gradient(135deg, #ef4444, #dc2626); border-color: rgba(239, 68, 68, 0.3); }
 .bg-default { background: linear-gradient(135deg, #6b7280, #4b5563); }
+.bg-white { background: #fff; border-color: rgba(0,0,0,0.05); }
 
 .asset-logo:hover {
   transform: scale(1.05);
