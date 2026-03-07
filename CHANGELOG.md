@@ -29,7 +29,7 @@
 
 这版主要对 Web 端首页和投资页进行了 UI 重构，并补齐了全系统的项目结构说明文档。
 
-### 主要变化
+- **文档完美化**: 升级 `AGENTS.md`，补充环境约束、命令速查及代码禁区规范；同步更新 `项目结构.md` 技术细节。
 - **Web 端 UI 优化 (AppInvestPage)**: 整合左侧导航栏 (Sidebar)，保持与首页一致；移除“投资资产分析”标题、副标题，及“CNY 汇率折算”相关文案。
 - **Store 架构重构 (composables.ts)**: 将 `useKonaStore` 的 `state` 改为基于 `reactive` 的代理模式，解决全站由于 `ComputedRef` 类型变更引发的属性访问报错。
 - **TypeScript 修复**: 修正 `LegacyAppShell.vue`、`AppProfilePage.vue`、`AppMePage.vue` 和 `AppAssetDetailPage.vue` 中的类型定义与响应式访问冲突。
