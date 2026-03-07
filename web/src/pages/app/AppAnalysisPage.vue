@@ -154,7 +154,7 @@ import { api, type ApiError } from '../../shared/http'
 import { toNumber } from '../../shared/format'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
 import { usePrivacyMode } from '../../shared/privacyMode'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 import { useWebTheme } from '../../shared/webTheme'
 
 type CalendarType = 'day' | 'month' | 'year'
@@ -233,11 +233,6 @@ type AnalysisCachePayload = {
   selectableDayYears: number[]
   selectableDayMonthsByYear: Record<string, number[]>
   selectableMonthYears: number[]
-  storePortfolio: unknown[]
-  storeQuotes: Record<string, unknown>
-  storeRates: Record<string, number>
-  storeMarketStatus: Record<string, unknown>
-  storeAllClosed: boolean
 }
 
 const ANALYSIS_CACHE_DOMAIN = 'analysis'
@@ -339,11 +334,6 @@ function persistAnalysisCache() {
       selectableDayYears: selectableDayYears.value,
       selectableDayMonthsByYear: selectableDayMonthsByYear.value,
       selectableMonthYears: selectableMonthYears.value,
-      storePortfolio: store.state.portfolio as unknown[],
-      storeQuotes: store.state.quotes as Record<string, unknown>,
-      storeRates: store.state.rates,
-      storeMarketStatus: store.state.marketStatus as Record<string, unknown>,
-      storeAllClosed: Boolean(store.state.allClosed),
     },
     ANALYSIS_CACHE_TTL_MS,
   )
@@ -386,20 +376,6 @@ function restoreAnalysisCache(): boolean {
   selectableDayYears.value = Array.isArray(cached.selectableDayYears) ? cached.selectableDayYears : []
   selectableDayMonthsByYear.value = cached.selectableDayMonthsByYear || {}
   selectableMonthYears.value = Array.isArray(cached.selectableMonthYears) ? cached.selectableMonthYears : []
-
-  if (Array.isArray(cached.storePortfolio)) {
-    store.state.portfolio = cached.storePortfolio as typeof store.state.portfolio
-  }
-  if (cached.storeQuotes && typeof cached.storeQuotes === 'object') {
-    store.state.quotes = cached.storeQuotes as typeof store.state.quotes
-  }
-  if (cached.storeRates && typeof cached.storeRates === 'object') {
-    store.state.rates = cached.storeRates
-  }
-  if (cached.storeMarketStatus && typeof cached.storeMarketStatus === 'object') {
-    store.state.marketStatus = cached.storeMarketStatus as typeof store.state.marketStatus
-  }
-  store.state.allClosed = Boolean(cached.storeAllClosed)
   return true
 }
 
@@ -452,6 +428,7 @@ const calendarColumns = computed(() => {
 const dayMonthOptions = computed(() => {
   return getDayMonths(selectedDayYear.value)
 })
+
 
 const displayRankItems = computed(() => {
   const allItems = [...(rank.gain || []), ...(rank.loss || [])]

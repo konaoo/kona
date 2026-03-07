@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { RouterLink, useRouter } from 'vue-router'
-import { useKonaStore } from '../shared/store'
+import { useKonaStore } from '../stores/composables'
 import AdminButton from '../components/admin/ui/AdminButton.vue'
 import AdminIcon from '../components/admin/ui/AdminIcon.vue'
 

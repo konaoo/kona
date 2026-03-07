@@ -30,20 +30,21 @@
 这版主要对 Web 端首页和投资页进行了 UI 重构，并补齐了全系统的项目结构说明文档。
 
 ### 主要变化
-
-- Web 端首页和投资页焕然一新，大幅度清理冗余 CSS，交互更流畅。
-- 补齐了 `kaka` 工作区和 `kona_repo` 的完整目录说明文档和技术骨架说明。
-- 清理了仓库历史遗留的清理项归档。
+- **Web 端 UI 优化 (AppInvestPage)**: 整合左侧导航栏 (Sidebar)，保持与首页一致；移除“投资资产分析”标题、副标题，及“CNY 汇率折算”相关文案。
+- **Store 架构重构 (composables.ts)**: 将 `useKonaStore` 的 `state` 改为基于 `reactive` 的代理模式，解决全站由于 `ComputedRef` 类型变更引发的属性访问报错。
+- **TypeScript 修复**: 修正 `LegacyAppShell.vue`、`AppProfilePage.vue`、`AppMePage.vue` 和 `AppAssetDetailPage.vue` 中的类型定义与响应式访问冲突。
+- **代码清理**: 移除冗余的 `archive/` 目录；清理 `AppInvestPage` 及其他页面的未使用的变量与代码。
+- **CI/CD 修复**: 恢复 `flutter/android` 下的 `gradle-8.13` 版本，确保 Android 构建流水线通畅。
 
 ### 影响范围
-
-- Web 首页、投资页
-- 项目全体文档
-- 仓库根目录
+- Web 前端所有使用 `useKonaStore` 的页面（已完成兼容性修复）。
+- 投资资产详情与分析页面布局。
+- Flutter Android 构建流水线。
 
 ### 验收重点
-
-- Web 页面视觉是否符合预期
+- `http://localhost:5173/app/invest` (本地 Web 端) 侧边栏是否存在且功能正常。
+- Web 端构建 (`npm run build`) 是否无报错。
+- 侧边栏“添加资产”按钮功能是否正常。
 - `docs/` 下的文档是否清晰完整
 - 仓库内不再包含 `archive/` 目录
 

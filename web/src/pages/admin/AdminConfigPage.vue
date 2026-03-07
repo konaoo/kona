@@ -97,7 +97,7 @@ import AdminCard from '../../components/admin/ui/AdminCard.vue'
 import AdminButton from '../../components/admin/ui/AdminButton.vue'
 import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
 import { api } from '../../shared/http'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 
 type OpsConfigPayload = {
   text?: string

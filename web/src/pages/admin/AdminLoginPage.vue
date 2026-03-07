@@ -27,7 +27,7 @@
 import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { api } from '../../shared/http'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 
 const router = useRouter()
 const store = useKonaStore()

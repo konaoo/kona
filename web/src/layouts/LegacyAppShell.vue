@@ -65,7 +65,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'
-import { useKonaStore } from '../shared/store'
+import { useKonaStore } from '../stores/composables'
 import { useWebTheme } from '../shared/webTheme'
 
 const nav = [

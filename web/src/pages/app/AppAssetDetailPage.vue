@@ -12,8 +12,8 @@
             <td>{{ row.code }}</td>
             <td>{{ row.name }}</td>
             <td>{{ row.qty }}</td>
-            <td>{{ money(row.currentPrice, row.curr || 'CNY') }}</td>
-            <td :class="row.totalPnl >= 0 ? 'up' : 'down'">{{ money(row.totalPnl, row.curr || 'CNY') }}</td>
+            <td>{{ money(row.currentPrice, String(row.curr || 'CNY')) }}</td>
+            <td :class="row.totalPnl >= 0 ? 'up' : 'down'">{{ money(row.totalPnl, String(row.curr || 'CNY')) }}</td>
           </tr>
           <tr v-else>
             <td colspan="5">未找到该资产持仓</td>
@@ -47,7 +47,7 @@ import { useRoute } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { money } from '../../shared/format'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 
 const route = useRoute()
 const store = useKonaStore()

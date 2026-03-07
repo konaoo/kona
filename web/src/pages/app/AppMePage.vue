@@ -72,12 +72,14 @@ import { useRouter } from 'vue-router'
 import * as XLSX from 'xlsx'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
+import { useAuthStore } from '../../stores/auth'
 
 type AssetRow = Record<string, unknown>
 
 const router = useRouter()
 const store = useKonaStore()
+const authStore = useAuthStore()
 const user = computed(() => store.state.user as Record<string, unknown> | null)
 
 const avatarFileInput = ref<HTMLInputElement | null>(null)
@@ -152,7 +154,9 @@ async function saveProfile() {
       nickname: nickname.value,
       avatar: avatar.value,
     })
-    store.state.user = payload as any
+    if (authStore.user && typeof authStore.user === 'object') {
+       Object.assign(authStore.user, payload)
+    }
     nickname.value = String(payload.nickname || nickname.value || '')
     avatar.value = String(payload.avatar || '')
     message.value = '保存成功'

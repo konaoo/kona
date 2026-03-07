@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import { RouterLink, useRouter } from 'vue-router'
-import { useKonaStore } from '../shared/store'
+import { useKonaStore } from '../stores/composables'
 
 defineProps<{ title: string; subtitle?: string }>()
 

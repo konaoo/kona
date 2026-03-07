@@ -1,3 +1,8 @@
+/**
+ * 已废弃的旧 Web 共享 store。
+ * 页面、布局和路由现在统一改走 ../stores/composables.ts。
+ * 这个文件暂时保留，只作为历史兼容参考，不应该再新增职责。
+ */
 import { computed, reactive } from 'vue'
 import { api } from './http'
 import {

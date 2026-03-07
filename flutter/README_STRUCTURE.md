@@ -179,3 +179,7 @@ Flutter 端当前和后端耦合最深的地方包括：
 
 - 可再生成的缓存直接清
 - 需要保留的非源码文件先归档
+
+### 7.2 补充阅读
+
+- [flutter/lib/README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)

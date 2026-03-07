@@ -37,6 +37,12 @@
 - [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
   作用：看成本价、adjustment、当日盈亏、累计盈亏、快照和分析页口径
 
+- [接口与页面对照图](/Users/kona/Desktop/kaka/kona_repo/docs/接口与页面对照图.md)
+  作用：看某个页面到底吃哪些接口、后端入口在哪
+
+- [状态管理职责图](/Users/kona/Desktop/kaka/kona_repo/docs/状态管理职责图.md)
+  作用：看 Flutter 和 Web 到底是谁在管状态、哪里重复了
+
 ---
 
 ## 3. 如果你是要看产品和业务逻辑，优先看这些
@@ -47,14 +53,14 @@
 - [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
   作用：看成本、摊薄后成本、当日盈亏、累计盈亏和历史快照的关系
 
+- [接口与页面对照图](/Users/kona/Desktop/kaka/kona_repo/docs/接口与页面对照图.md)
+  作用：看页面、状态和接口之间的对应关系
+
 - [价格源 / 基金净值 / 快照与盈亏口径交接](/Users/kona/Desktop/kaka/kona_repo/docs/价格源与快照盈亏口径说明.md)
   作用：看价格源、基金净值、快照、价格异常巡检这些逻辑
 
 - [分析页日历与分市场收益说明](/Users/kona/Desktop/kaka/kona_repo/docs/分析页日历与分市场收益说明.md)
   作用：看分析页日历和分市场收益怎么算
-
-- [投资页 UI v2 与摊薄成本说明](/Users/kona/Desktop/kaka/kona_repo/docs/投资页UI与摊薄成本说明.md)
-  作用：看投资页 UI 和摊薄成本展示逻辑
 
 - [登录态、生物识别与持久化说明](/Users/kona/Desktop/kaka/kona_repo/docs/登录态与生物识别说明.md)
   作用：看登录、会话保持、生物识别相关逻辑
@@ -65,6 +71,9 @@
 
 - [运维手册](/Users/kona/Desktop/kaka/kona_repo/docs/运维手册.md)
   作用：常规运维怎么做
+
+- [线上运维与发布操作图](/Users/kona/Desktop/kaka/kona_repo/docs/线上运维与发布操作图.md)
+  作用：看从本地修改、验收、推 GitHub 到腾讯云生效的完整流程
 
 - [维护说明](/Users/kona/Desktop/kaka/kona_repo/docs/维护说明.md)
   作用：偏维护、巡检、排障
@@ -113,24 +122,30 @@
 - [管理后台功能手册 V2](/Users/kona/Desktop/kaka/kona_repo/docs/管理后台功能手册V2.md)
   作用：看后台页面和功能
 
+- [状态管理职责图](/Users/kona/Desktop/kaka/kona_repo/docs/状态管理职责图.md)
+  作用：看前端状态层的边界和当前重复点
+
 ---
 
-## 7. 这些文档名字看着硬，但你现在可以先不用管
+## 7. 已归档的阶段性或重复文档
 
-- [核心模块说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/核心模块说明.md)
-  作用：偏模块结构说明，给开发看更多
+这批文档不是没用，而是：
 
-- [项目概览.md](/Users/kona/Desktop/kaka/kona_repo/docs/项目概览.md)
-  作用：旧版项目概览，信息和主 README 有重复
+- 现在已经不适合放在 `docs/` 主层
+- 更适合查历史背景时再看
 
-- [结构说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/结构说明.md)
-  作用：旧版结构说明，和现在新整理的结构文档有重叠
+归档位置：
 
-- [新电脑待办说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/新电脑待办说明.md)
-  作用：偏阶段性 TODO，不是日常入口
+- [docs/archive/20260307_阶段性与重复文档](/Users/kona/Desktop/kaka/kona_repo/docs/archive/20260307_阶段性与重复文档)
 
-- [行情快讯性能与CI说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/行情快讯性能与CI说明.md)
-  作用：偏一次行情/快讯性能优化交接，查专项问题时再看
+目前归档了这些：
+
+- `项目概览.md`
+- `结构说明.md`
+- `核心模块说明.md`
+- `新电脑待办说明.md`
+- `投资页UI与摊薄成本说明.md`
+- `行情快讯性能与CI说明.md`
 
 ---
 

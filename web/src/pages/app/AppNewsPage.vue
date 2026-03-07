@@ -52,7 +52,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { readPageCache, writePageCache } from '../../shared/pageCache'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 
 type NewsItem = {
   id: string

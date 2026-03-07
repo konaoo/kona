@@ -184,7 +184,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { useKonaStore } from '../../shared/store'
+import { useKonaStore } from '../../stores/composables'
 import { api } from '../../shared/http'
 
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'

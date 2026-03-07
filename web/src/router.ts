@@ -13,7 +13,7 @@ import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
 import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
 import AdminApisPage from './pages/admin/AdminApisPage.vue'
 import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
-import { useKonaStore } from './shared/store'
+import { useKonaStore } from './stores/composables'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: LandingPage },

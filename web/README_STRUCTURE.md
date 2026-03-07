@@ -150,3 +150,6 @@ npm run build
 3. 清理依赖和构建历史垃圾
 4. 把共享业务口径单独沉淀出来
 
+### 7.1 补充阅读
+
+- [web/src/README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/web/src/README_页面与状态地图.md)

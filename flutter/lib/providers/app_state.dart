@@ -29,6 +29,7 @@ class _ParsedMarketStatus {
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
+  // 1) 常量与依赖
   static const Duration _staticDataTtl = Duration(minutes: 5);
   static const Duration _historyDataTtl = Duration(minutes: 10);
   static const Duration _ratesDataTtl = Duration(minutes: 10);
@@ -82,7 +83,7 @@ class AppState extends ChangeNotifier {
     _restoreSession();
   }
 
-  // 用户状态
+  // 2) 认证与安全状态
   bool _isLoggedIn = false;
   SessionBootState _sessionBootState = SessionBootState.initializing;
   bool _isSessionChecking = false;
@@ -111,7 +112,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 资产数据
+  // 3) 资产与持仓状态
   double _totalAsset = 0;
   double _totalCash = 0;
   double _totalInvest = 0;
@@ -131,7 +132,7 @@ class AppState extends ChangeNotifier {
   List<Asset> _liabilities = [];
   int _nextTempAssetId = -1;
 
-  // 汇率
+  // 4) 汇率、市场与行情状态
   Map<String, double> _exchangeRates = {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
   Map<String, bool> _marketOpenStatus = const {
     'a': false,
@@ -146,7 +147,7 @@ class AppState extends ChangeNotifier {
     'fund': false,
   };
 
-  // 历史数据
+  // 5) 历史概览与同步状态
   double _monthChange = 0;
   double _yearChange = 0;
   double _historyPeak = 0;
@@ -169,7 +170,7 @@ class AppState extends ChangeNotifier {
   int _quoteIntervalClosedSec = 120;
   int _quoteIntervalUsExtendedSec = 10;
 
-  // 金额隐藏
+  // 6) UI 偏好状态
   bool _amountHidden = false;
 
   // 显示币种（全局）
@@ -179,7 +180,7 @@ class AppState extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
 
   // ============================================================
-  // Getters
+  // 7) 基础 getters
   // ============================================================
 
   ApiService get apiService => _api;
@@ -482,7 +483,7 @@ class AppState extends ChangeNotifier {
   }
 
   // ============================================================
-  // Methods
+  // 8) 缓存与同步基础
   // ============================================================
 
   static const Map<String, String> _legacyCacheKeys = {
@@ -924,6 +925,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================
+  // 9) UI 偏好
+  // ============================================================
+
   Future<void> _loadTheme() async {
     final saved = await _cache.getString('theme_mode');
     if (saved == 'light') {
@@ -1049,6 +1054,10 @@ class AppState extends ChangeNotifier {
     }
     await _saveSyncVersionsToCache();
   }
+
+  // ============================================================
+  // 10) 认证、资料与生物识别
+  // ============================================================
 
   Future<void> _applyAuthResult(Map<String, dynamic> result) async {
     final accessToken = result['access_token']?.toString();
@@ -1898,6 +1907,10 @@ class AppState extends ChangeNotifier {
     return DateTime.now().difference(lastAt) < _staticDataTtl;
   }
 
+  // ============================================================
+  // 11) 首页、同步与行情刷新
+  // ============================================================
+
   /// 刷新首页数据（全量）
   /// 刷新首页数据
   Future<void> refreshHomeData() async {
@@ -2298,6 +2311,10 @@ class AppState extends ChangeNotifier {
     await refreshByVersion(force: false, refreshQuotes: true);
   }
 
+  // ============================================================
+  // 12) 非投资资产操作
+  // ============================================================
+
   _AssetSnapshot _captureAssetSnapshot() {
     return _AssetSnapshot(
       cashAssets: List<Asset>.from(_cashAssets),
@@ -2564,6 +2581,10 @@ class AppState extends ChangeNotifier {
     }
     return const AssetActionResult.success();
   }
+
+  // ============================================================
+  // 13) 投资持仓操作
+  // ============================================================
 
   String _normalizeAssetCurrency(String? curr) {
     final code = (curr ?? '').trim().toUpperCase();
@@ -2835,6 +2856,10 @@ class AppState extends ChangeNotifier {
   Future<List<dynamic>> searchStocks(String query) async {
     return await _api.searchStocks(query);
   }
+
+  // ============================================================
+  // 14) 投资交易与调仓写操作
+  // ============================================================
 
   /// 添加投资资产
   Future<AssetActionResult> addInvestment({
@@ -3300,6 +3325,10 @@ class AppState extends ChangeNotifier {
     return const AssetActionResult.success();
   }
 
+  // ============================================================
+  // 15) 历史统计与概览口径
+  // ============================================================
+
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
     _overviewMilestonesReady = false;
@@ -3398,6 +3427,10 @@ class AppState extends ChangeNotifier {
       '计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)',
     );
   }
+
+  // ============================================================
+  // 16) 汇率、组合刷新与展示工具
+  // ============================================================
 
   /// 刷新投资组合
   Future<void> refreshPortfolio() async {

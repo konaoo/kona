@@ -3,7 +3,7 @@
  * 提供类似原 useKonaStore 的接口，便于迁移
  */
 
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 import { useAuthStore } from './auth'
 import { usePortfolioStore } from './portfolio'
 import { useQuoteStore } from './quote'
@@ -25,21 +25,21 @@ export function useKonaStore() {
   // Computed - 向后兼容
   // ───────────────────────────────────────────────────────────────
 
-  const state = computed(() => ({
-    bootstrapped: authStore.bootstrapped,
-    loading: portfolioStore.loading || quoteStore.loading || marketStore.loading,
-    token: authStore.token,
-    refreshToken: authStore.refreshToken,
-    user: authStore.user,
-    authError: authStore.authError,
-    portfolio: portfolioStore.portfolio,
-    quotes: quoteStore.quotes,
-    marketStatus: marketStore.marketStatus,
-    allClosed: marketStore.allClosed,
-    rates: marketStore.rates,
-    quotePolicy: quoteStore.quotePolicy,
-    syncVersions: syncStore.syncVersions,
-  }))
+  const state = reactive({
+    get bootstrapped() { return authStore.bootstrapped },
+    get loading() { return portfolioStore.loading || quoteStore.loading || marketStore.loading },
+    get token() { return authStore.token },
+    get refreshToken() { return authStore.refreshToken },
+    get user() { return authStore.user },
+    get authError() { return authStore.authError },
+    get portfolio() { return portfolioStore.portfolio },
+    get quotes() { return quoteStore.quotes },
+    get marketStatus() { return marketStore.marketStatus },
+    get allClosed() { return marketStore.allClosed },
+    get rates() { return marketStore.rates },
+    get quotePolicy() { return quoteStore.quotePolicy },
+    get syncVersions() { return syncStore.syncVersions },
+  })
 
   const rows = computed(() => portfolioStore.rows)
   const summary = computed(() => portfolioStore.summary)

@@ -7,11 +7,13 @@ import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
+import { useWebTheme } from '@/shared/webTheme'
 
-// Stores
+// Stores & Composables
 const store = useKonaStore()
-const { maskValue } = usePrivacyMode()
+const { isPrivacyMode, togglePrivacy, maskValue } = usePrivacyMode()
 const marketStore = useMarketStore()
+const { theme, toggleTheme } = useWebTheme()
 
 // State
 const selectedTab = ref('all')
@@ -226,18 +228,60 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="kk-page invest-page">
-    <div class="modern-shell">
-      <!-- Top Title -->
-      <div class="page-header">
-        <div class="title-group">
-          <h1>投资资产分析</h1>
-          <div class="subtitle">Investment Analysis & Portfolio</div>
+  <div class="layout" :data-theme="theme" style="width: 100vw;">
+    <aside class="sidebar">
+      <a class="sidebar-logo">
+        <div class="s-logo-icon">
+          <svg width="16" height="12" viewBox="0 0 18 14" fill="none"><polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
-        <div class="ccy-tag" @click="currentCurrency = (currentCurrency === 'CNY' ? 'USD' : currentCurrency === 'USD' ? 'HKD' : 'CNY')">
-          {{ currentCurrency }} 汇率折算
+        <div>
+          <div class="s-logo-name">咔咔记账</div>
+          <div class="s-logo-tag">GLOBAL ASSET DESK</div>
+        </div>
+      </a>
+      <nav class="sidebar-nav">
+        <div class="nav-item" @click="$router.push('/app/home')">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>首页
+        </div>
+        <div class="nav-item active" @click="$router.push('/app/invest')">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>投资
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>分析
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>快讯
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>我的
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="sidebar-add-btn" @click="$router.push('/app/home')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          添加资产
+        </button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-title">投资分析</div>
+        <div class="topbar-actions">
+          <button @click="toggleTheme" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
+            {{ theme === 'dark' ? '🌙' : '☀️' }}
+          </button>
+          <button @click="togglePrivacy" class="icon-btn" :style="theme==='dark'?'':'background:rgba(0,0,0,0.04)'">
+            {{ isPrivacyMode ? '🙈' : '👁️' }}
+          </button>
+          <div class="ccy-switcher" @click="currentCurrency = (currentCurrency === 'CNY' ? 'USD' : currentCurrency === 'USD' ? 'HKD' : 'CNY')">
+            {{ currentCurrency }}
+          </div>
         </div>
       </div>
+
+      <div class="kk-page invest-page" style="padding-top: 20px">
+        <div class="modern-shell">
 
       <!-- Main Statistics Grid -->
       <div class="stats-grid">
@@ -505,6 +549,8 @@ onMounted(async () => {
               </div>
           </div>
       </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -524,26 +570,6 @@ onMounted(async () => {
   max-width: 1200px;
   margin: 0 auto;
 }
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 32px;
-}
-.page-header h1 { font-size: 28px; font-weight: 800; margin: 0; color: var(--text); }
-.subtitle { font-size: 13px; color: var(--sub); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
-.ccy-tag {
-  padding: 8px 16px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .2s;
-}
-.ccy-tag:hover { background: rgba(255,255,255,0.08); border-color: var(--blue); }
 
 .stats-grid {
   display: grid;
