@@ -320,11 +320,7 @@ function getCurrencyLabel(curr?: string) {
   return '人民币'
 }
 
-function openModal(type: AssetType) {
-  modalType.value = type
-  modalVisible.value = true
-  isFormModalVisible.value = false
-}
+
 
 function closeModal() {
   modalVisible.value = false
