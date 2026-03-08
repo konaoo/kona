@@ -120,7 +120,6 @@ class AdminApiFoundationTests(unittest.TestCase):
         day1_str = (cohort_day + timedelta(days=1)).isoformat()
         day3_str = (cohort_day + timedelta(days=3)).isoformat()
         day7_str = (cohort_day + timedelta(days=7)).isoformat()
-
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -189,6 +188,10 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertAlmostEqual(float(cohort_row.get("retention_7d") or 0), 0.5, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_14d") or 0), 0.0, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_30d") or 0), 0.0, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("active_retention_1d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("active_retention_3d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("active_retention_7d") or 0), 0.5, places=3)
+        self.assertAlmostEqual(float(cohort_row.get("active_retention_14d") or 0), 0.0, places=3)
 
     def test_admin_overview_force_param_bypasses_read_cache(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

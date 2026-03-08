@@ -130,10 +130,14 @@
                 <th>日期</th>
                 <th>新增用户</th>
                 <th>活跃用户</th>
-                <th>次留</th>
-                <th>3留</th>
-                <th>7留</th>
-                <th>14留</th>
+                <th>新增次留</th>
+                <th>新增3留</th>
+                <th>新增7留</th>
+                <th>新增14留</th>
+                <th>活跃次留</th>
+                <th>活跃3留</th>
+                <th>活跃7留</th>
+                <th>活跃14留</th>
               </tr>
             </thead>
             <tbody>
@@ -145,9 +149,13 @@
                 <td><span class="retention-rate" :class="getRetentionClass(item.retention_3d)">{{ formatRate(item.retention_3d) }}</span></td>
                 <td><span class="retention-rate" :class="getRetentionClass(item.retention_7d)">{{ formatRate(item.retention_7d) }}</span></td>
                 <td><span class="retention-rate" :class="getRetentionClass(item.retention_14d)">{{ formatRate(item.retention_14d) }}</span></td>
+                <td><span class="retention-rate" :class="getRetentionClass(item.active_retention_1d)">{{ formatRate(item.active_retention_1d) }}</span></td>
+                <td><span class="retention-rate" :class="getRetentionClass(item.active_retention_3d)">{{ formatRate(item.active_retention_3d) }}</span></td>
+                <td><span class="retention-rate" :class="getRetentionClass(item.active_retention_7d)">{{ formatRate(item.active_retention_7d) }}</span></td>
+                <td><span class="retention-rate" :class="getRetentionClass(item.active_retention_14d)">{{ formatRate(item.active_retention_14d) }}</span></td>
               </tr>
               <tr v-if="!retentionRows.length">
-                <td colspan="7" style="text-align: center; color: #999; padding: 40px;">暂无统计数据</td>
+                <td colspan="11" style="text-align: center; color: #999; padding: 40px;">暂无统计数据</td>
               </tr>
             </tbody>
           </table>

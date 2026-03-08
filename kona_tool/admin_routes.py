@@ -1648,10 +1648,86 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
         if str((row["active_date"] if row else "") or "")
     }
 
+    cursor.execute(
+        f"""
+        SELECT
+            uda.activity_date AS cohort_date,
+            COUNT(DISTINCT uda.user_id) AS active_users,
+            COUNT(
+                DISTINCT CASE
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity next_uda
+                        WHERE next_uda.user_id = uda.user_id
+                          AND next_uda.activity_date = DATE(uda.activity_date, '+1 day')
+                    ) THEN uda.user_id
+                END
+            ) AS retained_1d_count,
+            COUNT(
+                DISTINCT CASE
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity next_uda
+                        WHERE next_uda.user_id = uda.user_id
+                          AND next_uda.activity_date = DATE(uda.activity_date, '+3 day')
+                    ) THEN uda.user_id
+                END
+            ) AS retained_3d_count,
+            COUNT(
+                DISTINCT CASE
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity next_uda
+                        WHERE next_uda.user_id = uda.user_id
+                          AND next_uda.activity_date = DATE(uda.activity_date, '+7 day')
+                    ) THEN uda.user_id
+                END
+            ) AS retained_7d_count,
+            COUNT(
+                DISTINCT CASE
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity next_uda
+                        WHERE next_uda.user_id = uda.user_id
+                          AND next_uda.activity_date = DATE(uda.activity_date, '+14 day')
+                    ) THEN uda.user_id
+                END
+            ) AS retained_14d_count
+        FROM user_daily_activity uda
+        INNER JOIN users u ON u.id = uda.user_id
+        WHERE {_real_user_where('u')}
+          AND uda.activity_date >= ?
+          AND uda.activity_date <= ?
+        GROUP BY uda.activity_date
+        """,
+        (
+            start_day.strftime("%Y-%m-%d"),
+            today_start.strftime("%Y-%m-%d"),
+        ),
+    )
+    active_cohort_rows = cursor.fetchall()
+    active_cohort_map: Dict[str, Dict[str, int]] = {}
+    for row in active_cohort_rows:
+        cohort_date = str((row["cohort_date"] if row else "") or "")
+        if not cohort_date:
+            continue
+        active_cohort_map[cohort_date] = {
+            "active_users": int(row["active_users"] or 0),
+            "retained_1d_count": int(row["retained_1d_count"] or 0),
+            "retained_3d_count": int(row["retained_3d_count"] or 0),
+            "retained_7d_count": int(row["retained_7d_count"] or 0),
+            "retained_14d_count": int(row["retained_14d_count"] or 0),
+        }
+
     def _safe_rate(retained: int, new_users: int, age_days: int, threshold: int):
         if new_users <= 0 or age_days < threshold:
             return None
         return round(retained / new_users, 4)
+
+    def _safe_active_rate(retained: int, active_users: int, age_days: int, threshold: int):
+        if active_users <= 0 or age_days < threshold:
+            return None
+        return round(retained / active_users, 4)
 
     today = date.today()
     result: List[Dict[str, Any]] = []
@@ -1659,18 +1735,24 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
         current = today - timedelta(days=i)
         date_str = current.isoformat()
         cohort = cohort_map.get(date_str, {})
+        active_cohort = active_cohort_map.get(date_str, {})
         new_users = int(cohort.get("new_users", 0) or 0)
+        active_users = int(active_map.get(date_str, 0) or 0)
         age_days = i
         result.append(
             {
                 "date": date_str,
                 "new_users": new_users,
-                "active_users": int(active_map.get(date_str, 0) or 0),
+                "active_users": active_users,
                 "retention_1d": _safe_rate(int(cohort.get("retained_1d_count", 0) or 0), new_users, age_days, 1),
                 "retention_3d": _safe_rate(int(cohort.get("retained_3d_count", 0) or 0), new_users, age_days, 3),
                 "retention_7d": _safe_rate(int(cohort.get("retained_7d_count", 0) or 0), new_users, age_days, 7),
                 "retention_14d": _safe_rate(int(cohort.get("retained_14d_count", 0) or 0), new_users, age_days, 14),
                 "retention_30d": _safe_rate(int(cohort.get("retained_30d_count", 0) or 0), new_users, age_days, 30),
+                "active_retention_1d": _safe_active_rate(int(active_cohort.get("retained_1d_count", 0) or 0), active_users, age_days, 1),
+                "active_retention_3d": _safe_active_rate(int(active_cohort.get("retained_3d_count", 0) or 0), active_users, age_days, 3),
+                "active_retention_7d": _safe_active_rate(int(active_cohort.get("retained_7d_count", 0) or 0), active_users, age_days, 7),
+                "active_retention_14d": _safe_active_rate(int(active_cohort.get("retained_14d_count", 0) or 0), active_users, age_days, 14),
             }
         )
     return result
