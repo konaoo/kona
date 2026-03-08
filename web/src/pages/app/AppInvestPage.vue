@@ -221,6 +221,24 @@ function formatLocal(v: any) {
   return Number(v || 0).toLocaleString()
 }
 
+function formatAssetPrice(value: unknown): string {
+  const amount = toNumber(value)
+  if (!Number.isFinite(amount) || amount === 0) return '0.00'
+
+  const absAmount = Math.abs(amount)
+  if (absAmount >= 1000) {
+    return absAmount.toLocaleString('zh-CN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+
+  return absAmount.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })
+}
+
 function getCurrencySymbol(curr?: string) {
   if (curr === 'USD') return '$'
   if (curr === 'HKD') return 'HK$'
@@ -284,6 +302,20 @@ onBeforeUnmount(() => {
 
 // Modal states
 const showTradeModal = ref(false)
+const tradeModalAsset = ref<any>(null)
+const tradeModalMode = ref<'add' | 'buy' | 'sell' | 'adjust'>('add')
+
+function openAddTradeModal() {
+  tradeModalAsset.value = null
+  tradeModalMode.value = 'add'
+  showTradeModal.value = true
+}
+
+function openEditTradeModal(row: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
+  tradeModalAsset.value = row
+  tradeModalMode.value = mode
+  showTradeModal.value = true
+}
 
 const handleTradeSuccess = async () => {
     try {
@@ -297,7 +329,7 @@ const handleTradeSuccess = async () => {
 
 <template>
   <AppShell title="投资分析">
-    <div class="kk-page invest-page" style="padding: 20px 20px 120px;">
+    <div class="kk-page invest-page">
       <div class="modern-shell">
 
       <!-- Main Statistics Grid -->
@@ -404,7 +436,7 @@ const handleTradeSuccess = async () => {
                 </div>
               </div>
               <div style="display: flex; align-items: center; gap: 12px">
-                  <button @click="showTradeModal = true" style="height: 28px; padding: 0 10px; border-radius: 6px; border: none; background: var(--surface-highlight); color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s">
+                  <button @click="openAddTradeModal" style="height: 28px; padding: 0 10px; border-radius: 6px; border: none; background: var(--surface-highlight); color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     添加资产
                   </button>
@@ -427,7 +459,7 @@ const handleTradeSuccess = async () => {
           <div v-else>
               <!-- Card View -->
               <div v-if="holdingsView === 'card'" class="card-view-grid">
-                <div v-for="(row, idx) in filteredRows" :key="row?.code||`card-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hcard">
+                <div v-for="(row, idx) in filteredRows" :key="row?.code||`card-${idx}`" @click="row?.code && openEditTradeModal(row)" class="hcard">
                   <!-- Top Accent Bar -->
                   <div 
                     class="hcard-accent-top" 
@@ -483,34 +515,43 @@ const handleTradeSuccess = async () => {
                   
                   <!-- Removed redundant dayPnlRate badge -->
 
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--surface-divider)">
-                    <div>
-                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
-                      <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
-                        {{ formatCurrency(row.dayPnl, true) }}
+                  <div style="padding-top:10px;border-top:1px solid var(--surface-divider)">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                      <div>
+                        <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
+                        <div :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                          {{ formatCurrency(row.dayPnl, true) }}
+                        </div>
+                      </div>
+                      <div>
+                        <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
+                        <div :class="[toNumber(row.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                          {{ formatCurrency(row.totalPnl, true) }}
+                        </div>
+                      </div>
+                      <div>
+                        <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
+                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
+                          <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ formatAssetPrice(row.costPrice) }}
+                        </div>
+                      </div>
+                      <div>
+                        <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏率</div>
+                        <div :class="[toNumber(row.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                          {{ formatPct(row.totalPnlRate) }}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
-                      <div :class="[toNumber(row.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
-                        {{ formatPct(row.totalPnlRate) }}
-                      </div>
-                    </div>
-                    <div>
-                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
-                      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
-                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.costPrice }}
-                      </div>
-                    </div>
-                    <div>
-                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">
-                        仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(row.pct).replace('%','') }}%</span>
-                      </div>
-                      <div style="height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
-                        <div 
-                          style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px"
-                          :style="{ width: `${Math.min(toNumber(row.pct), 100)}%` }"
-                        ></div>
+                    <div style="margin-top:10px">
+                      <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px">仓位</div>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="color:var(--blue); font-size: 12.5px; font-weight: 600; min-width:54px">{{ formatPct(row.pct).replace('%','') }}%</span>
+                        <div style="flex:1;height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
+                          <div 
+                            style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px"
+                            :style="{ width: `${Math.min(toNumber(row.pct), 100)}%` }"
+                          ></div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -519,7 +560,7 @@ const handleTradeSuccess = async () => {
 
               <!-- Row View -->
               <div v-else class="row-view-list">
-                <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && $router.push(`/app/asset/${row.code}`)" class="hrow">
+                <div v-for="(row, idx) in filteredRows" :key="row?.code||`row-${idx}`" @click="row?.code && openEditTradeModal(row)" class="hrow">
                   <div style="display:flex;align-items:center;gap:12px;width:240px;flex-shrink:0">
                     <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
                       <AssetLogo 
@@ -554,7 +595,7 @@ const handleTradeSuccess = async () => {
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:500; color:var(--muted)">
-                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.costPrice }}
+                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ formatAssetPrice(row.costPrice) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
@@ -601,7 +642,12 @@ const handleTradeSuccess = async () => {
     </div>
     
     <!-- Add Asset Modal -->
-    <InvestTradeModal v-model:show="showTradeModal" @success="handleTradeSuccess" />
+    <InvestTradeModal
+      v-model:show="showTradeModal"
+      :asset="tradeModalAsset"
+      :mode="tradeModalMode"
+      @success="handleTradeSuccess"
+    />
 
   </AppShell>
 </template>
@@ -610,9 +656,9 @@ const handleTradeSuccess = async () => {
 @import '@/styles/homepage-original.css';
 
 .invest-page {
-  padding: 24px;
-  min-height: 100vh;
-  background: var(--bg);
+  padding: 0 0 120px;
+  min-height: auto;
+  background: transparent;
   color: var(--text);
   font-family: 'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
 }

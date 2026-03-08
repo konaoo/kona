@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/shared/http'
+import { toNumber } from '@/shared/format'
 
-const props = defineProps<{ show: boolean }>()
+type TradeAction = 'add' | 'buy' | 'sell' | 'adjust'
+
+const props = defineProps<{
+  show: boolean
+  asset?: Record<string, any> | null
+  mode?: TradeAction
+}>()
+
 const emit = defineEmits<{
   (e: 'update:show', val: boolean): void
   (e: 'success'): void
@@ -13,14 +21,183 @@ const internalShow = computed({
   set: (val) => emit('update:show', val)
 })
 
+const isEditMode = computed(() => Boolean(props.asset))
+const actionMode = ref<Exclude<TradeAction, 'add'>>('buy')
 const isAnimating = ref(false)
 const modalVisible = ref(false)
+const isSubmitting = ref(false)
+const confirmBtnText = ref('确认添加')
+const confirmBtnStyle = ref<Record<string, string>>({})
+
+const query = ref('')
+const searchResults = ref<any[]>([])
+const searchError = ref('')
+const isDropdownOpen = ref(false)
+const selectedStock = ref<any>(null)
+const price = ref('')
+const qty = ref('')
+const amount = ref('')
+const adjustPrice = ref('')
+const adjustAmount = ref('')
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+const marketMeta: Record<string, any> = {
+  '港股': { color: '#e06b3a', bg: 'rgba(224,107,58,0.12)', label: '港股' },
+  '美股': { color: '#5b8def', bg: 'rgba(91,141,239,0.12)', label: '美股' },
+  'A股': { color: '#3ecf82', bg: 'rgba(62,207,130,0.12)', label: 'A股' },
+  '基金': { color: '#b57adb', bg: 'rgba(181,122,219,0.12)', label: '基金' }
+}
+
+const accounts = ref([
+  { id: 'cmb', name: '招商银行', amount: '100,000', icon: '🏦', iconBg: 'rgba(231,76,60,0.12)' },
+  { id: 'wechat', name: '微信', amount: '10,000', icon: '💬', iconBg: 'rgba(62,207,130,0.12)' },
+  { id: 'alipay', name: '支付宝', amount: '89,349', icon: '💙', iconBg: 'rgba(91,141,239,0.12)' },
+])
+const selectedAccount = ref<any>(accounts.value[0])
+const isAcctDropdownOpen = ref(false)
+const isCreateSheetOpen = ref(false)
+const createAcctType = ref('cash')
+const createCurr = ref('CNY')
+const isCurrDropdownOpen = ref(false)
+const newAcctName = ref('')
+const newAcctBalance = ref('')
+const nameErr = ref('')
+const amountErr = ref('')
+
+const currencies = [
+  { code: 'CNY', name: '人民币', flag: '🇨🇳' },
+  { code: 'USD', name: '美元', flag: '🇺🇸' },
+  { code: 'HKD', name: '港币', flag: '🇭🇰' },
+]
+
+const selectCurrInfo = computed(() => currencies.find(c => c.code === createCurr.value) || currencies[0]!)
+const currentHoldingQty = computed(() => toNumber(selectedStock.value?.holdingQty))
+const sheetTitle = computed(() => {
+  if (!isEditMode.value) return '添加资产'
+  if (actionMode.value === 'sell') return '卖出'
+  if (actionMode.value === 'adjust') return '调整'
+  return '买入'
+})
+const actionTabs = [
+  { value: 'buy', label: '买入' },
+  { value: 'sell', label: '卖出' },
+  { value: 'adjust', label: '调整' },
+] as const
+
+function setConfirmButtonIdle() {
+  if (!isEditMode.value) {
+    confirmBtnText.value = '确认添加'
+    confirmBtnStyle.value = {}
+    return
+  }
+  if (actionMode.value === 'sell') {
+    confirmBtnText.value = '确认卖出'
+  } else if (actionMode.value === 'adjust') {
+    confirmBtnText.value = '保存调整'
+  } else {
+    confirmBtnText.value = '确认买入'
+  }
+  confirmBtnStyle.value = {}
+}
+
+function formatInputValue(value: unknown, digits = 2): string {
+  const amount = toNumber(value)
+  return amount > 0 || amount < 0 ? amount.toFixed(digits) : ''
+}
+
+function normalizeAsset(item: Record<string, any>) {
+  const market = String(item.market_type || item.market || 'a').toLowerCase()
+  const assetType = String(item.asset_type || market || 'stock').toLowerCase()
+  const marketType = market === 'stock' ? 'a' : market
+  const isFund = marketType === 'fund' || assetType === 'fund'
+  const currentPrice = toNumber(item.currentPrice ?? item.price)
+  const rawCostPrice = toNumber(item.rawCostPrice ?? item.price ?? item.costPrice)
+  return {
+    ...item,
+    code: String(item.code || ''),
+    name: String(item.name || item.code || ''),
+    market_type: marketType,
+    asset_type: assetType,
+    currency: String(item.currency || item.curr || 'CNY'),
+    curr: String(item.curr || item.currency || 'CNY'),
+    holdingQty: toNumber(item.qty),
+    adjustment: toNumber(item.adjustment),
+    rawCostPrice,
+    price: currentPrice > 0 ? currentPrice : rawCostPrice,
+    change: toNumber(item.change),
+    change_pct: toNumber(item.change_pct ?? item.changePct),
+    digits: isFund ? 4 : 2,
+  }
+}
+
+function initializeForAsset(item: Record<string, any> | null | undefined) {
+  if (!item) return
+  selectedStock.value = normalizeAsset(item)
+  query.value = ''
+  isDropdownOpen.value = false
+  applyModeDefaults()
+}
+
+function applyModeDefaults() {
+  const asset = selectedStock.value
+  if (!asset) {
+    price.value = ''
+    qty.value = ''
+    amount.value = ''
+    adjustPrice.value = ''
+    adjustAmount.value = ''
+    return
+  }
+
+  const digits = asset.digits || 2
+  if (isEditMode.value && actionMode.value === 'adjust') {
+    price.value = ''
+    qty.value = ''
+    amount.value = ''
+    adjustPrice.value = formatInputValue(asset.rawCostPrice || asset.price, digits)
+    adjustAmount.value = formatInputValue(asset.adjustment, 2)
+    return
+  }
+
+  price.value = formatInputValue(asset.price, digits)
+  qty.value = ''
+  amount.value = ''
+  adjustPrice.value = formatInputValue(asset.rawCostPrice || asset.price, digits)
+  adjustAmount.value = formatInputValue(asset.adjustment, 2)
+}
+
+function resetForm() {
+  query.value = ''
+  searchResults.value = []
+  searchError.value = ''
+  isDropdownOpen.value = false
+  selectedStock.value = null
+  price.value = ''
+  qty.value = ''
+  amount.value = ''
+  adjustPrice.value = ''
+  adjustAmount.value = ''
+  isAcctDropdownOpen.value = false
+  isCreateSheetOpen.value = false
+  isCurrDropdownOpen.value = false
+  isSubmitting.value = false
+  actionMode.value = 'buy'
+  setConfirmButtonIdle()
+}
 
 watch(() => props.show, (val) => {
   if (val) {
     modalVisible.value = true
     isAnimating.value = true
     setTimeout(() => { isAnimating.value = false }, 250)
+    actionMode.value = props.mode && props.mode !== 'add' ? props.mode : 'buy'
+    setConfirmButtonIdle()
+    if (props.asset) {
+      initializeForAsset(props.asset)
+    } else {
+      resetForm()
+      setConfirmButtonIdle()
+    }
   } else {
     isAnimating.value = true
     setTimeout(() => {
@@ -31,26 +208,21 @@ watch(() => props.show, (val) => {
   }
 })
 
+watch(actionMode, () => {
+  if (!props.show || !isEditMode.value) return
+  searchError.value = ''
+  applyModeDefaults()
+  setConfirmButtonIdle()
+})
+
+watch(() => props.asset, (asset) => {
+  if (!props.show || !asset) return
+  initializeForAsset(asset)
+})
+
 function close() {
   if (isAnimating.value) return
   internalShow.value = false
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Search Logic
-// ─────────────────────────────────────────────────────────────────
-const query = ref('')
-const searchResults = ref<any[]>([])
-const searchError = ref('')
-const isDropdownOpen = ref(false)
-const selectedStock = ref<any>(null)
-let searchTimeout: any = null
-
-const marketMeta: Record<string, any> = {
-  '港股': { color: '#e06b3a', bg: 'rgba(224,107,58,0.12)', label: '港股' },
-  '美股': { color: '#5b8def', bg: 'rgba(91,141,239,0.12)', label: '美股' },
-  'A股': { color: '#3ecf82', bg: 'rgba(62,207,130,0.12)', label: 'A股' },
-  '基金': { color: '#b57adb', bg: 'rgba(181,122,219,0.12)', label: '基金' }
 }
 
 const getMarketMeta = (market: string) => {
@@ -64,6 +236,120 @@ const getMarketMeta = (market: string) => {
 const getMarketLabel = (market: string) => {
   const m = getMarketMeta(market)
   return m ? m.label : 'A股'
+}
+
+function formatDisplayCode(code: unknown): string {
+  const raw = String(code || '').trim()
+  if (!raw) return '--'
+  if (raw === 'ft_LU1116320737') return 'BLK'
+
+  let normalized = raw
+  const lower = normalized.toLowerCase()
+  if (lower.startsWith('gb_')) normalized = normalized.slice(3).toUpperCase()
+  else if (lower.startsWith('f_')) normalized = normalized.slice(2)
+  else if (lower.startsWith('ft_')) normalized = normalized.slice(3)
+  else if (lower.startsWith('sh') || lower.startsWith('sz') || lower.startsWith('bj')) normalized = normalized.slice(2)
+
+  if (normalized.toUpperCase().endsWith('.HK')) {
+    normalized = normalized.slice(0, -3)
+  }
+
+  return normalized
+}
+
+function inferSearchMarket(item: Record<string, any>): string {
+  const explicit = String(item.market_type || item.market || '').toLowerCase()
+  if (explicit) return explicit
+
+  const assetType = String(item.asset_type || '').toLowerCase()
+  if (assetType === 'fund') return 'fund'
+
+  const code = String(item.code || '').toLowerCase()
+  if (code.startsWith('gb_')) return 'us'
+  if (code.startsWith('sh') || code.startsWith('sz') || code.startsWith('bj')) return 'a'
+  if (code.endsWith('.hk')) return 'hk'
+  if (code.startsWith('f_') || code.startsWith('ft_')) return 'fund'
+  return 'a'
+}
+
+function searchMarketLabel(item: Record<string, any>): string {
+  const typeName = String(item.type_name || '').trim()
+  if (typeName) return typeName
+  return getMarketLabel(inferSearchMarket(item))
+}
+
+function searchDigits(item: Record<string, any>): number {
+  return inferSearchMarket(item) === 'fund' || String(item.asset_type || '').toLowerCase() === 'fund' ? 4 : 2
+}
+
+function searchPrice(item: Record<string, any>): number | null {
+  const candidates = [
+    item.price,
+    item.latest,
+    item.latest_price,
+    item.current_price,
+    item.last_price,
+    item.close,
+  ]
+  for (const candidate of candidates) {
+    const value = toNumber(candidate)
+    if (value > 0) return value
+  }
+  return null
+}
+
+function searchChangeAmount(item: Record<string, any>): number | null {
+  const candidates = [item.change, item.amt, item.delta]
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined || candidate === '') continue
+    const value = toNumber(candidate)
+    if (Number.isFinite(value)) return value
+  }
+  return null
+}
+
+function searchChangePct(item: Record<string, any>): number | null {
+  const directCandidates = [
+    item.changePct,
+    item.change_pct,
+    item.chg,
+    item.pct,
+    item.change_percent,
+  ]
+  for (const candidate of directCandidates) {
+    if (candidate === null || candidate === undefined || candidate === '') continue
+    const value = toNumber(candidate)
+    if (Number.isFinite(value)) return value
+  }
+
+  const amount = searchChangeAmount(item)
+  const yclose = toNumber(item.yclose ?? item.pre_close ?? item.prev_close)
+  if (amount !== null && yclose > 0) {
+    return amount / yclose * 100
+  }
+  return null
+}
+
+function formatQuoteValue(value: number | null, digits = 2): string {
+  if (value === null || !Number.isFinite(value)) return '--'
+  return value.toLocaleString('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  })
+}
+
+function formatSignedMove(value: number | null, digits = 2): string {
+  if (value === null || !Number.isFinite(value)) return '--'
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toLocaleString('zh-CN', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`
+}
+
+function moveTone(value: number | null): 'up' | 'down' | 'flat' {
+  if (value === null || !Number.isFinite(value) || value === 0) return 'flat'
+  return value > 0 ? 'up' : 'down'
 }
 
 const handleSearchInput = () => {
@@ -88,20 +374,14 @@ const handleSearchInput = () => {
 }
 
 const selectStock = (item: any) => {
-  selectedStock.value = item
+  selectedStock.value = normalizeAsset(item)
   isDropdownOpen.value = false
   query.value = ''
-  
-  if (item.price) {
-    price.value = Number(item.price).toFixed(item.market_type?.toLowerCase() === 'fund' ? 4 : 2)
-  } else {
-    price.value = ''
-  }
-  qty.value = ''
-  amount.value = ''
+  applyModeDefaults()
 }
 
 const clearSelection = () => {
+  if (isEditMode.value) return
   selectedStock.value = null
   query.value = ''
   price.value = ''
@@ -109,44 +389,12 @@ const clearSelection = () => {
   amount.value = ''
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Account Logic (Mocked to look like UI)
-// ─────────────────────────────────────────────────────────────────
-const accounts = ref([
-  { id: 'cmb',    name: '招商银行', amount: '100,000', icon: '🏦', iconBg: 'rgba(231,76,60,0.12)' },
-  { id: 'wechat', name: '微信',     amount: '10,000',  icon: '💬', iconBg: 'rgba(62,207,130,0.12)' },
-  { id: 'alipay', name: '支付宝',   amount: '89,349',  icon: '💙', iconBg: 'rgba(91,141,239,0.12)' },
-])
-const selectedAccount = ref<any>(accounts.value[0])
-const isAcctDropdownOpen = ref(false)
-
 const toggleAcct = () => { isAcctDropdownOpen.value = !isAcctDropdownOpen.value }
 const selectAccount = (acct: any) => {
   selectedAccount.value = acct
   isAcctDropdownOpen.value = false
 }
-
-// ─────────────────────────────────────────────────────────────────
-// Create Account Logic
-// ─────────────────────────────────────────────────────────────────
-const isCreateSheetOpen = ref(false)
-const createAcctType = ref('cash')
-const createCurr = ref('CNY')
-const isCurrDropdownOpen = ref(false)
-
-const newAcctName = ref('')
-const newAcctBalance = ref('')
-const nameErr = ref('')
-const amountErr = ref('')
-
-const currencies = [
-  { code: 'CNY', name: '人民币', flag: '🇨🇳' },
-  { code: 'USD', name: '美元',   flag: '🇺🇸' },
-  { code: 'HKD', name: '港币',   flag: '🇭🇰' },
-]
-
-const toggleCurr = () => isCurrDropdownOpen.value = !isCurrDropdownOpen.value
-const selectCurrInfo = computed(() => currencies.find(c => c.code === createCurr.value) || currencies[0]!)
+const toggleCurr = () => { isCurrDropdownOpen.value = !isCurrDropdownOpen.value }
 
 const openCreateSheet = () => {
   isAcctDropdownOpen.value = false
@@ -168,31 +416,23 @@ const confirmCreateAcct = () => {
   let valid = true
   if (!newAcctName.value.trim()) { nameErr.value = '请输入账户名称'; valid = false } else { nameErr.value = '' }
   if (!newAcctBalance.value || Number(newAcctBalance.value) < 0) { amountErr.value = '请输入金额'; valid = false } else { amountErr.value = '' }
-
   if (!valid) return
-  const typeIconMap: any = { cash: '💰', other: '📦', debt: '💳' }
-  const typeBgMap: any   = { cash: 'rgba(62,207,130,0.12)', other: 'rgba(91,141,239,0.12)', debt: 'rgba(240,90,85,0.12)' }
+
+  const typeIconMap: Record<string, string> = { cash: '💰', other: '📦', debt: '💳' }
+  const typeBgMap: Record<string, string> = { cash: 'rgba(62,207,130,0.12)', other: 'rgba(91,141,239,0.12)', debt: 'rgba(240,90,85,0.12)' }
   const fmt = Number(newAcctBalance.value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-  
   const newAcct = {
-    id: 'acct_' + Date.now(),
+    id: `acct_${Date.now()}`,
     name: newAcctName.value.trim(),
-    amount: fmt + ' ' + createCurr.value,
-    icon: typeIconMap[createAcctType.value],
-    iconBg: typeBgMap[createAcctType.value],
+    amount: `${fmt} ${createCurr.value}`,
+    icon: typeIconMap[createAcctType.value] || '💰',
+    iconBg: typeBgMap[createAcctType.value] || 'rgba(62,207,130,0.12)',
   }
-  
+
   accounts.value.push(newAcct)
   selectedAccount.value = newAcct
   closeCreateSheet()
 }
-
-// ─────────────────────────────────────────────────────────────────
-// Form Inputs (Price, Qty, Amount)
-// ─────────────────────────────────────────────────────────────────
-const price = ref('')
-const qty = ref('')
-const amount = ref('')
 
 const syncAmount = () => {
   const p = parseFloat(price.value) || 0
@@ -214,84 +454,119 @@ const syncQty = () => {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Submit Logic
-// ─────────────────────────────────────────────────────────────────
-const isSubmitting = ref(false)
-const confirmBtnText = ref('确认添加')
-const confirmBtnStyle = ref({})
-
-const resetForm = () => {
-  clearSelection()
-  isDropdownOpen.value = false
-  isAcctDropdownOpen.value = false
+async function submitSuccess(label: string) {
+  confirmBtnText.value = label
+  confirmBtnStyle.value = { background: 'linear-gradient(135deg, #3ecf82 0%, #2db870 100%)' }
+  setTimeout(() => {
+    setConfirmButtonIdle()
+    emit('success')
+    close()
+  }, 900)
 }
 
-const handleConfirm = async () => {
+function extractErrorMessage(error: any, fallback: string): string {
+  return error?.response?.data?.error || error?.message || fallback
+}
+
+async function handleConfirm() {
   if (!selectedStock.value) {
-    searchError.value = '请先搜索并选择一个资产'
-    setTimeout(() => { searchError.value = '' }, 2000)
-    return
-  }
-  
-  const p = parseFloat(price.value)
-  const q = parseFloat(qty.value)
-  
-  if (!p || !q || p <= 0 || q <= 0) {
-    searchError.value = '价格和数量必须填入'
-    setTimeout(() => { searchError.value = '' }, 2000)
+    searchError.value = '请先选择一个资产'
     return
   }
 
   isSubmitting.value = true
+  searchError.value = ''
 
   try {
-    const payload = {
-      code: selectedStock.value.code,
-      market: selectedStock.value.market_type || 'a',
-      qty: q,
-      price: p,
-      name: selectedStock.value.name,
-      curr: selectedStock.value.currency
+    if (!isEditMode.value) {
+      const p = parseFloat(price.value)
+      const q = parseFloat(qty.value)
+      if (!p || !q || p <= 0 || q <= 0) {
+        searchError.value = '价格和数量必须填入'
+        return
+      }
+
+      await api.post('/api/portfolio/add', {
+        code: selectedStock.value.code,
+        market: selectedStock.value.market_type || 'a',
+        qty: q,
+        price: p,
+        name: selectedStock.value.name,
+        curr: selectedStock.value.currency
+      })
+      await submitSuccess('✓ 已添加')
+      return
     }
 
-    await api.post('/api/portfolio/add', payload)
-    
-    // UI Success state
-    confirmBtnText.value = '✓ 已添加'
-    confirmBtnStyle.value = { background: 'linear-gradient(135deg, #3ecf82 0%, #2db870 100%)' }
-    
-    setTimeout(() => {
-      confirmBtnText.value = '确认添加'
-      confirmBtnStyle.value = {}
-      emit('success')
-      close()
-    }, 1200)
+    if (actionMode.value === 'adjust') {
+      const rawPrice = parseFloat(adjustPrice.value)
+      const adjustment = parseFloat(adjustAmount.value)
+      const holdingQty = currentHoldingQty.value
+      if (!holdingQty || holdingQty <= 0) {
+        searchError.value = '当前持仓数量无效，不能调整'
+        return
+      }
+      if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+        searchError.value = '请输入有效平均成本'
+        return
+      }
+      if (!Number.isFinite(adjustment)) {
+        searchError.value = '请输入有效调整金额'
+        return
+      }
 
+      await api.post('/api/portfolio/modify', {
+        code: selectedStock.value.code,
+        qty: holdingQty,
+        price: rawPrice,
+        adjustment,
+      })
+      await submitSuccess('✓ 已调整')
+      return
+    }
+
+    const p = parseFloat(price.value)
+    const q = parseFloat(qty.value)
+    if (!Number.isFinite(p) || p <= 0) {
+      searchError.value = '请输入有效价格'
+      return
+    }
+    if (!Number.isFinite(q) || q <= 0) {
+      searchError.value = '请输入有效数量'
+      return
+    }
+
+    const endpoint = actionMode.value === 'sell' ? '/api/portfolio/sell' : '/api/portfolio/buy'
+    await api.post(endpoint, {
+      code: selectedStock.value.code,
+      price: p,
+      qty: q,
+    })
+    await submitSuccess(actionMode.value === 'sell' ? '✓ 已卖出' : '✓ 已买入')
   } catch (e: any) {
-    console.error('Add asset error', e)
-    searchError.value = e.response?.data?.error || '添加失败，请重试'
-    setTimeout(() => { searchError.value = '' }, 3000)
+    console.error('Invest trade error', e)
+    searchError.value = extractErrorMessage(e, '保存失败，请重试')
   } finally {
     isSubmitting.value = false
   }
 }
 
-// Remove unused directive
-const closeSearchDropdown = () => isDropdownOpen.value = false
-const closeAcctDropdown = () => isAcctDropdownOpen.value = false
-const closeCurrDropdown = () => isCurrDropdownOpen.value = false
+const closeSearchDropdown = () => { isDropdownOpen.value = false }
+const closeAcctDropdown = () => { isAcctDropdownOpen.value = false }
+const closeCurrDropdown = () => { isCurrDropdownOpen.value = false }
 
-// Add standard window click listener for outside click simulation
 const handleDocClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.search-wrap')) closeSearchDropdown()
   if (!target.closest('.acct-wrap')) closeAcctDropdown()
   if (!target.closest('.curr-wrap')) closeCurrDropdown()
 }
-onMounted(() => document.addEventListener('click', handleDocClick))
-onUnmounted(() => document.removeEventListener('click', handleDocClick))
 
+onMounted(() => document.addEventListener('click', handleDocClick))
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocClick)
+  if (searchTimeout) clearTimeout(searchTimeout)
+})
 </script>
 
 <template>
@@ -306,16 +581,29 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
       <div class="sheet" :class="{ 'sheet-exiting': !props.show }">
         <div class="handle"></div>
         <div class="sheet-header">
-          <div class="sheet-title">添加资产</div>
+          <div class="sheet-title">{{ sheetTitle }}</div>
           <button class="close-btn" @click="close" :disabled="isSubmitting">
             <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
           </button>
         </div>
 
         <div class="sheet-body">
+          <div v-if="isEditMode" class="action-tabs">
+            <button
+              v-for="tab in actionTabs"
+              :key="tab.value"
+              type="button"
+              class="action-tab"
+              :class="{ active: actionMode === tab.value }"
+              @click="actionMode = tab.value"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+
           <div class="field-row">
             <div class="search-wrap">
-              <div v-if="!selectedStock" id="searchInputArea">
+              <div v-if="!selectedStock && !isEditMode" id="searchInputArea">
                 <div class="search-input-row">
                   <input 
                     type="text" 
@@ -337,21 +625,29 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
               <div v-if="selectedStock" class="selected-pill show">
                 <span 
                   class="sp-tag di-tag" 
-                  :style="{ color: getMarketMeta(selectedStock.market_type).color, background: getMarketMeta(selectedStock.market_type).bg }"
+                  :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
                 >
-                  {{ getMarketLabel(selectedStock.market_type) }}
+                  {{ searchMarketLabel(selectedStock) }}
                 </span>
-                <span class="sp-code">{{ selectedStock.code }}</span>
+                <span class="sp-code">{{ formatDisplayCode(selectedStock.code) }}</span>
                 <span class="sp-sep"></span>
                 <span class="sp-name">{{ selectedStock.name }}</span>
-                <span class="sp-price">{{ selectedStock.price?.toFixed(selectedStock.market_type?.toLowerCase() === 'fund' ? 4 : 2) || '--' }}</span>
-                <button class="sp-x" @click="clearSelection">
+                <div class="sp-quote">
+                  <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
+                  <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
+                    {{ formatSignedMove(searchChangeAmount(selectedStock), searchDigits(selectedStock)) }}
+                    <template v-if="searchChangePct(selectedStock) !== null">
+                      &nbsp;{{ formatSignedMove(searchChangePct(selectedStock), 2) }}%
+                    </template>
+                  </span>
+                </div>
+                <button v-if="!isEditMode" class="sp-x" @click="clearSelection">
                   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
                 </button>
               </div>
 
               <!-- Search Dropdown -->
-              <div class="dropdown" :class="{ open: isDropdownOpen && !selectedStock }">
+              <div class="dropdown" :class="{ open: isDropdownOpen && !selectedStock && !isEditMode }">
                 <div v-if="searchResults.length === 0" style="padding:14px;text-align:center;color:var(--text-muted);font-size:12px;">
                   <span v-if="query">未找到匹配资产</span>
                   <span v-else>请输入资产代码/名称</span>
@@ -367,9 +663,16 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
                       <div class="di-main">
                         <div class="di-name">{{ s.name }}</div>
                         <div class="di-meta">
-                          <span class="di-tag" :style="{ color: getMarketMeta(s.market_type).color, background: getMarketMeta(s.market_type).bg }">{{ getMarketLabel(s.market_type) }}</span>
-                          <span class="di-code">{{ s.code }}</span>
+                          <span class="di-tag" :style="{ color: getMarketMeta(inferSearchMarket(s)).color, background: getMarketMeta(inferSearchMarket(s)).bg }">{{ searchMarketLabel(s) }}</span>
+                          <span class="di-code">{{ formatDisplayCode(s.code) }}</span>
                         </div>
+                      </div>
+                    </div>
+                    <div class="di-quote">
+                      <div class="di-price">{{ formatQuoteValue(searchPrice(s), searchDigits(s)) }}</div>
+                      <div class="di-move" :class="moveTone(searchChangePct(s))">
+                        <span>{{ formatSignedMove(searchChangeAmount(s), searchDigits(s)) }}</span>
+                        <span>{{ searchChangePct(s) === null ? '--' : `${formatSignedMove(searchChangePct(s), 2)}%` }}</span>
                       </div>
                     </div>
                   </div>
@@ -380,8 +683,23 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 
           <div class="error-msg" :class="{ show: !!searchError }">{{ searchError }}</div>
 
+          <div v-if="isEditMode && selectedStock" class="holding-strip">
+            <div class="holding-item">
+              <span class="holding-label">当前持仓</span>
+              <span class="holding-value">{{ currentHoldingQty.toLocaleString('zh-CN') }}</span>
+            </div>
+            <div class="holding-item">
+              <span class="holding-label">原始成本</span>
+              <span class="holding-value">{{ selectedStock.rawCostPrice?.toFixed(selectedStock.digits || 2) || '--' }}</span>
+            </div>
+            <div class="holding-item">
+              <span class="holding-label">调整额</span>
+              <span class="holding-value">{{ selectedStock.adjustment?.toFixed(2) || '0.00' }}</span>
+            </div>
+          </div>
+
           <!-- Account -->
-          <div class="field-row">
+          <div v-if="!isEditMode" class="field-row">
             <div class="acct-wrap">
               <div class="acct-trigger" :class="{ open: isAcctDropdownOpen }" @click="toggleAcct">
                 <div class="acct-trigger-left">
@@ -416,11 +734,10 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 
           <div class="divider"></div>
 
-          <!-- Buy inputs -->
-          <div class="inputs-section">
+          <div v-if="!isEditMode || actionMode !== 'adjust'" class="inputs-section">
             <div class="inputs-row">
               <div class="num-field">
-                <div class="num-label">单价</div>
+                <div class="num-label">{{ isEditMode && actionMode === 'sell' ? '卖出价' : '单价' }}</div>
                 <div class="num-wrap">
                   <input type="number" class="num-input" v-model="price" placeholder="0.00" min="0" step="0.01" @input="syncAmount" />
                 </div>
@@ -435,6 +752,29 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
                 <div class="num-label">总计</div>
                 <div class="num-wrap">
                   <input type="number" class="num-input" v-model="amount" placeholder="0.00" min="0" step="0.01" @input="syncQty" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="inputs-section">
+            <div class="inputs-row adjust-row">
+              <div class="num-field">
+                <div class="num-label">持仓数量</div>
+                <div class="num-wrap readonly">
+                  <input type="text" class="num-input" :value="currentHoldingQty.toLocaleString('zh-CN')" readonly />
+                </div>
+              </div>
+              <div class="num-field">
+                <div class="num-label">平均成本</div>
+                <div class="num-wrap">
+                  <input type="number" class="num-input" v-model="adjustPrice" placeholder="0.00" step="0.01" />
+                </div>
+              </div>
+              <div class="num-field">
+                <div class="num-label">调整金额</div>
+                <div class="num-wrap">
+                  <input type="number" class="num-input" v-model="adjustAmount" placeholder="0.00" step="0.01" />
                 </div>
               </div>
             </div>
@@ -540,6 +880,13 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 .close-btn { width: 24px; height: 24px; background: var(--surface-soft); border: none; cursor: pointer; border-radius: 50%; color: var(--sub); display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
 .close-btn:hover { background: var(--surface-soft-hover); color: var(--text); }
 .sheet-body { padding: 14px 20px 0; display: flex; flex-direction: column; gap: 10px; }
+.action-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.action-tab { height: 34px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-muted, #1a1d25); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.18s; }
+.action-tab.active { background: linear-gradient(135deg, rgba(91,141,239,0.16), rgba(74,123,224,0.08)); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); box-shadow: 0 6px 16px rgba(91,141,239,0.12); }
+.holding-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.holding-item { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+.holding-label { font-size: 11px; color: var(--sub); }
+.holding-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
 .field-row { display: flex; align-items: center; gap: 10px; }
 .search-wrap { position: relative; flex: 1; }
 .search-input-row { display: flex; align-items: center; background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; overflow: hidden; }
@@ -561,6 +908,12 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 .di-main { display: flex; flex-direction: column; gap: 4px; }
 .di-name { font-size: 13px; font-weight: 500; color: var(--text); }
 .di-meta { display: flex; align-items: center; gap: 6px; }
+.di-quote { min-width: 112px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.di-price { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); }
+.di-move { display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+.di-move.up { color: var(--red, #f05a55); }
+.di-move.down { color: var(--green, #3ecf82); }
+.di-move.flat { color: var(--sub); }
 .di-tag { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; letter-spacing: 0.03em; }
 .di-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--sub); letter-spacing: 0.04em; }
 .selected-pill { display: none; align-items: center; gap: 7px; background: color-mix(in srgb, var(--gold) 12%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent); border-radius: 6px; padding: 7px 10px; flex: 1; animation: fadeUp 0.2s ease; min-width: 0; }
@@ -569,7 +922,12 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 .sp-code { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--gold, #d4af64); flex-shrink: 0; }
 .sp-sep { width: 1px; height: 10px; background: rgba(212,175,100,0.25); flex-shrink: 0; }
 .sp-name { font-size: 11px; color: var(--sub); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-quote { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
 .sp-price { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); flex-shrink: 0; }
+.sp-move { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+.sp-move.up { color: var(--red, #f05a55); }
+.sp-move.down { color: var(--green, #3ecf82); }
+.sp-move.flat { color: var(--sub); }
 .sp-x { width: 17px; height: 17px; background: var(--surface-soft); border: none; border-radius: 50%; cursor: pointer; color: var(--sub); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, color 0.15s; }
 .sp-x:hover { background: var(--surface-soft-hover); color: var(--text); }
 .acct-wrap, .curr-wrap { position: relative; flex: 1; }
@@ -604,6 +962,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 .num-label { font-size: 11px; color: var(--sub); }
 .num-wrap { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
 .num-wrap:focus-within { border-color: rgba(99,149,235,0.6); box-shadow: 0 0 0 3px rgba(99,149,235,0.08); }
+.num-wrap.readonly { background: var(--surface-faint); }
 .num-input { flex: 1; min-width: 0; width: 100%; background: transparent; border: none; outline: none; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 500; padding: 10px 10px; }
 .num-input::placeholder { color: var(--sub); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; }
 .error-msg, .field-err { font-size: 10px; color: var(--red, #f05a55); display: none; padding-left: 1px; }
@@ -650,4 +1009,17 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 .create-btn-confirm { background: linear-gradient(135deg, #5b8def 0%, #4a7be0 100%); color: #fff; box-shadow: 0 4px 12px rgba(74,123,224,0.25); }
 .create-btn-confirm:hover { opacity: 0.92; }
 .create-btn-confirm:active { transform: scale(0.98); }
+@media (max-width: 560px) {
+  .holding-strip,
+  .inputs-row,
+  .inputs-row.adjust-row {
+    grid-template-columns: 1fr;
+  }
+  .dropdown-item {
+    align-items: flex-start;
+  }
+  .di-quote {
+    min-width: 96px;
+  }
+}
 </style>

@@ -10,6 +10,7 @@ import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
+import { InvestTradeModal } from '@/components'
 import AssetLogo from '@/components/base/AssetLogo.vue'
 import AppShell from '../../layouts/AppShell.vue'
 
@@ -32,6 +33,9 @@ const modalVisible = ref(false)
 const isFormModalVisible = ref(false)
 const modalType = ref<AssetType>('cash')
 const modalMode = ref<'add' | 'edit'>('add')
+const showTradeModal = ref(false)
+const tradeModalAsset = ref<any>(null)
+const tradeModalMode = ref<'add' | 'buy' | 'sell' | 'adjust'>('add')
 const selectedTab = ref('all')
 const holdingsView = ref<'card'|'row'>('card')
 const marketIndices = ref<any[]>([])
@@ -142,6 +146,7 @@ const activeDrawerData = computed(() => {
   if (!activeSegment.value) return []
   if (activeSegment.value === 'invest') {
     return (rows.value || []).map(row => ({
+      ...row,
       id: Number(row.id || 0),
       name: String(row.name || ''),
       amount: Number(row.value || 0),
@@ -164,6 +169,21 @@ function toggleSegment(type: AssetType | 'invest') {
     activeSegment.value = null
   } else {
     activeSegment.value = type
+  }
+}
+
+function openInvestTradeModal(item: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
+  tradeModalAsset.value = item
+  tradeModalMode.value = mode
+  showTradeModal.value = true
+}
+
+async function handleTradeSuccess() {
+  try {
+    await store.refreshStaticOnly()
+    void store.refreshQuotesOnly()
+  } catch (e) {
+    console.error('Failed to reload home invest data', e)
   }
 }
 
@@ -586,7 +606,7 @@ onBeforeUnmount(() => {
         <!-- Expandable Drawer -->
         <div class="c3-drawer" :class="{ open: !!activeSegment }">
           <div class="c3-drawer-inner">
-            <div v-for="item in activeDrawerData" :key="item.id" class="c5-detail-pill" @click="item.code ? $router.push(`/app/asset/${item.code}`) : openFormModal(item)">
+            <div v-for="item in activeDrawerData" :key="item.id" class="c5-detail-pill" @click="item.code ? openInvestTradeModal(item) : openFormModal(item)">
               <div class="c5-pill-icon" style="background:none;border:none">
                 <AssetLogo 
                   v-if="item.type === 'invest'"
@@ -645,7 +665,7 @@ onBeforeUnmount(() => {
         <div v-else>
           <!-- Card View -->
           <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:10px">
-            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard">
+            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard" @click="row?.code && openInvestTradeModal(row)">
               <div style="position:absolute;top:0;left:0;right:0;height:2px" :style="{ background: 'linear-gradient(90deg,transparent,' + (toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)') + ' 40%,transparent)' }"></div>
               <div class="hcard-header-row">
                 <div class="h-icon-box">
@@ -712,7 +732,7 @@ onBeforeUnmount(() => {
           
           <!-- Row View -->
           <div v-else style="display:flex;flex-direction:column;gap:6px">
-            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`row-${idx}`" class="hrow">
+            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`row-${idx}`" class="hrow" @click="row?.code && openInvestTradeModal(row)">
               <div style="display:flex;align-items:center;gap:12px;width:240px;flex-shrink:0">
                 <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
                   <AssetLogo 
@@ -851,6 +871,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <InvestTradeModal
+        v-model:show="showTradeModal"
+        :asset="tradeModalAsset"
+        :mode="tradeModalMode"
+        @success="handleTradeSuccess"
+      />
     </AppShell>
 </template>
 

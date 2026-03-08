@@ -1683,6 +1683,47 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return null;
   }
 
+  double? _searchResultChangeAmount(
+    Map<String, dynamic> item,
+    AppState appState,
+  ) {
+    final direct = _firstValidNumber(item, const [
+      'change',
+      'amt',
+      'delta',
+    ], allowZero: true);
+    if (direct != null) return direct;
+
+    final code = item['code']?.toString() ?? '';
+    if (code.isEmpty) return null;
+    final info = appState.resolvePriceInfoByCode(code);
+    if (info != null) return info.change;
+    return null;
+  }
+
+  String _searchResultCurrencyCode(Map<String, dynamic> item) {
+    final raw = (item['currency'] ?? item['curr'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    if (raw == 'USD' || raw == 'HKD' || raw == 'CNY') return raw;
+    final code = (item['code'] ?? '').toString().trim().toLowerCase();
+    if (code.startsWith('gb_') || code.startsWith('ft_')) return 'USD';
+    if (code.endsWith('.hk') || code.startsWith('hk')) return 'HKD';
+    return 'CNY';
+  }
+
+  String _searchResultCurrencySymbol(Map<String, dynamic> item) {
+    switch (_searchResultCurrencyCode(item)) {
+      case 'HKD':
+        return 'HK\$';
+      case 'USD':
+        return '\$';
+      default:
+        return '¥';
+    }
+  }
+
   List<Map<String, dynamic>> _filteredSearchResults() {
     final query = _queryController.text.trim().toLowerCase();
     return _results.whereType<Map<String, dynamic>>().where((item) {
@@ -1918,7 +1959,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                 primary: false,
                 shrinkWrap: true,
                 itemCount: rows.length,
-                separatorBuilder: (_, __) =>
+                separatorBuilder: (context, index) =>
                     Divider(height: 1, color: _tokens.border),
                 itemBuilder: (context, index) {
                   final item = rows[index];
@@ -1931,7 +1972,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     code: codeRaw,
                   );
                   final price = _searchResultPrice(item, appState);
+                  final changeAmt = _searchResultChangeAmount(item, appState);
                   final changePct = _searchResultChangePct(item, appState);
+                  final quoteColor = (changePct ?? changeAmt ?? 0) >= 0
+                      ? _tokens.green
+                      : _tokens.red;
+                  final symbol = _searchResultCurrencySymbol(item);
                   final selectedCode = _selected?['code']?.toString() ?? '';
                   final selected =
                       selectedCode == codeRaw && selectedCode.isNotEmpty;
@@ -1981,23 +2027,34 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                               Text(
                                 price == null
                                     ? '--'
-                                    : _formatInputNumber(
-                                        price,
-                                        decimals: isFund ? 4 : 2,
-                                      ),
+                                    : '$symbol${_formatInputNumber(price, decimals: isFund ? 4 : 2)}',
                                 style: _mono(size: 13, color: _tokens.text),
                               ),
-                              Text(
-                                changePct == null
-                                    ? '--'
-                                    : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
-                                style: _dm(
-                                  size: 10,
-                                  weight: FontWeight.w500,
-                                  color: (changePct ?? 0) >= 0
-                                      ? _tokens.green
-                                      : _tokens.red,
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    changeAmt == null
+                                        ? '--'
+                                        : '${changeAmt >= 0 ? '+' : ''}${_formatInputNumber(changeAmt, decimals: isFund ? 4 : 2)}',
+                                    style: _mono(
+                                      size: 10,
+                                      color: quoteColor,
+                                      weight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    changePct == null
+                                        ? '--'
+                                        : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
+                                    style: _dm(
+                                      size: 10,
+                                      weight: FontWeight.w500,
+                                      color: quoteColor,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -2027,7 +2084,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       code: codeRaw,
     );
     final price = _searchResultPrice(item, appState);
+    final changeAmt = _searchResultChangeAmount(item, appState);
     final changePct = _searchResultChangePct(item, appState);
+    final quoteColor = (changePct ?? changeAmt ?? 0) >= 0
+        ? _tokens.green
+        : _tokens.red;
+    final symbol = _searchResultCurrencySymbol(item);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -2059,22 +2121,43 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            price == null
-                ? '--'
-                : _formatInputNumber(price, decimals: isFund ? 4 : 2),
-            style: _mono(size: 12, color: _tokens.text),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            changePct == null
-                ? '--'
-                : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
-            style: _dm(
-              size: 10,
-              weight: FontWeight.w600,
-              color: (changePct ?? 0) >= 0 ? _tokens.green : _tokens.red,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                price == null
+                    ? '--'
+                    : '$symbol${_formatInputNumber(price, decimals: isFund ? 4 : 2)}',
+                style: _mono(size: 12, color: _tokens.text),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    changeAmt == null
+                        ? '--'
+                        : '${changeAmt >= 0 ? '+' : ''}${_formatInputNumber(changeAmt, decimals: isFund ? 4 : 2)}',
+                    style: _mono(
+                      size: 10,
+                      color: quoteColor,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    changePct == null
+                        ? '--'
+                        : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
+                    style: _dm(
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: quoteColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(width: 8),
           InkWell(
