@@ -17,6 +17,9 @@ function looksLikeRawBase64(value: string): boolean {
 export function toAvatarSrc(value: unknown): string {
   const raw = String(value || '').trim()
   if (!raw) return ''
+  if (looksLikeRawBase64(raw)) {
+    return `data:${guessAvatarMime(raw)};base64,${raw}`
+  }
   if (
     raw.startsWith('data:image/')
     || raw.startsWith('blob:')
@@ -25,9 +28,6 @@ export function toAvatarSrc(value: unknown): string {
     || raw.startsWith('/')
   ) {
     return raw
-  }
-  if (looksLikeRawBase64(raw)) {
-    return `data:${guessAvatarMime(raw)};base64,${raw}`
   }
   return raw
 }

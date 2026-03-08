@@ -86,7 +86,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             headers=_auth_headers("u_non_admin", "nonadmin_user"),
         )
         self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.get_json().get("error"), "Admin privileges required")
+        self.assertEqual(resp.get_json().get("error"), "当前账号没有后台权限")
 
     @patch("core.auth.config.ALLOW_LOCAL_ADMIN_BYPASS", True)
     def test_local_bypass_allows_admin_overview_without_token(self):
@@ -702,7 +702,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             json={"username": "target_user", "password": "Aa123456"},
         )
         self.assertEqual(login_resp.status_code, 403)
-        self.assertEqual((login_resp.get_json() or {}).get("error"), "User is disabled")
+        self.assertEqual((login_resp.get_json() or {}).get("error"), "账号已停用，请联系管理员")
 
     def test_admin_config_update_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
@@ -737,7 +737,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             headers=_auth_headers("u_user", "normal_user"),
         )
         self.assertEqual(non_admin.status_code, 403)
-        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "当前账号没有后台权限")
 
     def test_admin_ops_invite_acquire_update_persists_and_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
@@ -801,7 +801,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             headers=_auth_headers("u_user", "normal_user"),
         )
         self.assertEqual(non_admin.status_code, 403)
-        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "当前账号没有后台权限")
 
     def test_admin_ops_user_group_update_persists_and_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
@@ -865,7 +865,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             headers=_auth_headers("u_user", "normal_user"),
         )
         self.assertEqual(non_admin.status_code, 403)
-        self.assertEqual((non_admin.get_json() or {}).get("error"), "Admin privileges required")
+        self.assertEqual((non_admin.get_json() or {}).get("error"), "当前账号没有后台权限")
 
     def test_admin_ops_app_update_update_persists_and_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")

@@ -1100,7 +1100,7 @@ class DatabaseManager:
         try:
             cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", (u, user_id))
             if cursor.fetchone():
-                return False, "Username already exists"
+                return False, "用户名已存在"
             cursor.execute(
                 """
                 UPDATE users
@@ -1111,12 +1111,12 @@ class DatabaseManager:
             )
             if cursor.rowcount <= 0:
                 conn.rollback()
-                return False, "Bootstrap already completed"
+                return False, "初始化已完成"
             conn.commit()
             return True, ""
         except Exception:
             conn.rollback()
-            return False, "Bootstrap failed"
+            return False, "初始化失败"
         finally:
             conn.close()
 
@@ -1422,12 +1422,12 @@ class DatabaseManager:
             )
             if cursor.rowcount <= 0:
                 conn.rollback()
-                return False, "Invite code invalid or already used"
+                return False, "邀请码无效或已被使用"
             conn.commit()
             return True, ""
         except Exception:
             conn.rollback()
-            return False, "Invite code invalid or already used"
+            return False, "邀请码无效或已被使用"
         finally:
             conn.close()
 

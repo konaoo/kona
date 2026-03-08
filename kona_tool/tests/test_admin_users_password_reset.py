@@ -90,7 +90,7 @@ class AdminUserPasswordResetTests(unittest.TestCase):
             json={"user_id": "u_target"},
         )
         self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.get_json().get("error"), "Admin privileges required")
+        self.assertEqual(resp.get_json().get("error"), "当前账号没有后台权限")
 
     def test_admin_can_revoke_user_sessions(self):
         _seed_user("u_admin", "admin_user", "Abcd1234", is_admin=1)

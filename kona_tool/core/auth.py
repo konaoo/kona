@@ -71,15 +71,15 @@ def is_valid_username(username: str) -> bool:
 
 def validate_password(password: str) -> Tuple[bool, str]:
     if not isinstance(password, str):
-        return False, "Invalid password"
+        return False, "密码格式不正确"
     if len(password) < 8 or len(password) > 64:
-        return False, "Password length must be 8-64"
+        return False, "密码长度需为 8-64 位"
     if not re.search(r"[A-Za-z]", password):
-        return False, "Password must include letters"
+        return False, "密码需包含字母"
     if not re.search(r"\d", password):
-        return False, "Password must include numbers"
+        return False, "密码需包含数字"
     if password.lower() in _WEAK_PASSWORDS:
-        return False, "Password is too weak"
+        return False, "密码过于简单"
     return True, ""
 
 
@@ -163,27 +163,27 @@ def login_required(f):
     def decorated(*args, **kwargs):
         token = _extract_bearer_token()
         if not token:
-            return jsonify({"error": "Missing Authorization header"}), 401
+            return jsonify({"error": "登录状态已过期，请重新登录"}), 401
         valid, payload = verify_token(token)
         if not valid or not payload:
-            return jsonify({"error": "Invalid or expired token"}), 401
+            return jsonify({"error": "登录状态已过期，请重新登录"}), 401
         user_id = payload.get("user_id")
         if not user_id:
-            return jsonify({"error": "Invalid token payload"}), 401
+            return jsonify({"error": "登录信息无效，请重新登录"}), 401
         from core.db import db as global_db
 
         user = global_db.get_user_by_id(user_id)
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            return jsonify({"error": "用户不存在"}), 404
         if str(user.get("status") or "active").lower() != "active":
-            return jsonify({"error": "User is disabled"}), 403
+            return jsonify({"error": "账号已停用，请联系管理员"}), 403
 
         must_change = bool(user.get("must_change_password"))
         if must_change and request.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
             return (
                 jsonify(
                     {
-                        "error": "Password change required",
+                        "error": "需要先修改密码后再继续操作",
                         "code": "PASSWORD_CHANGE_REQUIRED",
                     }
                 ),
@@ -207,17 +207,17 @@ def optional_auth(f):
         if token:
             valid, payload = verify_token(token)
             if not valid or not payload:
-                return jsonify({"error": "Invalid or expired token"}), 401
+                return jsonify({"error": "登录状态已过期，请重新登录"}), 401
             user_id = payload.get("user_id")
             if not user_id:
-                return jsonify({"error": "Invalid token payload"}), 401
+                return jsonify({"error": "登录信息无效，请重新登录"}), 401
             from core.db import db as global_db
 
             user = global_db.get_user_by_id(user_id)
             if not user:
-                return jsonify({"error": "User not found"}), 401
+                return jsonify({"error": "用户不存在"}), 401
             if str(user.get("status") or "active").lower() != "active":
-                return jsonify({"error": "User is disabled"}), 403
+                return jsonify({"error": "账号已停用，请联系管理员"}), 403
             g.user_id = user.get("id")
             g.username = user.get("username")
         return f(*args, **kwargs)
@@ -247,11 +247,11 @@ def admin_required(f):
 
         token = _extract_bearer_token()
         if not token:
-            return jsonify({"error": "Missing Authorization header"}), 401
+            return jsonify({"error": "登录状态已过期，请重新登录"}), 401
 
         valid, payload = verify_token(token)
         if not valid or not payload:
-            return jsonify({"error": "Invalid or expired token"}), 401
+            return jsonify({"error": "登录状态已过期，请重新登录"}), 401
 
         g.user_id = payload.get("user_id")
         g.username = payload.get("username")
@@ -260,14 +260,14 @@ def admin_required(f):
 
         auth_info = global_db.get_user_auth_info(g.user_id)
         if not auth_info:
-            return jsonify({"error": "User not found"}), 403
+            return jsonify({"error": "用户不存在"}), 403
 
         status = str(auth_info.get("status") or "active").lower()
         if status != "active":
-            return jsonify({"error": "User is disabled"}), 403
+            return jsonify({"error": "账号已停用，请联系管理员"}), 403
 
         if not auth_info.get("is_admin"):
-            return jsonify({"error": "Admin privileges required"}), 403
+            return jsonify({"error": "当前账号没有后台权限"}), 403
 
         g.is_admin = True
         g.user_status = status
