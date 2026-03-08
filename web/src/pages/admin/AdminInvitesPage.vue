@@ -252,12 +252,61 @@ function goToPage(page: number) {
 function prevPage() { goToPage(currentPage.value - 1); }
 function nextPage() { goToPage(currentPage.value + 1); }
 
-async function copyToClipboard(text: string) {
+function fallbackCopyText(text: string): boolean {
+  const value = String(text || '').trim()
+  if (!value) return false
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '-9999px'
+  textarea.style.left = '-9999px'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, textarea.value.length)
+
   try {
-    await navigator.clipboard.writeText(text)
-    copiedCode.value = text
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
+async function copyToClipboard(text: string) {
+  const value = String(text || '').trim()
+  if (!value) {
+    flash('复制失败', false)
+    return
+  }
+
+  try {
+    let copied = false
+
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(value)
+        copied = true
+      } catch {
+        copied = false
+      }
+    }
+
+    if (!copied) {
+      copied = fallbackCopyText(value)
+    }
+
+    if (!copied) throw new Error('copy_failed')
+
+    copiedCode.value = value
+    flash('复制成功', true)
     setTimeout(() => {
-      if (copiedCode.value === text) copiedCode.value = ''
+      if (copiedCode.value === value) copiedCode.value = ''
+      if (message.value === '复制成功') message.value = ''
     }, 2000)
   } catch (e) {
     flash('复制失败', false)

@@ -4,9 +4,11 @@
  * 完全按照参考HTML复刻UI，使用原始CSS类名系统
  */
 
-import { computed, onMounted, onBeforeUnmount, ref, reactive } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
+import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
@@ -18,9 +20,12 @@ import AppShell from '../../layouts/AppShell.vue'
 // Types
 type AssetType = 'cash' | 'other' | 'liability'
 type SimpleAsset = { id: number; icon?: string; name: string; amount: number; curr?: string }
+type ChartPeriod = '1m' | '3m' | '6m' | '1y' | 'all'
+type SnapshotPoint = { date: string; total_asset: number; day_pnl?: number }
 
 // Stores & Composables
 const store = useKonaStore()
+const router = useRouter()
 const { maskValue } = usePrivacyMode()
 const marketStore = useMarketStore()
 
@@ -31,20 +36,38 @@ const otherAssets = ref<SimpleAsset[]>([])
 const liabilities = ref<SimpleAsset[]>([])
 const modalVisible = ref(false)
 const isFormModalVisible = ref(false)
+const isDeleteConfirmVisible = ref(false)
 const modalType = ref<AssetType>('cash')
 const modalMode = ref<'add' | 'edit'>('add')
 const showTradeModal = ref(false)
 const tradeModalAsset = ref<any>(null)
 const tradeModalMode = ref<'add' | 'buy' | 'sell' | 'adjust'>('add')
+const chartPeriod = ref<ChartPeriod>('1m')
+const chartHoverIndex = ref<number | null>(null)
+const chartSwitchAnimating = ref(false)
 const selectedTab = ref('all')
 const holdingsView = ref<'card'|'row'>('card')
 const marketIndices = ref<any[]>([])
-const activeSegment = ref<AssetType | 'invest' | null>(null)
+const activeSegment = ref<AssetType | null>(null)
+const historyPoints = ref<SnapshotPoint[]>([])
+const chartLoading = ref(false)
+const chartError = ref('')
+const trendMap = ref<Record<string, TrendItem>>({})
 const marketIndicesCacheKey = 'kaka:web:market-indices'
+const chartContainer = ref<HTMLElement | null>(null)
+
+const chartPeriodOptions: Array<{ label: string; value: ChartPeriod }> = [
+  { label: '近1月', value: '1m' },
+  { label: '近3月', value: '3m' },
+  { label: '近6月', value: '6m' },
+  { label: '近1年', value: '1y' },
+  { label: '全部', value: 'all' },
+]
 
 // Currency Switcher State
 const currencyOpen = ref(false)
 const currentCurrency = ref<'CNY'|'USD'|'HKD'>('CNY')
+const assetCurrencyOpen = ref(false)
 
 const form = reactive<{ id: number | null; icon: string; name: string; amount: number; curr: string }>({
   id: null,
@@ -54,7 +77,14 @@ const form = reactive<{ id: number | null; icon: string; name: string; amount: n
   curr: 'CNY',
 })
 
+function defaultAssetIcon(type: AssetType): string {
+  if (type === 'cash') return '🏦'
+  if (type === 'other') return '📦'
+  return '💳'
+}
+
 let staticRefreshTimer: number | null = null
+let chartSwitchTimer: number | null = null
 
 // Computed
 const rows = computed(() => {
@@ -141,36 +171,227 @@ const modalAddLabel = computed(() => {
   return '添加负债记录'
 })
 
+const allHistoryPoints = computed(() => {
+  return [...historyPoints.value]
+    .filter((item) => item && item.date)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+})
+
+const filteredHistoryPoints = computed(() => {
+  const sorted = allHistoryPoints.value
+
+  if (chartPeriod.value === 'all') return sorted
+
+  const limitMap: Record<Exclude<ChartPeriod, 'all'>, number> = {
+    '1m': 30,
+    '3m': 90,
+    '6m': 180,
+    '1y': 365,
+  }
+
+  return sorted.slice(-limitMap[chartPeriod.value])
+})
+
+const chartRangeLabel = computed(() => {
+  const first = filteredHistoryPoints.value[0]
+  const last = filteredHistoryPoints.value[filteredHistoryPoints.value.length - 1]
+  if (!first || !last) return '资产趋势会在积累几天后显示在这里'
+  return `${formatChartDate(first.date)} - ${formatChartDate(last.date)}`
+})
+
+const chartSeries = computed(() => {
+  return filteredHistoryPoints.value
+    .map((item) => ({
+      date: String(item.date || ''),
+      value: toDisplay(toNumber(item.total_asset, 0)),
+    }))
+    .filter((item) => item.date && Number.isFinite(item.value))
+})
+
+const chartStrokeColor = computed(() => {
+  const series = chartSeries.value
+  const first = series[0]
+  const last = series[series.length - 1]
+  if (first && last && series.length >= 2) {
+    return last.value >= first.value
+      ? '#f05a55'
+      : '#3ecf82'
+  }
+  return (investTotal.value?.dayPnl || 0) >= 0 ? '#f05a55' : '#3ecf82'
+})
+
+const chartHeadlineChange = computed(() => {
+  const points = filteredHistoryPoints.value
+  const first = points[0]
+  const last = points[points.length - 1]
+  if (first && last) {
+    return toNumber(last.total_asset, 0) - toNumber(first.total_asset, 0)
+  }
+  return 0
+})
+
+const chartHeadlineLabel = computed(() => {
+  if (chartPeriod.value === '1m') return '近1月'
+  if (chartPeriod.value === '3m') return '近3月'
+  if (chartPeriod.value === '6m') return '近6月'
+  if (chartPeriod.value === '1y') return '近1年'
+  return '累计'
+})
+
+const chartGeometry = computed(() => {
+  const width = 1044
+  const top = 10
+  const bottom = 96
+  const values = chartSeries.value
+
+  if (!values.length) {
+    return {
+      linePath: '',
+      areaPath: '',
+      lastX: width,
+      lastY: bottom,
+      guideX: width,
+      color: chartStrokeColor.value,
+      points: [] as Array<{ x: number; y: number }>,
+      hasData: false,
+    }
+  }
+
+  const firstValue = values[0]
+  const source = values.length === 1 && firstValue
+    ? [firstValue, { ...firstValue, date: `${firstValue.date}-end` }]
+    : values
+
+  if (source.length < 2) {
+    return {
+      linePath: '',
+      areaPath: '',
+      lastX: width,
+      lastY: bottom,
+      guideX: width,
+      color: chartStrokeColor.value,
+      points: [] as Array<{ x: number; y: number }>,
+      hasData: false,
+    }
+  }
+
+  const onlyValues = source.map((item) => item.value)
+  const minVal = Math.min(...onlyValues)
+  const maxVal = Math.max(...onlyValues)
+  const range = Math.max(maxVal - minVal, 1)
+  const points = source.map((item, index) => {
+    const x = (width / (source.length - 1)) * index
+    const ratio = (item.value - minVal) / range
+    const y = maxVal === minVal
+      ? (top + bottom) / 2
+      : bottom - ratio * (bottom - top)
+    return { x, y }
+  })
+
+  const firstPoint = points[0]
+  const secondPoint = points[1]
+  const lastPoint = points[points.length - 1]
+  const lastControl = points[points.length - 2]
+
+  if (!firstPoint || !secondPoint || !lastPoint || !lastControl) {
+    return {
+      linePath: '',
+      areaPath: '',
+      lastX: width,
+      lastY: bottom,
+      guideX: width,
+      color: chartStrokeColor.value,
+      points: [] as Array<{ x: number; y: number }>,
+      hasData: false,
+    }
+  }
+
+  let linePath = `M${firstPoint.x.toFixed(1)},${firstPoint.y.toFixed(1)}`
+  if (points.length === 2) {
+    linePath += ` L${secondPoint.x.toFixed(1)},${secondPoint.y.toFixed(1)}`
+  } else {
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const control = points[i]
+      const next = points[i + 1]
+      if (!control || !next) continue
+      const midX = (control.x + next.x) / 2
+      const midY = (control.y + next.y) / 2
+      linePath += ` Q${control.x.toFixed(1)},${control.y.toFixed(1)} ${midX.toFixed(1)},${midY.toFixed(1)}`
+    }
+    linePath += ` Q${lastControl.x.toFixed(1)},${lastControl.y.toFixed(1)} ${lastPoint.x.toFixed(1)},${lastPoint.y.toFixed(1)}`
+  }
+
+  const areaPath = `${linePath} L${lastPoint.x.toFixed(1)},120 L${firstPoint.x.toFixed(1)},120 Z`
+
+  return {
+    linePath,
+    areaPath,
+    lastX: lastPoint.x,
+    lastY: lastPoint.y,
+    guideX: lastPoint.x,
+    color: chartStrokeColor.value,
+    points,
+    hasData: true,
+  }
+})
+
+const hoveredChartPoint = computed(() => {
+  const hoverIndex = chartHoverIndex.value
+  if (hoverIndex === null) return null
+  const point = chartGeometry.value.points?.[hoverIndex]
+  const series = chartSeries.value[hoverIndex]
+  if (!point || !series) return null
+  return {
+    ...series,
+    x: point.x,
+    y: point.y,
+  }
+})
+
+const chartTooltipStyle = computed(() => {
+  const point = hoveredChartPoint.value
+  if (!point) return {}
+  const ratio = point.x / 1044
+  if (ratio <= 0.14) {
+    return {
+      left: `${Math.max(ratio * 100, 2)}%`,
+      top: '-72px',
+      transform: 'translateX(0)',
+    }
+  }
+  if (ratio >= 0.86) {
+    return {
+      left: `${Math.min(ratio * 100, 98)}%`,
+      top: '-72px',
+      transform: 'translateX(-100%)',
+    }
+  }
+  return {
+    left: `${ratio * 100}%`,
+    top: '-72px',
+    transform: 'translateX(-50%)',
+  }
+})
+
 // Segment Drawer Data
 const activeDrawerData = computed(() => {
   if (!activeSegment.value) return []
-  if (activeSegment.value === 'invest') {
-    return (rows.value || []).map(row => ({
-      ...row,
-      id: Number(row.id || 0),
-      name: String(row.name || ''),
-      amount: Number(row.value || 0),
-      curr: String(row.curr || 'CNY'),
-      type: 'invest' as const,
-      code: String(row.code || ''),
-      market: String(row.market || ''),
-      category: String(row.category || row.market || ''),
-      logo_url: row.logo_url,
-      asset_type: row.asset_type
-    }))
-  }
   if (activeSegment.value === 'cash') return cashAssets.value.map(a => ({ ...a, type: 'cash' as const, code: undefined }))
   if (activeSegment.value === 'other') return otherAssets.value.map(a => ({ ...a, type: 'other' as const, code: undefined }))
   if (activeSegment.value === 'liability') return liabilities.value.map(a => ({ ...a, type: 'liability' as const, code: undefined }))
   return []
 })
 
-function toggleSegment(type: AssetType | 'invest') {
+function toggleSegment(type: AssetType) {
   if (activeSegment.value === type) {
     activeSegment.value = null
   } else {
     activeSegment.value = type
   }
+}
+
+async function goToInvestPage() {
+  await router.push('/app/invest')
 }
 
 function openInvestTradeModal(item: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
@@ -258,7 +479,8 @@ const filteredRows = computed(() => {
       navUpdatePending: Boolean(row?.navUpdatePending),
       category: String(row?.category || row?.market || ''),
       pct,
-      spark: generateSparkline(String(row?.code), Number(row?.dayPnlRate || 0))
+      spark: buildTrendSparklinePath(trendMap.value[String(row?.code || '')]?.points || []),
+      sparkReady: (trendMap.value[String(row?.code || '')]?.points || []).length >= 2,
     }
   })
 })
@@ -306,45 +528,73 @@ function formatValue(value: number, curr?: string): string {
   const formatted = absVal % 1 !== 0 ? absVal.toFixed(2) : absVal.toLocaleString('zh-CN')
   return `${symbol} ${formatted}`
 }
+
+function formatHoldingValue(value: number, curr?: string): string {
+  if (currentCurrency.value !== 'CNY') {
+    return formatCurrency(Math.round(Math.abs(toCny(value, curr))))
+  }
+
+  const symbol = getCurrencySymbol(curr)
+  return `${symbol} ${Math.round(Math.abs(value)).toLocaleString('zh-CN')}`
+}
+
+function formatAssetOriginalAmount(value: number, curr?: string): string {
+  const symbol = getCurrencySymbol(curr)
+  const absVal = Math.abs(toNumber(value, 0))
+  const formatted = absVal % 1 !== 0
+    ? absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+    : absVal.toLocaleString('zh-CN')
+  return `${symbol} ${formatted}`
+}
+
+function formatChartDisplayValue(value: number): string {
+  const sym = currMeta.value.sym
+  const absVal = Math.abs(toNumber(value, 0))
+  const formatted = absVal >= 1000
+    ? Math.round(absVal).toLocaleString('zh-CN')
+    : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return `${sym}${formatted}`
+}
+
+function formatChartDate(dateText: string): string {
+  const [year = '', month = '', day = ''] = String(dateText || '').split('-')
+  if (!year || !month || !day) return String(dateText || '')
+  return `${year}.${month}.${day}`
+}
+
+function handleChartMouseMove(event: MouseEvent) {
+  const container = chartContainer.value
+  const points = chartGeometry.value.points || []
+  if (!container || points.length === 0) return
+  const rect = container.getBoundingClientRect()
+  if (!rect.width) return
+  const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+  const index = Math.round(ratio * (points.length - 1))
+  chartHoverIndex.value = Math.min(Math.max(index, 0), points.length - 1)
+}
+
+function handleChartMouseLeave() {
+  chartHoverIndex.value = null
+}
+
+watch(chartPeriod, () => {
+  chartSwitchAnimating.value = true
+  if (chartSwitchTimer) window.clearTimeout(chartSwitchTimer)
+  chartSwitchTimer = window.setTimeout(() => {
+    chartSwitchAnimating.value = false
+  }, 180)
+})
+
+watch(
+  () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
+  () => { void loadAssetTrends() },
+)
+
 const getQtyFontSize = (val: string | number) => {
   const s = String(val)
   if (s.length > 12) return '9px'
   if (s.length > 9) return '10px'
   return '11px'
-}
-
-function generateSparkline(code: string, dayPnlRate: number): string {
-  if (!code) return ''
-  let hash = 0
-  for (let i = 0; i < code.length; i++) {
-    hash = ((hash << 5) - hash) + code.charCodeAt(i)
-    hash |= 0
-  }
-  
-  const points = 6
-  const width = 120
-  const height = 40
-  const midY = height / 2
-  const range = height * 0.4
-  
-  let path = `M0,${midY.toFixed(1)}`
-  const targetY = midY - (dayPnlRate / 5) * range
-  const finalY = Math.max(5, Math.min(35, targetY))
-  
-  for (let i = 1; i < points; i++) {
-    const x = (width / (points - 1)) * i
-    let y
-    if (i === points - 1) {
-      y = finalY
-    } else {
-      const stepSeed = Math.abs(Math.sin(hash + i) * 10000) % 1
-      const progress = i / (points - 1)
-      const trendY = midY + (finalY - midY) * progress
-      y = trendY + (stepSeed - 0.5) * range * 0.4
-    }
-    path += ` L${x.toFixed(1)},${y.toFixed(1)}`
-  }
-  return path
 }
 
 // Methods
@@ -375,12 +625,61 @@ async function loadMarketIndices() {
   }
 }
 
+async function loadHistory() {
+  chartLoading.value = true
+  chartError.value = ''
+  try {
+    const res = await api.get<SnapshotPoint[]>('/api/history?days=5000')
+    historyPoints.value = Array.isArray(res)
+      ? res.map((item) => ({
+          date: String(item?.date || ''),
+          total_asset: toNumber(item?.total_asset, 0),
+          day_pnl: toNumber(item?.day_pnl, 0),
+        }))
+      : []
+  } catch (e) {
+    chartError.value = e instanceof Error ? e.message : '历史快照加载失败'
+    historyPoints.value = []
+    console.error('Failed to load history:', e)
+  } finally {
+    chartLoading.value = false
+  }
+}
+
+async function loadAssetTrends() {
+  const items = (rows.value || [])
+    .filter((row: any) => row?.code)
+    .map((row: any) => ({
+      code: String(row.code || ''),
+      name: String(row.name || ''),
+      market: String(row.category || row.market || ''),
+    }))
+
+  if (!items.length) {
+    trendMap.value = {}
+    return
+  }
+
+  try {
+    const payload = await api.post<{ items?: Record<string, TrendItem> }>('/api/asset/trends', {
+      items,
+      points: 20,
+    })
+    trendMap.value = payload?.items || {}
+  } catch (e) {
+    console.error('Failed to load asset trends:', e)
+    trendMap.value = {}
+  }
+}
+
 async function refreshAll() {
   try {
     await Promise.all([
       store.refreshStaticOnly(),
       loadLists(),
+      loadHistory(),
     ])
+    await loadAssetTrends()
     void Promise.all([
       store.refreshQuotesOnly(),
       loadMarketIndices(),
@@ -411,13 +710,13 @@ function closeModal() {
 function openFormModal(item?: any) {
   if (item?.type && item.type !== 'invest') {
     modalType.value = item.type
-  } else if (activeSegment.value && activeSegment.value !== 'invest') {
+  } else if (activeSegment.value) {
     modalType.value = activeSegment.value
   }
   
   modalMode.value = (item && item.id) ? 'edit' : 'add'
   form.id = item?.id ?? null
-  form.icon = item?.icon ?? '🏦'
+  form.icon = item?.icon ?? defaultAssetIcon(modalType.value)
   form.name = item?.name ?? ''
   form.amount = toNumber(item?.amount, 0)
   form.curr = item?.curr || 'CNY'
@@ -426,6 +725,8 @@ function openFormModal(item?: any) {
 
 function closeFormModal() {
   isFormModalVisible.value = false
+  isDeleteConfirmVisible.value = false
+  assetCurrencyOpen.value = false
 }
 
 async function submitModal() {
@@ -452,9 +753,27 @@ async function removeAsset(type: AssetType, id: number) {
   await loadLists()
 }
 
+function openDeleteConfirm() {
+  if (modalMode.value !== 'edit' || !form.id) return
+  isDeleteConfirmVisible.value = true
+}
+
+function closeDeleteConfirm() {
+  isDeleteConfirmVisible.value = false
+}
+
+async function removeAssetFromForm() {
+  if (!form.id) return
+  const assetId = form.id
+  closeDeleteConfirm()
+  closeFormModal()
+  await removeAsset(modalType.value, assetId)
+}
+
 // Global click handler to close currency menu
 function handleGlobalClick() {
   if (currencyOpen.value) currencyOpen.value = false
+  if (assetCurrencyOpen.value) assetCurrencyOpen.value = false
 }
 
 // Lifecycle
@@ -475,7 +794,9 @@ onMounted(async () => {
     await Promise.all([
       store.refreshStaticOnly(),
       loadLists(),
+      loadHistory(),
     ])
+    await loadAssetTrends()
     void loadMarketIndices()
     void store.refreshQuotesOnly()
     store.startAutoRefresh()
@@ -490,6 +811,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleGlobalClick)
   store.stopAutoRefresh()
   if (staticRefreshTimer) clearInterval(staticRefreshTimer)
+  if (chartSwitchTimer) window.clearTimeout(chartSwitchTimer)
 })
 </script>
 
@@ -550,39 +872,68 @@ onBeforeUnmount(() => {
             </div>
             <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
             <div class="c3-stats">
-              <span class="badge" :class="valueClass(investTotal?.dayPnl||0)" style="font-size:12px;padding:4px 10px">今日 {{ masked(formatSignedCny(toNumber(investTotal?.dayPnl))) }}</span>
+              <span class="badge" :class="valueClass(chartHeadlineChange)" style="font-size:12px;padding:4px 10px">{{ chartHeadlineLabel }} {{ masked(formatSignedCny(chartHeadlineChange)) }}</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center">
             <div class="c1-period-tabs">
-              <button class="c1-pt active">近1月</button>
-              <button class="c1-pt">近3月</button>
-              <button class="c1-pt">近1年</button>
-              <button class="c1-pt">全部</button>
+              <button
+                v-for="item in chartPeriodOptions"
+                :key="item.value"
+                class="c1-pt"
+                :class="{ active: chartPeriod === item.value }"
+                @click="chartPeriod = item.value"
+              >
+                {{ item.label }}
+              </button>
             </div>
+            <div class="home-chart-range">{{ chartRangeLabel }}</div>
           </div>
         </div>
 
         <!-- Sparkline Trend Chart -->
-        <div class="c3-chart">
+        <div
+          ref="chartContainer"
+          class="c3-chart"
+          :class="{ 'chart-switching': chartSwitchAnimating }"
+          @mousemove="handleChartMouseMove"
+          @mouseleave="handleChartMouseLeave"
+        >
           <svg viewBox="0 0 1044 120" preserveAspectRatio="none" fill="none">
             <defs>
               <linearGradient id="c3grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stop-opacity=".15"/>
-                <stop offset="100%" :stop-color="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stop-opacity="0"/>
+                <stop offset="0%" :stop-color="chartGeometry.color" stop-opacity=".18"/>
+                <stop offset="100%" :stop-color="chartGeometry.color" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7" :stroke="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'" stroke-width="2.5" fill="none"/>
-            <path d="M0,95 C60,92 100,85 160,78 C220,71 260,83 320,75 C380,67 420,53 480,45 C540,37 580,43 640,33 C700,23 740,28 800,21 C860,14 900,17 960,13 C1000,10 1030,8 1044,7 L1044,120 L0,120 Z" fill="url(#c3grad)"/>
-            <circle cx="1044" cy="7" r="4.5" :fill="(investTotal?.dayPnl||0)>=0?'#f05a55':'#3ecf82'"/>
-            <line x1="1044" y1="7" x2="1044" y2="120" :stroke="(investTotal?.dayPnl||0)>=0?'rgba(240,90,85,0.2)':'rgba(62,207,130,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <g class="home-chart-series">
+              <path v-if="chartGeometry.hasData" :d="chartGeometry.linePath" :stroke="chartGeometry.color" stroke-width="2.5" fill="none"/>
+              <path v-if="chartGeometry.hasData" :d="chartGeometry.areaPath" fill="url(#c3grad)"/>
+              <circle v-if="hoveredChartPoint" :cx="hoveredChartPoint.x" :cy="hoveredChartPoint.y" r="4.5" :fill="chartGeometry.color"/>
+              <line v-if="hoveredChartPoint" :x1="hoveredChartPoint.x" :y1="hoveredChartPoint.y" :x2="hoveredChartPoint.x" y2="120" :stroke="chartGeometry.color === '#f05a55' ? 'rgba(240,90,85,0.2)' : 'rgba(62,207,130,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
+            </g>
           </svg>
+          <div
+            v-if="hoveredChartPoint && chartGeometry.hasData && !chartLoading"
+            class="home-chart-tooltip"
+            :style="chartTooltipStyle"
+          >
+            <div class="home-chart-tooltip-date">{{ formatChartDate(hoveredChartPoint.date) }}</div>
+            <div class="home-chart-tooltip-value">{{ masked(formatChartDisplayValue(hoveredChartPoint.value)) }}</div>
+          </div>
+          <div v-if="chartGeometry.hasData && filteredHistoryPoints.length >= 2" class="home-chart-axis">
+            <span>{{ formatChartDate(filteredHistoryPoints[0]?.date || '') }}</span>
+            <span>{{ formatChartDate(filteredHistoryPoints[filteredHistoryPoints.length - 1]?.date || '') }}</span>
+          </div>
+          <div v-if="chartLoading" class="home-chart-empty">正在加载历史资产走势...</div>
+          <div v-else-if="chartError" class="home-chart-empty">{{ chartError }}</div>
+          <div v-else-if="!chartGeometry.hasData" class="home-chart-empty">继续使用几天后，这里会显示你的资产趋势</div>
         </div>
 
         <!-- Bottom Segments -->
         <div class="c3-bottom">
-          <div class="c3-segment" :class="{ active: activeSegment === 'invest' }" @click="toggleSegment('invest')">
-            <div class="c3-active-bar" :style="{ background: activeSegment === 'invest' ? 'var(--green)' : '' }"></div>
+          <div class="c3-segment" @click="goToInvestPage">
+            <div class="c3-active-bar"></div>
             <div class="c3-segment-label">投资资产</div>
             <div class="c3-segment-val">{{ masked(formatCurrency(investTotal?.mv||0)) }}</div>
             <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">今日 {{ formatPct(investTotal?.dayRate||0) }}</div>
@@ -612,27 +963,18 @@ onBeforeUnmount(() => {
           <div class="c3-drawer-inner">
             <div v-for="item in activeDrawerData" :key="item.id" class="c5-detail-pill" @click="item.code ? openInvestTradeModal(item) : openFormModal(item)">
               <div class="c5-pill-icon" style="background:none;border:none">
-                <AssetLogo 
-                  v-if="item.type === 'invest'"
-                  :name="item.name" 
-                  :code="item.code" 
-                  :logo-url="item.logo_url" 
-                  :market="item.market" 
-                  :asset-type="item.asset_type"
-                />
-                <span v-else>{{ item.icon }}</span>
+                <span>{{ item.icon || defaultAssetIcon(item.type) }}</span>
               </div>
               <div>
                 <div class="c5-pill-name">{{ item.name }}</div>
                 <div class="c5-pill-amt" :style="{ color: item.type === 'liability' ? 'var(--red)' : 'var(--sub)' }">
-                  {{ masked(formatCurrency(toCny(item.amount, item.curr))) }}
+                  {{ masked(formatAssetOriginalAmount(item.amount, item.curr)) }}
                 </div>
               </div>
-              <span v-if="item.type !== 'invest'" class="c5-pill-edit" @click.stop="openFormModal(item)">✏</span>
             </div>
             
             <!-- Contextual Add Action in Drawer -->
-            <div v-if="activeSegment && activeSegment !== 'invest'" class="c5-add-pill" @click="openFormModal()">
+            <div v-if="activeSegment" class="c5-add-pill" @click="openFormModal()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               添加{{ activeSegment === 'cash' ? '现金账户' : activeSegment === 'other' ? '其他资产' : '负债记录' }}
             </div>
@@ -690,7 +1032,7 @@ onBeforeUnmount(() => {
                 </div>
                 <!-- Market Value in Top Right -->
                 <div class="h-mv-right">
-                  {{ formatValue(row?.mv || 0, String(row?.curr)) }}
+                  {{ formatHoldingValue(row?.mv || 0, String(row?.curr)) }}
                 </div>
               </div>
 
@@ -706,9 +1048,10 @@ onBeforeUnmount(() => {
 
               <!-- Sparkline stub -->
               <div style="height:38px;margin-bottom:10px;opacity:.85">
-                <svg viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
-                  <path d="M0,20 L30,15 L60,25 L90,10 L120,5" :stroke="toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)'" stroke-width="1.6" fill="none"/>
+                <svg v-if="row?.sparkReady" viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
+                  <path :d="row?.spark" :stroke="toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)'" stroke-width="1.6" fill="none"/>
                 </svg>
+                <div v-else class="trend-empty">暂无趋势</div>
               </div>
               <!-- Removed redundant dayPnlRate badge -->
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--surface-divider)">
@@ -737,7 +1080,7 @@ onBeforeUnmount(() => {
           <!-- Row View -->
           <div v-else style="display:flex;flex-direction:column;gap:6px">
             <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`row-${idx}`" class="hrow" @click="row?.code && openInvestTradeModal(row)">
-              <div style="display:flex;align-items:center;gap:12px;width:240px;flex-shrink:0">
+              <div style="display:flex;align-items:flex-start;gap:12px;width:320px;flex-shrink:0">
                 <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
                   <AssetLogo 
                     :name="row?.name" 
@@ -747,8 +1090,8 @@ onBeforeUnmount(() => {
                     :asset-type="row?.asset_type"
                   />
                 </div>
-                <div class="h-info-group">
-                  <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
+                <div class="h-info-group h-info-group-row">
+                  <div class="h-name-row h-name-row-wrap">{{ row?.name || '未知标的' }}</div>
                   <div class="h-meta-row">
                         <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
                   </div>
@@ -771,7 +1114,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatValue(toNumber(row?.mv), row?.curr as any)) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatHoldingValue(toNumber(row?.mv), row?.curr as any)) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
@@ -837,6 +1180,17 @@ onBeforeUnmount(() => {
       <!-- 添加/编辑 资产详情的二层表单 Modal -->
       <div class="modal-overlay" :class="{ show: isFormModalVisible }" @click.self="closeFormModal">
         <div style="width:100%;max-width:380px;background:var(--s1);border:1px solid var(--border);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out);position:relative">
+          <button
+            v-if="modalMode === 'edit' && form.id"
+            @click="openDeleteConfirm"
+            style="position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:9px;border:1px solid rgba(240,90,85,0.22);background:rgba(240,90,85,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--red);transition:all .15s"
+            aria-label="删除资产"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
           <div style="font-size:18px;font-weight:700;margin-bottom:20px">{{ modalMode === 'add' ? modalAddLabel : '编辑资产' }}</div>
           
           <div style="margin-bottom:16px">
@@ -862,16 +1216,57 @@ onBeforeUnmount(() => {
             </div>
             <div class="form-group">
               <label class="form-label">货币</label>
-              <select class="form-inp" v-model="form.curr" style="-webkit-appearance:none;appearance:none">
-                <option value="CNY">CNY 人民币</option>
-                <option value="USD">USD 美元</option>
-                <option value="HKD">HKD 港币</option>
-              </select>
+              <div style="position:relative">
+                <button
+                  type="button"
+                  class="form-inp"
+                  @click.stop="assetCurrencyOpen = !assetCurrencyOpen"
+                  style="display:flex;align-items:center;justify-content:space-between;text-align:left"
+                >
+                  <span>{{ form.curr }} {{ getCurrencyLabel(form.curr) }}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: assetCurrencyOpen ? 'rotate(180deg)' : 'rotate(0)' }">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                <div v-if="assetCurrencyOpen" class="asset-currency-menu">
+                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'CNY' }" @click.stop="form.curr = 'CNY'; assetCurrencyOpen = false">
+                    <span class="asset-currency-code">CNY</span>
+                    <span class="asset-currency-name">人民币</span>
+                  </button>
+                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'USD' }" @click.stop="form.curr = 'USD'; assetCurrencyOpen = false">
+                    <span class="asset-currency-code">USD</span>
+                    <span class="asset-currency-name">美元</span>
+                  </button>
+                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'HKD' }" @click.stop="form.curr = 'HKD'; assetCurrencyOpen = false">
+                    <span class="asset-currency-code">HKD</span>
+                    <span class="asset-currency-name">港币</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button @click="closeFormModal" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface-soft);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
             <button @click="submitModal" :disabled="!form.name" style="flex:2;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#5b8def,#4a7be0);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(74,123,224,0.25)" :style="{ opacity: !form.name ? 0.5 : 1 }">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-overlay" :class="{ show: isDeleteConfirmVisible }" @click.self="closeDeleteConfirm">
+        <div style="width:100%;max-width:360px;background:var(--s1);border:1px solid rgba(240,90,85,0.18);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <div style="width:40px;height:40px;border-radius:12px;background:rgba(240,90,85,0.12);border:1px solid rgba(240,90,85,0.18);display:flex;align-items:center;justify-content:center;color:var(--red);font-size:18px">🗑️</div>
+            <div>
+              <div style="font-size:18px;font-weight:700;color:var(--text)">确认删除</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">删掉后就不会再出现在首页列表里。</div>
+            </div>
+          </div>
+          <div style="font-size:14px;color:var(--sub);line-height:1.6;margin-bottom:20px">
+            确定要删除“{{ form.name || '这条资产' }}”吗？这个动作不能撤回。
+          </div>
+          <div style="display:flex;gap:8px">
+            <button @click="closeDeleteConfirm" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface-soft);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
+            <button @click="removeAssetFromForm" style="flex:1;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#f05a55,#d84d48);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(240,90,85,0.22)">确认删除</button>
           </div>
         </div>
       </div>
@@ -968,6 +1363,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 4px;
 }
+.h-info-group-row {
+  padding-top: 1px;
+}
 .h-name-row {
   font-size: 14px;
   font-weight: 700;
@@ -975,6 +1373,15 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.h-name-row-wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .h-meta-row {
   display: flex;
@@ -1037,5 +1444,151 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: var(--text);
   text-align: right;
+}
+
+.home-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.home-chart-range {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.home-chart-tooltip {
+  position: absolute;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(8, 13, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  z-index: 4;
+  backdrop-filter: blur(12px);
+  transition: left .14s ease, transform .14s ease, opacity .18s ease;
+}
+
+.home-chart-tooltip-date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  margin-bottom: 4px;
+}
+
+.home-chart-tooltip-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f5f7fb;
+}
+
+.home-chart-axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.34);
+  pointer-events: none;
+}
+
+.home-chart-series {
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.c3-chart.chart-switching .home-chart-series,
+.c3-chart.chart-switching .home-chart-tooltip,
+.c3-chart.chart-switching .home-chart-axis {
+  opacity: 0.42;
+}
+
+[data-theme='light'] .home-chart-range {
+  color: rgba(23, 27, 35, 0.48);
+}
+
+[data-theme='light'] .home-chart-axis {
+  color: rgba(23, 27, 35, 0.4);
+}
+
+.asset-currency-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  background: var(--panel-elevated);
+  border: 1px solid var(--border-b);
+  border-radius: 14px;
+  box-shadow: var(--shadow-float);
+  z-index: 120;
+  animation: modalIn .18s ease;
+}
+
+.asset-currency-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  transition: all .15s;
+  text-align: left;
+}
+
+.asset-currency-option:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.asset-currency-option.active {
+  background: linear-gradient(135deg, rgba(91,141,239,0.22), rgba(74,123,224,0.12));
+  color: var(--text);
+}
+
+.asset-currency-option.active::before {
+  content: '✓';
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.asset-currency-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 34px;
+}
+
+.asset-currency-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trend-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
 }
 </style>

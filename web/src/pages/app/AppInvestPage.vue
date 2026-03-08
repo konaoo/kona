@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toNumber } from '@/shared/format'
+import { api } from '@/shared/http'
+import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
 import { useKonaStore } from '@/stores/composables'
 import { useMarketStore } from '@/stores/market'
 import AssetLogo from '@/components/base/AssetLogo.vue'
@@ -14,6 +16,7 @@ const marketStore = useMarketStore()
 // State
 const selectedTab = ref('all')
 const holdingsView = ref<'card'|'row'>('card')
+const trendMap = ref<Record<string, TrendItem>>({})
 
 // Computed for rates and conversions
 const rates = computed(() => marketStore.rates)
@@ -46,6 +49,11 @@ function formatCurrency(cnyValue: number, signed = false): string {
   const absVal = Math.abs(val)
   const formatted = absVal >= 1000 ? Math.round(absVal).toLocaleString('zh-CN') : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   return `${sign}${sym}${formatted}`
+}
+
+function formatHoldingCurrency(cnyValue: number): string {
+  const val = Math.round(Math.abs(toDisplay(cnyValue)))
+  return `${currMeta.value.sym}${val.toLocaleString('zh-CN')}`
 }
 
 // Utility
@@ -192,7 +200,8 @@ const filteredRows = computed(() => {
       quoteReady: Boolean(row.quoteReady),
       quotePending: Boolean(row.quotePending),
       navUpdatePending: Boolean(row.navUpdatePending),
-      spark: generateSparkline(String(row.code), Number(row.dayPnlRate || 0))
+      spark: buildTrendSparklinePath(trendMap.value[String(row.code || '')]?.points || []),
+      sparkReady: (trendMap.value[String(row.code || '')]?.points || []).length >= 2,
     }
   })
 })
@@ -253,43 +262,41 @@ function getQtyFontSize(val: string | number) {
   return '11px'
 }
 
-function generateSparkline(code: string, dayPnlRate: number): string {
-  if (!code) return ''
-  let hash = 0
-  for (let i = 0; i < code.length; i++) {
-    hash = ((hash << 5) - hash) + code.charCodeAt(i)
-    hash |= 0
+async function loadAssetTrends() {
+  const items = (rows.value || [])
+    .filter((row: any) => row?.code)
+    .map((row: any) => ({
+      code: String(row.code || ''),
+      name: String(row.name || ''),
+      market: String(row.category || row.market || ''),
+    }))
+
+  if (!items.length) {
+    trendMap.value = {}
+    return
   }
-  
-  const points = 6
-  const width = 120
-  const height = 40
-  const midY = height / 2
-  const range = height * 0.4
-  
-  let path = `M0,${midY.toFixed(1)}`
-  const targetY = midY - (dayPnlRate / 5) * range
-  const finalY = Math.max(5, Math.min(35, targetY))
-  
-  for (let i = 1; i < points; i++) {
-    const x = (width / (points - 1)) * i
-    let y
-    if (i === points - 1) {
-      y = finalY
-    } else {
-      const stepSeed = Math.abs(Math.sin(hash + i) * 10000) % 1
-      const progress = i / (points - 1)
-      const trendY = midY + (finalY - midY) * progress
-      y = trendY + (stepSeed - 0.5) * range * 0.4
-    }
-    path += ` L${x.toFixed(1)},${y.toFixed(1)}`
+
+  try {
+    const payload = await api.post<{ items?: Record<string, TrendItem> }>('/api/asset/trends', {
+      items,
+      points: 20,
+    })
+    trendMap.value = payload?.items || {}
+  } catch (e) {
+    console.error('Failed to load invest asset trends', e)
+    trendMap.value = {}
   }
-  return path
 }
+
+watch(
+  () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
+  () => { void loadAssetTrends() },
+)
 
 onMounted(async () => {
     try {
         await store.refreshStaticOnly()
+        await loadAssetTrends()
         void store.refreshQuotesOnly()
         store.startAutoRefresh()
     } catch (e) {
@@ -321,6 +328,7 @@ function openEditTradeModal(row: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
 const handleTradeSuccess = async () => {
     try {
         await store.refreshStaticOnly()
+        await loadAssetTrends()
         void store.refreshQuotesOnly()
     } catch (e) {
         console.error('Failed to reload invest data', e)
@@ -488,7 +496,7 @@ const handleTradeSuccess = async () => {
                     </div>
                     <!-- Market Value in Top Right -->
                     <div class="h-mv-right">
-                      <span style="font-size:12px;opacity:0.6;margin-right:2px;font-weight:400">{{ getCurrencySymbol(row.curr) }}</span>{{ formatLocal(row.mv) }}
+                      {{ formatHoldingCurrency((Number(row.mv) || 0) * rateToCny(String(row.curr || 'CNY'))) }}
                     </div>
                   </div>
 
@@ -602,7 +610,7 @@ const handleTradeSuccess = async () => {
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
-                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ formatLocal(row.mv) }}
+                        {{ formatHoldingCurrency((Number(row.mv) || 0) * rateToCny(String(row.curr || 'CNY'))) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
@@ -938,6 +946,19 @@ const handleTradeSuccess = async () => {
   font-weight: 700;
   color: var(--text);
   text-align: right;
+}
+
+.trend-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
 }
 
 </style>

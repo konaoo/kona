@@ -11,7 +11,7 @@ if str(KONA_TOOL) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
-from core.fund import get_fund_price
+from core.fund import get_fund_overseas_history_points, get_fund_price
 
 
 class _JsonResp:
@@ -146,6 +146,45 @@ class TestFundSourcePriority(unittest.TestCase):
         self.assertAlmostEqual(yclose, 1.5225, places=4)
         self.assertAlmostEqual(amt, 0.0679, places=4)
         self.assertAlmostEqual(chg, 4.46, places=2)
+
+    def test_overseas_history_parser_reads_recent_nav_rows(self):
+        html = """
+        <table id="tb_Data">
+            <tbody>
+                <tr>
+                    <th>净值日期</th><th>单位净值</th><th>日增长值</th><th>日增长率</th>
+                </tr>
+                <tr>
+                    <td class="">2026-03-05</td>
+                    <td class="numberClass">17.9600</td>
+                    <td class="numberClass ui-color-red">0.1100</td>
+                    <td class="numberClass ui-color-red">0.62%</td>
+                </tr>
+                <tr>
+                    <td class="">2026-03-04</td>
+                    <td class="numberClass">17.8500</td>
+                    <td class="numberClass ui-color-green">-0.4300</td>
+                    <td class="numberClass ui-color-green">-2.35%</td>
+                </tr>
+                <tr>
+                    <td class="">2026-03-03</td>
+                    <td class="numberClass">18.2800</td>
+                    <td class="numberClass ui-color-green">-0.5300</td>
+                    <td class="numberClass ui-color-green">-2.82%</td>
+                </tr>
+            </tbody>
+        </table>
+        """
+        with patch("core.fund.monitored_http_get", return_value=_TextResp(html)):
+            points = get_fund_overseas_history_points("968048", limit=2)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-04", "value": 17.85},
+                {"date": "2026-03-05", "value": 17.96},
+            ],
+        )
 
     def test_tencent_jj_parser_reads_latest_confirmed_nav(self):
         from core.fund import get_fund_tencent_jj

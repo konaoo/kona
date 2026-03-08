@@ -4,7 +4,7 @@
 """
 import re
 import logging
-from typing import Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 import config
 from .utils import safe_float, retry_on_failure, monitored_http_get
@@ -288,6 +288,47 @@ def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float]
         logger.warning(f"Overseas HTML error for {clean_code}: {e}")
     
     return 0.0, 0.0, 0.0, 0.0
+
+
+@retry_on_failure(max_retries=2, delay=0.5)
+def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    从海外基金历史净值页提取最近若干个确认净值点。
+
+    主要用于 968xxx 这类 F10 历史接口回空的海外基金。
+    """
+    try:
+        url = f"https://overseas.1234567.com.cn/f10/FundJz/{clean_code}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": f"https://overseas.1234567.com.cn/{clean_code}.html",
+        }
+        r = monitored_http_get("overseas_fund_history", url, headers=headers, timeout=config.API_TIMEOUT)
+        if r.status_code != 200:
+            return []
+
+        html = str(r.text or "")
+        rows = re.findall(
+            r"<tr>\s*<td[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*</td>\s*<td[^>]*>\s*([\d.]+)\s*</td>",
+            html,
+            re.S,
+        )
+        if not rows:
+            return []
+
+        points: List[Dict[str, Any]] = []
+        for date, nav in rows:
+            value = safe_float(nav)
+            if not date or value <= 0:
+                continue
+            points.append({"date": date, "value": value})
+
+        # 页面默认新到旧，这里转成旧到新，前端画线更自然。
+        points.reverse()
+        return points[-max(2, int(limit)) :]
+    except Exception as e:
+        logger.warning(f"Overseas fund history parser error for {clean_code}: {e}")
+        return []
 
 
 def get_fund_price(code: str) -> Tuple[float, float, float, float]:

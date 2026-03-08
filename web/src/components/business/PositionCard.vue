@@ -53,6 +53,11 @@ const totalPnLClass = computed(() => {
   return 'text-muted'
 })
 
+const holdingValueLabel = computed(() => {
+  const symbol = props.position.currency === 'CNY' ? '¥' : props.position.currency === 'HKD' ? '$' : 'US$'
+  return `${symbol}${Math.round(Math.abs(props.position.value || 0)).toLocaleString('zh-CN')}`
+})
+
 const handleClick = () => {
   if (props.clickable) {
     emit('click', props.position)
@@ -76,8 +81,7 @@ const handleClick = () => {
       <div class="position-card-value">
         <div class="value-label">持有金额</div>
         <div class="value-amount mono">
-          {{ position.currency === 'CNY' ? '¥' : position.currency === 'HKD' ? '$' : 'US$' }}
-          {{ position.value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          {{ holdingValueLabel }}
         </div>
       </div>
 

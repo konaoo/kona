@@ -42,6 +42,7 @@ from core.market_calendar import all_markets_closed, get_market_statuses
 from core.snapshot import take_snapshot, calculate_portfolio_stats
 from core.news import news_fetcher
 from core.system import system_manager
+from core.trend import batch_get_asset_trends
 from core.policy_runtime import (
     is_policy_enabled,
     get_policy_limit_per_min,
@@ -1390,6 +1391,38 @@ def get_history():
     return jsonify(history)
 
 
+@app.route('/api/asset/trends', methods=['POST'])
+@optional_auth
+def get_asset_trends():
+    """批量获取持仓趋势线数据。"""
+    payload = request.json or {}
+    raw_items = payload.get('items') or payload.get('codes') or []
+    points = int(payload.get('points') or 20)
+
+    items = []
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if isinstance(item, dict):
+                items.append({
+                    "code": str(item.get("code") or "").strip(),
+                    "name": str(item.get("name") or "").strip(),
+                    "market": str(item.get("market") or "").strip(),
+                })
+            else:
+                items.append({
+                    "code": str(item or "").strip(),
+                    "name": "",
+                    "market": "",
+                })
+
+    trends = batch_get_asset_trends(items, points=points)
+    return jsonify({
+        "items": trends,
+        "points": max(2, min(points, 60)),
+        "label": "近期估值趋势",
+    })
+
+
 @app.route('/api/portfolio/modify', methods=['POST'])
 @optional_auth
 def modify_asset():
@@ -2073,7 +2106,7 @@ def _handle_asset_add(add_func, asset_type, user_id=None):
                 data.get('amount'),
             )
             return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
-        success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id)
+        success = add_func(data['name'], amount, data.get('curr', 'CNY'), user_id, str(data.get('icon', '') or '').strip())
         if success:
             _save_snapshot_for_user_async(user_id)
             logger.info("[asset_add_success] type=%s user_id=%s", asset_type, user_id)
@@ -2189,7 +2222,7 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
             amount,
             data.get('curr', 'CNY'),
         )
-        success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id)
+        success = update_func(asset_id, data['name'], amount, data.get('curr', 'CNY'), user_id, str(data.get('icon', '') or '').strip())
         if success:
             _save_snapshot_for_user_async(user_id)
             logger.info(

@@ -75,6 +75,15 @@ web/src/
 - 我的
 - 资产详情
 
+其中这轮要特别记住两页：
+
+- [AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)
+  - 首页总资产大图现在走真实 `daily_snapshots`
+  - 持仓卡片的小趋势线也已经接上真实历史数据
+- [AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)
+  - 投资页持仓卡片和首页共用同一套趋势线口径
+  - 不再本地生成假 sparkline
+
 ### 3.3 管理后台页面
 
 在：
@@ -89,6 +98,12 @@ web/src/
 - 邀请码
 - 接口管理
 - 配置管理
+
+其中：
+
+- [AdminInvitesPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/admin/AdminInvitesPage.vue)
+  - 点击邀请码支持复制
+  - 优先走系统剪贴板，失败时会回退到传统复制兜底
 
 ---
 
@@ -173,6 +188,12 @@ web/src/
 统一入口：
 
 - [shared/http.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/http.ts)
+
+这轮还新增了一个趋势线共享模块：
+
+- [shared/assetTrend.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/assetTrend.ts)
+  - 负责把后端返回的真实历史点位转成前端小折线 SVG path
+  - 首页和投资页共用，不要再各自生成一套假走势
 
 ### 6.3 持仓、价格、汇率
 

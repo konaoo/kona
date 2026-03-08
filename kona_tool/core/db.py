@@ -164,6 +164,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cash_assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                icon TEXT NOT NULL DEFAULT '🏦',
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
@@ -177,6 +178,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS other_assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                icon TEXT NOT NULL DEFAULT '📦',
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
@@ -190,6 +192,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS liabilities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                icon TEXT NOT NULL DEFAULT '💳',
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
@@ -367,6 +370,9 @@ class DatabaseManager:
         _ensure_column('cash_assets', 'user_id', 'user_id TEXT')
         _ensure_column('other_assets', 'user_id', 'user_id TEXT')
         _ensure_column('liabilities', 'user_id', 'user_id TEXT')
+        _ensure_column('cash_assets', 'icon', "icon TEXT NOT NULL DEFAULT '🏦'")
+        _ensure_column('other_assets', 'icon', "icon TEXT NOT NULL DEFAULT '📦'")
+        _ensure_column('liabilities', 'icon', "icon TEXT NOT NULL DEFAULT '💳'")
         _ensure_column('cash_assets', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
         _ensure_column('other_assets', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
         _ensure_column('liabilities', 'curr', "curr TEXT NOT NULL DEFAULT 'CNY'")
@@ -3000,14 +3006,14 @@ class DatabaseManager:
         
         if user_id:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM cash_assets
                 WHERE user_id = ?
                 ORDER BY id
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM cash_assets
                 WHERE user_id IS NULL OR user_id = ''
                 ORDER BY id
@@ -3017,6 +3023,7 @@ class DatabaseManager:
         for row in cursor.fetchall():
             data.append({
                 'id': row['id'],
+                'icon': row['icon'] or '🏦',
                 'name': row['name'],
                 'amount': float(row['amount']),
                 'curr': row['curr']
@@ -3033,7 +3040,7 @@ class DatabaseManager:
             if user_id:
                 cursor.execute(
                     '''
-                    SELECT id, name, amount, curr
+                    SELECT id, icon, name, amount, curr
                     FROM cash_assets
                     WHERE id = ? AND user_id = ?
                     LIMIT 1
@@ -3043,7 +3050,7 @@ class DatabaseManager:
             else:
                 cursor.execute(
                     '''
-                    SELECT id, name, amount, curr
+                    SELECT id, icon, name, amount, curr
                     FROM cash_assets
                     WHERE id = ? AND (user_id IS NULL OR user_id = '')
                     LIMIT 1
@@ -3055,6 +3062,7 @@ class DatabaseManager:
                 return None
             return {
                 'id': int(row['id']),
+                'icon': row['icon'] or '🏦',
                 'name': row['name'],
                 'amount': float(row['amount']),
                 'curr': row['curr'],
@@ -3062,7 +3070,7 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def add_cash_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '🏦') -> bool:
         """添加现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3070,9 +3078,9 @@ class DatabaseManager:
         try:
             try:
                 cursor.execute('''
-                    INSERT INTO cash_assets (name, amount, curr, user_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (name, amount, curr, user_id))
+                    INSERT INTO cash_assets (icon, name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (icon or '🏦', name, amount, curr, user_id))
             except sqlite3.OperationalError as e:
                 # 兼容旧库列缺失：回退到最小列写入
                 logger.warning(f"cash_assets insert fallback due to schema mismatch: {e}")
@@ -3118,14 +3126,14 @@ class DatabaseManager:
         
         if user_id:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM other_assets
                 WHERE user_id = ?
                 ORDER BY id
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM other_assets
                 WHERE user_id IS NULL OR user_id = ''
                 ORDER BY id
@@ -3135,6 +3143,7 @@ class DatabaseManager:
         for row in cursor.fetchall():
             data.append({
                 'id': row['id'],
+                'icon': row['icon'] or '📦',
                 'name': row['name'],
                 'amount': float(row['amount']),
                 'curr': row['curr']
@@ -3143,7 +3152,7 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def add_other_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def add_other_asset(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '📦') -> bool:
         """添加其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3151,9 +3160,9 @@ class DatabaseManager:
         try:
             try:
                 cursor.execute('''
-                    INSERT INTO other_assets (name, amount, curr, user_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (name, amount, curr, user_id))
+                    INSERT INTO other_assets (icon, name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (icon or '📦', name, amount, curr, user_id))
             except sqlite3.OperationalError as e:
                 logger.warning(f"other_assets insert fallback due to schema mismatch: {e}")
                 cursor.execute('''
@@ -3191,7 +3200,7 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_cash_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def update_cash_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '🏦') -> bool:
         """更新现金资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3200,14 +3209,14 @@ class DatabaseManager:
             try:
                 if user_id:
                     cursor.execute('''
-                        UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE cash_assets SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND user_id = ?
-                    ''', (name, amount, curr, asset_id, user_id))
+                    ''', (icon or '🏦', name, amount, curr, asset_id, user_id))
                 else:
                     cursor.execute('''
-                        UPDATE cash_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE cash_assets SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                    ''', (name, amount, curr, asset_id))
+                    ''', (icon or '🏦', name, amount, curr, asset_id))
             except sqlite3.OperationalError as e:
                 logger.warning(f"cash_assets update fallback due to schema mismatch: {e}")
                 cursor.execute('''
@@ -3225,7 +3234,7 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_other_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def update_other_asset(self, asset_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '📦') -> bool:
         """更新其他资产"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3234,14 +3243,14 @@ class DatabaseManager:
             try:
                 if user_id:
                     cursor.execute('''
-                        UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE other_assets SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND user_id = ?
-                    ''', (name, amount, curr, asset_id, user_id))
+                    ''', (icon or '📦', name, amount, curr, asset_id, user_id))
                 else:
                     cursor.execute('''
-                        UPDATE other_assets SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE other_assets SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                    ''', (name, amount, curr, asset_id))
+                    ''', (icon or '📦', name, amount, curr, asset_id))
             except sqlite3.OperationalError as e:
                 logger.warning(f"other_assets update fallback due to schema mismatch: {e}")
                 cursor.execute('''
@@ -3266,14 +3275,14 @@ class DatabaseManager:
         
         if user_id:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM liabilities
                 WHERE user_id = ?
                 ORDER BY id
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT id, name, amount, curr
+                SELECT id, icon, name, amount, curr
                 FROM liabilities
                 WHERE user_id IS NULL OR user_id = ''
                 ORDER BY id
@@ -3283,6 +3292,7 @@ class DatabaseManager:
         for row in cursor.fetchall():
             data.append({
                 'id': row['id'],
+                'icon': row['icon'] or '💳',
                 'name': row['name'],
                 'amount': float(row['amount']),
                 'curr': row['curr']
@@ -3291,7 +3301,7 @@ class DatabaseManager:
         conn.close()
         return data
     
-    def add_liability(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def add_liability(self, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '💳') -> bool:
         """添加负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3299,9 +3309,9 @@ class DatabaseManager:
         try:
             try:
                 cursor.execute('''
-                    INSERT INTO liabilities (name, amount, curr, user_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (name, amount, curr, user_id))
+                    INSERT INTO liabilities (icon, name, amount, curr, user_id)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (icon or '💳', name, amount, curr, user_id))
             except sqlite3.OperationalError as e:
                 logger.warning(f"liabilities insert fallback due to schema mismatch: {e}")
                 cursor.execute('''
@@ -3339,7 +3349,7 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def update_liability(self, liability_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None) -> bool:
+    def update_liability(self, liability_id: int, name: str, amount: float, curr: str = 'CNY', user_id: str = None, icon: str = '💳') -> bool:
         """更新负债"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3348,14 +3358,14 @@ class DatabaseManager:
             try:
                 if user_id:
                     cursor.execute('''
-                        UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE liabilities SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND user_id = ?
-                    ''', (name, amount, curr, liability_id, user_id))
+                    ''', (icon or '💳', name, amount, curr, liability_id, user_id))
                 else:
                     cursor.execute('''
-                        UPDATE liabilities SET name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE liabilities SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND (user_id IS NULL OR user_id = '')
-                    ''', (name, amount, curr, liability_id))
+                    ''', (icon or '💳', name, amount, curr, liability_id))
             except sqlite3.OperationalError as e:
                 logger.warning(f"liabilities update fallback due to schema mismatch: {e}")
                 cursor.execute('''
