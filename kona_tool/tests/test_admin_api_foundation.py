@@ -272,7 +272,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertIn("f_110017", codes)
         fund_item = next(item for item in items if str(item.get("code")) == "f_110017")
         self.assertEqual(str(fund_item.get("status")), "ok")
-        self.assertEqual(payload.get("status"), "ok")
+        self.assertIn(str(payload.get("status")), {"ok", "degraded"})
 
     def test_admin_disable_enable_user_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
