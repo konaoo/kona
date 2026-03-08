@@ -765,11 +765,17 @@ def search_stocks(query: str) -> list:
 
     quote_codes = [str(item.get('code', '') or '').strip() for item in final_results if str(item.get('code', '') or '').strip()]
     if quote_codes:
-        try:
-            quote_timeout = min(0.8, max_wait_seconds)
-            quote_map = batch_get_prices_fast(quote_codes, timeout_seconds=quote_timeout)
-        except Exception as exc:
-            logger.warning("search_stocks quote enrich failed query=%s error=%s", query, exc)
+        elapsed_before_quote = time.monotonic() - started_at
+        remaining_budget = max_wait_seconds - elapsed_before_quote
+        # 搜索的第一优先级是尽快回结果，不要为了补右侧报价把 deadline 再拖满一轮。
+        if remaining_budget >= 0.2:
+            try:
+                quote_timeout = min(0.8, remaining_budget)
+                quote_map = batch_get_prices_fast(quote_codes, timeout_seconds=quote_timeout)
+            except Exception as exc:
+                logger.warning("search_stocks quote enrich failed query=%s error=%s", query, exc)
+                quote_map = {}
+        else:
             quote_map = {}
 
         for item in final_results:
