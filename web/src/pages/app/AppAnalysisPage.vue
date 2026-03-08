@@ -719,6 +719,14 @@ onMounted(() => {
   padding: 32px 24px;
 }
 
+[data-theme="light"] .analysis-overview-card,
+[data-theme="light"] .analysis-calendar-card,
+[data-theme="light"] .analysis-rank-card {
+  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
 [data-theme="dark"] .analysis-overview-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -793,10 +801,19 @@ onMounted(() => {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
+[data-theme="light"] .cal-period-btn {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.02));
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: none;
+}
 .cal-period-btn:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.09));
   border-color: rgba(91, 141, 239, 0.45);
   transform: translateY(-1px);
+}
+[data-theme="light"] .cal-period-btn:hover {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(91, 141, 239, 0.05));
+  border-color: rgba(91, 141, 239, 0.3);
 }
 .cal-arrow {
   font-size: 9px;
@@ -814,6 +831,11 @@ onMounted(() => {
   padding: 14px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
   min-width: 180px;
+}
+[data-theme="light"] .date-picker-dropdown {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
 }
 
 .dp-columns {
@@ -842,6 +864,9 @@ onMounted(() => {
   margin: 0 8px;
   background: rgba(255, 255, 255, 0.06);
 }
+[data-theme="light"] .dp-divider {
+  background: rgba(15, 23, 42, 0.08);
+}
 
 .dp-list {
   display: flex;
@@ -863,16 +888,28 @@ onMounted(() => {
   text-align: center;
   transition: background 0.12s, color 0.12s;
 }
+[data-theme="light"] .dp-item {
+  background: rgba(15, 23, 42, 0.025);
+  color: var(--sub);
+}
 .dp-item:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+}
+[data-theme="light"] .dp-item:hover {
+  background: rgba(15, 23, 42, 0.05);
+  border-color: rgba(15, 23, 42, 0.08);
 }
 .dp-item.active {
   background: rgba(91, 141, 239, 0.18);
   border-color: rgba(91, 141, 239, 0.45);
   color: #8bb4ff;
   font-weight: 700;
+}
+[data-theme="light"] .dp-item.active {
+  background: rgba(91, 141, 239, 0.1);
+  color: var(--blue);
 }
 
 /* Segmented Control for Periods */
@@ -920,6 +957,11 @@ onMounted(() => {
   padding: 2px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
+[data-theme="light"] .mini-segment {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.02));
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: none;
+}
 [data-theme="dark"] .mini-segment {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
 }
@@ -941,6 +983,9 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
 }
+[data-theme="light"] .view-tab:hover {
+  background: rgba(15, 23, 42, 0.05);
+}
 
 .view-tab.active {
   background: rgba(255, 255, 255, 0.92);
@@ -948,6 +993,13 @@ onMounted(() => {
   border-color: rgba(255, 255, 255, 0.95);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
   font-weight: 800;
+}
+[data-theme="light"] .view-tab.active,
+[data-theme="light"] .rank-card .view-tab.active {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
 }
 .rank-card .view-tab.active {
   background: rgba(255, 255, 255, 0.92);
@@ -979,6 +1031,10 @@ onMounted(() => {
   overflow: hidden;
   text-align: center;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+[data-theme="light"] .cal-cell {
+  background: rgba(15, 23, 42, 0.025);
+  border-color: rgba(15, 23, 42, 0.07);
 }
 
 .cal-date {
