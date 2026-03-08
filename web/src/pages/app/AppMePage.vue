@@ -120,6 +120,7 @@ import { useRouter } from 'vue-router'
 import * as XLSX from 'xlsx'
 import AppShell from '../../layouts/AppShell.vue'
 import { api } from '../../shared/http'
+import { toAvatarSrc } from '../../shared/avatar'
 import { useKonaStore } from '../../stores/composables'
 import { useAuthStore } from '../../stores/auth'
 import { useWebTheme } from '../../shared/webTheme'
@@ -148,7 +149,7 @@ const showNameModal = ref(false)
 const tempNickname = ref('')
 
 
-const avatarPreview = computed(() => String(avatar.value || user.value?.avatar || '').trim())
+const avatarPreview = computed(() => toAvatarSrc(avatar.value || user.value?.avatar || ''))
 const avatarFallback = computed(() => {
   const base = String(nickname.value || user.value?.nickname || user.value?.username || 'U').trim()
   return base ? base[0]!.toUpperCase() : 'U'

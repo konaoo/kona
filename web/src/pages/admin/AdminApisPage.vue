@@ -431,6 +431,7 @@
 import { computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
+import { toAvatarSrc } from '../../shared/avatar'
 import { useKonaStore } from '../../stores/composables'
 
 const router = useRouter()
@@ -557,7 +558,7 @@ const avatarStyle = computed(() => ({
   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
 }))
 
-const avatarSrc = computed(() => String(store.state.user?.avatar || '').trim())
+const avatarSrc = computed(() => toAvatarSrc(store.state.user?.avatar))
 const avatarInitial = computed(() => {
   const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
   return raw.slice(0, 1).toUpperCase()

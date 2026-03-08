@@ -66,6 +66,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { useKonaStore } from '../stores/composables'
+import { toAvatarSrc } from '../shared/avatar'
 import { useWebTheme } from '../shared/webTheme'
 
 const nav = [
@@ -88,8 +89,7 @@ const displayName = computed(() => {
 
 const avatarSrc = computed(() => {
   const user = store.state.user || {}
-  const avatar = String(user.avatar || '').trim()
-  return avatar || ''
+  return toAvatarSrc(user.avatar)
 })
 
 const userInitial = computed(() => {

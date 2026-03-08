@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useKonaStore } from '../stores/composables'
 import html2canvas from 'html2canvas'
 
+import { toAvatarSrc } from '../shared/avatar'
 import { useWebTheme } from '../shared/webTheme'
 import { usePrivacyMode } from '../shared/privacyMode'
 
@@ -28,8 +29,7 @@ const displayName = computed(() => {
 
 const avatarSrc = computed(() => {
   const user = store.state.user || {}
-  const avatar = String(user.avatar || '').trim()
-  return avatar || ''
+  return toAvatarSrc(user.avatar)
 })
 
 const userInitial = computed(() => {

@@ -82,6 +82,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
+import { toAvatarSrc } from '../../shared/avatar'
 import { useKonaStore } from '../../stores/composables'
 import { useAuthStore } from '../../stores/auth'
 
@@ -101,9 +102,7 @@ const message = ref('')
 const ok = ref(true)
 
 const avatarPreview = computed(() => {
-  const value = String(avatar.value || '').trim()
-  if (!value) return ''
-  return value
+  return toAvatarSrc(avatar.value)
 })
 
 const avatarFallback = computed(() => {
