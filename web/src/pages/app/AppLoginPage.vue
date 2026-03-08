@@ -657,8 +657,51 @@ onUnmounted(() => {
 .sc-div { width: 1px; height: 32px; background: var(--surface-divider); }
 
 @media (max-width: 780px) {
-  .card { grid-template-columns: 1fr; min-height: auto; }
+  .outer {
+    padding: 0; /* Remove padding so it fills screen */
+    align-items: flex-start; /* Align to top instead of center */
+    background: var(--auth-form-bg); /* Use solid or form bg on mobile */
+  }
+  .card { 
+    grid-template-columns: 1fr; 
+    min-height: 100vh; /* Full viewport height */
+    border-radius: 0; /* No rounded corners */
+    box-shadow: none; /* No shadow */
+    background: transparent;
+    backdrop-filter: none;
+    transform: none; /* Remove desktop animation transform */
+    animation: none; /* Simple fade in mobile */
+  }
   .brand-panel { display: none; }
-  .form-panel { padding: 36px 28px; }
+  .form-panel { 
+    padding: 60px 32px 32px; /* More top padding for status bar feel */
+    background: transparent;
+    min-height: 100vh;
+    justify-content: flex-start;
+  }
+  .form-body {
+    margin-top: 40px; /* Push form down a bit */
+  }
+  .form-title {
+    font-size: 28px; /* Slightly larger title for impact */
+    margin-bottom: 32px;
+  }
+  .input-wrap {
+    height: 52px; /* Slightly taller inputs for touch */
+  }
+  .form-input {
+    font-size: 16px; /* Better readability */
+  }
+  .auth-btn {
+    height: 50px;
+    font-size: 16px;
+    border-radius: 14px;
+    margin-top: 16px;
+  }
+  /* Optional: reposition logo on mobile to be centered or larger */
+  .panel-logo {
+    justify-content: center;
+    margin-bottom: 10px;
+  }
 }
 </style>

@@ -230,7 +230,27 @@ const chartHeadlineChange = computed(() => {
   return 0
 })
 
+const chartBuildPeriodActive = computed(() => {
+  const userState = (store.state.user as Record<string, unknown> | null) || null
+  const buildStartAt = String(userState?.build_start_at || '').trim()
+  const registeredAt = String(userState?.created_at || '').trim()
+  const first = allHistoryPoints.value[0]
+  const baseDateText = buildStartAt
+    ? buildStartAt.slice(0, 10)
+    : registeredAt
+    ? registeredAt.slice(0, 10)
+    : String(first?.date || '').trim()
+  if (!baseDateText) return false
+  const firstDate = new Date(`${baseDateText}T00:00:00`)
+  if (Number.isNaN(firstDate.getTime())) return false
+  const now = new Date()
+  const currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.floor((currentDate.getTime() - firstDate.getTime()) / 86400000)
+  return diffDays < 7
+})
+
 const chartHeadlineLabel = computed(() => {
+  if (chartBuildPeriodActive.value) return '建账期'
   if (chartPeriod.value === '1m') return '近1月'
   if (chartPeriod.value === '3m') return '近3月'
   if (chartPeriod.value === '6m') return '近6月'
@@ -901,7 +921,18 @@ onBeforeUnmount(() => {
             </div>
             <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
             <div class="c3-stats">
-              <span class="badge" :class="valueClass(chartHeadlineChange)" style="font-size:12px;padding:4px 10px">{{ chartHeadlineLabel }} {{ masked(formatSignedCny(chartHeadlineChange)) }}</span>
+              <span
+                class="badge"
+                :class="chartBuildPeriodActive ? 'neutral' : valueClass(chartHeadlineChange)"
+                style="font-size:12px;padding:4px 10px"
+              >
+                <template v-if="chartBuildPeriodActive">
+                  建账期，7天后统计资产趋势图
+                </template>
+                <template v-else>
+                  {{ chartHeadlineLabel }} {{ masked(formatSignedCny(chartHeadlineChange)) }}
+                </template>
+              </span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center">
@@ -1358,33 +1389,27 @@ onBeforeUnmount(() => {
 }
 
 .market-strip {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 12px;
   margin-bottom: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-@media (max-width: 1600px) {
-  .market-strip {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
+.market-strip::-webkit-scrollbar {
+  display: none;
 }
 
-@media (max-width: 1500px) {
-  .market-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.market-strip > .card {
+  flex: 0 0 calc((100% - 60px) / 6);
+  min-width: 240px;
 }
 
 @media (max-width: 980px) {
-  .market-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 640px) {
-  .market-strip {
-    grid-template-columns: 1fr;
+  .market-strip > .card {
+    flex-basis: 240px;
   }
 }
 /* 使用全局样式以确保 :root 和 布局类生效 */
@@ -1636,5 +1661,108 @@ onBeforeUnmount(() => {
   font-size: 11px;
   letter-spacing: 0.02em;
   background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+}
+
+/* =========================================================
+   Mobile Overrides (AppHomePage)
+   ========================================================= */
+@media (max-width: 768px) {
+  /* Fix the market strip if needed (already horizontal scroll, but ensure no scrollbar) */
+  .market-strip {
+    margin-right: -16px; /* Let it bleed to the edge */
+    padding-right: 16px;
+  }
+  
+  /* 1. Top Section - Stack total assets and period tabs */
+  .c3-top {
+    flex-direction: column;
+    padding: 20px 20px 0;
+    align-items: flex-start !important;
+  }
+  .c3-hero {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  .c3-total {
+    font-size: 32px; /* Slightly smaller for mobile */
+  }
+  .c3-stats {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .c3-top > div:last-child {
+    width: 100%;
+    align-items: flex-start !important; /* Move period tabs left */
+  }
+  .c1-period-tabs {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .c1-pt {
+    flex: 1;
+    text-align: center;
+    padding: 6px 0 !important;
+  }
+
+  /* 2. Chart Area */
+  .c3-chart {
+    height: 100px;
+    padding: 0 16px;
+    margin-top: 16px;
+  }
+
+  /* 3. Bottom Asset Segments Grid -> 2x2 Grid */
+  .c3-bottom {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .c3-segment {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  }
+  .c3-segment:nth-child(2n) {
+    border-right: none;
+  }
+  .c3-segment:nth-child(3), .c3-segment:nth-child(4) {
+    border-bottom: none;
+  }
+  .c3-segment-val {
+    font-size: 14px;
+  }
+
+  /* 4. Drawer items */
+  .c3-drawer-inner {
+    flex-direction: column;
+    padding: 16px 20px;
+  }
+  .c5-detail-pill, .c5-add-pill {
+    width: 100%;
+  }
+
+  /* 6. Hide Market Indices Strip on Mobile (Parity) */
+  .market-strip {
+    display: none !important;
+  }
+
+  /* 5. Holdings Header */
+  .section-label {
+    margin-bottom: 8px !important;
+  }
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: calc(100vw - 32px) !important;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs .tab {
+    flex-shrink: 0;
+  }
+
+  /* Card grid */
+  .hcard {
+    min-width: 100%;
+  }
 }
 </style>

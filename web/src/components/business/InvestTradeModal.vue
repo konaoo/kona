@@ -1010,16 +1010,36 @@ onUnmounted(() => {
 .create-btn-confirm:hover { opacity: 0.92; }
 .create-btn-confirm:active { transform: scale(0.98); }
 @media (max-width: 560px) {
-  .holding-strip,
+  /* Do not force 1 column for holding strips on mobile, keep 3 columns to save space */
+  .holding-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  /* Same for input rows, keep them side by side instead of vertically stacking */
   .inputs-row,
   .inputs-row.adjust-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, 1fr);
   }
   .dropdown-item {
     align-items: flex-start;
   }
   .di-quote {
     min-width: 96px;
+  }
+  
+  /* Make the font sizes slightly smaller inside the 3-column inputs on mobile to fit */
+  .holding-value {
+    font-size: 11px;
+  }
+  .num-input {
+    font-size: 12px;
+    padding: 8px 6px;
+  }
+  .num-label {
+    font-size: 10px;
+  }
+  /* Optional: Adjust modal sheet to fill bottom better on very small devices */
+  .sheet {
+    margin: auto 12px 16px 12px; /* slight margin adjustment for mobile */
   }
 }
 </style>
