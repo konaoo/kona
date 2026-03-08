@@ -153,6 +153,42 @@ async function handleLogout() {
         </div>
       </div>
     </main>
+
+    <!-- Mobile Bottom Navigation (Flutter-style) -->
+    <nav class="mobile-bottom-nav">
+      <template v-for="item in navItems" :key="item.path">
+        <div 
+          class="m-nav-item" 
+          :class="{ active: currentPath === item.path }"
+          @click="navigate(item.path)"
+        >
+          <span class="m-nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path v-if="item.icon.includes('M')" :d="item.icon" />
+              <rect v-if="item.label === '投资'" x="2" y="3" width="20" height="14" rx="2" />
+              <line v-if="item.label === '投资'" x1="8" y1="21" x2="16" y2="21" />
+              <line v-if="item.label === '投资'" x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </span>
+          <span class="m-nav-label">{{ item.label }}</span>
+        </div>
+      </template>
+      
+      <!-- Profile / Me (我的) tab for mobile -->
+      <div 
+        class="m-nav-item" 
+        :class="{ active: isProfileActive }"
+        @click="navigate('/app/me')"
+      >
+        <span class="m-nav-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        </span>
+        <span class="m-nav-label">我的</span>
+      </div>
+    </nav>
   </div>
 </template>
 
@@ -323,5 +359,101 @@ async function handleLogout() {
 .page::-webkit-scrollbar-thumb {
   background: var(--surface-divider);
   border-radius: 10px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Mobile Responsive Parity (Flutter style)
+   ───────────────────────────────────────────────────────── */
+.mobile-bottom-nav {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 768px) {
+  /* Hide desktop sidebar */
+  .sidebar {
+    display: none !important;
+  }
+  
+  /* Show bottom navigation */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    z-index: 50;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+  }
+  
+  .m-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--muted);
+    flex: 1;
+    cursor: pointer;
+    height: 100%;
+    transition: all 0.2s;
+  }
+  
+  .m-nav-item.active {
+    color: var(--blue);
+  }
+  
+  .m-nav-item:active {
+    transform: scale(0.95);
+  }
+  
+  .m-nav-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+  
+  .m-nav-label {
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  /* Adjust Main Content Area */
+  .main {
+    width: 100vw;
+  }
+  
+  .page {
+    /* Keep full viewport minus topbar, use padding to push content above bottom nav */
+    height: calc(100vh - 56px);
+    padding: 16px 0 calc(56px + 24px + env(safe-area-inset-bottom, 0px));
+  }
+  
+  /* Topbar AppBar adjustments (Center Title) */
+  .topbar {
+    justify-content: center;
+  }
+  
+  .topbar-content {
+    justify-content: space-between;
+    padding: 0 16px;
+  }
+  
+  .topbar-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  
+  .container-inner {
+    padding: 0 16px;
+  }
 }
 </style>
