@@ -221,6 +221,7 @@ class DatabaseManager:
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                build_start_at TIMESTAMP,
                 last_login TIMESTAMP,
                 last_login_ip TEXT,
                 last_login_region TEXT,
@@ -333,6 +334,20 @@ class DatabaseManager:
             """
         )
 
+        # 用户日活表（按 user_id + 日期去重），用于 DAU 和真正的 N 日留存
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_daily_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                activity_date TEXT NOT NULL,
+                first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, activity_date)
+            )
+            """
+        )
+
         
         # 创建每日快照表
         cursor.execute('''
@@ -438,12 +453,15 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_api_policies_scope_type ON admin_api_policies(scope_type)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_price_alert_reports_tested_at ON price_alert_reports(tested_at_utc)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_provider_test_reports_tested_at ON provider_test_reports(tested_at_utc)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_daily_activity_date ON user_daily_activity(activity_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_daily_activity_user_id ON user_daily_activity(user_id)')
         cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
         # 确保 asset_type 列存在并回填
         self._ensure_portfolio_asset_type(cursor)
         self._ensure_b_share_currency(cursor)
         self._ensure_admin_api_policies_defaults(cursor)
+        self._backfill_user_daily_activity(cursor)
 
         conn.commit()
         conn.close()
@@ -600,6 +618,7 @@ class DatabaseManager:
             "is_admin",
             "status",
             "created_at",
+            "build_start_at",
             "last_login",
             "last_login_ip",
             "last_login_region",
@@ -631,6 +650,7 @@ class DatabaseManager:
                     is_admin INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    build_start_at TIMESTAMP,
                     last_login TIMESTAMP,
                     last_login_ip TEXT,
                     last_login_region TEXT,
@@ -654,11 +674,11 @@ class DatabaseManager:
                     """
                     INSERT INTO users_new (
                         id, username, password_hash, legacy_needs_password_setup,
-                        must_change_password, password_updated_at, password_reset_at, password_reset_by,
-                        nickname, avatar, register_method, phone,
-                        user_number, is_admin, status, created_at, last_login, last_login_ip, last_login_region, last_active_ip, last_active_region, last_active_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    must_change_password, password_updated_at, password_reset_at, password_reset_by,
+                    nickname, avatar, register_method, phone,
+                    user_number, is_admin, status, created_at, build_start_at, last_login, last_login_ip, last_login_region, last_active_ip, last_active_region, last_active_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                     (
                         user_id,
                         username,
@@ -676,6 +696,7 @@ class DatabaseManager:
                         int(row.get("is_admin") or 0),
                         row.get("status") or "active",
                         row.get("created_at"),
+                        row.get("build_start_at"),
                         row.get("last_login"),
                         row.get("last_login_ip"),
                         row.get("last_login_region"),
@@ -713,6 +734,7 @@ class DatabaseManager:
             _ensure_column("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0")
             _ensure_column("status", "status TEXT NOT NULL DEFAULT 'active'")
             _ensure_column("created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            _ensure_column("build_start_at", "build_start_at TIMESTAMP")
             _ensure_column("last_login", "last_login TIMESTAMP")
             _ensure_column("last_login_ip", "last_login_ip TEXT")
             _ensure_column("last_login_region", "last_login_region TEXT")
@@ -758,6 +780,49 @@ class DatabaseManager:
                 (scope_key, scope_type, enabled, limit_per_min, note),
             )
 
+    def _backfill_user_daily_activity(self, cursor) -> None:
+        """
+        用库里已经明确存在的日期回填日活。
+        这里只回填“能确定的日期”：
+        - created_at：注册当天一定活跃
+        - last_login：最后一次登录当天
+        - last_active_at：最后一次产品活跃当天
+        不伪造中间历史。
+        """
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO user_daily_activity (user_id, activity_date)
+            SELECT id, SUBSTR(created_at, 1, 10)
+            FROM users
+            WHERE id IS NOT NULL
+              AND TRIM(COALESCE(id, '')) != ''
+              AND created_at IS NOT NULL
+              AND TRIM(COALESCE(created_at, '')) != ''
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO user_daily_activity (user_id, activity_date)
+            SELECT id, SUBSTR(last_login, 1, 10)
+            FROM users
+            WHERE id IS NOT NULL
+              AND TRIM(COALESCE(id, '')) != ''
+              AND last_login IS NOT NULL
+              AND TRIM(COALESCE(last_login, '')) != ''
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO user_daily_activity (user_id, activity_date)
+            SELECT id, SUBSTR(last_active_at, 1, 10)
+            FROM users
+            WHERE id IS NOT NULL
+              AND TRIM(COALESCE(id, '')) != ''
+              AND last_active_at IS NOT NULL
+              AND TRIM(COALESCE(last_active_at, '')) != ''
+            """
+        )
+
     def get_user_auth_info(self, user_id: str) -> Optional[Dict[str, Any]]:
         """获取用户的后台权限信息。"""
         if not user_id:
@@ -793,7 +858,7 @@ class DatabaseManager:
             cursor.execute(
                 '''
                 SELECT id, username, nickname, avatar, register_method, phone,
-                       user_number, is_admin, created_at, last_login, legacy_needs_password_setup,
+                       user_number, is_admin, created_at, build_start_at, last_login, legacy_needs_password_setup,
                        must_change_password
                 FROM users
                 WHERE id = ?
@@ -818,7 +883,7 @@ class DatabaseManager:
                 SELECT id, username, password_hash, legacy_needs_password_setup,
                        must_change_password, password_reset_at, password_reset_by,
                        nickname, avatar, register_method, phone, user_number,
-                       is_admin, status, created_at, last_login
+                       is_admin, status, created_at, build_start_at, last_login
                 FROM users
                 WHERE username = ?
                 LIMIT 1
@@ -841,7 +906,7 @@ class DatabaseManager:
                 SELECT id, username, password_hash, legacy_needs_password_setup,
                        must_change_password, password_reset_at, password_reset_by,
                        nickname, avatar, register_method, phone, user_number,
-                       is_admin, status, created_at, last_login
+                       is_admin, status, created_at, build_start_at, last_login
                 FROM users
                 WHERE id = ?
                 LIMIT 1
@@ -890,6 +955,25 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def set_user_build_start_at(self, user_id: str, build_start_at: Optional[str]) -> bool:
+        if not user_id:
+            return False
+        normalized = str(build_start_at or "").strip() or None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE users SET build_start_at = ? WHERE id = ?",
+                (normalized, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def update_last_login(
         self,
         user_id: str,
@@ -921,6 +1005,7 @@ class DatabaseManager:
                 f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
                 tuple(params),
             )
+            self._record_user_daily_activity_with_cursor(cursor, user_id)
             conn.commit()
         finally:
             conn.close()
@@ -949,6 +1034,45 @@ class DatabaseManager:
                 f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
                 tuple(params),
             )
+            self._record_user_daily_activity_with_cursor(cursor, user_id)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _record_user_daily_activity_with_cursor(
+        self,
+        cursor,
+        user_id: str,
+        activity_at: Optional[datetime] = None,
+    ) -> None:
+        uid = str(user_id or "").strip()
+        if not uid:
+            return
+        target = activity_at or datetime.now()
+        activity_date = target.strftime("%Y-%m-%d")
+        activity_ts = target.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            """
+            INSERT INTO user_daily_activity (user_id, activity_date, first_seen_at, last_seen_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, activity_date) DO UPDATE SET
+                last_seen_at = excluded.last_seen_at
+            """,
+            (uid, activity_date, activity_ts, activity_ts),
+        )
+
+    def record_user_daily_activity(
+        self,
+        user_id: str,
+        activity_at: Optional[datetime] = None,
+    ) -> None:
+        uid = str(user_id or "").strip()
+        if not uid:
+            return
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            self._record_user_daily_activity_with_cursor(cursor, uid, activity_at=activity_at)
             conn.commit()
         finally:
             conn.close()

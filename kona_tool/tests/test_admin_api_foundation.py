@@ -57,6 +57,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM admin_audit_logs")
+        cursor.execute("DELETE FROM user_daily_activity")
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
@@ -114,36 +115,52 @@ class AdminApiFoundationTests(unittest.TestCase):
 
         today = datetime.now().date()
         cohort_day = today - timedelta(days=40)
-        retained_day = cohort_day + timedelta(days=8)
         today_str = today.isoformat()
         cohort_str = cohort_day.isoformat()
-        retained_str = retained_day.isoformat()
+        day1_str = (cohort_day + timedelta(days=1)).isoformat()
+        day3_str = (cohort_day + timedelta(days=3)).isoformat()
+        day7_str = (cohort_day + timedelta(days=7)).isoformat()
 
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute(
             """
             UPDATE users
-            SET created_at = ?, last_login = ?
+            SET created_at = ?, last_login = ?, last_active_at = ?
             WHERE id = ?
             """,
-            (f"{cohort_str} 09:00:00", f"{retained_str} 09:00:00", "u_u1"),
+            (f"{cohort_str} 09:00:00", f"{day7_str} 09:00:00", f"{day7_str} 09:00:00", "u_u1"),
         )
         cursor.execute(
             """
             UPDATE users
-            SET created_at = ?, last_login = NULL
+            SET created_at = ?, last_login = ?, last_active_at = ?
             WHERE id = ?
             """,
-            (f"{cohort_str} 10:00:00", "u_u2"),
+            (f"{cohort_str} 10:00:00", f"{day3_str} 10:00:00", f"{day3_str} 10:00:00", "u_u2"),
         )
         cursor.execute(
             """
             UPDATE users
-            SET created_at = ?, last_login = ?
+            SET created_at = ?, last_login = ?, last_active_at = ?
             WHERE id = ?
             """,
-            (f"{today_str} 11:00:00", f"{today_str} 12:00:00", "u_admin"),
+            (f"{today_str} 11:00:00", f"{today_str} 12:00:00", f"{today_str} 12:00:00", "u_admin"),
+        )
+        cursor.executemany(
+            """
+            INSERT INTO user_daily_activity (user_id, activity_date, first_seen_at, last_seen_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, activity_date) DO UPDATE SET last_seen_at = excluded.last_seen_at
+            """,
+            [
+                ("u_u1", cohort_str, f"{cohort_str} 09:00:00", f"{cohort_str} 09:00:00"),
+                ("u_u1", day1_str, f"{day1_str} 09:00:00", f"{day1_str} 09:00:00"),
+                ("u_u1", day7_str, f"{day7_str} 09:00:00", f"{day7_str} 09:00:00"),
+                ("u_u2", cohort_str, f"{cohort_str} 10:00:00", f"{cohort_str} 10:00:00"),
+                ("u_u2", day3_str, f"{day3_str} 10:00:00", f"{day3_str} 10:00:00"),
+                ("u_admin", today_str, f"{today_str} 12:00:00", f"{today_str} 12:00:00"),
+            ],
         )
         conn.commit()
         conn.close()
@@ -159,13 +176,14 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertIn("new_users_today", dashboard)
         self.assertIn("active_users_today", dashboard)
         self.assertIn("total_users", dashboard)
+        self.assertEqual(int(dashboard.get("active_users_today") or 0), 1)
 
         rows = data.get("retention_rows") or []
         self.assertTrue(rows)
         cohort_row = next((r for r in rows if (r.get("date") or "") == cohort_str), None)
         self.assertIsNotNone(cohort_row)
         self.assertEqual(int(cohort_row.get("new_users") or 0), 2)
-        self.assertIn("active_users", cohort_row)
+        self.assertEqual(int(cohort_row.get("active_users") or 0), 2)
         self.assertAlmostEqual(float(cohort_row.get("retention_1d") or 0), 0.5, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_3d") or 0), 0.5, places=3)
         self.assertAlmostEqual(float(cohort_row.get("retention_7d") or 0), 0.5, places=3)

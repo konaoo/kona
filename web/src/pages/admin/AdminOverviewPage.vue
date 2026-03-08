@@ -68,11 +68,16 @@
           </div>
           <div class="stat-value">{{ overview.dashboard?.new_users_today || 0 }}</div>
           <div class="chart-mini">
-            <div class="chart-bar" v-for="(h, i) in [40, 65, 50, 85, 70, 95, 60].map(v => v + '%')" :key="i" :style="{ height: h, background: i % 3 === 1 ? '#000' : '#FFB84D' }"></div>
+            <div
+              v-for="(item, i) in newUserChartBars"
+              :key="`new-${item.date}-${i}`"
+              class="chart-bar"
+              :style="{ height: item.height, background: item.isToday ? '#000' : '#FFB84D' }"
+            ></div>
           </div>
           <div class="percentage">
             <span>⚫</span>
-            <span>较昨日 +12%</span>
+            <span>{{ newUserTrendText }}</span>
           </div>
         </div>
 
@@ -83,11 +88,16 @@
           </div>
           <div class="stat-value">{{ overview.dashboard?.active_users_today || 0 }}</div>
           <div class="chart-mini">
-            <div class="chart-bar" v-for="(h, i) in [70, 50, 65, 75, 90, 80, 95].map(v => v + '%')" :key="i" :style="{ height: h, background: i === 4 ? '#FF8B94' : '#000' }"></div>
+            <div
+              v-for="(item, i) in activeUserChartBars"
+              :key="`active-${item.date}-${i}`"
+              class="chart-bar"
+              :style="{ height: item.height, background: item.isToday ? '#FF8B94' : '#000' }"
+            ></div>
           </div>
           <div class="percentage">
             <span>⚫</span>
-            <span>活跃率稳定</span>
+            <span>{{ activeUserTrendText }}</span>
           </div>
         </div>
 
@@ -229,6 +239,10 @@ const avatarInitial = computed(() => {
 })
 
 const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
+const retentionRowsByDate = computed(() => {
+  const sorted = [...retentionRows.value].sort((a, b) => String(a?.date || '').localeCompare(String(b?.date || '')))
+  return sorted
+})
 const totalRows = computed(() => retentionRows.value.length)
 const totalPages = computed(() => Math.ceil(totalRows.value / pageSize.value) || 1)
 const startIndex = computed(() => (currentPage.value - 1) * pageSize.value)
@@ -242,6 +256,45 @@ const visiblePages = computed(() => {
   if (end - start < 4) start = Math.max(1, end - 4)
   for (let i = start; i <= end; i++) pages.push(i)
   return pages
+})
+
+function buildMiniBars(rows: Array<Record<string, any>>, key: 'new_users' | 'active_users') {
+  const series = rows.slice(-7)
+  const values = series.map((item) => Number(item?.[key] || 0))
+  const maxValue = Math.max(...values, 1)
+  return series.map((item) => {
+    const value = Number(item?.[key] || 0)
+    const height = `${Math.max(24, Math.round((value / maxValue) * 100))}%`
+    return {
+      date: String(item?.date || ''),
+      value,
+      height,
+      isToday: String(item?.date || '') === series[series.length - 1]?.date,
+    }
+  })
+}
+
+function buildDiffText(current: number, previous: number, unit = '人') {
+  const diff = current - previous
+  if (diff === 0) return `较昨日持平`
+  return diff > 0 ? `较昨日 +${diff}${unit}` : `较昨日 ${diff}${unit}`
+}
+
+const newUserChartBars = computed(() => buildMiniBars(retentionRowsByDate.value, 'new_users'))
+const activeUserChartBars = computed(() => buildMiniBars(retentionRowsByDate.value, 'active_users'))
+
+const newUserTrendText = computed(() => {
+  const series = retentionRowsByDate.value.slice(-2)
+  if (!series.length) return '近7天新增走势'
+  if (series.length === 1) return '仅有今日数据'
+  return buildDiffText(Number(series[1]?.new_users || 0), Number(series[0]?.new_users || 0))
+})
+
+const activeUserTrendText = computed(() => {
+  const series = retentionRowsByDate.value.slice(-2)
+  if (!series.length) return '近7天活跃走势'
+  if (series.length === 1) return '仅有今日数据'
+  return buildDiffText(Number(series[1]?.active_users || 0), Number(series[0]?.active_users || 0))
 })
 
 async function load(force = false) {

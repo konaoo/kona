@@ -1458,24 +1458,15 @@ def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
             SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_today,
             SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_7d,
             SUM(CASE WHEN COALESCE(u.created_at, '') >= ? AND COALESCE(u.created_at, '') < ? THEN 1 ELSE 0 END) AS new_30d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS dau,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS wau,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? AND u.last_login < ? THEN 1 ELSE 0 END) AS mau,
-            SUM(CASE WHEN u.last_login IS NULL OR TRIM(u.last_login) = '' THEN 1 ELSE 0 END) AS never_login,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_1d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_7d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? AND u.last_login >= ? THEN 1 ELSE 0 END) AS within_30d,
-            SUM(CASE WHEN u.last_login IS NOT NULL AND TRIM(u.last_login) != '' AND u.last_login < ? THEN 1 ELSE 0 END) AS over_30d
+            SUM(CASE WHEN u.last_active_at IS NULL OR TRIM(u.last_active_at) = '' THEN 1 ELSE 0 END) AS never_login,
+            SUM(CASE WHEN u.last_active_at IS NOT NULL AND TRIM(u.last_active_at) != '' AND u.last_active_at >= ? THEN 1 ELSE 0 END) AS within_1d,
+            SUM(CASE WHEN u.last_active_at IS NOT NULL AND TRIM(u.last_active_at) != '' AND u.last_active_at < ? AND u.last_active_at >= ? THEN 1 ELSE 0 END) AS within_7d,
+            SUM(CASE WHEN u.last_active_at IS NOT NULL AND TRIM(u.last_active_at) != '' AND u.last_active_at < ? AND u.last_active_at >= ? THEN 1 ELSE 0 END) AS within_30d,
+            SUM(CASE WHEN u.last_active_at IS NOT NULL AND TRIM(u.last_active_at) != '' AND u.last_active_at < ? THEN 1 ELSE 0 END) AS over_30d
         FROM users u
         WHERE {_real_user_where('u')}
         """,
         (
-            today_start.strftime("%Y-%m-%d %H:%M:%S"),
-            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
-            start_7d.strftime("%Y-%m-%d %H:%M:%S"),
-            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
-            start_30d.strftime("%Y-%m-%d %H:%M:%S"),
-            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
             today_start.strftime("%Y-%m-%d %H:%M:%S"),
             tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
             start_7d.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1491,14 +1482,40 @@ def _get_user_ops_metrics(cursor) -> Dict[str, Any]:
         ),
     )
     row = cursor.fetchone() or {}
+    cursor.execute(
+        f"""
+        SELECT
+            SUM(CASE WHEN uda.activity_date = ? THEN 1 ELSE 0 END) AS dau,
+            SUM(CASE WHEN uda.activity_date >= ? AND uda.activity_date <= ? THEN 1 ELSE 0 END) AS wau,
+            SUM(CASE WHEN uda.activity_date >= ? AND uda.activity_date <= ? THEN 1 ELSE 0 END) AS mau
+        FROM (
+            SELECT DISTINCT uda.user_id, uda.activity_date
+            FROM user_daily_activity uda
+            INNER JOIN users u ON u.id = uda.user_id
+            WHERE {_real_user_where('u')}
+              AND uda.activity_date >= ?
+              AND uda.activity_date <= ?
+        ) uda
+        """,
+        (
+            today_start.strftime("%Y-%m-%d"),
+            start_7d.strftime("%Y-%m-%d"),
+            today_start.strftime("%Y-%m-%d"),
+            start_30d.strftime("%Y-%m-%d"),
+            today_start.strftime("%Y-%m-%d"),
+            start_30d.strftime("%Y-%m-%d"),
+            today_start.strftime("%Y-%m-%d"),
+        ),
+    )
+    active_row = cursor.fetchone() or {}
     metrics = {
         "user_total": int(row["user_total"] or 0),
         "new_today": int(row["new_today"] or 0),
         "new_7d": int(row["new_7d"] or 0),
         "new_30d": int(row["new_30d"] or 0),
-        "dau": int(row["dau"] or 0),
-        "wau": int(row["wau"] or 0),
-        "mau": int(row["mau"] or 0),
+        "dau": int(active_row["dau"] or 0),
+        "wau": int(active_row["wau"] or 0),
+        "mau": int(active_row["mau"] or 0),
         "last_login_distribution": {
             "within_1d": int(row["within_1d"] or 0),
             "within_7d": int(row["within_7d"] or 0),
@@ -1527,41 +1544,56 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
             COUNT(*) AS new_users,
             SUM(
                 CASE
-                    WHEN u.last_login IS NOT NULL
-                         AND TRIM(u.last_login) != ''
-                         AND u.last_login >= DATETIME(u.created_at, '+1 day')
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity uda
+                        WHERE uda.user_id = u.id
+                          AND uda.activity_date = DATE(SUBSTR(u.created_at, 1, 10), '+1 day')
+                    )
                     THEN 1 ELSE 0
                 END
             ) AS retained_1d_count,
             SUM(
                 CASE
-                    WHEN u.last_login IS NOT NULL
-                         AND TRIM(u.last_login) != ''
-                         AND u.last_login >= DATETIME(u.created_at, '+3 day')
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity uda
+                        WHERE uda.user_id = u.id
+                          AND uda.activity_date = DATE(SUBSTR(u.created_at, 1, 10), '+3 day')
+                    )
                     THEN 1 ELSE 0
                 END
             ) AS retained_3d_count,
             SUM(
                 CASE
-                    WHEN u.last_login IS NOT NULL
-                         AND TRIM(u.last_login) != ''
-                         AND u.last_login >= DATETIME(u.created_at, '+7 day')
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity uda
+                        WHERE uda.user_id = u.id
+                          AND uda.activity_date = DATE(SUBSTR(u.created_at, 1, 10), '+7 day')
+                    )
                     THEN 1 ELSE 0
                 END
             ) AS retained_7d_count,
             SUM(
                 CASE
-                    WHEN u.last_login IS NOT NULL
-                         AND TRIM(u.last_login) != ''
-                         AND u.last_login >= DATETIME(u.created_at, '+14 day')
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity uda
+                        WHERE uda.user_id = u.id
+                          AND uda.activity_date = DATE(SUBSTR(u.created_at, 1, 10), '+14 day')
+                    )
                     THEN 1 ELSE 0
                 END
             ) AS retained_14d_count,
             SUM(
                 CASE
-                    WHEN u.last_login IS NOT NULL
-                         AND TRIM(u.last_login) != ''
-                         AND u.last_login >= DATETIME(u.created_at, '+30 day')
+                    WHEN EXISTS(
+                        SELECT 1
+                        FROM user_daily_activity uda
+                        WHERE uda.user_id = u.id
+                          AND uda.activity_date = DATE(SUBSTR(u.created_at, 1, 10), '+30 day')
+                    )
                     THEN 1 ELSE 0
                 END
             ) AS retained_30d_count
@@ -1595,19 +1627,18 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
     cursor.execute(
         f"""
         SELECT
-            SUBSTR(u.last_login, 1, 10) AS active_date,
-            COUNT(*) AS active_users
-        FROM users u
+            uda.activity_date AS active_date,
+            COUNT(DISTINCT uda.user_id) AS active_users
+        FROM user_daily_activity uda
+        INNER JOIN users u ON u.id = uda.user_id
         WHERE {_real_user_where('u')}
-          AND u.last_login IS NOT NULL
-          AND TRIM(u.last_login) != ''
-          AND u.last_login >= ?
-          AND u.last_login < ?
-        GROUP BY SUBSTR(u.last_login, 1, 10)
+          AND uda.activity_date >= ?
+          AND uda.activity_date <= ?
+        GROUP BY uda.activity_date
         """,
         (
-            start_day.strftime("%Y-%m-%d %H:%M:%S"),
-            tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+            start_day.strftime("%Y-%m-%d"),
+            today_start.strftime("%Y-%m-%d"),
         ),
     )
     active_rows = cursor.fetchall()
