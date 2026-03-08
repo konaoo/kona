@@ -2938,6 +2938,8 @@ def create_admin_blueprint(db, admin_write_audit):
         batch_id = request.args.get("batch_id", "").strip()
         limit = max(1, min(request.args.get("limit", 200, type=int), 2000))
         offset = max(0, request.args.get("offset", 0, type=int))
+        random_order = request.args.get("random", "0") == "1"
+        
         try:
             force = _admin_parse_force_arg()
         except ValueError:
@@ -2950,10 +2952,13 @@ def create_admin_blueprint(db, admin_write_audit):
                 "batch_id": batch_id,
                 "limit": limit,
                 "offset": offset,
+                "random": "1" if random_order else "0",
                 "force": request.args.get("force", ""),
             },
-            force=force,
-            loader=lambda: db.list_invite_codes(status=status, batch_id=batch_id, limit=limit, offset=offset),
+            force=force or random_order,
+            loader=lambda: db.list_invite_codes(
+                status=status, batch_id=batch_id, limit=limit, offset=offset, ordered_random=random_order
+            ),
         )
         _admin_log_read("admin_invites", cache_state, elapsed_ms, params_hash)
         return jsonify(payload)

@@ -1434,6 +1434,7 @@ class DatabaseManager:
         batch_id: str = "",
         limit: int = 200,
         offset: int = 0,
+        ordered_random: bool = False,
     ) -> Dict[str, Any]:
         where: List[str] = []
         params: List[Any] = []
@@ -1444,6 +1445,7 @@ class DatabaseManager:
             where.append("ic.batch_id = ?")
             params.append(batch_id)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        order_by = "ORDER BY RANDOM()" if ordered_random else "ORDER BY created_at DESC, code ASC"
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -1478,7 +1480,7 @@ class DatabaseManager:
                     used_by_user_number,
                     COUNT(1) OVER() AS __total_count
                 FROM filtered
-                ORDER BY created_at DESC, code ASC
+                {order_by}
                 LIMIT ? OFFSET ?
                 """,
                 tuple(params + [limit, offset]),

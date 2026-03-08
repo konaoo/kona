@@ -259,7 +259,9 @@ function formatDateDisplay(dateStr: string): string {
   if (!dateStr || !dateStr.includes('-')) return dateStr
   const parts = dateStr.split('-')
   if (parts.length >= 3) {
-    return `${parts[1]}-${parts[2]}`
+    const month = parseInt(parts[1] ?? '0', 10)
+    const day = parseInt(parts[2] ?? '0', 10)
+    return `${month}月${day}日`
   }
   return dateStr
 }
@@ -671,7 +673,7 @@ onMounted(() => {
 
 .data-table th {
   padding: 16px 22px;
-  text-align: left;
+  text-align: center;
   font-weight: 700;
   font-size: 13px;
   color: #888;
@@ -695,6 +697,7 @@ onMounted(() => {
   font-size: 14px;
   color: #444;
   font-weight: 500;
+  text-align: center;
 }
 
 .data-table td:first-child {

@@ -48,16 +48,8 @@
         </div>
         <div class="header-actions">
           <div class="tool-bar">
-            <input 
-              class="search-input" 
-              v-model.number="count" 
-              type="number" 
-              min="1" 
-              max="50" 
-              placeholder="生成数量" 
-            />
             <button class="add-btn" @click="generate">生成邀请码</button>
-            <button class="refresh-btn" @click="load({ force: true })" title="刷新列表">🔄</button>
+            <button class="add-btn secondary" @click="load({ force: true })">刷新</button>
           </div>
         </div>
       </div>
@@ -77,8 +69,8 @@
           <table class="data-table">
             <thead v-if="inviteStatus === 'active'">
               <tr>
-                <th>创建时间</th>
                 <th>邀请码</th>
+                <th>创建时间</th>
                 <th>状态</th>
               </tr>
             </thead>
@@ -92,8 +84,17 @@
             
             <tbody v-if="inviteStatus === 'active'">
               <tr v-for="item in invites.items || []" :key="item.code">
+                <td>
+                  <div class="code-wrapper">
+                    <code 
+                      class="code-text clickable" 
+                      @click="copyToClipboard(item.code)"
+                      title="点击复制"
+                    >{{ item.code }}</code>
+                    <span v-if="copiedCode === item.code" class="copy-hint">复制成功</span>
+                  </div>
+                </td>
                 <td>{{ formatDateOnly(item.created_at) }}</td>
-                <td><code class="code-text">{{ item.code }}</code></td>
                 <td><span class="status-tag">{{ statusLabel(item.status) }}</span></td>
               </tr>
               <tr v-if="!(invites.items || []).length">
@@ -102,7 +103,16 @@
             </tbody>
             <tbody v-else>
               <tr v-for="item in invites.items || []" :key="item.code">
-                <td><code class="code-text">{{ item.code }}</code></td>
+                <td>
+                  <div class="code-wrapper">
+                    <code 
+                      class="code-text clickable" 
+                      @click="copyToClipboard(item.code)"
+                      title="点击复制"
+                    >{{ item.code }}</code>
+                    <span v-if="copiedCode === item.code" class="copy-hint">复制成功</span>
+                  </div>
+                </td>
                 <td><strong>{{ item.used_by_username || '-' }}</strong></td>
                 <td>{{ shortDateTime(item.used_at) }}</td>
               </tr>
@@ -149,9 +159,10 @@ const router = useRouter()
 const store = useKonaStore()
 
 const invites = reactive<Record<string, any>>({ items: [], total: 0 })
-const count = ref(5)
+const count = ref(10)
 const message = ref('')
 const ok = ref(true)
+const copiedCode = ref('')
 const inviteStatus = ref<'active' | 'used'>('active')
 const pageSize = ref(10)
 const pageSizeOptions = [10, 20, 50, 100]
@@ -207,7 +218,9 @@ async function load(options: { force?: boolean } = {}) {
   const limit = pageSize.value
   const offset = (currentPage.value - 1) * pageSize.value
   const force = Boolean(options.force)
-  const key = `${status}|${limit}|${offset}|${force ? '1' : '0'}`
+  // 增加 random 和 refresh_id 标识以支持缓存隔离
+  const refreshId = Math.random().toString(36).substring(7)
+  const key = `${status}|${limit}|${offset}|random|${refreshId}|${force ? '1' : '0'}`
   if (!force && (key === lastRequestKey || key === inflightKey)) return
   inflightKey = key
   try {
@@ -215,6 +228,8 @@ async function load(options: { force?: boolean } = {}) {
       status,
       limit: String(limit),
       offset: String(offset),
+      random: '1',
+      refresh_id: refreshId,
     })
     if (force) params.set('force', '1')
     Object.assign(invites, await api.get(`/api/admin/invites?${params.toString()}`))
@@ -236,6 +251,18 @@ function goToPage(page: number) {
 
 function prevPage() { goToPage(currentPage.value - 1); }
 function nextPage() { goToPage(currentPage.value + 1); }
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedCode.value = text
+    setTimeout(() => {
+      if (copiedCode.value === text) copiedCode.value = ''
+    }, 2000)
+  } catch (e) {
+    flash('复制失败', false)
+  }
+}
 
 async function generate() {
   try {
@@ -299,11 +326,11 @@ onMounted(() => {
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
 .header-title h1 { font-size: 32px; font-weight: 800; margin-bottom: 6px; color: #000; letter-spacing: -0.8px; }
 
-.tool-bar { display: flex; gap: 8px; background: white; padding: 6px 6px 6px 16px; border-radius: 14px; border: 1px solid #e5e7eb; }
-.search-input { border: none; outline: none; width: 100px; font-size: 14px; font-weight: 600; background: transparent; }
+.tool-bar { display: flex; gap: 8px; background: white; padding: 6px; border-radius: 14px; border: 1px solid #e5e7eb; }
 .add-btn { padding: 0 18px; height: 38px; background: #000; color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-size: 13.5px; }
 .add-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-.refresh-btn { border: 1px solid #e5e7eb; background: white; border-radius: 10px; width: 38px; height: 38px; cursor: pointer; }
+.add-btn.secondary { background: white; color: #000; border: 1px solid #e5e7eb; }
+.add-btn.secondary:hover { background: #f8f9fa; }
 
 /* Section Header & Tabs */
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
@@ -322,7 +349,12 @@ onMounted(() => {
 .data-table td { padding: 18px 22px; font-size: 14px; color: #444; font-weight: 500; }
 .data-table td:first-child { font-weight: 700; color: #000; }
 
-.code-text { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #000; }
+.code-text { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #000; transition: all 0.2s; }
+.code-text.clickable { cursor: pointer; }
+.code-text.clickable:hover { background: #000; color: #fff; }
+.code-wrapper { display: flex; align-items: center; gap: 10px; }
+.copy-hint { font-size: 12px; color: #10b981; font-weight: 700; animation: fadeIn 0.2s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
 .status-tag { padding: 4px 12px; background: #e6f9ee; color: #10b981; border-radius: 99px; font-size: 12px; font-weight: 700; }
 
 .table-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
