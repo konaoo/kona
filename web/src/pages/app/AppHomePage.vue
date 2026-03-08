@@ -467,6 +467,8 @@ const filteredRows = computed(() => {
     return {
       ...row,
       qty,
+      amount: qty,
+      unit: String(row?.unit || (row?.market === 'fund' ? '份' : '股')),
       costPrice: displayCostPrice, // 首页展示摊薄后成本
       price: currentPrice || 0,
       dayPnlRate: Number(row?.dayPnlRate || 0),
@@ -538,6 +540,11 @@ function formatHoldingValue(value: number, curr?: string): string {
   return `${symbol} ${Math.round(Math.abs(value)).toLocaleString('zh-CN')}`
 }
 
+function formatHoldingCardValue(cnyValue: number): string {
+  const val = Math.round(Math.abs(toDisplay(cnyValue)))
+  return `${currMeta.value.sym}${val.toLocaleString('zh-CN')}`
+}
+
 function formatAssetOriginalAmount(value: number, curr?: string): string {
   const symbol = getCurrencySymbol(curr)
   const absVal = Math.abs(toNumber(value, 0))
@@ -589,6 +596,28 @@ watch(
   () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
   () => { void loadAssetTrends() },
 )
+
+function formatLocal(v: any) {
+  return Number(v || 0).toLocaleString()
+}
+
+function formatAssetPrice(value: unknown): string {
+  const amount = toNumber(value)
+  if (!Number.isFinite(amount) || amount === 0) return '0.00'
+
+  const absAmount = Math.abs(amount)
+  if (absAmount >= 1000) {
+    return absAmount.toLocaleString('zh-CN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+
+  return absAmount.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })
+}
 
 const getQtyFontSize = (val: string | number) => {
   const s = String(val)
@@ -1012,7 +1041,10 @@ onBeforeUnmount(() => {
           <!-- Card View -->
           <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:10px">
             <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard" @click="row?.code && openInvestTradeModal(row)">
-              <div style="position:absolute;top:0;left:0;right:0;height:2px" :style="{ background: 'linear-gradient(90deg,transparent,' + (toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)') + ' 40%,transparent)' }"></div>
+              <div
+                class="hcard-accent-top"
+                :style="{ background: `linear-gradient(90deg, transparent, ${toNumber(row?.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'} 40%, transparent)` }"
+              ></div>
               <div class="hcard-header-row">
                 <div class="h-icon-box">
                   <AssetLogo 
@@ -1027,16 +1059,14 @@ onBeforeUnmount(() => {
                   <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
                   <div class="h-meta-row">
                     <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
-                    <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(Number(row?.qty||0).toLocaleString()) }">{{ Number(row?.qty||0).toLocaleString() }}</span>{{ row?.market === 'fund' ? '份' : '股' }}</span>
+                    <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(formatLocal(row?.amount)) }">{{ formatLocal(row?.amount) }}</span>{{ row?.unit }}</span>
                   </div>
                 </div>
-                <!-- Market Value in Top Right -->
                 <div class="h-mv-right">
-                  {{ formatHoldingValue(row?.mv || 0, String(row?.curr)) }}
+                  {{ masked(formatHoldingCardValue((Number(row?.mv) || 0) * rateToCny(String(row?.curr || 'CNY')))) }}
                 </div>
               </div>
 
-              <!-- Price Row (Above Sparkline) -->
               <div class="h-price-row">
                 <div class="h-price-main">
                   <span class="h-price-val">{{ quoteLabel(row) }}</span>
@@ -1053,24 +1083,40 @@ onBeforeUnmount(() => {
                 </svg>
                 <div v-else class="trend-empty">暂无趋势</div>
               </div>
-              <!-- Removed redundant dayPnlRate badge -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--surface-divider)">
-                <div>
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
+              <div style="padding-top:10px;border-top:1px solid var(--surface-divider)">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                  <div>
+                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
+                    <div :class="[toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                      {{ masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
+                    <div :class="[toNumber(row?.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                      {{ masked(formatCurrency(toNumber(row?.totalPnl), true)) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
+                    <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
+                      <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row?.curr) }}</span>{{ formatAssetPrice(toNumber(row?.costPrice)) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏率</div>
+                    <div :class="[toNumber(row?.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
+                      {{ formatPct(toNumber(row?.totalPnlRate)) }}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 600" :class="valueClass(toNumber(row?.totalPnlRate))">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
-                </div>
-                <div>
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 500; color:var(--sub)">{{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}</div>
-                </div>
-                <div>
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
-                  <div style="height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
-                    <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
+                <div style="margin-top:10px">
+                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px">仓位</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="color:var(--blue); font-size: 12.5px; font-weight: 600; min-width:54px">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span>
+                    <div style="flex:1;height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
+                      <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: `${Math.min(toNumber(row?.pct), 100)}%` }"></div>
+                    </div>
                   </div>
                 </div>
               </div>

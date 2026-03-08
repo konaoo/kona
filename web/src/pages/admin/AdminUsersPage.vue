@@ -22,7 +22,8 @@
 
       <div class="user-profile">
         <div class="user-info">
-          <div class="user-avatar" :style="avatarStyle"></div>
+          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
+          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
           <div class="user-details">
             <h4>{{ store.state.user?.username || '管理员' }}</h4>
             <p>管理员</p>
@@ -262,6 +263,12 @@ const nav = [
 const avatarStyle = computed(() => ({
   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
 }))
+
+const avatarSrc = computed(() => String(store.state.user?.avatar || '').trim())
+const avatarInitial = computed(() => {
+  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
+  return raw.slice(0, 1).toUpperCase()
+})
 
 const detail = reactive<{
   visible: boolean
@@ -513,7 +520,8 @@ onMounted(() => {
 }
 
 .user-info { display: flex; align-items: center; gap: 12px; }
-.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
+.user-avatar-fallback { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; font-weight: 800; }
 .user-details { display: flex; flex-direction: column; align-items: flex-start; }
 .user-details h4 { font-size: 16px; font-weight: 800; margin: 0; padding: 0; color: #000; line-height: 1; }
 .user-details p { font-size: 12px; color: #999; font-weight: 500; margin: 4px 0 0 0; padding: 0; line-height: 1; }

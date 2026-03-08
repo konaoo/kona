@@ -8,6 +8,7 @@ import csv
 import io
 import hashlib
 import json
+import logging
 import secrets
 import threading
 import time
@@ -34,6 +35,10 @@ from core.stock import (
     get_boursorama_fund_price,
     get_ft_fund_price,
     get_stock_price,
+    get_tencent_stock_price,
+    get_sina_direct_stock_price,
+    get_eastmoney_stock_price,
+    get_us_stock_price,
 )
 from core.snapshot import take_snapshot
 from core.system import system_manager
@@ -42,7 +47,7 @@ from core.admin.policies import list_policies, update_policy, batch_update_polic
 from core.policy_runtime import invalidate_policy_cache
 from core.ip_region import normalize_region_text
 from core.utils import monitored_http_get, safe_float
-from core.asset_type import asset_type_label
+from core.asset_type import asset_type_label, infer_asset_type
 
 
 CONFIG_WHITELIST: Dict[str, Dict[str, Any]] = {
@@ -211,7 +216,8 @@ _ADMIN_READ_CACHE_LOCK = threading.Lock()
 _ADMIN_PORTFOLIO_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _ADMIN_PORTFOLIO_CACHE_LOCK = threading.Lock()
 _ADMIN_DB = None
-_API_TEST_CASES: List[Dict[str, str]] = [
+_ADMIN_LOGGER = logging.getLogger(__name__)
+_API_TEST_CASES_MARKET: List[Dict[str, str]] = [
     {"name": "工商银行", "code": "sh601398", "asset_type": "a"},
     {"name": "比亚迪", "code": "sz002594", "asset_type": "a"},
     {"name": "腾讯控股", "code": "hk00700", "asset_type": "hk"},
@@ -220,8 +226,10 @@ _API_TEST_CASES: List[Dict[str, str]] = [
     {"name": "特斯拉", "code": "gb_tsla", "asset_type": "us"},
     {"name": "自由现金流ETF", "code": "sz159201", "asset_type": "a"},
     {"name": "标普ETF", "code": "sz159655", "asset_type": "a"},
+    {"name": "短融ETF", "code": "sh511360", "asset_type": "a"},
+]
+_API_TEST_CASES_FUND: List[Dict[str, str]] = [
     {"name": "易方达增强回报债券A", "code": "f_110017", "asset_type": "fund"},
-    {"name": "广发成长甄选混合C", "code": "f_026733", "asset_type": "fund"},
 ]
 _API_TEST_PROVIDER_LABELS: Dict[str, str] = {
     "sina_quote": "新浪财经行情",
@@ -229,6 +237,13 @@ _API_TEST_PROVIDER_LABELS: Dict[str, str] = {
     "eastmoney_quote": "东方财富行情",
     "forex_rate": "汇率",
 }
+_API_TEST_PROVIDER_ALERT_LABELS: Dict[str, str] = {
+    "sina_quote": "新浪行情告警",
+    "eastmoney_quote": "东财行情告警",
+    "tencent_quote": "腾讯行情告警",
+    "forex_rate": "汇率行情告警",
+}
+PROVIDER_TEST_REPORT_TIMEZONE = timezone(timedelta(hours=8))
 OPS_INVITE_ACQUIRE_TEXT_KEY = "ops.invite_acquire.text"
 OPS_INVITE_ACQUIRE_IMAGE_URL_KEY = "ops.invite_acquire.image_url"
 OPS_USER_GROUP_TEXT_KEY = "ops.user_group.text"
@@ -363,7 +378,94 @@ def _probe_price_alert_sources(code: str) -> Tuple[Tuple[float, float, float, fl
         add_source("tencent_jj", "腾讯基金", get_fund_tencent_jj(clean_code))
         return current, sources
 
+    asset_type = infer_asset_type(code)
+    if asset_type in {"a", "hk"}:
+        add_source("tencent_quote", "腾讯财经", get_tencent_stock_price(code))
+        add_source("sina_quote", "新浪财经", get_sina_direct_stock_price(code))
+        add_source("eastmoney_quote", "东方财富", get_eastmoney_stock_price(code))
+        return current, sources
+
+    if asset_type == "us":
+        add_source("sina_us_quote", "新浪美股", get_sina_direct_stock_price(code))
+        add_source("eastmoney_us_quote", "东方财富美股", get_eastmoney_stock_price(code))
+        add_source("us_primary", "美股主链路", get_us_stock_price(code))
+        return current, sources
+
     return current, sources
+
+
+def _guess_probe_primary_source(current_price: float, source_rows: List[Dict[str, Any]]) -> str:
+    for row in source_rows:
+        price = float(row.get("price") or 0.0)
+        if price <= 0:
+            continue
+        if _price_alert_abs_delta_pct(current_price, price) <= 0.001:
+            return str(row.get("source_label") or row.get("source_key") or "")
+    return ""
+
+
+def _build_price_probe_payload(code: str) -> Dict[str, Any]:
+    raw_code = str(code or "").strip()
+    if not raw_code:
+        raise ValueError("缺少资产代码")
+
+    current, source_rows = _probe_price_alert_sources(raw_code)
+    current_price = float(current[0] or 0.0)
+    current_yclose = float(current[1] or 0.0)
+    current_amt = float(current[2] or 0.0)
+    current_chg = float(current[3] or 0.0)
+    asset_type = infer_asset_type(raw_code)
+    primary_source = _guess_probe_primary_source(current_price, source_rows)
+
+    normalized_sources: List[Dict[str, Any]] = []
+    valid_deltas: List[float] = []
+    for row in source_rows:
+        price = float(row.get("price") or 0.0)
+        delta_pct = _price_alert_abs_delta_pct(current_price, price)
+        if current_price > 0 and price > 0:
+            valid_deltas.append(delta_pct)
+        normalized_sources.append(
+            {
+                **row,
+                "ok": price > 0,
+                "delta_pct": round(delta_pct, 4),
+            }
+        )
+
+    diagnosis_status = "ok"
+    diagnosis_summary = "主价与各源基本一致。"
+    if current_price <= 0:
+        diagnosis_status = "critical"
+        diagnosis_summary = "系统当前主价为空，这条资产需要优先排查。"
+    elif not any(float(item.get("price") or 0.0) > 0 for item in normalized_sources):
+        diagnosis_status = "warning"
+        diagnosis_summary = "主价拿到了，但当前没有可用的多源对比结果。"
+    elif valid_deltas:
+        max_delta = max(valid_deltas)
+        if max_delta >= PRICE_ALERT_DELTA_PCT_CRITICAL:
+            diagnosis_status = "critical"
+            diagnosis_summary = f"主价和备选源最大偏差 {max_delta:.2f}%，建议核对主链路。"
+        elif max_delta >= PRICE_ALERT_DELTA_PCT_WARNING:
+            diagnosis_status = "warning"
+            diagnosis_summary = f"主价和备选源有轻微偏差，最大 {max_delta:.2f}%。"
+
+    return {
+        "code": raw_code,
+        "asset_type": asset_type,
+        "asset_type_label": asset_type_label(asset_type),
+        "current": {
+            "price": current_price,
+            "yclose": current_yclose,
+            "amt": current_amt,
+            "chg": current_chg,
+            "source_hint": primary_source,
+        },
+        "sources": normalized_sources,
+        "diagnosis": {
+            "status": diagnosis_status,
+            "summary": diagnosis_summary,
+        },
+    }
 
 
 def _build_price_alert_for_holding(item: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -522,6 +624,83 @@ def _save_price_alert_report_snapshot(payload: Dict[str, Any]) -> None:
         current_app.logger.exception("save_price_alert_report failed")
 
 
+def _provider_test_summary(providers: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    degraded_keys = [
+        provider_key
+        for provider_key, payload in providers.items()
+        if str((payload or {}).get("status") or "").lower() != "ok"
+    ]
+    if not degraded_keys:
+        return {
+            "status": "ok",
+            "label": "正常",
+            "alert_keys": [],
+        }
+    if len(degraded_keys) == 1:
+        provider_key = degraded_keys[0]
+        return {
+            "status": "alert",
+            "label": _API_TEST_PROVIDER_ALERT_LABELS.get(provider_key, "行情告警"),
+            "alert_keys": degraded_keys,
+        }
+    return {
+        "status": "alert",
+        "label": "多源告警",
+        "alert_keys": degraded_keys,
+    }
+
+
+def _normalize_provider_report(payload: Dict[str, Any] | None) -> Dict[str, Any]:
+    raw = dict(payload or {})
+    summary = raw.get("summary")
+    providers = raw.get("providers")
+    tested_at_utc = str(raw.get("tested_at_utc") or "").strip()
+    report_slot = str(raw.get("report_slot") or "").strip()
+    updated_at = str(raw.get("updated_at") or "").strip()
+    if not isinstance(summary, dict):
+        summary = {}
+    if not isinstance(providers, dict):
+        providers = {}
+    return {
+        "report_slot": report_slot,
+        "tested_at_utc": tested_at_utc,
+        "updated_at": updated_at,
+        "summary": summary,
+        "providers": providers,
+    }
+
+
+def _save_provider_test_report_snapshot(payload: Dict[str, Any]) -> None:
+    if _ADMIN_DB is None:
+        return
+    tested_at_utc = str(payload.get("tested_at_utc") or "").strip()
+    if not tested_at_utc:
+        return
+    try:
+        report_slot = datetime.now(PROVIDER_TEST_REPORT_TIMEZONE).strftime("%Y-%m-%dT%H")
+        _ADMIN_DB.save_provider_test_report(
+            report_slot=report_slot,
+            tested_at_utc=tested_at_utc,
+            summary=dict(payload.get("summary") or {}),
+            providers=dict(payload.get("providers") or {}),
+        )
+    except Exception:
+        _ADMIN_LOGGER.exception("save_provider_test_report failed")
+
+
+def _get_latest_provider_test_report() -> Dict[str, Any] | None:
+    if _ADMIN_DB is None:
+        return None
+    try:
+        report = _ADMIN_DB.get_latest_provider_test_report()
+    except Exception:
+        _ADMIN_LOGGER.exception("get_latest_provider_test_report failed")
+        return None
+    if not report:
+        return None
+    return _normalize_provider_report(report)
+
+
 def _list_price_alert_report_history(limit: int = 7) -> List[Dict[str, Any]]:
     if _ADMIN_DB is None:
         return []
@@ -530,6 +709,16 @@ def _list_price_alert_report_history(limit: int = 7) -> List[Dict[str, Any]]:
     except Exception:
         current_app.logger.exception("list_price_alert_reports failed")
         return []
+
+
+def _get_latest_price_alert_report() -> Dict[str, Any] | None:
+    if _ADMIN_DB is None:
+        return None
+    try:
+        return _ADMIN_DB.get_latest_price_alert_report()
+    except Exception:
+        current_app.logger.exception("get_latest_price_alert_report failed")
+        return None
 
 
 def _make_invite_code(length: int = 10) -> str:
@@ -917,16 +1106,19 @@ def _format_api_test_item(
     ok: bool,
     latency_ms: int,
     detail: str = "",
+    status: str = "",
     price: float = 0.0,
     yclose: float = 0.0,
 ) -> Dict[str, Any]:
     change = (price - yclose) if yclose > 0 else 0.0
     change_pct = (change / yclose * 100) if yclose > 0 else 0.0
+    item_status = str(status or ("ok" if ok else "error")).strip().lower() or "error"
     return {
         "name": str(case.get("name", "")),
         "code": str(case.get("code", "")),
         "asset_type": str(case.get("asset_type", "")),
         "ok": bool(ok),
+        "status": item_status,
         "price": round(float(price or 0.0), 4),
         "yclose": round(float(yclose or 0.0), 4),
         "change": round(change, 4),
@@ -1111,8 +1303,12 @@ def _run_market_provider_test(provider_key: str) -> Dict[str, Any]:
     if tester is None:
         raise ValueError("Unsupported provider_key")
 
+    cases = list(_API_TEST_CASES_MARKET)
+    if provider_key == "eastmoney_quote":
+        cases.extend(_API_TEST_CASES_FUND)
+
     items: List[Dict[str, Any]] = []
-    for case in _API_TEST_CASES:
+    for case in cases:
         started = time.perf_counter()
         try:
             price, yclose = tester(str(case.get("code", "")))
@@ -1121,6 +1317,7 @@ def _run_market_provider_test(provider_key: str) -> Dict[str, Any]:
                 _format_api_test_item(
                     case=case,
                     ok=True,
+                    status="ok",
                     latency_ms=latency_ms,
                     detail="ok",
                     price=price,
@@ -1129,16 +1326,20 @@ def _run_market_provider_test(provider_key: str) -> Dict[str, Any]:
             )
         except Exception as e:
             latency_ms = int((time.perf_counter() - started) * 1000)
+            detail = str(e)
+            is_unsupported = isinstance(e, ValueError) and "暂不支持" in detail
             items.append(
                 _format_api_test_item(
                     case=case,
                     ok=False,
+                    status="unsupported" if is_unsupported else "error",
                     latency_ms=latency_ms,
-                    detail=str(e),
+                    detail=detail,
                 )
             )
 
-    status = "ok" if all(bool(item.get("ok")) for item in items) else "degraded"
+    status_values = {str(item.get("status") or "") for item in items}
+    status = "ok" if status_values <= {"ok", "unsupported"} else "degraded"
     return {
         "provider_key": provider_key,
         "provider_label": _API_TEST_PROVIDER_LABELS.get(provider_key, provider_key),
@@ -1179,6 +1380,38 @@ def _run_forex_provider_test() -> Dict[str, Any]:
         "tested_at_utc": datetime.now(timezone.utc).isoformat(),
         "items": items,
     }
+
+
+def _run_provider_test_report() -> Dict[str, Any]:
+    providers_payload: Dict[str, Dict[str, Any]] = {}
+    tested_times: List[datetime] = []
+    for provider_key in ("sina_quote", "eastmoney_quote", "tencent_quote", "forex_rate"):
+        payload = (
+            _run_forex_provider_test()
+            if provider_key == "forex_rate"
+            else _run_market_provider_test(provider_key)
+        )
+        providers_payload[provider_key] = payload
+        raw_tested_at = str(payload.get("tested_at_utc") or "").strip()
+        if not raw_tested_at:
+            continue
+        try:
+            tested_times.append(datetime.fromisoformat(raw_tested_at))
+        except Exception:
+            continue
+
+    latest_tested_at = max(tested_times).isoformat() if tested_times else datetime.now(timezone.utc).isoformat()
+    return {
+        "tested_at_utc": latest_tested_at,
+        "summary": _provider_test_summary(providers_payload),
+        "providers": providers_payload,
+    }
+
+
+def run_provider_test_report_job() -> Dict[str, Any]:
+    payload = _run_provider_test_report()
+    _save_provider_test_report_snapshot(payload)
+    return payload
 
 
 def _real_user_where(alias: str = "") -> str:
@@ -2818,13 +3051,57 @@ def create_admin_blueprint(db, admin_write_audit):
         payload = _run_market_provider_test(provider_key)
         return jsonify(payload)
 
+    @bp.route("/apis/provider_tests/latest", methods=["GET"])
+    @admin_required
+    def admin_apis_provider_tests_latest():
+        payload = _get_latest_provider_test_report()
+        if payload:
+            return jsonify(payload)
+        return jsonify(
+            {
+                "tested_at_utc": "",
+                "summary": {"status": "idle", "label": "未测试", "alert_keys": []},
+                "providers": {},
+            }
+        )
+
+    @bp.route("/apis/provider_tests/run", methods=["POST"])
+    @admin_required
+    def admin_apis_provider_tests_run():
+        payload = run_provider_test_report_job()
+        return jsonify(payload)
+
     @bp.route("/apis/price_alerts", methods=["GET"])
     @admin_required
     def admin_apis_price_alerts():
         force = _admin_parse_force_arg()
+        started = time.perf_counter()
+        params = dict(request.args or {})
+        _, params_hash = _admin_cache_key(PRICE_ALERT_ROUTE_NAME, params)
+
+        if not force:
+            latest_report = _get_latest_price_alert_report()
+            if latest_report:
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                payload = {
+                    "tested_at_utc": latest_report.get("tested_at_utc") or "",
+                    "total_assets": int(latest_report.get("total_assets") or 0),
+                    "alert_count": int(latest_report.get("alert_count") or 0),
+                    "summary": dict(latest_report.get("summary") or {}),
+                    "items": list(latest_report.get("items") or []),
+                    "report_date": latest_report.get("report_date") or "",
+                    "history": _list_price_alert_report_history(),
+                    "cache": {
+                        "state": "snapshot",
+                        "elapsed_ms": elapsed_ms,
+                    },
+                }
+                _admin_log_read(PRICE_ALERT_ROUTE_NAME, "SNAPSHOT", elapsed_ms, params_hash)
+                return jsonify(payload)
+
         payload, cache_state, params_hash, elapsed_ms = _admin_cached_payload(
             PRICE_ALERT_ROUTE_NAME,
-            dict(request.args or {}),
+            params,
             force,
             _load_price_alerts_payload,
         )
@@ -2837,6 +3114,19 @@ def create_admin_blueprint(db, admin_write_audit):
             "elapsed_ms": elapsed_ms,
         }
         return jsonify(payload)
+
+    @bp.route("/apis/price_probe", methods=["POST"])
+    @admin_required
+    def admin_apis_price_probe():
+        data = _json_body()
+        code = str(data.get("code", "")).strip()
+        if not code:
+            return jsonify({"error": "Missing code"}), 400
+        try:
+            payload = _build_price_probe_payload(code)
+            return jsonify(payload)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
     @bp.route("/apis/smoke_test", methods=["POST"])
     @admin_write_audit(action="admin.apis.smoke_test", target_type="system")

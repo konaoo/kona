@@ -35,6 +35,23 @@ def _sina_headers() -> Dict[str, Any]:
     return headers
 
 
+def _normalize_quote_code(code: str) -> str:
+    s = str(code or "").strip().lower()
+    if s.isdigit() and len(s) == 6:
+        return ('sh' if s[0] in ['5', '6', '9'] else 'sz') + s
+    if s.isdigit() and len(s) == 5:
+        return 'hk' + s
+    if '.hk' in s:
+        return 'hk' + s.replace('.hk', '')
+    if s.startswith("hk"):
+        digits = re.sub(r"\D", "", s)
+        if digits:
+            return "hk" + digits.zfill(5)
+    if not any(x in s for x in ['sh', 'sz', 'hk', 'gb_', 's_', 'f_', 'of']):
+        return 'gb_' + s
+    return s
+
+
 def _parse_locale_decimal(value: Any) -> float:
     text = str(value or "").strip()
     if not text:
@@ -687,22 +704,7 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
         (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
     try:
-        s = code.lower()
-        
-        # 代码格式转换
-        if s.isdigit() and len(s) == 6:
-            s = ('sh' if s[0] in ['5', '6', '9'] else 'sz') + s
-        elif s.isdigit() and len(s) == 5:
-            # 5位纯数字按港股处理（如 00700 -> hk00700）
-            s = 'hk' + s
-        elif '.hk' in s:
-            s = 'hk' + s.replace('.hk', '')
-        elif s.startswith("hk"):
-            digits = re.sub(r"\D", "", s)
-            if digits:
-                s = "hk" + digits.zfill(5)
-        elif not any(x in s for x in ['sh', 'sz', 'hk', 'gb_', 's_', 'f_', 'of']):
-            s = 'gb_' + s
+        s = _normalize_quote_code(code)
         
         # 美股（包含 gb_ 前缀）- 直接调用美股专用函数
         if 'gb_' in s:
@@ -712,86 +714,121 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
         is_a = s.startswith("sh") or s.startswith("sz")
         is_index = s.startswith("s_")
 
-        # 第一步：腾讯优先（A/HK/指数）
-        try:
-            url = config.API_ENDPOINTS["tencent_stock"].format(code=s)
-            r = monitored_http_get("tencent_stock", url, timeout=config.API_TIMEOUT)
-
-            if 'v_' + s + '=' in r.text:
-                data = r.text.split('=\"')[1].split(';')[0].split('~')
-
-                if 's_' in s:  # 指数
-                    if len(data) > 5:
-                        curr = safe_float(data[3])
-                        change = safe_float(data[4])  # 涨跌额
-                        if curr > 0:
-                            yclose = curr - change
-                            return curr, yclose, change, (change / yclose * 100) if yclose > 0 else 0.0
-                elif 'hk' in s:  # 港股
-                    if len(data) > 4:
-                        curr = safe_float(data[3])
-                        yclose = safe_float(data[4])
-                        if curr > 0:
-                            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
-                elif 'sh' in s or 'sz' in s:  # A股
-                    if len(data) > 4:
-                        curr = safe_float(data[3])
-                        yclose = safe_float(data[4])
-                        if curr > 0:
-                            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
-        except Exception as e:
-            logger.debug(f"Tencent API error for {code}: {e}")
-
-        def _fetch_from_sina() -> Tuple[float, float, float, float]:
-            url = config.API_ENDPOINTS["sina_stock"].format(code=s)
-            r = monitored_http_get("sina_stock", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
-            if '="' not in r.text:
-                return 0.0, 0.0, 0.0, 0.0
-            match = re.search(r'="(.+)"', r.text)
-            if not match:
-                return 0.0, 0.0, 0.0, 0.0
-            data = match.group(1).split(',')
-            curr, yclose = 0.0, 0.0
-            if 's_' in s:  # 指数
-                if len(data) > 3:
-                    curr = safe_float(data[1])
-                    yclose = curr - safe_float(data[2])
-            elif s.startswith('hk') or 'rt_hk' in s:  # 港股
-                curr = safe_float(data[6])
-                yclose = safe_float(data[3])
-            else:  # A股
-                curr = safe_float(data[3])
-                yclose = safe_float(data[2])
-            if curr > 0 and yclose > 0:
-                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
-            return 0.0, 0.0, 0.0, 0.0
+        tencent = get_tencent_stock_price(s)
+        if tencent[0] > 0:
+            return tencent
 
         # 第二步及后续：按市场顺序回退
         if is_hk:
             # 港股：腾讯 -> 东财 -> 新浪
-            east = _get_eastmoney_cn_hk_price(s)
+            east = get_eastmoney_stock_price(s)
             if east[0] > 0:
                 return east
-            sina = _fetch_from_sina()
+            sina = get_sina_direct_stock_price(s)
             if sina[0] > 0:
                 return sina
         elif is_a:
             # A股：腾讯 -> 新浪 -> 东财
-            sina = _fetch_from_sina()
+            sina = get_sina_direct_stock_price(s)
             if sina[0] > 0:
                 return sina
-            east = _get_eastmoney_cn_hk_price(s)
+            east = get_eastmoney_stock_price(s)
             if east[0] > 0:
                 return east
         elif is_index:
             # 指数：腾讯 -> 新浪
-            sina = _fetch_from_sina()
+            sina = get_sina_direct_stock_price(s)
             if sina[0] > 0:
                 return sina
                 
     except Exception as e:
         logger.warning(f"Sina stock API error for {code}: {e}")
     
+    return 0.0, 0.0, 0.0, 0.0
+
+
+def get_tencent_stock_price(code: str) -> Tuple[float, float, float, float]:
+    s = _normalize_quote_code(code)
+    if 'gb_' in s:
+        return 0.0, 0.0, 0.0, 0.0
+    try:
+        url = config.API_ENDPOINTS["tencent_stock"].format(code=s)
+        r = monitored_http_get("tencent_stock", url, timeout=config.API_TIMEOUT)
+        if 'v_' + s + '=' not in r.text:
+            return 0.0, 0.0, 0.0, 0.0
+        data = r.text.split('=\"')[1].split(';')[0].split('~')
+        if 's_' in s and len(data) > 5:
+            curr = safe_float(data[3])
+            change = safe_float(data[4])
+            if curr > 0:
+                yclose = curr - change
+                return curr, yclose, change, (change / yclose * 100) if yclose > 0 else 0.0
+        if ('hk' in s or 'sh' in s or 'sz' in s) and len(data) > 4:
+            curr = safe_float(data[3])
+            yclose = safe_float(data[4])
+            if curr > 0:
+                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
+    except Exception as e:
+        logger.debug(f"Tencent API error for {code}: {e}")
+    return 0.0, 0.0, 0.0, 0.0
+
+
+def get_sina_direct_stock_price(code: str) -> Tuple[float, float, float, float]:
+    s = _normalize_quote_code(code)
+    if 'gb_' in s:
+        return get_us_stock_price(s)
+    try:
+        url = config.API_ENDPOINTS["sina_stock"].format(code=s)
+        r = monitored_http_get("sina_stock", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
+        if '="' not in r.text:
+            return 0.0, 0.0, 0.0, 0.0
+        match = re.search(r'="(.+)"', r.text)
+        if not match:
+            return 0.0, 0.0, 0.0, 0.0
+        data = match.group(1).split(',')
+        curr, yclose = 0.0, 0.0
+        if 's_' in s:
+            if len(data) > 3:
+                curr = safe_float(data[1])
+                yclose = curr - safe_float(data[2])
+        elif s.startswith('hk') or 'rt_hk' in s:
+            curr = safe_float(data[6])
+            yclose = safe_float(data[3])
+        else:
+            curr = safe_float(data[3])
+            yclose = safe_float(data[2])
+        if curr > 0 and yclose > 0:
+            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+    except Exception as e:
+        logger.debug(f"Sina API error for {code}: {e}")
+    return 0.0, 0.0, 0.0, 0.0
+
+
+def get_eastmoney_stock_price(code: str) -> Tuple[float, float, float, float]:
+    s = _normalize_quote_code(code)
+    if s.startswith(('sh', 'sz', 'hk')):
+        return _get_eastmoney_cn_hk_price(s)
+    if s.startswith('gb_'):
+        symbol = s.upper().replace('GB_', '').replace('US.', '')
+        try:
+            for secid in [f"105.{symbol}", f"106.{symbol}"]:
+                url = f"https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=2&fields=f43,f60&secid={secid}"
+                r = monitored_http_get(
+                    "eastmoney_us_stock",
+                    url,
+                    headers={'User-Agent': config.HEADERS['User-Agent']},
+                    timeout=config.API_TIMEOUT,
+                )
+                data = (r.json() or {}).get('data')
+                if data:
+                    curr = safe_float(data.get('f43'))
+                    yclose = safe_float(data.get('f60'))
+                    if curr <= 0:
+                        curr = yclose
+                    if curr > 0:
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
+        except Exception as e:
+            logger.debug(f"Eastmoney API error for {code}: {e}")
     return 0.0, 0.0, 0.0, 0.0
 
 

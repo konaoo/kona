@@ -22,7 +22,8 @@
 
       <div class="user-profile">
         <div class="user-info">
-          <div class="user-avatar" :style="avatarStyle"></div>
+          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
+          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
           <div class="user-details">
             <h4>{{ store.state.user?.username || '管理员' }}</h4>
             <p>管理员</p>
@@ -42,65 +43,40 @@
 
     <!-- Main Content -->
     <div class="main-content">
-      <div class="header">
-        <div class="header-title">
-          <h1>运营配置</h1>
-        </div>
-        <div class="header-actions">
-          <button class="add-btn" :disabled="loadingAny" @click="refreshAll">
-            <span>🔄</span>
-            <span>{{ loadingAny ? '正在刷新' : '刷新配置' }}</span>
-          </button>
-        </div>
+      <div class="page-header">
+        <h1>运营配置</h1>
       </div>
 
       <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="msg-tip">{{ pageMessage }}</p>
 
-      <div class="config-grid">
-        <!-- Scene Config Cards -->
-        <div v-for="scene in SCENES" :key="scene" class="config-card">
-          <div class="card-body">
-            <div class="info-side">
-               <h3 class="card-title">{{ sceneTitle(scene) }}</h3>
-               <p class="card-preview">{{ scenePreviewText(scene) }}</p>
-               <span class="card-meta" :class="{ 'is-error': thumbLoadFailed[scene] }">
-                 {{ sceneImageMeta(scene) }}
-               </span>
-            </div>
-            <div class="thumb-side">
-               <div class="thumb-box">
-                 <img
-                    v-if="showSceneImage(scene)"
-                    :src="sceneImageUrl(scene)"
-                    :alt="sceneTitle(scene)"
-                    @error="thumbLoadFailed[scene] = true"
-                    @load="thumbLoadFailed[scene] = false"
-                  />
-                  <div v-else class="thumb-empty">无图</div>
-               </div>
+      <div class="card-grid">
+        <button v-for="scene in SCENES" :key="scene" class="entry-card" :disabled="loading[scene]" @click="openEditor(scene)">
+          <div class="entry-head">
+            <div class="entry-icon">{{ sceneIcon(scene) }}</div>
+            <div class="entry-copy">
+              <h2>{{ sceneTitle(scene) }}</h2>
             </div>
           </div>
-          <div class="card-footer">
-             <button class="action-btn" :disabled="loading[scene]" @click="openEditor(scene)">编辑配置</button>
+          <p class="entry-desc">{{ sceneDescription(scene) }}</p>
+          <div class="entry-summary">
+            <span>{{ scenePreviewTag(scene) }}</span>
+            <span :class="{ 'is-error-pill': thumbLoadFailed[scene] }">{{ sceneImageMeta(scene) }}</span>
           </div>
-        </div>
+        </button>
 
-        <!-- App Update Card -->
-        <div class="config-card update-card">
-          <div class="card-body">
-            <div class="info-side">
-               <h3 class="card-title">{{ APP_UPDATE_META.title }}</h3>
-               <p class="card-preview update-preview">{{ appUpdatePreviewText }}</p>
-               <div class="url-line" :class="{ 'is-error': appUpdateUrlMetaClass === 'is-error' }">
-                 <span class="url-icon">📁</span>
-                 <span class="url-text">{{ appUpdateUrlMeta }}</span>
-               </div>
+        <button class="entry-card" :disabled="loadingAppUpdate" @click="openAppUpdateEditor">
+          <div class="entry-head">
+            <div class="entry-icon">⬆️</div>
+            <div class="entry-copy">
+              <h2>{{ APP_UPDATE_META.title }}</h2>
             </div>
           </div>
-          <div class="card-footer">
-             <button class="action-btn" :disabled="loadingAppUpdate" @click="openAppUpdateEditor">编辑更新</button>
+          <p class="entry-desc">配置 App 检查更新文案和下载链接</p>
+          <div class="entry-summary">
+            <span>{{ appUpdatePreviewTag }}</span>
+            <span :class="{ 'is-error-pill': appUpdateUrlMetaClass === 'is-error' }">{{ appUpdateUrlMeta }}</span>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -156,6 +132,7 @@ type ConfigScene = typeof SCENES[number]
 const META: Record<ConfigScene, any> = {
   invite: {
     title: '邀请码页面',
+    description: '配置邀请码获取文案和配图',
     modalTitle: '邀请码配置',
     defaultText: '进微信群领邀请码。',
     loadPath: '/api/admin/ops/invite_acquire',
@@ -166,6 +143,7 @@ const META: Record<ConfigScene, any> = {
   },
   user_group: {
     title: '用户群页面',
+    description: '配置用户群入口文案和群二维码',
     modalTitle: '用户群配置',
     defaultText: '加入咔咔用户群',
     loadPath: '/api/admin/ops/user_group',
@@ -176,6 +154,7 @@ const META: Record<ConfigScene, any> = {
   },
   ios_qr: {
     title: '苹果版下载二维码',
+    description: '配置苹果版下载文案和二维码图',
     modalTitle: '苹果版下载配置',
     defaultText: '扫码下载苹果版',
     loadPath: '/api/admin/ops/ios_qr',
@@ -244,13 +223,13 @@ const avatarStyle = computed(() => ({
   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
 }))
 
-const loadingAny = computed(() => SCENES.some((scene) => loading[scene]) || loadingAppUpdate.value)
-const currentMeta = computed(() => META[editor.scene])
-
-const appUpdatePreviewText = computed(() => {
-  if (loadingAppUpdate.value) return '读取中...'
-  return String(appUpdateState.text || '').trim() || APP_UPDATE_META.defaultText
+const avatarSrc = computed(() => String(store.state.user?.avatar || '').trim())
+const avatarInitial = computed(() => {
+  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
+  return raw.slice(0, 1).toUpperCase()
 })
+
+const currentMeta = computed(() => META[editor.scene])
 
 const appUpdateUrlMeta = computed(() => {
   if (loadingAppUpdate.value) return '下载链接读取中...'
@@ -265,6 +244,11 @@ const appUpdateUrlMetaClass = computed(() => {
   return /^https?:\/\//i.test(url) ? '' : 'is-error'
 })
 
+const appUpdatePreviewTag = computed(() => {
+  const text = String(appUpdateState.text || '').trim()
+  return text ? '已配更新文案' : '默认更新文案'
+})
+
 function normalizePayload(p: any, f: any = { text: '', image_url: '' }) {
   return { text: String(p?.text ?? f.text ?? ''), image_url: String(p?.image_url ?? f.image_url ?? '') }
 }
@@ -275,18 +259,19 @@ function normalizeAppUpdatePayload(p: any, f: any = { text: '', download_url: ''
 
 function flashPage(msg: string, success: boolean) { pageMessage.value = msg; pageOk.value = success; }
 function sceneTitle(scene: ConfigScene): string { return META[scene].title; }
-function sceneImageUrl(scene: ConfigScene): string { return String(configForm[scene].image_url || '').trim(); }
-function scenePreviewText(scene: ConfigScene): string {
-  if (loading[scene]) return '读取中...';
-  return String(configForm[scene].text || '').trim() || META[scene].defaultText;
+function sceneDescription(scene: ConfigScene): string { return String(META[scene].description || '').trim(); }
+function sceneIcon(scene: ConfigScene): string {
+  if (scene === 'invite') return '🎟️'
+  if (scene === 'user_group') return '👥'
+  return '📱'
 }
-function showSceneImage(scene: ConfigScene): boolean {
-  const imageUrl = sceneImageUrl(scene);
-  return Boolean(imageUrl) && !thumbLoadFailed[scene];
+function scenePreviewTag(scene: ConfigScene): string {
+  const text = String(configForm[scene].text || '').trim()
+  return text ? '已配文案' : '默认文案'
 }
 function sceneImageMeta(scene: ConfigScene): string {
   if (loading[scene]) return '图片读取中...';
-  const imageUrl = sceneImageUrl(scene);
+  const imageUrl = String(configForm[scene].image_url || '').trim();
   if (!imageUrl) return '未配置图片';
   return thumbLoadFailed[scene] ? '图片链接无效' : '已配置预览图';
 }
@@ -398,7 +383,8 @@ onMounted(() => {
 .nav-item.active { background: #000; color: white; }
 .user-profile { margin-top: auto; padding: 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; background: #fdfdfd; }
 .user-info { display: flex; align-items: center; gap: 12px; }
-.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
+.user-avatar-fallback { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; font-weight: 800; }
 .user-details { display: flex; flex-direction: column; align-items: flex-start; }
 .user-details h4 { font-size: 16px; font-weight: 800; margin: 0; padding: 0; color: #000; line-height: 1; }
 .user-details p { font-size: 12px; color: #999; font-weight: 500; margin: 4px 0 0 0; padding: 0; line-height: 1; }
@@ -406,50 +392,111 @@ onMounted(() => {
 .logout-btn:hover { background: #2d2d2d; color: #fff; border-color: #444; transform: translateX(2px); }
 
 /* Main Content */
-.main-content { flex: 1; padding: 40px 50px; overflow-y: auto; height: 100vh; background: #fafafa; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
-.header-title h1 { font-size: 32px; font-weight: 800; margin-bottom: 6px; color: #000; letter-spacing: -0.8px; }
+.main-content { flex: 1; overflow-y: auto; padding: 22px; background: #f5f7fb; }
+.page-header { margin-bottom: 14px; }
+.page-header h1 { margin: 0; color: #111827; font-size: 32px; font-weight: 800; letter-spacing: -0.04em; }
 
-.add-btn { height: 46px; padding: 0 22px; background: #000; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
-.add-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2); }
-.add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.msg-tip { margin-bottom: 25px; font-weight: 700; font-size: 14.5px; }
-.up { color: #10b981; }
+.msg-tip { margin-bottom: 14px; font-weight: 700; font-size: 14px; }
+.up { color: #12b76a; }
 .down { color: #ef4444; }
 
-/* Grid Layout */
-.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
 
-.config-card { background: white; border-radius: 20px; border: 1px solid #f0f0f0; overflow: hidden; display: flex; flex-direction: column; transition: all 0.3s ease; }
-.config-card:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(0,0,0,0.06); }
+.entry-card {
+  min-height: 206px;
+  padding: 18px;
+  border: 1px solid #e7ebf3;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
 
-.card-body { padding: 24px; flex: 1; display: flex; gap: 20px; }
-.info-side { flex: 1; min-width: 0; }
-.card-title { font-size: 18px; font-weight: 800; color: #000; margin: 0 0 10px 0; }
-.card-preview { font-size: 14px; color: #666; line-height: 1.6; margin: 0 0 12px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; }
-.card-meta { font-size: 11px; font-weight: 800; background: #f5f5f5; color: #999; padding: 3px 10px; border-radius: 6px; text-transform: uppercase; }
-.card-meta.is-error { background: #fff1f0; color: #f5222d; }
+button.entry-card {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+}
 
-.thumb-side { flex-shrink: 0; }
-.thumb-box { width: 84px; height: 84px; border-radius: 12px; background: #fafafa; border: 1px solid #eee; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.thumb-box img { width: 100%; height: 100%; object-fit: cover; }
-.thumb-empty { font-size: 12px; color: #ccc; font-weight: 700; }
+.entry-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
+  border-color: #d8dfeb;
+}
 
-.card-footer { padding: 18px 24px; background: #fcfcfc; border-top: 1px solid #f7f7f7; }
-.action-btn { width: 100%; height: 40px; border-radius: 10px; border: 1px solid #eee; background: white; color: #333; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-.action-btn:hover:not(:disabled) { border-color: #000; background: #000; color: #fff; }
+.entry-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-/* Update Card Special */
-.update-card { grid-column: span 1; }
-.update-preview { -webkit-line-clamp: 3; }
-.url-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; background: #f8f8f8; border-radius: 8px; border: 1px solid #eee; }
-.url-icon { font-size: 14px; }
-.url-text { font-size: 11px; font-weight: 700; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.url-line.is-error { border-color: #ffa39e; background: #fff1f0; }
+.entry-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.entry-copy { min-width: 0; flex: 1; }
+.entry-copy h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.entry-desc {
+  margin: 0;
+  color: #8a93a5;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.entry-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.entry-summary span {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.entry-summary .is-error-pill {
+  background: #fef2f2;
+  color: #b42318;
+}
+
+@media (max-width: 1200px) {
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
-  .config-grid { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
 }
 </style>

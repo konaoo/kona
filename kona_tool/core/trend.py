@@ -58,6 +58,93 @@ def _resolve_stock_secids(code: str, market_hint: str = "") -> List[str]:
     return []
 
 
+def _resolve_tencent_symbol(code: str, market_hint: str = "") -> tuple[str, str] | tuple[None, None]:
+    s = _normalize_code(code).strip()
+    lower = s.lower()
+    hint = _normalize_code(market_hint).lower()
+    digits = re.sub(r"\D", "", lower)
+
+    if lower.startswith("sh") and re.fullmatch(r"sh\d{6}", lower):
+        return "a", lower
+    if lower.startswith("sz") and re.fullmatch(r"sz\d{6}", lower):
+        return "a", lower
+    if lower.startswith("bj") and re.fullmatch(r"bj\d{6}", lower):
+        return "a", lower
+    if re.fullmatch(r"\d{6}\.(sh|ss)", lower):
+        return "a", f"sh{digits}"
+    if re.fullmatch(r"\d{6}\.(sz)", lower):
+        return "a", f"sz{digits}"
+    if re.fullmatch(r"\d{6}\.(bj)", lower):
+        return "a", f"bj{digits}"
+
+    if lower.startswith("hk") and digits:
+        return "hk", f"hk{digits.zfill(5)}"
+    if re.fullmatch(r"\d{5}\.hk", lower):
+        return "hk", f"hk{digits}"
+    if re.fullmatch(r"\d{5}", digits):
+        if hint == "hk":
+            return "hk", f"hk{digits}"
+        return "hk", f"hk{digits}"
+
+    upper = s.upper().replace("GB_", "").replace("US.", "").replace(".US", "")
+    if re.fullmatch(r"[A-Z][A-Z0-9.\-]*", upper):
+        return "us", f"us{upper}"
+
+    if re.fullmatch(r"\d{6}", digits):
+        if hint == "bj":
+            return "a", f"bj{digits}"
+        if hint == "a" or digits.startswith(("0", "3", "5", "6", "8", "9")):
+            if digits.startswith(("5", "6", "9")):
+                return "a", f"sh{digits}"
+            return "a", f"sz{digits}"
+
+    return None, None
+
+
+def _fetch_tencent_stock_history_points(code: str, limit: int, market_hint: str = "") -> List[Dict[str, Any]]:
+    market, symbol = _resolve_tencent_symbol(code, market_hint)
+    if not market or not symbol:
+        return []
+
+    if market == "hk":
+        url = "https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
+    elif market == "us":
+        url = "https://web.ifzq.gtimg.cn/appstock/app/usfqkline/get"
+    else:
+        url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+    try:
+        r = monitored_http_get(
+            "tencent_stock_history",
+            url,
+            params={"param": f"{symbol},day,,,{max(2, int(limit))},qfq"},
+            headers={
+                "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Referer": "https://stockapp.finance.qq.com/",
+            },
+            timeout=config.API_TIMEOUT,
+        )
+        if r.status_code != 200:
+            return []
+
+        payload = r.json() or {}
+        data = (payload.get("data") or {}).get(symbol) or {}
+        klines = data.get("qfqday") or data.get("day") or []
+        points: List[Dict[str, Any]] = []
+        for item in klines:
+            if not isinstance(item, list) or len(item) < 3:
+                continue
+            date = str(item[0] or "").strip()
+            close = safe_float(item[2])
+            if not date or close <= 0:
+                continue
+            points.append({"date": date, "value": close})
+        return points[-limit:] if points else []
+    except Exception as exc:
+        logger.debug("tencent stock trend fetch failed code=%s symbol=%s error=%s", code, symbol, exc)
+        return []
+
+
 def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") -> List[Dict[str, Any]]:
     headers = {
         "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
@@ -97,7 +184,7 @@ def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") ->
                 return points[-limit:]
         except Exception as exc:
             logger.debug("stock trend fetch failed code=%s secid=%s error=%s", code, secid, exc)
-    return []
+    return _fetch_tencent_stock_history_points(code, limit, market_hint)
 
 
 def _fetch_fund_history_points(code: str, limit: int) -> List[Dict[str, Any]]:

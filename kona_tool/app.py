@@ -21,9 +21,10 @@ import os
 
 import config
 try:
-    from admin_routes import create_admin_blueprint
+    from admin_routes import create_admin_blueprint, run_provider_test_report_job
 except ModuleNotFoundError:
     create_admin_blueprint = None
+    run_provider_test_report_job = None
 from core.db import DatabaseManager
 from core.price import (
     get_price,
@@ -2900,10 +2901,16 @@ def background_scheduler():
     logger.info("Scheduler started")
     while True:
         try:
-            # 每小时执行一次快照
-            take_snapshot()
+            if getattr(config, "ENABLE_BACKGROUND_SNAPSHOT", False):
+                take_snapshot()
         except Exception as e:
-            logger.error(f"Scheduler error: {e}")
+            logger.error(f"Snapshot scheduler error: {e}")
+
+        try:
+            if getattr(config, "ENABLE_BACKGROUND_PROVIDER_TEST", True) and run_provider_test_report_job is not None:
+                run_provider_test_report_job()
+        except Exception as e:
+            logger.error(f"Provider test scheduler error: {e}")
         
         # 休眠 1 小时 (3600秒)
         # 实际生产中建议使用 APScheduler，这里用简单 sleep 即可
@@ -2915,10 +2922,10 @@ if __name__ == '__main__':
     logger.info(f"Server: http://{config.HOST}:{config.PORT}")
     
     # 启动后台快照任务（默认关闭，建议用 cron 固定时间触发）
-    if config.ENABLE_BACKGROUND_SNAPSHOT:
+    if config.ENABLE_BACKGROUND_SNAPSHOT or (getattr(config, "ENABLE_BACKGROUND_PROVIDER_TEST", True) and run_provider_test_report_job is not None):
         threading.Thread(target=background_scheduler, daemon=True).start()
     else:
-        logger.info("Background snapshot disabled (cron preferred).")
+        logger.info("Background scheduler disabled.")
     
     # 启动时立即执行一次快照（默认关闭）
     if config.ENABLE_STARTUP_SNAPSHOT:

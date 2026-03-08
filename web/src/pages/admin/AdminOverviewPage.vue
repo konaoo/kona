@@ -22,7 +22,8 @@
 
       <div class="user-profile">
         <div class="user-info">
-          <div class="user-avatar" :style="avatarStyle"></div>
+          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
+          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
           <div class="user-details">
             <h4>{{ store.state.user?.username || '管理员' }}</h4>
             <p>管理员</p>
@@ -220,6 +221,12 @@ const avatarStyle = computed(() => {
   }
 })
 
+const avatarSrc = computed(() => String(store.state.user?.avatar || '').trim())
+const avatarInitial = computed(() => {
+  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
+  return raw.slice(0, 1).toUpperCase()
+})
+
 const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
 const totalRows = computed(() => retentionRows.value.length)
 const totalPages = computed(() => Math.ceil(totalRows.value / pageSize.value) || 1)
@@ -383,6 +390,16 @@ onMounted(() => {
   height: 44px;
   border-radius: 50%;
   flex-shrink: 0;
+  object-fit: cover;
+}
+
+.user-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .user-details {

@@ -320,6 +320,19 @@ class DatabaseManager:
             """
         )
 
+        # 行情测试小时快照（每小时保留最新一版四源检测结果）
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provider_test_reports (
+                report_slot TEXT PRIMARY KEY,
+                tested_at_utc TEXT NOT NULL,
+                summary_json TEXT NOT NULL DEFAULT '{}',
+                providers_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         
         # 创建每日快照表
         cursor.execute('''
@@ -424,6 +437,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_runtime_configs_updated_at ON runtime_configs(updated_at)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_admin_api_policies_scope_type ON admin_api_policies(scope_type)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_price_alert_reports_tested_at ON price_alert_reports(tested_at_utc)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_provider_test_reports_tested_at ON provider_test_reports(tested_at_utc)')
         cursor.execute('DROP TABLE IF EXISTS email_verification_codes')
 
         # 确保 asset_type 列存在并回填
@@ -4839,6 +4853,123 @@ class DatabaseManager:
                     }
                 )
             return items
+        finally:
+            conn.close()
+
+    def get_latest_price_alert_report(self) -> Optional[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT report_date, tested_at_utc, total_assets, alert_count, summary_json, items_json, updated_at
+                FROM price_alert_reports
+                ORDER BY report_date DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            summary_raw = str(row["summary_json"] or "{}").strip() or "{}"
+            items_raw = str(row["items_json"] or "[]").strip() or "[]"
+            try:
+                summary = json.loads(summary_raw)
+            except Exception:
+                summary = {}
+            try:
+                items = json.loads(items_raw)
+            except Exception:
+                items = []
+
+            return {
+                "report_date": str(row["report_date"] or ""),
+                "tested_at_utc": str(row["tested_at_utc"] or ""),
+                "total_assets": int(row["total_assets"] or 0),
+                "alert_count": int(row["alert_count"] or 0),
+                "summary": summary if isinstance(summary, dict) else {},
+                "items": items if isinstance(items, list) else [],
+                "updated_at": str(row["updated_at"] or ""),
+            }
+        finally:
+            conn.close()
+
+    def save_provider_test_report(
+        self,
+        report_slot: str,
+        tested_at_utc: str,
+        summary: Dict[str, Any],
+        providers: Dict[str, Any],
+    ) -> None:
+        report_slot_text = str(report_slot or "").strip()
+        tested_at_text = str(tested_at_utc or "").strip()
+        if not report_slot_text or not tested_at_text:
+            raise ValueError("Missing provider test report slot or tested_at_utc")
+        summary_json = json.dumps(summary or {}, ensure_ascii=False, separators=(",", ":"))
+        providers_json = json.dumps(providers or {}, ensure_ascii=False, separators=(",", ":"))
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO provider_test_reports (
+                    report_slot,
+                    tested_at_utc,
+                    summary_json,
+                    providers_json,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(report_slot) DO UPDATE SET
+                    tested_at_utc = excluded.tested_at_utc,
+                    summary_json = excluded.summary_json,
+                    providers_json = excluded.providers_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (report_slot_text, tested_at_text, summary_json, providers_json),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_latest_provider_test_report(self) -> Optional[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT report_slot, tested_at_utc, summary_json, providers_json, updated_at
+                FROM provider_test_reports
+                ORDER BY report_slot DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            summary_raw = str(row["summary_json"] or "{}").strip() or "{}"
+            providers_raw = str(row["providers_json"] or "{}").strip() or "{}"
+            try:
+                summary = json.loads(summary_raw)
+            except Exception:
+                summary = {}
+            try:
+                providers = json.loads(providers_raw)
+            except Exception:
+                providers = {}
+
+            return {
+                "report_slot": str(row["report_slot"] or ""),
+                "tested_at_utc": str(row["tested_at_utc"] or ""),
+                "summary": summary if isinstance(summary, dict) else {},
+                "providers": providers if isinstance(providers, dict) else {},
+                "updated_at": str(row["updated_at"] or ""),
+            }
         finally:
             conn.close()
 

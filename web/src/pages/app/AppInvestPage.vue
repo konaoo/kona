@@ -512,7 +512,7 @@ const handleTradeSuccess = async () => {
 
                   <!-- Sparkline -->
                   <div style="height:38px;margin-bottom:10px;opacity:.85">
-                    <svg viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
+                    <svg v-if="row.sparkReady" viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
                       <path 
                         :d="row.spark" 
                         :stroke="toNumber(row.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'" 
@@ -520,6 +520,7 @@ const handleTradeSuccess = async () => {
                         fill="none"
                       />
                     </svg>
+                    <div v-else class="trend-empty">暂无趋势</div>
                   </div>
                   
                   <!-- Removed redundant dayPnlRate badge -->

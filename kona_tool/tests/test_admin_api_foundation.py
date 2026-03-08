@@ -227,6 +227,53 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual((forced.get_json() or {}).get("dashboard", {}).get("total_users"), 22)
         self.assertEqual(mock_metrics.call_count, 2)
 
+    def test_admin_price_probe_requires_code(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/price_probe",
+            json={},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual((resp.get_json() or {}).get("error"), "Missing code")
+
+    def test_admin_price_probe_returns_probe_payload(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        fake_payload = {
+            "code": "00700",
+            "asset_type": "hk",
+            "asset_type_label": "港股",
+            "current": {"price": 519.0, "yclose": 502.0, "amt": 17.0, "chg": 3.39, "source_hint": "腾讯财经"},
+            "sources": [
+                {"source_key": "tencent_quote", "source_label": "腾讯财经", "price": 519.0, "ok": True, "delta_pct": 0.0},
+                {"source_key": "sina_quote", "source_label": "新浪财经", "price": 518.9, "ok": True, "delta_pct": 0.0193},
+            ],
+            "diagnosis": {"status": "ok", "summary": "主价与各源基本一致。"},
+        }
+        with patch.object(admin_routes, "_build_price_probe_payload", return_value=fake_payload) as mock_probe:
+            resp = self.client.post(
+                "/api/admin/apis/price_probe",
+                json={"code": "00700"},
+                headers=_auth_headers("u_admin", "admin_user"),
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), fake_payload)
+        mock_probe.assert_called_once_with("00700")
+
+    def test_market_provider_test_excludes_fund_for_stock_only_sources(self):
+        payload = admin_routes._run_market_provider_test("sina_quote")
+        codes = {str(item.get("code")) for item in (payload.get("items") or [])}
+        self.assertNotIn("f_110017", codes)
+
+    def test_market_provider_test_keeps_fund_for_eastmoney_quote(self):
+        payload = admin_routes._run_market_provider_test("eastmoney_quote")
+        items = payload.get("items") or []
+        codes = {str(item.get("code")) for item in items}
+        self.assertIn("f_110017", codes)
+        fund_item = next(item for item in items if str(item.get("code")) == "f_110017")
+        self.assertEqual(str(fund_item.get("status")), "ok")
+        self.assertEqual(payload.get("status"), "ok")
+
     def test_admin_disable_enable_user_writes_audit(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_target", "target_user", is_admin=0, status="active")
@@ -1026,6 +1073,65 @@ class AdminApiFoundationTests(unittest.TestCase):
 
     @patch.object(
         admin_routes,
+        "_get_latest_provider_test_report",
+        return_value={
+            "report_slot": "2026-03-08T18",
+            "tested_at_utc": "2026-03-08T10:00:00+00:00",
+            "summary": {"status": "alert", "label": "新浪行情告警", "alert_keys": ["sina_quote"]},
+            "providers": {
+                "sina_quote": {
+                    "provider_key": "sina_quote",
+                    "provider_label": "新浪财经行情",
+                    "status": "degraded",
+                    "tested_at_utc": "2026-03-08T10:00:00+00:00",
+                    "items": [{"name": "工商银行", "code": "sh601398", "ok": False, "latency_ms": 20}],
+                }
+            },
+        },
+    )
+    def test_admin_provider_tests_latest_returns_snapshot(self, _mock_latest):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.get(
+            "/api/admin/apis/provider_tests/latest",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertEqual((body.get("summary") or {}).get("label"), "新浪行情告警")
+        self.assertEqual(((body.get("providers") or {}).get("sina_quote") or {}).get("status"), "degraded")
+
+    @patch.object(
+        admin_routes,
+        "run_provider_test_report_job",
+        return_value={
+            "tested_at_utc": "2026-03-08T10:00:00+00:00",
+            "summary": {"status": "ok", "label": "正常", "alert_keys": []},
+            "providers": {
+                "sina_quote": {
+                    "provider_key": "sina_quote",
+                    "provider_label": "新浪财经行情",
+                    "status": "ok",
+                    "tested_at_utc": "2026-03-08T10:00:00+00:00",
+                    "items": [{"name": "工商银行", "code": "sh601398", "ok": True, "latency_ms": 20}],
+                }
+            },
+        },
+    )
+    def test_admin_provider_tests_run_returns_batch_payload(self, _mock_run_job):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.post(
+            "/api/admin/apis/provider_tests/run",
+            json={},
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertEqual((body.get("summary") or {}).get("label"), "正常")
+        self.assertEqual(((body.get("providers") or {}).get("sina_quote") or {}).get("status"), "ok")
+        _mock_run_job.assert_called_once()
+
+    @patch.object(
+        admin_routes,
         "_load_price_alerts_payload",
         return_value={
             "tested_at_utc": "2026-03-06T08:00:00+00:00",
@@ -1081,6 +1187,53 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual((body.get("history") or [{}])[0].get("report_date"), "2026-03-06")
         self.assertEqual((body.get("cache") or {}).get("state"), "bypass")
         _mock_save.assert_called_once()
+
+    @patch.object(
+        admin_routes,
+        "_list_price_alert_report_history",
+        return_value=[
+            {
+                "report_date": "2026-03-07",
+                "tested_at_utc": "2026-03-07T08:00:00+00:00",
+                "total_assets": 12,
+                "alert_count": 2,
+                "updated_at": "2026-03-07 16:00:00",
+                "summary": {"critical": 1, "warning": 1, "info": 0},
+            }
+        ],
+    )
+    @patch.object(
+        admin_routes,
+        "_get_latest_price_alert_report",
+        return_value={
+            "report_date": "2026-03-07",
+            "tested_at_utc": "2026-03-07T08:00:00+00:00",
+            "total_assets": 12,
+            "alert_count": 2,
+            "updated_at": "2026-03-07 16:00:00",
+            "summary": {"critical": 1, "warning": 1, "info": 0},
+            "items": [{"code": "f_968048", "alert_type": "price_mismatch"}],
+        },
+    )
+    @patch.object(admin_routes, "_load_price_alerts_payload")
+    def test_admin_price_alerts_prefers_latest_snapshot_without_force(
+        self,
+        _mock_loader,
+        _mock_latest,
+        _mock_history,
+    ):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        resp = self.client.get(
+            "/api/admin/apis/price_alerts",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get("report_date"), "2026-03-07")
+        self.assertEqual(body.get("alert_count"), 2)
+        self.assertEqual((body.get("items") or [{}])[0].get("code"), "f_968048")
+        self.assertEqual((body.get("cache") or {}).get("state"), "snapshot")
+        _mock_loader.assert_not_called()
 
     def test_admin_provider_test_invalid_provider_returns_400(self):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
