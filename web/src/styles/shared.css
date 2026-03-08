@@ -1,7 +1,7 @@
 /* ── SHARED COMPONENTS (FROM PROTOTYPE) ── */
 
 .card {
-  background: linear-gradient(180deg, rgba(20, 22, 30, 0.9), rgba(16, 18, 26, 0.95));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--s1) 96%, #fff 4%), var(--s1));
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px;
@@ -45,7 +45,7 @@
 .tabs {
   display: flex;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 3px;
@@ -64,20 +64,20 @@
   transition: all .16s;
 }
 .tab.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--text);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
 }
 
 .progress-wrap {
   height: 3px;
-  background: rgba(255, 255, 255, 0.07);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
   border-radius: 2px;
   position: relative;
   overflow: hidden;
 }
 .progress-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
-.progress-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.2); }
+.progress-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--text) 20%, transparent); }
 .progress-fill.up { left: 50%; background: var(--red); }
 .progress-fill.dn { right: 50%; background: var(--green); }
 
@@ -87,14 +87,14 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
   border: 1px solid var(--border);
   border-radius: 12px;
   transition: background .15s, border-color .15s;
   cursor: pointer;
 }
 .holding-row:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   border-color: var(--border-b);
 }
 
@@ -103,7 +103,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
 }
 .mkt-row:last-child { border: none; padding-bottom: 0; }
 .mkt-row:first-child { padding-top: 0; }

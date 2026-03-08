@@ -191,6 +191,39 @@ class SearchTimeoutTests(unittest.TestCase):
         self.assertTrue(results)
         self.assertEqual(results[0].get("code"), "sz159687")
 
+    def test_search_enriches_quote_fields(self):
+        def fake_search_sina(query, type_code):
+            if type_code == "31":
+                return [
+                    {
+                        "code": "00700.HK",
+                        "name": "腾讯控股",
+                        "type_name": "港股",
+                        "currency": "HKD",
+                    }
+                ]
+            return []
+
+        def fake_search_fund(query):
+            return []
+
+        with mock.patch.object(price_module, "_search_sina", side_effect=fake_search_sina), mock.patch.object(
+            price_module, "_search_fund", side_effect=fake_search_fund
+        ), mock.patch.object(
+            price_module,
+            "batch_get_prices_fast",
+            return_value={"00700.HK": (519.0, 502.0, 17.0, 3.39)},
+        ):
+            results = price_module.search_stocks("腾讯控股")
+
+        self.assertEqual(len(results), 1)
+        target = results[0]
+        self.assertEqual(target.get("market_type"), "hk")
+        self.assertEqual(target.get("price"), 519.0)
+        self.assertEqual(target.get("yclose"), 502.0)
+        self.assertEqual(target.get("change"), 17.0)
+        self.assertEqual(target.get("change_pct"), 3.39)
+
 
 if __name__ == "__main__":
     unittest.main()

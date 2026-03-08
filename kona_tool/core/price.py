@@ -763,6 +763,60 @@ def search_stocks(query: str) -> list:
     final_results.sort(key=_sort_key)
     final_results = final_results[:15]
 
+    quote_codes = [str(item.get('code', '') or '').strip() for item in final_results if str(item.get('code', '') or '').strip()]
+    if quote_codes:
+        try:
+            quote_timeout = min(0.8, max_wait_seconds)
+            quote_map = batch_get_prices_fast(quote_codes, timeout_seconds=quote_timeout)
+        except Exception as exc:
+            logger.warning("search_stocks quote enrich failed query=%s error=%s", query, exc)
+            quote_map = {}
+
+        for item in final_results:
+            code = str(item.get('code', '') or '').strip()
+            asset_type = str(item.get('asset_type') or '')
+            if asset_type:
+                item['market_type'] = asset_type
+            if not code:
+                continue
+            quote = quote_map.get(code) or (0.0, 0.0, 0.0, 0.0)
+            try:
+                price = float(quote[0] or 0.0)
+                yclose = float(quote[1] or 0.0)
+                change = float(quote[2] or 0.0)
+                change_pct = float(quote[3] or 0.0)
+            except Exception:
+                price, yclose, change, change_pct = 0.0, 0.0, 0.0, 0.0
+
+            if price > 0:
+                item['price'] = price
+            if yclose > 0:
+                item['yclose'] = yclose
+            if price > 0 or yclose > 0 or change != 0.0:
+                item['change'] = change
+            if price > 0 or yclose > 0 or change_pct != 0.0:
+                item['change_pct'] = change_pct
+
+    def _final_sort_key(item):
+        code = str(item.get('code') or '').lower()
+        name = str(item.get('name') or '').lower()
+        clean_code = code.replace('gb_', '').replace('.hk', '').replace('f_', '').replace('ft_', '')
+        asset_type = str(item.get('asset_type') or '').lower()
+        price = float(item.get('price') or 0.0)
+        has_quote = 0 if price > 0 else 1
+        fund_penalty = 1 if asset_type == 'fund' and price <= 0 else 0
+        if query_lower == code or query_lower == clean_code:
+            match_rank = 0
+        elif name.startswith(query_lower):
+            match_rank = 1
+        elif query_lower in code or query_lower in clean_code:
+            match_rank = 2
+        else:
+            match_rank = 3
+        return (match_rank, has_quote, fund_penalty, 0 if asset_type != 'fund' else 1)
+
+    final_results.sort(key=_final_sort_key)
+
     elapsed_ms = int((time.monotonic() - started_at) * 1000)
     logger.info(
         "search_stocks done query=%s elapsed_ms=%s result_count=%s timed_out_sources=%s",

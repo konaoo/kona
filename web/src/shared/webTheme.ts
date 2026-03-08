@@ -19,6 +19,12 @@ function readStoredTheme(): WebTheme {
 
 const theme = ref<WebTheme>(readStoredTheme())
 
+function applyTheme(next: WebTheme) {
+  if (typeof document === 'undefined') return
+  document.documentElement.setAttribute('data-theme', next)
+  document.body?.setAttribute('data-theme', next)
+}
+
 function persistTheme(next: WebTheme) {
   if (typeof window === 'undefined') return
   try {
@@ -31,7 +37,10 @@ function persistTheme(next: WebTheme) {
 function setTheme(next: WebTheme) {
   theme.value = normalizeTheme(next)
   persistTheme(theme.value)
+  applyTheme(theme.value)
 }
+
+applyTheme(theme.value)
 
 function toggleTheme() {
   setTheme(theme.value === 'dark' ? 'light' : 'dark')
