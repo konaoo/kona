@@ -163,11 +163,15 @@ async function handleLogout() {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--blue) 14%, transparent), transparent 34%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--gold) 10%, transparent), transparent 30%),
+    var(--bg);
 }
 
 /* Sidebar Overrides & Extensions */
 .sidebar {
-  background: rgba(12, 13, 18, 0.98);
+  background: color-mix(in srgb, var(--s1) 96%, transparent);
 }
 
 .sidebar-nav {
@@ -187,19 +191,19 @@ async function handleLogout() {
   border-radius: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
 }
 
 .profile-mini:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .profile-mini.active {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(91, 141, 239, 0.08));
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text) 8%, transparent), color-mix(in srgb, var(--blue) 8%, transparent));
+  border-color: color-mix(in srgb, var(--text) 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .mini-avatar {
@@ -272,7 +276,7 @@ async function handleLogout() {
   height: 56px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
-  background: rgba(10,11,14,0.8);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
@@ -295,10 +299,21 @@ async function handleLogout() {
   padding: 0 24px;
 }
 
+[data-theme='light'] .sidebar {
+  box-shadow: 6px 0 24px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .topbar {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.03);
+}
+
 .page {
   height: calc(100vh - 56px);
   overflow-y: auto;
   padding: 24px 0; /* Vertical padding only, horiz handled by inner */
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--blue) 10%, transparent), transparent 26%),
+    var(--bg);
 }
 
 /* Scrollbar styling */
@@ -306,7 +321,7 @@ async function handleLogout() {
   width: 5px;
 }
 .page::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-divider);
   border-radius: 10px;
 }
 </style>

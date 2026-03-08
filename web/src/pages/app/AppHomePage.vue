@@ -503,12 +503,12 @@ onBeforeUnmount(() => {
           <div class="c3-hero">
             <div style="font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:8px">
               总资产
-              <div @click.stop="currencyOpen = !currencyOpen" style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.06);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none;position:relative">
+              <div @click.stop="currencyOpen = !currencyOpen" style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-soft);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none;position:relative">
                 <span>{{ currentCurrency }}</span>
                 <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)' }"><polyline points="6 9 12 15 18 9"/></svg>
                 
                 <!-- Currency Dropdown -->
-                <div v-if="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--s2);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:0 12px 32px rgba(0,0,0,0.4);animation:modalIn .18s ease">
+                <div v-if="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--panel-elevated);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:var(--shadow-float);animation:modalIn .18s ease">
                   <div class="ccy-option" :class="{ active: currentCurrency === 'CNY' }" @click.stop="currentCurrency = 'CNY'; currencyOpen = false">
                     <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">CNY</span>
                     <span style="font-size:9px;color:var(--muted)">人民币</span>
@@ -627,17 +627,17 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <!-- View toggle -->
-            <div style="display:flex;gap:4px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:9px;padding:3px;flex-shrink:0;margin-top:2px">
-              <button @click="holdingsView='card'" title="卡片视图" :style="holdingsView==='card'?'background:rgba(255,255,255,0.08);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
+            <div style="display:flex;gap:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:9px;padding:3px;flex-shrink:0;margin-top:2px">
+              <button @click="holdingsView='card'" title="卡片视图" :style="holdingsView==='card'?'background:var(--surface-strong);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/></svg>
               </button>
-              <button @click="holdingsView='row'" title="列表视图" :style="holdingsView==='row'?'background:rgba(255,255,255,0.08);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
+              <button @click="holdingsView='row'" title="列表视图" :style="holdingsView==='row'?'background:var(--surface-strong);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".6"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".35"/></svg>
               </button>
             </div>
           </div>
 
-        <div v-if="!filteredRows || filteredRows.length === 0" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:16px">
+        <div v-if="!filteredRows || filteredRows.length === 0" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:var(--surface-faint);border:1px solid var(--border);border-radius:16px">
           <div style="font-size:48px;margin-bottom:12px">📭</div>
           <div class="text-muted fs13">暂无持仓数据</div>
         </div>
@@ -687,7 +687,7 @@ onBeforeUnmount(() => {
                 </svg>
               </div>
               <!-- Removed redundant dayPnlRate badge -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--surface-divider)">
                 <div>
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size: 12.5px; font-weight: 600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
@@ -702,7 +702,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div>
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
-                  <div style="height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
+                  <div style="height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
                     <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
                   </div>
                 </div>
@@ -731,37 +731,37 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:12px;flex:1;align-items:center">
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">持仓数量</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ Number(row?.qty||0).toLocaleString() }}</div>
                 </div>
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">现价</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">
                     {{ quoteLabel(row) }}
                   </div>
                 </div>
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--muted)">{{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}</div>
                 </div>
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatValue(toNumber(row?.mv), row?.curr as any)) }}</div>
                 </div>
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
                   <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.dayPnlRate))">{{ dayPnlRateLabel(row) }}</div>
                 </div>
-                <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
+                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600" :class="valueClass(toNumber(row?.totalPnl))">{{ masked(formatValue(toNumber(row?.totalPnl), row?.curr as any)) }}</div>
                   <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.totalPnlRate))">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
                 </div>
                 <div style="padding:0 0 0 12px">
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
-                  <div style="height:4px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden">
+                  <div style="height:4px;background:var(--surface-track);border-radius:3px;overflow:hidden">
                     <div style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
                   </div>
                 </div>
@@ -774,7 +774,7 @@ onBeforeUnmount(() => {
       <!-- 资产详情列表 Modal -->
       <div class="modal-overlay" :class="{ show: modalVisible && !isFormModalVisible }" @click.self="closeModal">
         <div style="width:100%;max-width:440px;background:var(--s1);border:1px solid var(--border);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out);position:relative">
-          <button @click="closeModal" style="position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,0.04);border:none;color:var(--sub);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">✕</button>
+          <button @click="closeModal" style="position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:9px;background:var(--surface-soft);border:none;color:var(--sub);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">✕</button>
           
           <div style="font-size:18px;font-weight:700;margin-bottom:4px">{{ modalTitle }}</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:var(--text);margin-bottom:24px" :style="{ color: modalType === 'liability' ? 'var(--red)' : modalType === 'other' ? 'var(--gold)' : 'var(--green)' }">
@@ -784,7 +784,7 @@ onBeforeUnmount(() => {
           <div style="max-height:400px;overflow-y:auto;margin:0 -8px;padding:0 8px">
             <div v-if="!currentTypeAssets.length" style="text-align:center;padding:40px;color:var(--muted);font-size:13px">暂无记录，点击下方添加</div>
             <div v-else>
-              <div v-for="item in currentTypeAssets as any[]" :key="item.id" style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:14px;margin-bottom:10px">
+              <div v-for="item in currentTypeAssets as any[]" :key="item.id" style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface-faint);border:1px solid var(--border);border-radius:14px;margin-bottom:10px">
                 <div style="width:52px;height:52px;border-radius:14px;background:rgba(91,141,239,0.1);border:1px solid rgba(91,141,239,0.18);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">{{ item.icon || '🏦' }}</div>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">{{ item.name }}</div>
@@ -797,7 +797,7 @@ onBeforeUnmount(() => {
                 </div>
                 <!-- 操作按钮组 -->
                 <div style="display:flex;gap:6px">
-                   <button @click="openFormModal(item)" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);flex-shrink:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                   <button @click="openFormModal(item)" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface-soft);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);flex-shrink:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                    <button @click="removeAsset(modalType, item.id as number)" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:rgba(240,90,85,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--red);flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                 </div>
               </div>
@@ -846,7 +846,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:8px">
-            <button @click="closeFormModal" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
+            <button @click="closeFormModal" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface-soft);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
             <button @click="submitModal" :disabled="!form.name" style="flex:2;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#5b8def,#4a7be0);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(74,123,224,0.25)" :style="{ opacity: !form.name ? 0.5 : 1 }">保存</button>
           </div>
         </div>
@@ -861,7 +861,7 @@ onBeforeUnmount(() => {
 .c1-period-tabs {
   display: flex !important;
   gap: 4px !important;
-  background: rgba(255,255,255,0.04) !important;
+  background: var(--surface-soft) !important;
   border: 1px solid var(--border) !important;
   border-radius: 9px !important;
   padding: 3px !important;
@@ -882,7 +882,7 @@ onBeforeUnmount(() => {
   line-height: 1 !important;
 }
 .c1-pt.active {
-  background: rgba(255,255,255,0.08) !important;
+  background: var(--surface-strong) !important;
   color: var(--text) !important;
 }
 
@@ -894,6 +894,12 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1600px) {
+  .market-strip {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1500px) {
   .market-strip {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

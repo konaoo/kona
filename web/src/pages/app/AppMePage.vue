@@ -348,7 +348,7 @@ async function logout() {
 }
 
 .avatar-overlay {
-  position: absolute; inset: 0; background: rgba(0,0,0,0.4);
+  position: absolute; inset: 0; background: var(--overlay-soft);
   color: white; font-size: 11px; font-weight: 700;
   display: grid; place-items: center; opacity: 0;
   transition: opacity .2s;
@@ -369,7 +369,7 @@ async function logout() {
 
 
 .edit-icon-btn { color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; }
-.edit-icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--sub); }
+.edit-icon-btn:hover { background: var(--surface-soft); color: var(--sub); }
 
 
 
@@ -379,11 +379,11 @@ async function logout() {
 
 .setting-item {
   display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px; background: rgba(255,255,255,0.025);
+  padding: 14px 16px; background: var(--surface-faint);
   border: 1px solid var(--border); border-radius: 12px;
   cursor: pointer; transition: all .15s;
 }
-.setting-item:hover { background: rgba(255,255,255,0.05); border-color: var(--border-b); }
+.setting-item:hover { background: var(--surface-soft); border-color: var(--border-b); }
 .setting-item.logout:hover { border-color: rgba(240,90,85,0.3); }
 
 .s-icon { font-size: 16px; }
@@ -403,16 +403,16 @@ button.s-arrow {
 
 /* Modal */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+  position: fixed; inset: 0; background: var(--overlay-strong); backdrop-filter: blur(8px);
   display: grid; place-items: center; z-index: 1000;
 }
 .modal-card { width: 320px; padding: 24px; box-shadow: var(--shadow-xl); }
 .pwd-fields { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .pwd-input {
-  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  background: var(--panel-muted); border: 1px solid var(--border);
   padding: 12px; border-radius: 10px; color: var(--text); font-size: 13px;
 }
-.pwd-input:focus { border-color: var(--blue); }
+.pwd-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent); outline: none; }
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .modal-actions .btn { flex: 1; }
 
@@ -430,10 +430,10 @@ button.s-arrow {
 
 .btn {
   padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);
-  background: rgba(255,255,255,0.05); color: var(--text); font-size: 13px; font-weight: 700;
+  background: var(--surface-soft); color: var(--text); font-size: 13px; font-weight: 700;
   cursor: pointer; transition: all .16s;
 }
-.btn:hover { background: rgba(255,255,255,0.08); border-color: var(--border-b); }
+.btn:hover { background: var(--surface-soft-hover); border-color: var(--border-b); }
 .btn-primary { background: var(--blue); border-color: transparent; color: white; }
 .btn-primary:hover { opacity: .9; }
 
