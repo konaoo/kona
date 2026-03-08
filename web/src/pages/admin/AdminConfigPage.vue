@@ -1,62 +1,110 @@
 <template>
-  <LegacyAdminShell title="运营配置" subtitle="邀请码页与用户群页（App内）">
-    <AdminCard class="panel-body" variant="surface">
-      <AdminSectionHeader title="运营配置" subtitle="点击编辑后在弹窗内修改，保存后将立即生效。">
-        <template #actions>
-          <AdminButton variant="secondary" soft pill :disabled="loadingAny" @click="refreshAll">
-            {{ loadingAny ? '刷新中...' : '刷新' }}
-          </AdminButton>
-        </template>
-      </AdminSectionHeader>
-
-      <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="page-message">{{ pageMessage }}</p>
-
-      <div class="config-list">
-        <AdminCard v-for="scene in SCENES" :key="scene" class="config-item" :padded="false" variant="surface">
-          <div class="item-main">
-            <div class="item-copy">
-              <h4 class="item-title">{{ sceneTitle(scene) }}</h4>
-              <p class="item-text">{{ scenePreviewText(scene) }}</p>
-              <span :class="['item-meta', sceneImageMetaClass(scene)]">{{ sceneImageMeta(scene) }}</span>
-            </div>
-
-            <div class="item-thumb">
-              <img
-                v-if="showSceneImage(scene)"
-                :src="sceneImageUrl(scene)"
-                :alt="`${sceneTitle(scene)}缩略图`"
-                @error="thumbLoadFailed[scene] = true"
-                @load="thumbLoadFailed[scene] = false"
-              />
-              <span v-else>暂无缩略图</span>
-            </div>
-          </div>
-
-          <div class="item-actions">
-            <AdminButton variant="primary" pill :disabled="loading[scene]" @click="openEditor(scene)">
-              编辑
-            </AdminButton>
-          </div>
-        </AdminCard>
-
-        <AdminCard class="config-item app-update-card" :padded="false" variant="surface">
-          <div class="item-main no-thumb">
-            <div class="item-copy">
-              <h4 class="item-title">{{ APP_UPDATE_META.title }}</h4>
-              <p class="item-text">{{ appUpdatePreviewText }}</p>
-              <span :class="['item-meta', appUpdateUrlMetaClass]">{{ appUpdateUrlMeta }}</span>
-            </div>
-          </div>
-
-          <div class="item-actions">
-            <AdminButton variant="primary" pill :disabled="loadingAppUpdate" @click="openAppUpdateEditor">
-              编辑
-            </AdminButton>
-          </div>
-        </AdminCard>
+  <div class="container admin-config">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">🏠</div>
+        <span>咔咔管理后台</span>
       </div>
-    </AdminCard>
 
+      <nav>
+        <RouterLink 
+          v-for="item in nav" 
+          :key="item.path" 
+          :to="item.path"
+          class="nav-item"
+          active-class="active"
+        >
+          <span>{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
+
+      <div class="user-profile">
+        <div class="user-info">
+          <div class="user-avatar" :style="avatarStyle"></div>
+          <div class="user-details">
+            <h4>{{ store.state.user?.username || '管理员' }}</h4>
+            <p>管理员</p>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="logout-btn" @click="onLogout" title="退出登录">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="header">
+        <div class="header-title">
+          <h1>运营配置</h1>
+        </div>
+        <div class="header-actions">
+          <button class="add-btn" :disabled="loadingAny" @click="refreshAll">
+            <span>🔄</span>
+            <span>{{ loadingAny ? '正在刷新' : '刷新配置' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="msg-tip">{{ pageMessage }}</p>
+
+      <div class="config-grid">
+        <!-- Scene Config Cards -->
+        <div v-for="scene in SCENES" :key="scene" class="config-card">
+          <div class="card-body">
+            <div class="info-side">
+               <h3 class="card-title">{{ sceneTitle(scene) }}</h3>
+               <p class="card-preview">{{ scenePreviewText(scene) }}</p>
+               <span class="card-meta" :class="{ 'is-error': thumbLoadFailed[scene] }">
+                 {{ sceneImageMeta(scene) }}
+               </span>
+            </div>
+            <div class="thumb-side">
+               <div class="thumb-box">
+                 <img
+                    v-if="showSceneImage(scene)"
+                    :src="sceneImageUrl(scene)"
+                    :alt="sceneTitle(scene)"
+                    @error="thumbLoadFailed[scene] = true"
+                    @load="thumbLoadFailed[scene] = false"
+                  />
+                  <div v-else class="thumb-empty">无图</div>
+               </div>
+            </div>
+          </div>
+          <div class="card-footer">
+             <button class="action-btn" :disabled="loading[scene]" @click="openEditor(scene)">编辑配置</button>
+          </div>
+        </div>
+
+        <!-- App Update Card -->
+        <div class="config-card update-card">
+          <div class="card-body">
+            <div class="info-side">
+               <h3 class="card-title">{{ APP_UPDATE_META.title }}</h3>
+               <p class="card-preview update-preview">{{ appUpdatePreviewText }}</p>
+               <div class="url-line" :class="{ 'is-error': appUpdateUrlMetaClass === 'is-error' }">
+                 <span class="url-icon">📁</span>
+                 <span class="url-text">{{ appUpdateUrlMeta }}</span>
+               </div>
+            </div>
+          </div>
+          <div class="card-footer">
+             <button class="action-btn" :disabled="loadingAppUpdate" @click="openAppUpdateEditor">编辑更新</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals -->
     <OpsConfigEditorModal
       :visible="editor.visible"
       :title="currentMeta.modalTitle"
@@ -85,50 +133,31 @@
       @update:text="appUpdateEditor.draft.text = $event"
       @update:download-url="appUpdateEditor.draft.download_url = $event"
     />
-  </LegacyAdminShell>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
-import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
-import OpsAppUpdateEditorModal from '../../components/admin/OpsAppUpdateEditorModal.vue'
-import AdminCard from '../../components/admin/ui/AdminCard.vue'
-import AdminButton from '../../components/admin/ui/AdminButton.vue'
-import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
+import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
 import { useKonaStore } from '../../stores/composables'
+import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
+import OpsAppUpdateEditorModal from '../../components/admin/OpsAppUpdateEditorModal.vue'
 
-type OpsConfigPayload = {
-  text?: string
-  image_url?: string
-}
+const router = useRouter()
+const store = useKonaStore()
 
-type OpsAppUpdatePayload = {
-  text?: string
-  download_url?: string
-}
+type OpsConfigPayload = { text?: string; image_url?: string }
+type OpsAppUpdatePayload = { text?: string; download_url?: string }
 
 const SCENES = ['invite', 'user_group', 'ios_qr'] as const
 type ConfigScene = typeof SCENES[number]
 
-const META: Record<
-  ConfigScene,
-  {
-    title: string
-    modalTitle: string
-    defaultText: string
-    loadPath: string
-    savePath: string
-    saveSuccess: string
-    loadError: string
-    saveError: string
-  }
-> = {
+const META: Record<ConfigScene, any> = {
   invite: {
     title: '邀请码页面',
     modalTitle: '邀请码配置',
-    defaultText: '小红书被限制了，进微信群领邀请码。',
+    defaultText: '进微信群领邀请码。',
     loadPath: '/api/admin/ops/invite_acquire',
     savePath: '/api/admin/ops/invite_acquire/update',
     saveSuccess: '邀请码配置已保存',
@@ -176,152 +205,94 @@ const configForm = reactive<Record<ConfigScene, Required<OpsConfigPayload>>>({
 })
 
 const loading = reactive<Record<ConfigScene, boolean>>({
-  invite: false,
-  user_group: false,
-  ios_qr: false,
+  invite: false, user_group: false, ios_qr: false,
 })
 
 const loadingAppUpdate = ref(false)
-
 const thumbLoadFailed = reactive<Record<ConfigScene, boolean>>({
-  invite: false,
-  user_group: false,
-  ios_qr: false,
+  invite: false, user_group: false, ios_qr: false,
 })
 
 const appUpdateState = reactive<Required<OpsAppUpdatePayload>>({
-  text: '',
-  download_url: '',
+  text: '', download_url: '',
 })
 
 const pageMessage = ref('')
 const pageOk = ref(true)
 
 const editor = reactive<{
-  visible: boolean
-  scene: ConfigScene
-  saving: boolean
-  message: string
-  ok: boolean
-  draft: Required<OpsConfigPayload>
+  visible: boolean; scene: ConfigScene; saving: boolean; message: string; ok: boolean; draft: Required<OpsConfigPayload>
 }>({
-  visible: false,
-  scene: 'invite',
-  saving: false,
-  message: '',
-  ok: true,
-  draft: {
-    text: '',
-    image_url: '',
-  },
+  visible: false, scene: 'invite', saving: false, message: '', ok: true, draft: { text: '', image_url: '' }
 })
 
 const appUpdateEditor = reactive<{
-  visible: boolean
-  saving: boolean
-  message: string
-  ok: boolean
-  draft: Required<OpsAppUpdatePayload>
+  visible: boolean; saving: boolean; message: string; ok: boolean; draft: Required<OpsAppUpdatePayload>
 }>({
-  visible: false,
-  saving: false,
-  message: '',
-  ok: true,
-  draft: {
-    text: '',
-    download_url: '',
-  },
+  visible: false, saving: false, message: '', ok: true, draft: { text: '', download_url: '' }
 })
+
+const nav = [
+  { path: '/admin/overview', label: '数据概览', icon: '📊' },
+  { path: '/admin/users', label: '用户管理', icon: '👥' },
+  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
+  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
+  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
+]
+
+const avatarStyle = computed(() => ({
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+}))
 
 const loadingAny = computed(() => SCENES.some((scene) => loading[scene]) || loadingAppUpdate.value)
 const currentMeta = computed(() => META[editor.scene])
+
 const appUpdatePreviewText = computed(() => {
   if (loadingAppUpdate.value) return '读取中...'
-  const text = String(appUpdateState.text || '').trim()
-  return text || APP_UPDATE_META.defaultText
+  return String(appUpdateState.text || '').trim() || APP_UPDATE_META.defaultText
 })
+
 const appUpdateUrlMeta = computed(() => {
   if (loadingAppUpdate.value) return '下载链接读取中...'
   const url = String(appUpdateState.download_url || '').trim()
   if (!url) return '未配置下载链接'
-  if (!/^https?:\/\//i.test(url)) return '下载链接格式异常'
-  return '已配置下载链接'
+  return /^https?:\/\//i.test(url) ? '已配置下载资源' : '下载链接格式异常'
 })
+
 const appUpdateUrlMetaClass = computed(() => {
   const url = String(appUpdateState.download_url || '').trim()
   if (!url) return ''
   return /^https?:\/\//i.test(url) ? '' : 'is-error'
 })
 
-function normalizePayload(
-  payload: OpsConfigPayload | null | undefined,
-  fallback: Required<OpsConfigPayload> = { text: '', image_url: '' },
-): Required<OpsConfigPayload> {
-  return {
-    text: String(payload?.text ?? fallback.text ?? ''),
-    image_url: String(payload?.image_url ?? fallback.image_url ?? ''),
-  }
+function normalizePayload(p: any, f: any = { text: '', image_url: '' }) {
+  return { text: String(p?.text ?? f.text ?? ''), image_url: String(p?.image_url ?? f.image_url ?? '') }
 }
 
-function normalizeAppUpdatePayload(
-  payload: OpsAppUpdatePayload | null | undefined,
-  fallback: Required<OpsAppUpdatePayload> = { text: '', download_url: '' },
-): Required<OpsAppUpdatePayload> {
-  return {
-    text: String(payload?.text ?? fallback.text ?? ''),
-    download_url: String(payload?.download_url ?? fallback.download_url ?? ''),
-  }
+function normalizeAppUpdatePayload(p: any, f: any = { text: '', download_url: '' }) {
+  return { text: String(p?.text ?? f.text ?? ''), download_url: String(p?.download_url ?? f.download_url ?? '') }
 }
 
-function flashPage(msg: string, success: boolean) {
-  pageMessage.value = msg
-  pageOk.value = success
-}
-
-function flashEditor(msg: string, success: boolean) {
-  editor.message = msg
-  editor.ok = success
-}
-
-function flashAppUpdateEditor(msg: string, success: boolean) {
-  appUpdateEditor.message = msg
-  appUpdateEditor.ok = success
-}
-
-function sceneTitle(scene: ConfigScene): string {
-  return META[scene].title
-}
-
-function sceneImageUrl(scene: ConfigScene): string {
-  return String(configForm[scene].image_url || '').trim()
-}
-
+function flashPage(msg: string, success: boolean) { pageMessage.value = msg; pageOk.value = success; }
+function sceneTitle(scene: ConfigScene): string { return META[scene].title; }
+function sceneImageUrl(scene: ConfigScene): string { return String(configForm[scene].image_url || '').trim(); }
 function scenePreviewText(scene: ConfigScene): string {
-  if (loading[scene]) return '读取中...'
-  const text = String(configForm[scene].text || '').trim()
-  return text || META[scene].defaultText
+  if (loading[scene]) return '读取中...';
+  return String(configForm[scene].text || '').trim() || META[scene].defaultText;
 }
-
 function showSceneImage(scene: ConfigScene): boolean {
-  const imageUrl = sceneImageUrl(scene)
-  return Boolean(imageUrl) && !thumbLoadFailed[scene]
+  const imageUrl = sceneImageUrl(scene);
+  return Boolean(imageUrl) && !thumbLoadFailed[scene];
 }
-
 function sceneImageMeta(scene: ConfigScene): string {
-  if (loading[scene]) return '图片读取中...'
-  const imageUrl = sceneImageUrl(scene)
-  if (!imageUrl) return '未配置图片（使用占位图）'
-  if (thumbLoadFailed[scene]) return '图片链接不可用'
-  return '已配置图片'
-}
-
-function sceneImageMetaClass(scene: ConfigScene): string {
-  return thumbLoadFailed[scene] ? 'is-error' : ''
+  if (loading[scene]) return '图片读取中...';
+  const imageUrl = sceneImageUrl(scene);
+  if (!imageUrl) return '未配置图片';
+  return thumbLoadFailed[scene] ? '图片链接无效' : '已配置预览图';
 }
 
 async function loadConfig(scene: ConfigScene) {
-  loading[scene] = true
-  thumbLoadFailed[scene] = false
+  loading[scene] = true; thumbLoadFailed[scene] = false;
   try {
     const payload = await api.get<OpsConfigPayload>(META[scene].loadPath)
     const normalized = normalizePayload(payload)
@@ -354,77 +325,21 @@ async function refreshAll() {
 }
 
 function openEditor(scene: ConfigScene) {
-  editor.scene = scene
-  editor.visible = true
-  editor.saving = false
-  editor.message = ''
-  editor.ok = true
+  editor.scene = scene; editor.visible = true; editor.saving = false; editor.message = ''; editor.ok = true;
   editor.draft = normalizePayload(configForm[scene])
 }
-
-function closeEditor() {
-  if (editor.saving) return
-  editor.visible = false
-  editor.message = ''
-}
+function closeEditor() { if (editor.saving) return; editor.visible = false; }
 
 function openAppUpdateEditor() {
-  appUpdateEditor.visible = true
-  appUpdateEditor.saving = false
-  appUpdateEditor.message = ''
-  appUpdateEditor.ok = true
+  appUpdateEditor.visible = true; appUpdateEditor.saving = false; appUpdateEditor.message = ''; appUpdateEditor.ok = true;
   appUpdateEditor.draft = normalizeAppUpdatePayload(appUpdateState)
 }
-
-function closeAppUpdateEditor() {
-  if (appUpdateEditor.saving) return
-  appUpdateEditor.visible = false
-  appUpdateEditor.message = ''
-}
-
-function validateEditor(): string | null {
-  const text = String(editor.draft.text || '').trim()
-  const imageUrl = String(editor.draft.image_url || '').trim()
-
-  if (text.length < 1 || text.length > 200) return '文案长度需在 1 到 200 个字符之间'
-  if (imageUrl.length > 2048) return '图片链接长度不能超过 2048 个字符'
-  if (imageUrl && !/^https?:\/\//i.test(imageUrl)) return '图片链接必须以 http:// 或 https:// 开头'
-  return null
-}
-
-function validateAppUpdateEditor(): string | null {
-  const text = String(appUpdateEditor.draft.text || '').trim()
-  const downloadUrl = String(appUpdateEditor.draft.download_url || '').trim()
-
-  if (text.length < 1 || text.length > 500) return '文案长度需在 1 到 500 个字符之间'
-  if (downloadUrl.length > 2048) return '下载链接长度不能超过 2048 个字符'
-  if (downloadUrl && !/^https?:\/\//i.test(downloadUrl)) {
-    return '下载链接必须以 http:// 或 https:// 开头'
-  }
-  return null
-}
+function closeAppUpdateEditor() { if (appUpdateEditor.saving) return; appUpdateEditor.visible = false; }
 
 async function saveEditor() {
-  const validation = validateEditor()
-  if (validation) {
-    flashEditor(validation, false)
-    return
-  }
-
   const scene = editor.scene
   const payloadToSave = normalizePayload(editor.draft)
-  payloadToSave.text = payloadToSave.text.trim()
-  payloadToSave.image_url = payloadToSave.image_url.trim()
-
-  // Add explicit auth check
-  const store = useKonaStore()
-  if (!store.isAuthenticated.value || !store.isAdmin.value) {
-    flashEditor('登录状态已失效，请重新登录', false)
-    return
-  }
-
-  editor.saving = true
-  editor.message = ''
+  editor.saving = true; editor.message = '';
   try {
     const payload = await api.post<OpsConfigPayload>(META[scene].savePath, payloadToSave)
     const normalized = normalizePayload(payload, payloadToSave)
@@ -434,41 +349,16 @@ async function saveEditor() {
     flashPage(META[scene].saveSuccess, true)
     closeEditor()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : META[scene].saveError
-    flashEditor(msg, false)
-    if (msg.includes('Authorization') || msg.includes('login')) {
-      // Re-bootstrap or redirect after a delay
-      setTimeout(() => {
-        void store.logout().then(() => {
-          void window.location.reload()
-        })
-      }, 1500)
-    }
+    editor.message = e instanceof Error ? e.message : META[scene].saveError
+    editor.ok = false
   } finally {
     editor.saving = false
   }
 }
 
 async function saveAppUpdateEditor() {
-  const validation = validateAppUpdateEditor()
-  if (validation) {
-    flashAppUpdateEditor(validation, false)
-    return
-  }
-
   const payloadToSave = normalizeAppUpdatePayload(appUpdateEditor.draft)
-  payloadToSave.text = payloadToSave.text.trim()
-  payloadToSave.download_url = payloadToSave.download_url.trim()
-
-  // Add explicit auth check
-  const store = useKonaStore()
-  if (!store.isAuthenticated.value || !store.isAdmin.value) {
-    flashAppUpdateEditor('登录状态已失效，请重新登录', false)
-    return
-  }
-
-  appUpdateEditor.saving = true
-  appUpdateEditor.message = ''
+  appUpdateEditor.saving = true; appUpdateEditor.message = '';
   try {
     const payload = await api.post<OpsAppUpdatePayload>(APP_UPDATE_META.savePath, payloadToSave)
     const normalized = normalizeAppUpdatePayload(payload, payloadToSave)
@@ -477,18 +367,16 @@ async function saveAppUpdateEditor() {
     flashPage(APP_UPDATE_META.saveSuccess, true)
     closeAppUpdateEditor()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : APP_UPDATE_META.saveError
-    flashAppUpdateEditor(msg, false)
-    if (msg.includes('Authorization') || msg.includes('login')) {
-      setTimeout(() => {
-        void store.logout().then(() => {
-          void window.location.reload()
-        })
-      }, 1500)
-    }
+    appUpdateEditor.message = e instanceof Error ? e.message : APP_UPDATE_META.saveError
+    appUpdateEditor.ok = false
   } finally {
     appUpdateEditor.saving = false
   }
+}
+
+async function onLogout() {
+  await store.logout()
+  await router.push('/admin/login')
 }
 
 onMounted(() => {
@@ -497,136 +385,71 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.panel-body {
-  padding: 18px;
-  margin-bottom: 16px;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-.page-message {
-  margin: 0 0 12px;
-  font-weight: 600;
-}
+.container { width: 100vw; height: 100vh; background: white; overflow: hidden; display: flex; font-family: 'Inter', sans-serif; color: #333; }
 
-.config-list {
-  display: grid;
-  gap: 12px;
-}
+/* Sidebar Copy */
+.sidebar { width: 260px; background: white; padding: 30px 0 0 0; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; height: 100vh; flex-shrink: 0; }
+.logo { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 19px; margin-bottom: 35px; padding: 0 24px; color: #000; letter-spacing: -0.5px; }
+.logo-icon { width: 34px; height: 34px; background: #000; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 13px 18px; margin: 0 12px 6px 12px; border-radius: 14px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); color: #666; font-weight: 600; text-decoration: none; font-size: 14.5px; }
+.nav-item:hover { background: #f8f9fa; color: #000; }
+.nav-item.active { background: #000; color: white; }
+.user-profile { margin-top: auto; padding: 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; background: #fdfdfd; }
+.user-info { display: flex; align-items: center; gap: 12px; }
+.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+.user-details { display: flex; flex-direction: column; align-items: flex-start; }
+.user-details h4 { font-size: 16px; font-weight: 800; margin: 0; padding: 0; color: #000; line-height: 1; }
+.user-details p { font-size: 12px; color: #999; font-weight: 500; margin: 4px 0 0 0; padding: 0; line-height: 1; }
+.logout-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e2e2; background: transparent; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.logout-btn:hover { background: #2d2d2d; color: #fff; border-color: #444; transform: translateX(2px); }
 
-.config-item {
-  border: 1px solid #dfe6ea;
-  border-radius: 12px;
-  background: #fdfefe;
-  padding: 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-}
+/* Main Content */
+.main-content { flex: 1; padding: 40px 50px; overflow-y: auto; height: 100vh; background: #fafafa; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
+.header-title h1 { font-size: 32px; font-weight: 800; margin-bottom: 6px; color: #000; letter-spacing: -0.8px; }
 
-.item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
+.add-btn { height: 46px; padding: 0 22px; background: #000; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
+.add-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2); }
+.add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.item-main.no-thumb {
-  align-items: flex-start;
-}
+.msg-tip { margin-bottom: 25px; font-weight: 700; font-size: 14.5px; }
+.up { color: #10b981; }
+.down { color: #ef4444; }
 
-.item-copy {
-  flex: 1;
-  min-width: 0;
-}
+/* Grid Layout */
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
 
-.item-title {
-  margin: 0;
-  color: #1f252b;
-  font-size: 17px;
-  font-weight: 700;
-}
+.config-card { background: white; border-radius: 20px; border: 1px solid #f0f0f0; overflow: hidden; display: flex; flex-direction: column; transition: all 0.3s ease; }
+.config-card:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(0,0,0,0.06); }
 
-.item-text {
-  margin: 8px 0 6px;
-  color: #2e3944;
-  line-height: 1.55;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: pre-wrap;
-}
+.card-body { padding: 24px; flex: 1; display: flex; gap: 20px; }
+.info-side { flex: 1; min-width: 0; }
+.card-title { font-size: 18px; font-weight: 800; color: #000; margin: 0 0 10px 0; }
+.card-preview { font-size: 14px; color: #666; line-height: 1.6; margin: 0 0 12px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; }
+.card-meta { font-size: 11px; font-weight: 800; background: #f5f5f5; color: #999; padding: 3px 10px; border-radius: 6px; text-transform: uppercase; }
+.card-meta.is-error { background: #fff1f0; color: #f5222d; }
 
-.item-meta {
-  color: #8a939c;
-  font-size: 12px;
-  font-weight: 600;
-}
+.thumb-side { flex-shrink: 0; }
+.thumb-box { width: 84px; height: 84px; border-radius: 12px; background: #fafafa; border: 1px solid #eee; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.thumb-box img { width: 100%; height: 100%; object-fit: cover; }
+.thumb-empty { font-size: 12px; color: #ccc; font-weight: 700; }
 
-.item-meta.is-error {
-  color: var(--danger);
-}
+.card-footer { padding: 18px 24px; background: #fcfcfc; border-top: 1px solid #f7f7f7; }
+.action-btn { width: 100%; height: 40px; border-radius: 10px; border: 1px solid #eee; background: white; color: #333; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.action-btn:hover:not(:disabled) { border-color: #000; background: #000; color: #fff; }
 
-.item-thumb {
-  width: 92px;
-  height: 92px;
-  border-radius: 10px;
-  border: 1px solid #d9e2e8;
-  background: #fff;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
+/* Update Card Special */
+.update-card { grid-column: span 1; }
+.update-preview { -webkit-line-clamp: 3; }
+.url-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; background: #f8f8f8; border-radius: 8px; border: 1px solid #eee; }
+.url-icon { font-size: 14px; }
+.url-text { font-size: 11px; font-weight: 700; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.url-line.is-error { border-color: #ffa39e; background: #fff1f0; }
 
-.item-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.item-thumb span {
-  padding: 8px;
-  text-align: center;
-  color: #6b84a3;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.item-actions {
-  flex: 0 0 auto;
-}
-
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
-}
-
-@media (max-width: 760px) {
-  .config-item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .item-main {
-    width: 100%;
-  }
-
-  .item-thumb {
-    width: 76px;
-    height: 76px;
-  }
-
-  .item-actions {
-    width: 100%;
-  }
-
-  .item-actions :deep(.admin-btn) {
-    width: 100%;
-  }
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .config-grid { grid-template-columns: 1fr; }
 }
 </style>

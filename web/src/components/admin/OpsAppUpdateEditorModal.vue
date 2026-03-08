@@ -2,48 +2,60 @@
   <div v-if="visible" class="editor-mask" @click.self="onClose">
     <section class="ops-editor-panel">
       <div class="editor-head">
-        <h3>{{ title }}</h3>
-        <button class="ops-editor-btn ops-editor-btn-ghost" :disabled="saving" @click="onClose">关闭</button>
+        <div class="head-info">
+          <h3>{{ title }}</h3>
+        </div>
+        <button class="close-btn" :disabled="saving" @click="onClose">✕</button>
       </div>
 
-      <label class="field">
-        <span class="label">文案</span>
-        <textarea
-          :value="draft.text"
-          class="ops-editor-input textarea"
-          maxlength="500"
-          placeholder="请输入更新说明"
-          @input="onTextInput"
-        />
-      </label>
+      <div class="editor-body">
+        <label class="field">
+          <span class="label">更新说明文案</span>
+          <textarea
+            :value="draft.text"
+            class="ops-editor-input textarea"
+            maxlength="500"
+            placeholder="请输入更新说明（支持换行）"
+            @input="onTextInput"
+          />
+        </label>
 
-      <label class="field">
-        <span class="label">下载链接</span>
-        <input
-          :value="draft.download_url"
-          class="ops-editor-input"
-          type="url"
-          maxlength="2048"
-          placeholder="https://example.com/kaka-latest.apk"
-          @input="onDownloadUrlInput"
-        />
-      </label>
+        <label class="field">
+          <span class="label">下载链接 (URL)</span>
+          <input
+            :value="draft.download_url"
+            class="ops-editor-input"
+            type="url"
+            maxlength="2048"
+            placeholder="https://example.com/kaka-latest.apk"
+            @input="onDownloadUrlInput"
+          />
+        </label>
 
-      <section class="preview-block">
-        <h4>预览</h4>
-        <p class="preview-text">{{ previewText }}</p>
-        <p class="preview-url">{{ previewUrl }}</p>
-      </section>
+        <section class="preview-block">
+          <div class="preview-header">
+             <h4>最终效果预览</h4>
+             <span class="preview-badge">实时</span>
+          </div>
+          <div class="preview-content">
+            <p class="preview-text">{{ previewText }}</p>
+            <div class="url-badge">
+               <span class="url-icon">🔗</span>
+               <span class="preview-url">{{ previewUrl }}</span>
+            </div>
+          </div>
+        </section>
 
-      <p v-if="message" :class="ok ? 'up' : 'down'" class="editor-message">
-        {{ message }}
-      </p>
+        <p v-if="message" :class="ok ? 'up' : 'down'" class="editor-message">
+          {{ message }}
+        </p>
+      </div>
 
       <div class="actions">
-        <button class="ops-editor-btn ops-editor-btn-primary" :disabled="saving" @click="onSave">
-          {{ saving ? '保存中...' : '保存' }}
+        <button class="btn btn-secondary" :disabled="saving" @click="onClose">取消</button>
+        <button class="btn btn-primary" :disabled="saving" @click="onSave">
+          {{ saving ? '正在保存...' : '确认发布更新' }}
         </button>
-        <button class="ops-editor-btn ops-editor-btn-secondary" :disabled="saving" @click="onClose">取消</button>
       </div>
     </section>
   </div>
@@ -109,169 +121,80 @@ function onSave() {
 
 <style scoped>
 .editor-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  padding: 16px;
-  display: grid;
-  place-items: center;
-  background: rgba(7, 18, 33, 0.58);
+  position: fixed; inset: 0; z-index: 1000; padding: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
 }
 
 .ops-editor-panel {
-  width: min(760px, 100%);
-  max-height: min(88vh, 820px);
-  overflow: auto;
-  padding: 18px;
-  background: #ffffff;
-  border: 1px solid #d6e1ee;
-  border-radius: 16px;
-  box-shadow: 0 20px 54px rgba(7, 18, 33, 0.28);
+  width: min(700px, 100%); max-height: 90vh;
+  background: white; border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; overflow: hidden;
 }
 
 .editor-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  padding: 24px 30px; border-bottom: 1px solid #f0f0f0;
+  display: flex; justify-content: space-between; align-items: center;
 }
+.head-info h3 { font-size: 20px; font-weight: 800; color: #000; margin: 0; }
 
-.editor-head h3 {
-  margin: 0;
-  color: #1f3f58;
-  font-size: 20px;
-  font-weight: 800;
+.close-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: none; background: #f5f5f5;
+  color: #888; cursor: pointer; font-size: 16px; display: flex; align-items: center;
+  justify-content: center; transition: all 0.2s;
 }
+.close-btn:hover { background: #000; color: #fff; transform: rotate(90deg); }
 
-.field {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-}
+.editor-body { padding: 24px 30px; overflow-y: auto; flex: 1; }
 
-.label {
-  color: #55708f;
-  font-size: 12px;
-  font-weight: 700;
-}
+.field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.label { font-size: 13px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .ops-editor-input {
-  width: 100%;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid #c7d8ea;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #10243e;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  width: 100%; padding: 12px 16px; border: 1px solid #e5e7eb; border-radius: 12px;
+  font-size: 14px; color: #333; font-weight: 500; transition: all 0.2s;
 }
-
-.ops-editor-input:focus {
-  outline: none;
-  border-color: #7ea2cb;
-  box-shadow: 0 0 0 3px rgba(126, 162, 203, 0.2);
-}
-
-.textarea {
-  min-height: 140px;
-  resize: vertical;
-}
+.ops-editor-input:focus { outline: none; border-color: #000; background: #fafafa; }
+.textarea { min-height: 140px; resize: none; line-height: 1.6; }
 
 .preview-block {
-  margin-top: 14px;
-  padding: 12px;
-  border: 1px solid #d6e1ee;
-  border-radius: 10px;
-  background: #f8fbff;
+  margin-top: 24px; border: 1px solid #f0f0f0; border-radius: 18px;
+  background: #fafafa; padding: 20px;
 }
+.preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.preview-header h4 { margin: 0; font-size: 14px; font-weight: 800; color: #000; }
+.preview-badge { font-size: 10px; font-weight: 800; background: #000; color: #fff; padding: 2px 8px; border-radius: 4px; }
 
-.preview-block h4 {
-  margin: 0;
-  color: #1f3f58;
-  font-size: 15px;
-  font-weight: 700;
+.preview-content { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; }
+.preview-text { font-size: 14px; color: #333; line-height: 1.6; margin: 0 0 12px 0; font-weight: 500; white-space: pre-wrap; }
+
+.url-badge {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: #f8f8f8; border-radius: 8px; border: 1px solid #eee;
 }
+.url-icon { font-size: 14px; }
+.preview-url { font-size: 12px; color: #666; font-weight: 600; word-break: break-all; }
 
-.preview-text {
-  margin: 10px 0 10px;
-  color: #10243e;
-  line-height: 1.6;
-  white-space: pre-wrap;
+.editor-message { margin-top: 15px; font-size: 13px; font-weight: 700; }
+.up { color: #10b981; }
+.down { color: #ef4444; }
+
+.actions { padding: 20px 30px; background: #fdfdfd; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 12px; }
+
+.btn {
+  height: 44px; padding: 0 24px; border-radius: 12px; font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.2s; border: none; display: flex; align-items: center; justify-content: center;
 }
+.btn-primary { background: #000; color: #fff; }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+.btn-secondary { background: #f0f0f0; color: #666; }
+.btn-secondary:hover { background: #e5e5e5; color: #333; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
-.preview-url {
-  margin: 0;
-  color: #35557d;
-  line-height: 1.5;
-  word-break: break-all;
-}
-
-.editor-message {
-  margin-top: 10px;
-  font-weight: 600;
-}
-
-.actions {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.ops-editor-btn {
-  min-height: 42px;
-  border: 1px solid #c8d6e7;
-  border-radius: 999px;
-  padding: 0 16px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.ops-editor-btn:hover {
-  transform: translateY(-1px);
-}
-
-.ops-editor-btn:disabled {
-  opacity: 0.62;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.ops-editor-btn-primary {
-  border-color: #5f9fd7;
-  background: linear-gradient(140deg, #7ec2ff, #59a7ea);
-  color: #062749;
-}
-
-.ops-editor-btn-secondary {
-  background: #e8eff7;
-  color: #1f3f58;
-}
-
-.ops-editor-btn-ghost {
-  background: transparent;
-  color: #35557d;
-}
-
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
-}
-
-@media (max-width: 760px) {
-  .actions {
-    flex-direction: column-reverse;
-  }
-
-  .actions .ops-editor-btn {
-    width: 100%;
-  }
+@media (max-width: 700px) {
+  .ops-editor-panel { border-radius: 0; width: 100%; height: 100%; max-height: 100%; }
+  .actions { flex-direction: column; }
+  .btn { width: 100%; }
 }
 </style>

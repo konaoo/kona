@@ -1,164 +1,235 @@
 <template>
-  <LegacyAdminShell title="用户管理" subtitle="查询、封禁与资产明细">
-    <AdminCard class="search-card" variant="surface">
-      <AdminSectionHeader title="用户管理" subtitle="当前仅展示总资产 > 0 的用户">
-        <template #actions>
-          <span class="all-chip">全部（总资产>0）</span>
-        </template>
-      </AdminSectionHeader>
-      <div class="toolbar">
-        <input class="input" v-model.trim="query" placeholder="搜索用户名/昵称/手机号" @keyup.enter="onSearch" />
-        <AdminButton variant="primary" pill @click="onSearch">查询</AdminButton>
+  <div class="container admin-users">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">🏠</div>
+        <span>咔咔管理后台</span>
       </div>
-    </AdminCard>
 
-    <AdminCard class="list-card" variant="surface">
-      <AdminTable>
-        <thead>
-          <tr>
-            <th>用户名</th>
-            <th>用户昵称</th>
-            <th>
-              <button class="sort-btn" @click="toggleSort('total_asset_cny')">
-                总资产金额（￥）<span>{{ sortIcon('total_asset_cny') }}</span>
-              </button>
-            </th>
-            <th>
-              <button class="sort-btn" @click="toggleSort('total_invest_cny')">
-                投资资产金额（￥）<span>{{ sortIcon('total_invest_cny') }}</span>
-              </button>
-            </th>
-            <th>
-              <button class="sort-btn" @click="toggleSort('created_at')">
-                注册时间<span>{{ sortIcon('created_at') }}</span>
-              </button>
-            </th>
-            <th>
-              <button class="sort-btn" @click="toggleSort('last_active_at')">
-                最近活跃时间<span>{{ sortIcon('last_active_at') }}</span>
-              </button>
-            </th>
-            <th>最近活跃地区</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="u in users.items || []" :key="u.id">
-            <td>{{ u.username }}</td>
-            <td>{{ u.nickname || '-' }}</td>
-            <td>{{ formatCny(u.total_asset_cny) }}</td>
-            <td>{{ formatCny(u.total_invest_cny) }}</td>
-            <td>{{ shortDateTime(u.created_at) }}</td>
-            <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
-            <td>{{ displayRegion(u.last_active_region || u.last_login_region) }}</td>
-            <td class="actions">
-              <AdminButton size="sm" variant="secondary" soft pill @click="openDetail(u)">详情</AdminButton>
-              <AdminButton size="sm" :variant="u.status === 'disabled' ? 'secondary' : 'danger'" :soft="u.status === 'disabled'" pill @click="toggleStatus(u)">
-                {{ u.status === 'disabled' ? '解封' : '封禁' }}
-              </AdminButton>
-            </td>
-          </tr>
-          <tr v-if="!(users.items || []).length">
-            <td colspan="8" class="empty">暂无用户数据</td>
-          </tr>
-        </tbody>
-      </AdminTable>
+      <nav>
+        <RouterLink 
+          v-for="item in nav" 
+          :key="item.path" 
+          :to="item.path"
+          class="nav-item"
+          active-class="active"
+        >
+          <span>{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
 
-      <div class="pager-wrap">
-        <div class="pager">
-          <span class="pager-total">共{{ totalRows }}条</span>
-          <select v-model.number="pageSize" class="pager-select">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
-          </select>
-          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage <= 1" @click="prevPage">上一页</AdminButton>
-          <span class="pager-page">第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <AdminButton size="sm" variant="secondary" soft pill :disabled="currentPage >= totalPages" @click="nextPage">下一页</AdminButton>
+      <div class="user-profile">
+        <div class="user-info">
+          <div class="user-avatar" :style="avatarStyle"></div>
+          <div class="user-details">
+            <h4>{{ store.state.user?.username || '管理员' }}</h4>
+            <p>管理员</p>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="logout-btn" @click="onLogout" title="退出登录">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="header">
+        <div class="header-title">
+          <h1>用户管理</h1>
+        </div>
+        <div class="header-actions">
+          <div class="search-bar">
+            <input 
+              class="search-input" 
+              v-model.trim="query" 
+              placeholder="搜索用户名/昵称/手机号" 
+              @keyup.enter="onSearch" 
+            />
+            <button class="add-btn" @click="onSearch">查询</button>
+          </div>
         </div>
       </div>
 
-      <p v-if="message" :class="ok ? 'up' : 'down'" class="msg">{{ message }}</p>
-    </AdminCard>
+      <div class="user-stats-section">
+        <div class="section-header">
+           <h2 class="section-title">活跃用户</h2>
+           <span class="all-chip">共 {{ totalRows }} 位用户</span>
+        </div>
+        
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>用户昵称</th>
+                <th>
+                  <button class="sort-btn" @click="toggleSort('total_asset_cny')">
+                    总资产 <span>{{ sortIcon('total_asset_cny') }}</span>
+                  </button>
+                </th>
+                <th>
+                  <button class="sort-btn" @click="toggleSort('total_invest_cny')">
+                    投资资产 <span>{{ sortIcon('total_invest_cny') }}</span>
+                  </button>
+                </th>
+                <th>
+                  <button class="sort-btn" @click="toggleSort('created_at')">
+                    注册时间 <span>{{ sortIcon('created_at') }}</span>
+                  </button>
+                </th>
+                <th>
+                  <button class="sort-btn" @click="toggleSort('last_active_at')">
+                    最近活跃 <span>{{ sortIcon('last_active_at') }}</span>
+                  </button>
+                </th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in users.items || []" :key="u.id">
+                <td>{{ u.username }}</td>
+                <td>{{ u.nickname || '-' }}</td>
+                <td>{{ formatCny(u.total_asset_cny) }}</td>
+                <td>{{ formatCny(u.total_invest_cny) }}</td>
+                <td>{{ shortDateTime(u.created_at) }}</td>
+                <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
+                <td class="actions">
+                  <button class="action-btn-sm secondary" @click="openDetail(u)">详情</button>
+                  <button 
+                    class="action-btn-sm" 
+                    :class="u.status === 'disabled' ? 'secondary' : 'danger'"
+                    @click="toggleStatus(u)"
+                  >
+                    {{ u.status === 'disabled' ? '解封' : '封禁' }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!(users.items || []).length">
+                <td colspan="7" style="text-align: center; color: #999; padding: 40px;">暂无匹配用户</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
+        <div class="table-footer">
+          <div class="page-size-selector">
+            <label>每页显示：</label>
+            <select v-model.number="pageSize">
+              <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+            </select>
+          </div>
+          
+          <div class="pagination-info">
+             第 <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span> 页
+          </div>
+
+          <div class="pagination-controls">
+            <button class="page-btn" @click="goToPage(1)" :disabled="currentPage === 1">«</button>
+            <button class="page-btn" @click="prevPage" :disabled="currentPage === 1">‹</button>
+            <button class="page-btn active">{{ currentPage }}</button>
+            <button class="page-btn" @click="nextPage" :disabled="currentPage === totalPages">›</button>
+            <button class="page-btn" @click="goToPage(totalPages)" :disabled="currentPage === totalPages">»</button>
+          </div>
+        </div>
+        
+        <p v-if="message" :class="ok ? 'up' : 'down'" class="msg">{{ message }}</p>
+      </div>
+    </div>
+
+    <!-- Detail Modal -->
     <div v-if="detail.visible" class="detail-mask" @click.self="closeDetail">
-      <AdminCard class="detail-panel" variant="surface">
+      <div class="detail-panel">
         <div class="detail-head">
-          <h3>资产详情 · {{ detail.username || '-' }}</h3>
-          <AdminButton variant="secondary" soft pill @click="closeDetail">关闭</AdminButton>
+          <div class="head-info">
+            <h3>资产明细</h3>
+            <p>{{ detail.username }}</p>
+          </div>
+          <button class="close-btn" @click="closeDetail">✕</button>
         </div>
 
         <div v-if="detail.loading" class="detail-loading">加载中...</div>
 
         <template v-else>
-          <div class="summary-grid">
-            <div class="summary-item">
-              <div class="summary-label">现金资产</div>
-              <div class="summary-value">{{ formatCny(detail.summary.cash_cny) }}</div>
+          <div class="summary-grid-simple">
+            <div class="summary-item-simple cash">
+              <div class="label">现金资产</div>
+              <div class="value">{{ formatCny(detail.summary.cash_cny) }}</div>
             </div>
-            <div class="summary-item">
-              <div class="summary-label">其他资产</div>
-              <div class="summary-value">{{ formatCny(detail.summary.other_cny) }}</div>
+            <div class="summary-item-simple invest">
+              <div class="label">其他资产</div>
+              <div class="value">{{ formatCny(detail.summary.other_cny) }}</div>
             </div>
-            <div class="summary-item">
-              <div class="summary-label">我的负债</div>
-              <div class="summary-value">{{ formatCny(detail.summary.liability_cny) }}</div>
+            <div class="summary-item-simple debt">
+              <div class="label">我的负债</div>
+              <div class="value">{{ formatCny(detail.summary.liability_cny) }}</div>
             </div>
           </div>
 
           <p v-if="detail.cache.cached_at" class="cache-tip">
-            数据时间：{{ shortDateTime(detail.cache.cached_at) }}
+            数据快照：{{ shortDateTime(detail.cache.cached_at) }}
           </p>
 
-          <div class="detail-sub-title">投资资产 · 持仓明细</div>
-          <AdminTable>
-            <thead>
-              <tr>
-                <th>资产名称/代码</th>
-                <th>数量</th>
-                <th>累计盈亏金额/率</th>
-                <th>类型</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in detail.items" :key="`${item.code}-${item.type_label}`">
-                <td>
-                  <div class="asset-cell">
-                    <strong>{{ item.name || '-' }}</strong>
-                    <span>{{ item.code || '-' }}</span>
-                  </div>
-                </td>
-                <td>{{ formatQty(item.qty) }}</td>
-                <td>
-                  <div class="pnl-cell">
-                    <span :class="Number(item.pnl_cny || 0) >= 0 ? 'up' : 'down'">
-                      {{ formatSignedCny(item.pnl_cny) }}
-                    </span>
-                    <small :class="Number(item.pnl_rate || 0) >= 0 ? 'up' : 'down'">
-                      {{ formatPct(item.pnl_rate) }}
-                    </small>
-                  </div>
-                </td>
-                <td>{{ item.type_label || '-' }}</td>
-              </tr>
-              <tr v-if="!detail.items.length">
-                <td colspan="4" class="empty">暂无持仓</td>
-              </tr>
-            </tbody>
-          </AdminTable>
+          <div class="table-container sub-table">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>资产名称/代码</th>
+                  <th>持仓数量</th>
+                  <th>盈亏金额/率</th>
+                  <th>类型</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in detail.items" :key="`${item.code}-${item.type_label}`">
+                  <td>
+                    <div class="asset-cell">
+                      <strong>{{ item.name || '-' }}</strong>
+                      <small>{{ item.code || '-' }}</small>
+                    </div>
+                  </td>
+                  <td>{{ formatQty(item.qty) }}</td>
+                  <td>
+                    <div class="pnl-cell">
+                      <span :class="Number(item.pnl_cny || 0) >= 0 ? 'up' : 'down'">
+                        {{ formatSignedCny(item.pnl_cny) }}
+                      </span>
+                      <small :class="Number(item.pnl_rate || 0) >= 0 ? 'up' : 'down'">
+                        {{ formatPct(item.pnl_rate) }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>{{ item.type_label || '-' }}</td>
+                </tr>
+                <tr v-if="!detail.items.length">
+                  <td colspan="4" class="empty">暂无持仓明细</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </template>
-      </AdminCard>
+      </div>
     </div>
-  </LegacyAdminShell>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import LegacyAdminShell from '../../layouts/LegacyAdminShell.vue'
-import AdminCard from '../../components/admin/ui/AdminCard.vue'
-import AdminButton from '../../components/admin/ui/AdminButton.vue'
-import AdminTable from '../../components/admin/ui/AdminTable.vue'
-import AdminSectionHeader from '../../components/admin/ui/AdminSectionHeader.vue'
+import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
+import { useKonaStore } from '../../stores/composables'
 import { money, shortDateTime } from '../../shared/format'
+
+const router = useRouter()
+const store = useKonaStore()
 
 type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'total_invest_cny' | 'created_at'
 
@@ -180,37 +251,33 @@ const totalPages = computed(() => {
   return total > 0 ? Math.ceil(total / pageSize.value) : 1
 })
 
+const nav = [
+  { path: '/admin/overview', label: '数据概览', icon: '📊' },
+  { path: '/admin/users', label: '用户管理', icon: '👥' },
+  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
+  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
+  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
+]
+
+const avatarStyle = computed(() => ({
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+}))
+
 const detail = reactive<{
   visible: boolean
   loading: boolean
   userId: string
   username: string
-  summary: {
-    cash_cny: number
-    other_cny: number
-    liability_cny: number
-    as_of: string
-  }
-  cache: {
-    cached_at: string
-    expires_at: string
-  }
+  summary: { cash_cny: number; other_cny: number; liability_cny: number; as_of: string }
+  cache: { cached_at: string; expires_at: string }
   items: Array<Record<string, any>>
 }>({
   visible: false,
   loading: false,
   userId: '',
   username: '',
-  summary: {
-    cash_cny: 0,
-    other_cny: 0,
-    liability_cny: 0,
-    as_of: '',
-  },
-  cache: {
-    cached_at: '',
-    expires_at: '',
-  },
+  summary: { cash_cny: 0, other_cny: 0, liability_cny: 0, as_of: '' },
+  cache: { cached_at: '', expires_at: '' },
   items: [],
 })
 
@@ -222,14 +289,7 @@ function flash(msg: string, success: boolean) {
 async function load(options: { force?: boolean } = {}) {
   const force = Boolean(options.force)
   const offset = (currentPage.value - 1) * pageSize.value
-  const key = [
-    query.value,
-    sortBy.value,
-    sortDir.value,
-    String(pageSize.value),
-    String(offset),
-    force ? '1' : '0',
-  ].join('|')
+  const key = [query.value, sortBy.value, sortDir.value, String(pageSize.value), String(offset), force ? '1' : '0'].join('|')
   if (!force && (key === lastRequestKey || key === inflightKey)) return
 
   inflightKey = key
@@ -278,13 +338,8 @@ function goToPage(page: number) {
   void load()
 }
 
-function prevPage() {
-  goToPage(currentPage.value - 1)
-}
-
-function nextPage() {
-  goToPage(currentPage.value + 1)
-}
+function prevPage() { goToPage(currentPage.value - 1); }
+function nextPage() { goToPage(currentPage.value + 1); }
 
 async function toggleStatus(user: Record<string, any>) {
   try {
@@ -308,11 +363,8 @@ async function openDetail(user: Record<string, any>) {
   detail.username = String(user.username || '')
   detail.items = []
   detail.summary = { cash_cny: 0, other_cny: 0, liability_cny: 0, as_of: '' }
-  detail.cache = { cached_at: '', expires_at: '' }
   try {
-    const payload = await api.get<Record<string, any>>(
-      `/api/admin/users/${encodeURIComponent(detail.userId)}/portfolio`,
-    )
+    const payload = await api.get<Record<string, any>>(`/api/admin/users/${encodeURIComponent(detail.userId)}/portfolio`)
     detail.items = Array.isArray(payload?.items) ? payload.items : []
     const summary = payload?.summary || {}
     detail.summary = {
@@ -327,8 +379,7 @@ async function openDetail(user: Record<string, any>) {
       expires_at: String(cache.expires_at || ''),
     }
   } catch (e) {
-    flash(e instanceof Error ? e.message : '加载详情失败', false)
-    detail.items = []
+    flash(e instanceof Error ? e.message : '加载失败', false)
   } finally {
     detail.loading = false
   }
@@ -337,9 +388,6 @@ async function openDetail(user: Record<string, any>) {
 function closeDetail() {
   detail.visible = false
   detail.loading = false
-  detail.userId = ''
-  detail.username = ''
-  detail.items = []
 }
 
 function formatCny(value: unknown): string {
@@ -365,14 +413,14 @@ function formatPct(value: unknown): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
-function displayRegion(value: unknown): string {
-  const raw = String(value || '').trim()
-  return raw || '未知'
+async function onLogout() {
+  await store.logout()
+  await router.push('/admin/login')
 }
 
-watch(pageSize, async () => {
+watch(pageSize, () => {
   currentPage.value = 1
-  await load()
+  void load()
 })
 
 onMounted(() => {
@@ -381,234 +429,244 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.search-card {
-  padding: 16px;
-  margin-bottom: 16px;
-}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-.all-chip {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid #d6e0e6;
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #3f4a54;
-  background: #f6faf5;
-}
-
-.toolbar {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px;
-  gap: 8px;
-}
-
-.list-card {
-  padding: 16px;
-}
-
-.sort-btn {
-  border: 0;
-  background: transparent;
-  color: #737f8a;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.actions {
+.container {
+  width: 100vw;
+  height: 100vh;
+  background: white;
+  overflow: hidden;
   display: flex;
-  gap: 8px;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  font-family: 'Inter', sans-serif;
+  color: #333;
 }
 
-.pager-wrap {
-  margin-top: 12px;
+/* Sidebar Copy */
+.sidebar {
+  width: 260px;
+  background: white;
+  padding: 30px 0 0 0;
+  border-right: 1px solid #f0f0f0;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  height: 100vh;
+  flex-shrink: 0;
 }
 
-.pager {
+.logo {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid #dfe6ea;
-  border-radius: 10px;
-  background: #f6f9fa;
-  max-width: 100%;
-  overflow-x: auto;
+  font-weight: 800;
+  font-size: 19px;
+  margin-bottom: 35px;
+  padding: 0 24px;
+  color: #000;
+  letter-spacing: -0.5px;
 }
 
-.pager-total,
-.pager-page {
-  color: #5e6974;
+.logo-icon {
+  width: 34px;
+  height: 34px;
+  background: #000;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  margin: 0 12px 6px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #666;
   font-weight: 600;
-  white-space: nowrap;
-  word-break: keep-all;
-  line-height: 1.2;
-  flex: 0 0 auto;
+  text-decoration: none;
+  font-size: 14.5px;
 }
 
-.pager-select {
-  width: 120px !important;
-  max-width: 120px;
-  min-width: 110px;
-  height: 36px;
-  border: 1px solid #d3dce2;
-  border-radius: 8px;
-  background: #fff;
-  color: #404b56;
-  padding: 0 10px;
-  flex: 0 0 auto;
+.nav-item:hover {
+  background: #f8f9fa;
+  color: #000;
 }
 
-.msg {
-  margin-top: 10px;
+.nav-item.active {
+  background: #000;
+  color: white;
 }
 
-.empty {
-  text-align: center;
-  color: #7d8893;
-  font-weight: 600;
-}
-
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
-}
-
-.detail-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(7, 18, 33, 0.58);
-  display: grid;
-  place-items: center;
-  z-index: 90;
-  padding: 16px;
-}
-
-.detail-panel {
-  width: min(1020px, 100%);
-  max-height: min(82vh, 820px);
-  overflow: auto;
-  padding: 14px;
-}
-
-.detail-head {
+.user-profile {
+  margin-top: auto;
+  padding: 24px;
+  border-top: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  background: #fdfdfd;
 }
 
-.detail-head h3 {
-  margin: 0;
-  color: #24496e;
+.user-info { display: flex; align-items: center; gap: 12px; }
+.user-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+.user-details { display: flex; flex-direction: column; align-items: flex-start; }
+.user-details h4 { font-size: 16px; font-weight: 800; margin: 0; padding: 0; color: #000; line-height: 1; }
+.user-details p { font-size: 12px; color: #999; font-weight: 500; margin: 4px 0 0 0; padding: 0; line-height: 1; }
+.user-actions { display: flex; align-items: center; }
+
+.logout-btn {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e2e2;
+  background: transparent; color: #888; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+}
+.logout-btn svg { width: 17px; height: 17px; }
+.logout-btn:hover { background: #2d2d2d; color: #fff; border-color: #444; transform: translateX(2px); }
+
+/* Main Content */
+.main-content {
+  flex: 1; padding: 40px 50px; overflow-y: auto; height: 100vh; background: #fafafa;
 }
 
-.detail-loading {
-  padding: 18px 4px;
-  color: #6e7984;
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; }
+
+.header-title h1 {
+  font-size: 32px; font-weight: 800; margin-bottom: 6px; color: #000; letter-spacing: -0.8px;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  column-gap: 20px;
-  row-gap: 14px;
-  margin-bottom: 12px;
+.header-actions { display: flex; gap: 12px; align-items: center; }
+
+.search-bar {
+  display: flex; gap: 8px; background: white; padding: 6px 6px 6px 16px; 
+  border-radius: 14px; border: 1px solid #e5e7eb; width: 340px;
 }
 
-.summary-item {
-  border: 1px solid #dfe6ea;
-  border-radius: 14px;
-  background: #f9fbf9;
-  padding: 12px;
+.search-input {
+  border: none; outline: none; flex: 1; font-size: 14px; font-weight: 500; color: #333; background: transparent;
 }
 
-.summary-label {
-  color: #808a95;
-  font-size: 12px;
-  font-weight: 700;
+.add-btn {
+  padding: 0 18px; height: 38px; background: #000; color: white; border: none; border-radius: 10px;
+  font-weight: 700; cursor: pointer; transition: all 0.2s; font-size: 13.5px;
+}
+.add-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+
+/* Section Header */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.section-title { font-size: 18px; font-weight: 800; color: #000; margin: 0; }
+.all-chip { 
+  background: #f0f0f0; color: #666; font-size: 12px; font-weight: 700; 
+  padding: 4px 12px; border-radius: 99px; 
 }
 
-.summary-value {
-  margin-top: 6px;
-  color: #1f252b;
-  font-size: 18px;
-  font-weight: 800;
+/* Table Style Sync */
+.table-container {
+  background: white; border: 1px solid #edeef1; border-radius: 18px; 
+  overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
 }
 
-.cache-tip {
-  margin: 0 0 10px;
-  color: #8a939c;
-  font-size: 12px;
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead { background: #fbfbfc; }
+.data-table th {
+  padding: 16px 22px; text-align: left; font-weight: 700; font-size: 13px; color: #888;
+  border-bottom: 1px solid #f0f0f2; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.data-table tbody tr { transition: all 0.2s; border-bottom: 1px solid #f8f8fb; }
+.data-table tbody tr:hover { background: #fcfcfd; }
+.data-table td { padding: 18px 22px; font-size: 14px; color: #444; font-weight: 500; }
+.data-table td:first-child { font-weight: 700; color: #000; }
+
+.sort-btn {
+  border: 0; background: transparent; color: inherit; font-family: inherit;
+  font-size: inherit; font-weight: inherit; cursor: pointer; 
+  display: inline-flex; align-items: center; gap: 4px; padding: 0;
 }
 
-.detail-sub-title {
-  margin: 0 0 10px;
-  color: #1f252b;
-  font-size: 16px;
-  font-weight: 700;
+.actions { display: flex; gap: 8px; }
+.action-btn-sm {
+  border-radius: 8px; border: 1px solid #e5e7eb; background: white;
+  padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+}
+.action-btn-sm.secondary { background: #f8f9fa; color: #666; }
+.action-btn-sm.danger { background: #fff5f5; color: #fa5252; border-color: #ffe3e3; }
+.action-btn-sm:hover { border-color: #000; transform: translateY(-1px); }
+.action-btn-sm.danger:hover { background: #fa5252; color: white; border-color: #fa5252; }
+
+/* Table Footer Sync */
+.table-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 5px 0; }
+.page-size-selector { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: #777; font-weight: 600; }
+.page-size-selector select {
+  padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 10px;
+  background: white; cursor: pointer; font-size: 13.5px; font-weight: 600; outline: none;
+}
+.pagination-info { font-size: 13.5px; color: #777; font-weight: 600; }
+.pagination-info span { font-weight: 800; color: #000; }
+.pagination-controls { display: flex; align-items: center; gap: 6px; }
+.page-btn {
+  min-width: 36px; height: 36px; border: 1px solid #e5e7eb; background: white;
+  border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+}
+.page-btn.active { background: #000; color: white; border-color: #000; }
+.page-btn:hover:not(:disabled):not(.active) { border-color: #000; }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.msg { margin-top: 15px; font-size: 13px; font-weight: 600; }
+.up { color: #10b981; }
+.down { color: #ef4444; }
+
+/* Modal Styling */
+.detail-mask {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
 }
 
-.asset-cell {
-  display: grid;
-  gap: 2px;
+.detail-panel {
+  background: white; width: 100%; max-width: 900px; max-height: 90vh;
+  border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden; display: flex; flex-direction: column;
 }
 
-.asset-cell strong {
-  color: #10243e;
+.detail-head {
+  padding: 24px 30px; border-bottom: 1px solid #f0f0f0; display: flex;
+  justify-content: space-between; align-items: center; background: #fff;
 }
+.head-info h3 { font-size: 20px; font-weight: 800; color: #000; margin: 0; }
+.head-info p { font-size: 14px; color: #666; margin: 4px 0 0 0; font-weight: 500; }
+.close-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: none; background: #f5f5f5;
+  color: #888; cursor: pointer; font-size: 18px; display: flex; align-items: center;
+  justify-content: center; transition: all 0.2s;
+}
+.close-btn:hover { background: #000; color: #fff; transform: rotate(90deg); }
 
-.asset-cell span {
-  color: #8a939c;
-  font-size: 12px;
-}
+.detail-loading { padding: 60px; text-align: center; color: #999; font-weight: 600; }
 
-.pnl-cell {
-  display: grid;
-  gap: 2px;
+.summary-grid-simple {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 24px 30px; background: #fafafa;
 }
+.summary-item-simple { padding: 18px; border-radius: 16px; border: 1px solid #f0f0f0; background: white; }
+.summary-item-simple .label { font-size: 12px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+.summary-item-simple .value { font-size: 20px; font-weight: 800; color: #000; margin-top: 6px; }
 
-.pnl-cell small {
-  font-size: 12px;
-}
+.cache-tip { padding: 0 30px; color: #aaa; font-size: 12px; margin: 10px 0; }
+
+.sub-table { margin: 0 30px 30px 30px; max-height: 400px; overflow-y: auto; }
+.asset-cell { display: flex; flex-direction: column; gap: 2px; }
+.asset-cell strong { font-size: 14px; color: #000; }
+.asset-cell small { font-size: 11px; color: #999; }
+.pnl-cell { display: flex; flex-direction: column; gap: 2px; }
+.pnl-cell small { font-size: 11px; font-weight: 600; }
 
 @media (max-width: 900px) {
-  .toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .actions {
-    flex-wrap: wrap;
-  }
-
-  .pager-wrap {
-    justify-content: flex-start;
-  }
-
-  .pager {
-    flex-wrap: wrap;
-  }
-
-  .detail-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
+  .sidebar { display: none; }
+  .main-content { padding: 30px 20px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .search-bar { width: 100%; }
+  .summary-grid-simple { grid-template-columns: 1fr; }
 }
 </style>
