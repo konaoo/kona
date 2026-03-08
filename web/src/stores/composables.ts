@@ -10,6 +10,8 @@ import { useQuoteStore } from './quote'
 import { useMarketStore } from './market'
 import { useSyncStore } from './sync'
 
+let hydratedCacheUserId = ''
+
 /**
  * useKonaStore - 统一的数据访问接口
  * 向后兼容原 useKonaStore 的接口
@@ -20,6 +22,12 @@ export function useKonaStore() {
   const quoteStore = useQuoteStore()
   const marketStore = useMarketStore()
   const syncStore = useSyncStore()
+
+  const currentUserId = String(authStore.userId || '').trim() || 'guest'
+  if (hydratedCacheUserId !== currentUserId) {
+    syncStore.hydrateStoreCache(authStore, portfolioStore, marketStore, quoteStore)
+    hydratedCacheUserId = currentUserId
+  }
 
   // ───────────────────────────────────────────────────────────────
   // Computed - 向后兼容
@@ -73,6 +81,11 @@ export function useKonaStore() {
     await quoteStore.loadQuotes(codes)
   }
 
+  const loadQuotesProgressive = async () => {
+    const codes = portfolioStore.portfolio.map((item) => String(item.code || '')).filter(Boolean)
+    await quoteStore.loadQuotesProgressive(codes)
+  }
+
   // ───────────────────────────────────────────────────────────────
   // Market Actions
   // ───────────────────────────────────────────────────────────────
@@ -87,15 +100,8 @@ export function useKonaStore() {
   const refreshAll = async () => {
     portfolioStore.loading = true
     try {
-      try {
-        await syncStore.loadBootstrap('portfolio' as any)
-        if (!portfolioStore.portfolio.length) {
-          await portfolioStore.loadPortfolio()
-        }
-      } catch {
-        await Promise.all([marketStore.loadMarketStatus(), marketStore.loadRates(), portfolioStore.loadPortfolio()])
-      }
-      await loadQuotes()
+      await refreshStaticOnly()
+      void refreshQuotesOnly()
     } finally {
       portfolioStore.loading = false
     }
@@ -112,9 +118,17 @@ export function useKonaStore() {
       if (!portfolioStore.portfolio.length) {
         await portfolioStore.loadPortfolio()
       }
+      if (!Object.keys(marketStore.rates || {}).length) {
+        await marketStore.loadRates()
+      }
     } catch {
-      await Promise.all([portfolioStore.loadPortfolio(), marketStore.loadMarketStatus()])
+      await Promise.all([
+        portfolioStore.loadPortfolio(),
+        marketStore.loadMarketStatus(),
+        marketStore.loadRates(),
+      ])
     }
+    syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
   }
 
   const refreshQuotesOnly = async () => {
@@ -123,12 +137,11 @@ export function useKonaStore() {
       if (!portfolioStore.portfolio.length && !changed.has('portfolio')) {
         await portfolioStore.loadPortfolio()
       }
-      await loadQuotes()
     } catch {
       await marketStore.loadMarketStatus()
     }
 
-    await loadQuotes()
+    await loadQuotesProgressive()
     syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'full')
   }
 
@@ -174,6 +187,7 @@ export function useKonaStore() {
 
     // Quote Actions
     loadQuotes,
+    loadQuotesProgressive,
 
     // Market Actions
     loadMarketStatus,

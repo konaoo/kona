@@ -36,6 +36,7 @@ const selectedTab = ref('all')
 const holdingsView = ref<'card'|'row'>('card')
 const marketIndices = ref<any[]>([])
 const activeSegment = ref<AssetType | 'invest' | null>(null)
+const marketIndicesCacheKey = 'kaka:web:market-indices'
 
 // Currency Switcher State
 const currencyOpen = ref(false)
@@ -82,11 +83,11 @@ const investTotal = computed(() => {
     try {
       const rate = rateToCny(String(row.curr))
       const rowValue = Number(row.value) || 0
-      const rowCost = Number(row.costPrice) * Number(row.qty) * rate
+      const rowCost = (Number(row.cost) || 0) * rate
       mv += rowValue * rate
       cost += Math.abs(rowCost)
       dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
-      floatPnl += (rowValue - rowCost) * rate
+      floatPnl += ((rowValue * rate) - rowCost)
       totalPnl += (Number(row.totalPnl) || 0) * rate
     } catch (e) {
       console.error('Error processing row:', e)
@@ -226,8 +227,12 @@ const filteredRows = computed(() => {
       price: currentPrice || 0,
       dayPnlRate: Number(row?.dayPnlRate || 0),
       // 保持 Store 中的原始字段
-      cost: row?.cost || (qty * displayCostPrice),
+      cost: Number(row?.cost) || (qty * displayCostPrice),
       mv: localMv,
+      totalPnl: Number(row?.totalPnl) || 0,
+      quoteReady: Boolean(row?.quoteReady),
+      quotePending: Boolean(row?.quotePending),
+      navUpdatePending: Boolean(row?.navUpdatePending),
       pct,
       spark: generateSparkline(String(row?.code), Number(row?.dayPnlRate || 0))
     }
@@ -239,6 +244,18 @@ const filteredRows = computed(() => {
 function formatPct(value: number | undefined): string {
   if (typeof value !== 'number' || isNaN(value)) return '0.00%'
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+}
+
+function quoteLabel(row: any): string {
+  if (row?.navUpdatePending) return '待净值更新'
+  if (row?.quotePending) return '更新中'
+  const value = toNumber(row?.price)
+  return value > 0 ? `${getCurrencySymbol(row?.curr)}${value}` : '--'
+}
+
+function dayPnlRateLabel(row: any): string {
+  if (row?.navUpdatePending || row?.quotePending) return '--'
+  return formatPct(toNumber(row?.dayPnlRate))
 }
 
 function valueClass(value: number | undefined): 'up' | 'dn' | 'neutral' {
@@ -325,7 +342,10 @@ async function loadLists() {
 async function loadMarketIndices() {
   try {
     const res = await api.get<any[]>('/api/market/indices')
-    marketIndices.value = res || []
+    marketIndices.value = Array.isArray(res) ? res : []
+    try {
+      localStorage.setItem(marketIndicesCacheKey, JSON.stringify(marketIndices.value))
+    } catch {}
   } catch (e) {
     console.error('Failed to load market indices:', e)
   }
@@ -334,10 +354,12 @@ async function loadMarketIndices() {
 async function refreshAll() {
   try {
     await Promise.all([
-      store.refreshAll(),
-      marketStore.loadRates(),
+      store.refreshStaticOnly(),
       loadLists(),
-      loadMarketIndices()
+    ])
+    void Promise.all([
+      store.refreshQuotesOnly(),
+      loadMarketIndices(),
     ])
   } catch (e) {
     console.error('Failed to refresh:', e)
@@ -416,12 +438,22 @@ onMounted(async () => {
   document.addEventListener('click', handleGlobalClick)
   isLoading.value = true
   try {
-    await store.bootstrap()
+    try {
+      const cached = localStorage.getItem(marketIndicesCacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length) {
+          marketIndices.value = parsed
+        }
+      }
+    } catch {}
+    void store.bootstrap()
     await Promise.all([
-      marketStore.loadRates(),
+      store.refreshStaticOnly(),
       loadLists(),
-      loadMarketIndices()
     ])
+    void loadMarketIndices()
+    void store.refreshQuotesOnly()
     store.startAutoRefresh()
     staticRefreshTimer = window.setInterval(() => refreshAll(), 60000)
   } finally {
@@ -443,7 +475,7 @@ onBeforeUnmount(() => {
 
       <!-- Market Index Cards -->
       <!-- Market Index Cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:12px;margin-bottom:16px">
+      <div class="market-strip">
         <template v-if="marketIndices && marketIndices.length > 0">
           <div v-for="idx in marketIndices" :key="idx.name" class="card" style="padding:14px 16px;background:var(--s1);border-radius:16px">
             <div class="section-label" style="font-size:11px;margin-bottom:6px">{{ idx.name }}</div>
@@ -641,11 +673,10 @@ onBeforeUnmount(() => {
               <!-- Price Row (Above Sparkline) -->
               <div class="h-price-row">
                 <div class="h-price-main">
-                  <span class="h-price-sym">{{ getCurrencySymbol(row?.curr) }}</span>
-                  <span class="h-price-val">{{ row?.price }}</span>
+                  <span class="h-price-val">{{ quoteLabel(row) }}</span>
                 </div>
                 <div class="h-price-tag badge" :class="valueClass(toNumber(row?.dayPnlRate))" style="padding: 2px 6px; border-radius: 4px; font-size: 10px;">
-                  {{ formatPct(toNumber(row?.dayPnlRate)) }}
+                  {{ dayPnlRateLabel(row) }}
                 </div>
               </div>
 
@@ -707,7 +738,7 @@ onBeforeUnmount(() => {
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">现价</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">
-                    <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row?.curr) }}</span>{{ row?.price }}
+                    {{ quoteLabel(row) }}
                   </div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
@@ -721,7 +752,7 @@ onBeforeUnmount(() => {
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
                   <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
-                  <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.dayPnlRate))">{{ formatPct(toNumber(row?.dayPnlRate)) }}</div>
+                  <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.dayPnlRate))">{{ dayPnlRateLabel(row) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
@@ -853,6 +884,31 @@ onBeforeUnmount(() => {
 .c1-pt.active {
   background: rgba(255,255,255,0.08) !important;
   color: var(--text) !important;
+}
+
+.market-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1600px) {
+  .market-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .market-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .market-strip {
+    grid-template-columns: 1fr;
+  }
 }
 /* 使用全局样式以确保 :root 和 布局类生效 */
 /* New Horizontal Layout */

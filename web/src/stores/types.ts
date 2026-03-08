@@ -116,6 +116,8 @@ export type PositionRow = {
   marketStatusReason: string
   usExtendedActive: boolean
   navUpdatePending: boolean
+  quoteReady: boolean
+  quotePending: boolean
   dayPnlDisplayEnabled: boolean
   dayPnlAggregateEnabled: boolean
   asset_type?: string

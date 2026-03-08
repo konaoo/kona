@@ -40,13 +40,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const qty = toNumber(item.qty)
       const rawCostPrice = toNumber(item.price)
       const yclose = toNumber(quote.yclose)
-
-      const currentPrice = firstPositiveNumber(
+      const quotedCurrentPrice = firstPositiveNumber(
         quote.price,
         quote.regular_price,
         quote.premarket_price,
         quote.after_hours_price,
         yclose,
+      )
+
+      const currentPrice = firstPositiveNumber(
+        quotedCurrentPrice,
         rawCostPrice
       )
 
@@ -56,6 +59,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const open = Boolean(marketStatus?.open)
       const marketTradingDay = Boolean(marketStatus?.trading_day)
       const navUpdatePending = isNavUpdatePendingAsset(item)
+      const quoteReady = quotedCurrentPrice > 0
+      const quotePending = !navUpdatePending && !quoteReady
 
       const effectiveSession = normalizeSession(quote.effective_session ?? quote.session)
       const usExtendedActive =
@@ -102,6 +107,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         marketStatusReason: marketStatus?.reason || '',
         usExtendedActive,
         navUpdatePending,
+        quoteReady,
+        quotePending,
         dayPnlDisplayEnabled,
         dayPnlAggregateEnabled,
       }

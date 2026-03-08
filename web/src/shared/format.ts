@@ -4,15 +4,13 @@ export function toNumber(value: unknown, fallback = 0): number {
 }
 
 export function money(value: number, curr = 'CNY'): string {
-  try {
-    return new Intl.NumberFormat('zh-CN', {
-      style: 'currency',
-      currency: curr,
-      maximumFractionDigits: 2,
-    }).format(value)
-  } catch {
-    return `${curr} ${value.toFixed(2)}`
-  }
+  const code = String(curr || 'CNY').toUpperCase()
+  const symbol = code === 'HKD' ? 'HK$' : code === 'USD' ? '$' : '¥'
+  const abs = Math.abs(Number.isFinite(value) ? value : 0)
+  const formatted = abs >= 1000
+    ? Math.round(abs).toLocaleString('zh-CN')
+    : abs.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return `${symbol} ${formatted}`
 }
 
 export function marketDisplayCurrency(market: unknown, curr?: unknown): 'CNY' | 'HKD' | 'USD' {

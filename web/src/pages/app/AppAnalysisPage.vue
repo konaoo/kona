@@ -74,7 +74,7 @@
            </div>
         </div>
 
-        <div class="calendar-grid" :style="{ gridTemplateColumns: `repeat(${calendarColumns}, minmax(0, 1fr))` }">
+        <div class="calendar-grid" :style="calendarGridStyle">
           <div v-for="cell in calendarGrid" :key="cell.key" class="cal-cell" :class="calendarCellClass(cell.pnl)">
              <div class="cal-date">{{ formatCalendarCellLabel(cell.key) }}</div>
              <div class="cal-pnl">{{ formatCalendarCellPnl(cell.pnl) }}</div>
@@ -82,9 +82,9 @@
         </div>
 
         <div class="calendar-footer" v-if="calendarState.totalPnl">
-          <span>{{ calendarSummaryLabel }}:</span>
-          <span :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
-          <span class="muted">({{ formatPct(calendarState.totalRate) }})</span>
+          <span class="calendar-footer-label">{{ calendarSummaryLabel }}</span>
+          <span class="calendar-footer-value" :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
+          <span class="calendar-footer-rate" :class="valueClass(calendarState.totalRate)">{{ formatPct(calendarState.totalRate) }}</span>
         </div>
       </div>
 
@@ -114,9 +114,9 @@
                   </div>
                </div>
                <div class="rank-values" :class="valueClass(rankPnlCny(item))">
-                  <div class="val-pnl">{{ formatCny(rankPnlCny(item)) }}</div>
+                  <div class="val-pnl">{{ formatRankPnl(item) }}</div>
                   <div class="val-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
-               </div>
+                </div>
             </div>
           </template>
           <button
@@ -415,6 +415,13 @@ const calendarColumns = computed(() => {
   return 5
 })
 
+const calendarGridStyle = computed(() => {
+  if (calendarType.value === 'day') {
+    return { gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }
+  }
+  return { gridTemplateColumns: `repeat(${calendarColumns.value}, minmax(0, 1fr))` }
+})
+
 const calendarPeriodButtonText = computed(() => {
   if (calendarType.value === 'day') {
     if (!selectedDayYear.value || !selectedDayMonth.value) return '暂无周期'
@@ -487,7 +494,7 @@ function valueClass(value: number): 'up' | 'down' | 'flat' {
 
 function formatCny(value: number): string {
   const val = Math.round(toNum(value))
-  return (val >= 0 ? '+' : '-') + '¥ ' + Math.abs(val).toLocaleString()
+  return (val >= 0 ? '+¥ ' : '-¥ ') + Math.abs(val).toLocaleString()
 }
 
 function formatPct(value: number): string {
@@ -522,9 +529,32 @@ function rankBadgeClass(rankIndex: number): string {
 }
 
 function formatDisplayCode(code: string): string {
-  let value = String(code || '')
-  if (value.startsWith('gb_')) value = value.slice(3)
-  return value.toUpperCase()
+  const raw = String(code || '').trim()
+  if (!raw) return '-'
+  const upper = raw.toUpperCase()
+  if (upper.startsWith('FT_')) return upper.slice(3)
+  if (upper.startsWith('F_')) return upper.slice(2)
+  if (upper.startsWith('GB_')) return upper.slice(3)
+  if (upper.startsWith('HK')) return upper.slice(2)
+  if (upper.startsWith('SH')) return upper.slice(2)
+  if (upper.startsWith('SZ')) return upper.slice(2)
+  if (upper.startsWith('BJ')) return upper.slice(2)
+  return upper
+}
+
+function currencySymbol(curr: unknown): string {
+  const code = String(curr || 'CNY').toUpperCase()
+  if (code === 'USD') return '$'
+  if (code === 'HKD') return 'HK$'
+  return '¥'
+}
+
+function formatRankPnl(item: RankItem): string {
+  const pnl = toNum(item.pnl)
+  const abs = Math.abs(pnl)
+  const symbol = currencySymbol(item.curr)
+  const formatted = Math.round(abs).toLocaleString('zh-CN')
+  return `${pnl >= 0 ? '+' : '-'}${symbol} ${formatted}`
 }
 
 function rankPnlCny(item: RankItem): number {
@@ -752,18 +782,21 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  padding: 8px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 6px 14px;
+  min-height: 42px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
-  transition: background 0.15s, border-color 0.15s;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 .cal-period-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.09));
+  border-color: rgba(91, 141, 239, 0.45);
+  transform: translateY(-1px);
 }
 .cal-arrow {
   font-size: 9px;
@@ -777,9 +810,9 @@ onMounted(() => {
   z-index: 100;
   background: var(--s2, #181b24);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
   min-width: 180px;
 }
 
@@ -819,10 +852,10 @@ onMounted(() => {
 }
 
 .dp-item {
-  background: none;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   color: var(--sub, #828a9e);
@@ -832,11 +865,13 @@ onMounted(() => {
 }
 .dp-item:hover {
   background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
 }
 .dp-item.active {
-  background: rgba(91, 141, 239, 0.15);
-  color: #5b8def;
+  background: rgba(91, 141, 239, 0.18);
+  border-color: rgba(91, 141, 239, 0.45);
+  color: #8bb4ff;
   font-weight: 700;
 }
 
@@ -872,117 +907,152 @@ onMounted(() => {
 .calendar-controls {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
-}
-
-.cal-period-btn {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border-color);
-  cursor: pointer;
+  gap: 12px;
 }
 
 .mini-segment {
   display: flex;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
   padding: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 [data-theme="dark"] .mini-segment {
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
 }
 
 .view-tab {
-  padding: 4px 12px;
-  border: 0;
+  padding: 4px 16px;
+  min-height: 36px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
   cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.view-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
 }
 
 .view-tab.active {
-  background: var(--text-primary);
-  color: var(--card-bg);
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  font-weight: 800;
 }
 .rank-card .view-tab.active {
-  background: rgba(63, 140, 255, 0.1);
-  color: #3F8CFF;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
 /* Calendar Grid */
 .calendar-grid {
   display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 18px;
+  align-items: stretch;
 }
 
 .cal-cell {
-  aspect-ratio: 1;
-  border-radius: 8px;
-  padding: 6px;
+  min-height: 74px;
+  border-radius: 12px;
+  padding: 8px 6px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  background: var(--bg-secondary);
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   position: relative;
   overflow: hidden;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .cal-date {
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
-  opacity: 0.6;
+  opacity: 0.9;
   text-align: center;
+  line-height: 1;
 }
 
 .cal-pnl {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   text-align: center;
-  line-height: 1.1;
-  word-break: break-all;
+  line-height: 1.15;
+  word-break: keep-all;
   width: 100%;
 }
 
 .cal-cell.up {
-  background: rgba(var(--up-rgb, 239, 68, 68), 0.1);
+  background: linear-gradient(180deg, rgba(var(--up-rgb, 239, 68, 68), 0.14), rgba(var(--up-rgb, 239, 68, 68), 0.09));
+  border-color: rgba(var(--up-rgb, 239, 68, 68), 0.16);
   color: var(--up-color);
 }
 
 .cal-cell.down {
-  background: rgba(var(--down-rgb, 34, 197, 94), 0.1);
+  background: linear-gradient(180deg, rgba(var(--down-rgb, 34, 197, 94), 0.14), rgba(var(--down-rgb, 34, 197, 94), 0.09));
+  border-color: rgba(var(--down-rgb, 34, 197, 94), 0.16);
   color: var(--down-color);
 }
 
 .cal-cell.flat {
-  background: var(--bg-secondary);
+  background: rgba(255, 255, 255, 0.025);
   color: var(--text-secondary);
 }
 
 .cal-cell.empty {
-  opacity: 0.3;
-  background: transparent;
-  border: 1px dashed var(--border-color);
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
 }
 
 .calendar-footer {
   display: flex;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
   font-size: 12px;
   font-weight: 600;
+}
+
+.calendar-footer-label {
+  color: var(--text-secondary);
+}
+
+.calendar-footer-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.calendar-footer-rate {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
 }
 
 /* Rank Card */
@@ -1093,6 +1163,7 @@ onMounted(() => {
   text-align: right;
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .val-pnl {

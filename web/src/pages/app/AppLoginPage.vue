@@ -20,7 +20,7 @@
 
           <!-- LOGIN FORM -->
           <div v-if="!isRegisterRoute" class="auth-form active">
-            <div class="form-title">你好，很高兴见到你。</div>
+            <div class="form-title">很高兴见到你。</div>
             <div class="input-group">
               <label class="input-label">账号</label>
               <div class="input-wrap">
@@ -58,6 +58,7 @@
           <!-- REGISTER FORM -->
           <div v-else class="auth-form active">
             <div class="form-title">创建账户</div>
+            <button class="back-to-login" type="button" @click="switchTab('login')">← 返回登录</button>
             <div class="input-group">
               <div class="invite-badge">
                 <span class="i-dot"></span>
@@ -402,6 +403,23 @@ onUnmounted(() => {
 .auth-form { display: flex; flex-direction: column; }
 
 .form-title { font-size: 25px; font-weight: 800; letter-spacing: -.025em; color: #e4e5ea; margin-bottom: 28px; }
+.back-to-login {
+  width: fit-content;
+  margin: -18px 0 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6e768c;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color .15s, opacity .15s;
+}
+.back-to-login:hover {
+  color: #9aa3bb;
+  opacity: 0.92;
+}
 .form-sub { font-size: 13px; color: #545c72; margin-bottom: 26px; line-height: 1.5; }
 
 .input-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }

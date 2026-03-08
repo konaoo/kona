@@ -37,12 +37,13 @@ const userInitial = computed(() => {
   return chars.length ? chars[0] : 'U'
 })
 
+const isProfileActive = computed(() => currentPath.value === '/app/me' || currentPath.value === '/app/profile')
+
 const navItems = [
   { path: '/app/home', label: '首页', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
   { path: '/app/invest', label: '投资', icon: 'M2 3h20v14H2z' },
   { path: '/app/analysis', label: '分析', icon: 'M18 20V10M12 20V4M6 20v-6' },
   { path: '/app/news', label: '快讯', icon: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z' },
-  { path: '/app/me', label: '我的', icon: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },
 ]
 
 function navigate(path: string) {
@@ -91,7 +92,7 @@ async function handleLogout() {
         <template v-for="item in navItems" :key="item.path">
           <div 
             class="nav-item" 
-            :class="{ active: currentPath === item.path || (item.path === '/app/me' && currentPath === '/app/profile') }"
+            :class="{ active: currentPath === item.path }"
             @click="navigate(item.path)"
           >
             <span class="nav-icon">
@@ -109,11 +110,12 @@ async function handleLogout() {
 
       <!-- Sidebar Bottom: Profile & Logout -->
       <div class="sidebar-bottom">
-        <div class="profile-mini" @click="navigate('/app/me')">
+        <div class="profile-mini" :class="{ active: isProfileActive }" @click="navigate('/app/me')">
           <img v-if="avatarSrc" :src="avatarSrc" class="mini-avatar" />
           <div v-else class="mini-avatar fallback">{{ userInitial }}</div>
           <div class="mini-info">
             <div class="mini-name">{{ displayName }}</div>
+            <div class="mini-role">个人中心</div>
           </div>
           <button class="logout-btn" @click.stop="handleLogout" title="退出登录">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -181,15 +183,23 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px;
-  border-radius: 12px;
+  padding: 10px 10px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .profile-mini:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.profile-mini.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(91, 141, 239, 0.08));
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .mini-avatar {
@@ -223,6 +233,13 @@ async function handleLogout() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mini-role {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 

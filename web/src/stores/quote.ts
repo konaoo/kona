@@ -21,6 +21,7 @@ export const useQuoteStore = defineStore('quote', () => {
   let autoRefreshConsumers = 0
   let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
   let quotesInflight: Promise<void> | null = null
+  let backgroundQuotesInflight: Promise<void> | null = null
 
   // ───────────────────────────────────────────────────────────────
   // Helpers
@@ -100,6 +101,60 @@ export const useQuoteStore = defineStore('quote', () => {
     } finally {
       quotesInflight = null
     }
+  }
+
+  /**
+   * LoadQuotesProgressive - 先补前几条，再后台补全量
+   */
+  async function loadQuotesProgressive(codes: string[], firstBatchSize = 12) {
+    const normalizedCodes = Array.from(new Set(codes.filter(Boolean)))
+    if (!normalizedCodes.length) {
+      quotes.value = {}
+      return
+    }
+
+    if (normalizedCodes.length <= firstBatchSize) {
+      await loadQuotes(normalizedCodes)
+      return
+    }
+
+    const firstBatch = normalizedCodes.slice(0, firstBatchSize)
+    const restBatch = normalizedCodes.slice(firstBatchSize)
+
+    loading.value = true
+    try {
+      const headQuotes = await api.post<Record<string, Quote>>(
+        '/api/prices/batch',
+        { codes: firstBatch },
+        true
+      )
+      quotes.value = {
+        ...quotes.value,
+        ...(headQuotes || {}),
+      }
+    } finally {
+      loading.value = false
+    }
+
+    if (!restBatch.length || backgroundQuotesInflight) {
+      return
+    }
+
+    backgroundQuotesInflight = (async () => {
+      try {
+        const tailQuotes = await api.post<Record<string, Quote>>(
+          '/api/prices/batch',
+          { codes: restBatch },
+          true
+        )
+        quotes.value = {
+          ...quotes.value,
+          ...(tailQuotes || {}),
+        }
+      } finally {
+        backgroundQuotesInflight = null
+      }
+    })()
   }
 
   /**
@@ -211,6 +266,7 @@ export const useQuoteStore = defineStore('quote', () => {
 
     // Actions
     loadQuotes,
+    loadQuotesProgressive,
     getQuote,
     getQuotePrice,
     getQuoteYClose,

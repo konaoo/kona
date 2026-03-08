@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import { useMarketStore } from '@/stores/market'
@@ -62,7 +62,7 @@ const investTotal = computed(() => {
   for (const row of rowsData) {
     const rate = rateToCny(String(row.curr))
     const rowMv = (Number(row.value) || 0) * rate
-    const rowCost = (Number(row.cost) || Number(row.costPrice) * Number(row.qty) || 0) * rate
+    const rowCost = (Number(row.cost) || 0) * rate
     mv += rowMv
     cost += Math.abs(rowCost)
     dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
@@ -94,7 +94,7 @@ const marketCards = computed(() => {
     if (result[m]) {
       const rate = rateToCny(String(row.curr))
       const rowMv = (Number(row.value) || 0) * rate
-      const rowCost = (Number(row.cost) || Number(row.costPrice) * Number(row.qty) || 0) * rate
+      const rowCost = (Number(row.cost) || 0) * rate
       result[m].mv += rowMv
       result[m].cost += Math.abs(rowCost)
       result[m].dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
@@ -159,16 +159,14 @@ const filteredRows = computed(() => {
     const qty = Number(row.qty) || 0
     const currentPrice = Number(row.currentPrice) || 0
     const displayCostPrice = Number(row.displayCostPrice) || 0
-    const localMv = Number(row.value) || (qty * currentPrice)
-    const localCost = Number(row.cost) || (qty * displayCostPrice)
-    const mv = localMv
-    const cost = localCost
-    const totalPnl = Number(row.totalPnl) || (mv - cost)
+    const mv = Number(row.value) || (qty * currentPrice)
+    const cost = Number(row.cost) || (qty * displayCostPrice)
+    const totalPnl = Number(row.totalPnl) || 0
     const dayPnl = Number(row.dayPnlAggregate) || 0
-    const totalPnlRate = Number(row.totalPnlRate) || 0
+    const totalPnlRate = Number(row.totalPnlRate) || (cost > 0 ? (totalPnl / cost) * 100 : 0)
     
     const rate = rateToCny(String(row.curr || 'CNY'))
-    const cnyMv = localMv * rate
+    const cnyMv = mv * rate
     const totalMarketMv = investTotal.value.mv || 1
     const pct = (cnyMv / totalMarketMv) * 100
 
@@ -178,23 +176,37 @@ const filteredRows = computed(() => {
       asset_type: row.asset_type,
       qty,
       amount: qty, // Add compatibility with template
-      // 保持 Store 中的原始字段
       costPrice: displayCostPrice,
       cost,
       mv,
       dayPnl,
       totalPnl,
-      dayPnlRate: row.dayPnlRate || 0,
+      dayPnlRate: Number(row.dayPnlRate) || 0,
       totalPnlRate,
       pct,
       price: currentPrice || 0,
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
       unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
+      quoteReady: Boolean(row.quoteReady),
+      quotePending: Boolean(row.quotePending),
+      navUpdatePending: Boolean(row.navUpdatePending),
       spark: generateSparkline(String(row.code), Number(row.dayPnlRate || 0))
     }
   })
 })
+
+function quoteLabel(row: any): string {
+  if (row?.navUpdatePending) return '待净值更新'
+  if (row?.quotePending) return '更新中'
+  const value = toNumber(row?.price)
+  return value > 0 ? `${getCurrencySymbol(row?.curr)}${value}` : '--'
+}
+
+function dayPnlRateLabel(row: any): string {
+  if (row?.navUpdatePending || row?.quotePending) return '--'
+  return formatPct(toNumber(row?.dayPnlRate))
+}
 
 // Utility
 function formatPct(v: number): string { return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` }
@@ -258,11 +270,16 @@ function generateSparkline(code: string, dayPnlRate: number): string {
 
 onMounted(async () => {
     try {
-        await store.refreshAll()
-        await marketStore.loadRates()
+        await store.refreshStaticOnly()
+        void store.refreshQuotesOnly()
+        store.startAutoRefresh()
     } catch (e) {
         console.error('Failed to load invest data', e)
     }
+})
+
+onBeforeUnmount(() => {
+    store.stopAutoRefresh()
 })
 
 // Modal states
@@ -270,7 +287,8 @@ const showTradeModal = ref(false)
 
 const handleTradeSuccess = async () => {
     try {
-        await store.refreshAll()
+        await store.refreshStaticOnly()
+        void store.refreshQuotesOnly()
     } catch (e) {
         console.error('Failed to reload invest data', e)
     }
@@ -444,11 +462,10 @@ const handleTradeSuccess = async () => {
                   <!-- Price Row (Above Sparkline) -->
                   <div class="h-price-row">
                     <div class="h-price-main">
-                      <span class="h-price-sym">{{ getCurrencySymbol(row.curr) }}</span>
-                      <span class="h-price-val">{{ row.price }}</span>
+                      <span class="h-price-val">{{ quoteLabel(row) }}</span>
                     </div>
                     <div class="h-price-tag badge" :class="valueClass(toNumber(row.dayPnlRate))" style="padding: 2px 6px; border-radius: 4px; font-size: 10px;">
-                      {{ formatPct(row.dayPnlRate) }}
+                      {{ dayPnlRateLabel(row) }}
                     </div>
                   </div>
 
@@ -531,7 +548,7 @@ const handleTradeSuccess = async () => {
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">现价</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
-                        <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row.curr) }}</span>{{ row.price }}
+                        {{ quoteLabel(row) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
@@ -552,7 +569,7 @@ const handleTradeSuccess = async () => {
                         {{ formatCurrency(row.dayPnl, true) }}
                       </div>
                       <div style="font-size:11px;margin-top:1px" :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']">
-                        {{ formatPct(row.dayPnlRate) }}
+                        {{ dayPnlRateLabel(row) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid rgba(255,255,255,0.05)">
