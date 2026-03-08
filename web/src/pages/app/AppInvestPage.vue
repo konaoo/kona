@@ -90,7 +90,7 @@ const marketCards = computed(() => {
   }
   
   rows.value.forEach((row: any) => {
-    const m = row.market as string
+    const m = String(row.category || row.market || '')
     if (result[m]) {
       const rate = rateToCny(String(row.curr))
       const rowMv = (Number(row.value) || 0) * rate
@@ -153,7 +153,7 @@ const filteredRows = computed(() => {
   const s = selectedTab.value
   let base = rows.value || []
   if (s !== 'all') {
-    base = base.filter((r: any) => r.market === s)
+    base = base.filter((r: any) => (r.category || r.market) === s)
   }
   return base.map((row: any) => {
     const qty = Number(row.qty) || 0
@@ -187,6 +187,7 @@ const filteredRows = computed(() => {
       price: currentPrice || 0,
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
+      category: String(row.category || row.market || ''),
       unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
       quoteReady: Boolean(row.quoteReady),
       quotePending: Boolean(row.quotePending),
@@ -481,7 +482,7 @@ const handleTradeSuccess = async () => {
                         {{ row.name }}
                       </div>
                       <div class="h-meta-row">
-                        <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
+                        <span class="tag" :class="[row.category || row.market]">{{ getMarketName(row.category || row.market) }}</span>
                         <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(formatLocal(row.amount)) }">{{ formatLocal(row.amount) }}</span>{{ row.unit }}</span>
                       </div>
                     </div>
@@ -574,7 +575,7 @@ const handleTradeSuccess = async () => {
                     <div>
                       <div style="font-size:13px;font-weight:700;color:var(--text)">{{ row.name }}</div>
                       <div style="display:flex;gap:5px;margin-top:3px">
-                        <span class="tag" :class="[row.market]">{{ getMarketName(row.market) }}</span>
+                        <span class="tag" :class="[row.category || row.market]">{{ getMarketName(row.category || row.market) }}</span>
                       </div>
                     </div>
                   </div>

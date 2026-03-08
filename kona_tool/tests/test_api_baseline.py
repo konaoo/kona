@@ -953,6 +953,7 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'CNY')
         self.assertEqual(target.get('asset_type'), 'a')
+        self.assertEqual(target.get('category_type'), 'fund')
 
     def test_portfolio_add_shanghai_exchange_etf_code_normalizes_to_exchange_code(self):
         with patch.object(app_module, 'batch_get_prices', return_value={'sh511360': (113.133, 113.133, 0.0, 0.0)}):
@@ -972,6 +973,7 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'CNY')
         self.assertEqual(target.get('asset_type'), 'a')
+        self.assertEqual(target.get('category_type'), 'fund')
 
     def test_portfolio_add_otc_fund_code_keeps_f_prefix(self):
         with patch.object(app_module, 'batch_get_prices', return_value={}):

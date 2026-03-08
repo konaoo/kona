@@ -55,6 +55,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
       const adjustment = toNumber(item.adjustment)
       const market = inferMarket(item)
+      const category = inferCategory(item)
       const marketStatus = marketStore.marketStatus[market]
       const open = Boolean(marketStatus?.open)
       const marketTradingDay = Boolean(marketStatus?.trading_day)
@@ -84,6 +85,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       return {
         ...item,
         market,
+        category,
         qty,
         costPrice: rawCostPrice,
         cost,
@@ -144,7 +146,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
 
     for (const row of rows.value) {
-      groups[row.market].push(row)
+      groups[row.category].push(row)
     }
 
     return groups
@@ -169,6 +171,15 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     if (code.startsWith('gb_') || /^[a-z][a-z.\-]*$/i.test(code)) return 'us'
     if (code.startsWith('f_') || code.startsWith('ft_')) return 'fund'
     return 'a'
+  }
+
+  function inferCategory(item: PortfolioItem): MarketCode {
+    const category = String(item.category_type || '').toLowerCase()
+    if (category === 'hk') return 'hk'
+    if (category === 'us') return 'us'
+    if (category === 'fund') return 'fund'
+    if (category === 'a') return 'a'
+    return inferMarket(item)
   }
 
   /**

@@ -154,6 +154,7 @@ const activeDrawerData = computed(() => {
       type: 'invest' as const,
       code: String(row.code || ''),
       market: String(row.market || ''),
+      category: String(row.category || row.market || ''),
       logo_url: row.logo_url,
       asset_type: row.asset_type
     }))
@@ -227,7 +228,9 @@ function formatCurrency(cnyValue: number, signed = false): string {
 
 const filteredRows = computed(() => {
   const validRows = (rows.value || []).filter(row => row && typeof row === 'object')
-  const base = selectedTab.value === 'all' ? validRows : validRows.filter(row => row?.market === selectedTab.value)
+  const base = selectedTab.value === 'all'
+    ? validRows
+    : validRows.filter(row => (row?.category || row?.market) === selectedTab.value)
   const totalMarketMv = investTotal.value?.mv || 1;
   
   return base.map((row: any) => {
@@ -253,6 +256,7 @@ const filteredRows = computed(() => {
       quoteReady: Boolean(row?.quoteReady),
       quotePending: Boolean(row?.quotePending),
       navUpdatePending: Boolean(row?.navUpdatePending),
+      category: String(row?.category || row?.market || ''),
       pct,
       spark: generateSparkline(String(row?.code), Number(row?.dayPnlRate || 0))
     }
@@ -680,7 +684,7 @@ onBeforeUnmount(() => {
                 <div class="h-info-group">
                   <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
                   <div class="h-meta-row">
-                    <span class="tag" :class="row?.market">{{ row?.market==='us'?'美股':row?.market==='hk'?'港股':row?.market==='a'?'A股':'基金' }}</span>
+                    <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
                     <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(Number(row?.qty||0).toLocaleString()) }">{{ Number(row?.qty||0).toLocaleString() }}</span>{{ row?.market === 'fund' ? '份' : '股' }}</span>
                   </div>
                 </div>
@@ -746,7 +750,7 @@ onBeforeUnmount(() => {
                 <div class="h-info-group">
                   <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
                   <div class="h-meta-row">
-                    <span class="tag" :class="row?.market">{{ row?.market==='us'?'美股':row?.market==='hk'?'港股':row?.market==='a'?'A股':'基金' }}</span>
+                        <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
                   </div>
                 </div>
               </div>

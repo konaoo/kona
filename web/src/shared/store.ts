@@ -43,6 +43,7 @@ type PortfolioItem = {
   price?: number
   curr?: string
   asset_type?: string
+  category_type?: string
   adjustment?: number
   [k: string]: unknown
 }

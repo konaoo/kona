@@ -12,7 +12,9 @@ export type PositionRow = {
   code: string
   name?: string
   market: MarketCode
+  category?: MarketCode
   asset_type: string
+  category_type?: string
   qty: number
   costPrice: number
   displayCostPrice: number

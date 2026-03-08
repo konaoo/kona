@@ -73,6 +73,7 @@ export type PortfolioItem = {
   price: number
   curr?: Currency
   asset_type?: string
+  category_type?: string
   adjustment?: number
   market?: MarketCode
   [key: string]: unknown

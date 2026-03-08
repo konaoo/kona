@@ -12,7 +12,7 @@ if str(KONA_TOOL) not in sys.path:
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 from core.parser import parse_code
-from core.asset_type import infer_asset_type
+from core.asset_type import infer_asset_type, infer_category_type
 from core.stock import get_sina_stock_price
 
 
@@ -94,6 +94,9 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_infer_asset_type_a_share_etf_remains_a(self):
         self.assertEqual(infer_asset_type("sh510300", "沪深300ETF"), "a")
+
+    def test_infer_category_type_exchange_etf_counts_as_fund(self):
+        self.assertEqual(infer_category_type("sz159201", "华夏国证自由现金流ETF", "a"), "fund")
 
     def test_infer_asset_type_otc_fund_prefix_remains_fund(self):
         self.assertEqual(infer_asset_type("f_161907", "万家中证红利ETF联接A"), "fund")

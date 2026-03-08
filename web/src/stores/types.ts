@@ -36,6 +36,7 @@ export type PortfolioItem = {
   price?: number
   curr?: string
   asset_type?: string
+  category_type?: string
   logo_url?: string | null
   adjustment?: number
   [k: string]: unknown
@@ -93,6 +94,7 @@ export type PositionRow = {
   code: string
   name?: string
   market: MarketCode
+  category: MarketCode
   qty: number
   costPrice: number
   rawCostPrice: number
@@ -121,6 +123,7 @@ export type PositionRow = {
   dayPnlDisplayEnabled: boolean
   dayPnlAggregateEnabled: boolean
   asset_type?: string
+  category_type?: string
   logo_url?: string | null
   [k: string]: unknown
 }

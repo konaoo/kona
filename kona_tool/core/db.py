@@ -1851,15 +1851,20 @@ class DatabaseManager:
             ''', user_param)
 
         data = []
+        from .asset_type import infer_category_type
         for row in cursor.fetchall():
+            code = row['code']
+            name = row['name']
+            asset_type_value = row['asset_type'] if 'asset_type' in row.keys() else ''
             data.append({
-                'code': row['code'],
-                'name': row['name'],
+                'code': code,
+                'name': name,
                 'qty': float(row['qty']),
                 'price': float(row['price']),
                 'curr': row['curr'],
                 'adjustment': float(row['adjustment']),
-                'asset_type': row['asset_type'] if 'asset_type' in row.keys() else '',
+                'asset_type': asset_type_value,
+                'category_type': infer_category_type(code, name, asset_type_value),
                 'logo_url': row['logo_url'] if 'logo_url' in row.keys() else None
             })
 
