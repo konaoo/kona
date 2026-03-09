@@ -11,6 +11,31 @@ import { useMarketStore } from './market'
 import { useSyncStore } from './sync'
 
 let hydratedCacheUserId = ''
+let autoRefreshResumeHandlerBound = false
+let autoRefreshResumeCallback: null | (() => Promise<void>) = null
+let autoRefreshResumeInflight: Promise<void> | null = null
+
+function detachAutoRefreshResumeHandlers() {
+  if (typeof window === 'undefined' || !autoRefreshResumeHandlerBound) return
+  document.removeEventListener('visibilitychange', handleAutoRefreshResume)
+  window.removeEventListener('focus', handleAutoRefreshResume)
+  autoRefreshResumeHandlerBound = false
+}
+
+function attachAutoRefreshResumeHandlers() {
+  if (typeof window === 'undefined' || autoRefreshResumeHandlerBound) return
+  document.addEventListener('visibilitychange', handleAutoRefreshResume)
+  window.addEventListener('focus', handleAutoRefreshResume)
+  autoRefreshResumeHandlerBound = true
+}
+
+function handleAutoRefreshResume() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  if (!autoRefreshResumeCallback || autoRefreshResumeInflight) return
+  autoRefreshResumeInflight = autoRefreshResumeCallback().finally(() => {
+    autoRefreshResumeInflight = null
+  })
+}
 
 /**
  * useKonaStore - 统一的数据访问接口
@@ -147,8 +172,26 @@ export function useKonaStore() {
 
   const startAutoRefresh = () => {
     quoteStore.startAutoRefresh()
-    // 启动定时刷新
-    const refreshCallback = () => refreshQuotesOnly()
+
+    const refreshCallback = async () => {
+      try {
+        await refreshQuotesOnly()
+      } finally {
+        quoteStore.scheduleAutoRefresh(
+          undefined,
+          marketStore.hasAnyOpenMarket,
+          false, // TODO: 实现 hasUsExtendedActive
+          refreshCallback
+        )
+      }
+    }
+
+    autoRefreshResumeCallback = async () => {
+      await refreshStaticOnly()
+      await refreshCallback()
+    }
+    attachAutoRefreshResumeHandlers()
+
     quoteStore.scheduleAutoRefresh(
       800,
       marketStore.hasAnyOpenMarket,
@@ -159,6 +202,8 @@ export function useKonaStore() {
 
   const stopAutoRefresh = () => {
     quoteStore.stopAutoRefresh()
+    autoRefreshResumeCallback = null
+    detachAutoRefreshResumeHandlers()
   }
 
   // ───────────────────────────────────────────────────────────────

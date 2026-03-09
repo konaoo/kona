@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 import config
@@ -19,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 def _normalize_code(code: Any) -> str:
     return str(code or "").strip()
+
+
+def _is_exchange_fund_digits(digits: str) -> bool:
+    if not re.fullmatch(r"\d{6}", digits or ""):
+        return False
+    if digits.startswith(("15", "16", "18")):
+        return True
+    if digits.startswith(("50", "51", "52", "56", "58", "511")):
+        return True
+    return False
 
 
 def _resolve_stock_secids(code: str, market_hint: str = "") -> List[str]:
@@ -46,6 +57,10 @@ def _resolve_stock_secids(code: str, market_hint: str = "") -> List[str]:
     if re.fullmatch(r"\d{6}", digits):
         if hint == "a":
             if digits.startswith(("5", "6", "9")):
+                return [f"1.{digits}"]
+            return [f"0.{digits}"]
+        if hint == "fund" and _is_exchange_fund_digits(digits):
+            if digits.startswith(("50", "51", "52", "56", "58", "511")):
                 return [f"1.{digits}"]
             return [f"0.{digits}"]
         if hint == "bj":
@@ -93,6 +108,10 @@ def _resolve_tencent_symbol(code: str, market_hint: str = "") -> tuple[str, str]
     if re.fullmatch(r"\d{6}", digits):
         if hint == "bj":
             return "a", f"bj{digits}"
+        if hint == "fund" and _is_exchange_fund_digits(digits):
+            if digits.startswith(("50", "51", "52", "56", "58", "511")):
+                return "a", f"sh{digits}"
+            return "a", f"sz{digits}"
         if hint == "a" or digits.startswith(("0", "3", "5", "6", "8", "9")):
             if digits.startswith(("5", "6", "9")):
                 return "a", f"sh{digits}"
@@ -145,11 +164,70 @@ def _fetch_tencent_stock_history_points(code: str, limit: int, market_hint: str 
         return []
 
 
+def _resolve_yahoo_us_symbol(code: str) -> str:
+    normalized = _normalize_code(code).strip().upper()
+    if not normalized:
+        return ""
+    if normalized.startswith("GB_"):
+        normalized = normalized[3:]
+    if normalized.startswith("US."):
+        normalized = normalized[3:]
+    if normalized.endswith(".US"):
+        normalized = normalized[:-3]
+    return normalized if re.fullmatch(r"[A-Z][A-Z0-9.\-]*", normalized) else ""
+
+
+def _fetch_yahoo_us_history_points(code: str, limit: int) -> List[Dict[str, Any]]:
+    symbol = _resolve_yahoo_us_symbol(code)
+    if not symbol:
+        return []
+
+    try:
+        response = monitored_http_get(
+            "yahoo_us_history",
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={
+                "range": "6mo",
+                "interval": "1d",
+                "includePrePost": "false",
+            },
+            headers={
+                "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Referer": "https://finance.yahoo.com/",
+            },
+            timeout=config.API_TIMEOUT,
+        )
+        if response.status_code != 200:
+            return []
+
+        payload = response.json() or {}
+        result = ((payload.get("chart") or {}).get("result") or [None])[0] or {}
+        timestamps = result.get("timestamp") or []
+        quote = (((result.get("indicators") or {}).get("quote") or [None])[0] or {})
+        closes = quote.get("close") or []
+
+        points: List[Dict[str, Any]] = []
+        for raw_ts, raw_close in zip(timestamps, closes):
+            close = safe_float(raw_close)
+            if close <= 0:
+                continue
+            try:
+                date = datetime.fromtimestamp(int(raw_ts), UTC).strftime("%Y-%m-%d")
+            except Exception:
+                continue
+            points.append({"date": date, "value": close})
+        return points[-limit:] if points else []
+    except Exception as exc:
+        logger.debug("yahoo us trend fetch failed code=%s symbol=%s error=%s", code, symbol, exc)
+        return []
+
+
 def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") -> List[Dict[str, Any]]:
     headers = {
         "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
         "Referer": "https://quote.eastmoney.com/",
     }
+    normalized_hint = _normalize_code(market_hint).lower()
 
     for secid in _resolve_stock_secids(code, market_hint):
         try:
@@ -181,9 +259,25 @@ def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") ->
                     continue
                 points.append({"date": date, "value": close})
             if points:
+                is_us_history = normalized_hint == "us" or str(secid).startswith(("105.", "106."))
+                if is_us_history and len(points) < min(max(5, int(limit)), 5):
+                    yahoo_points = _fetch_yahoo_us_history_points(code, limit)
+                    if len(yahoo_points) >= 2:
+                        return yahoo_points
+                    logger.debug(
+                        "eastmoney us trend points too sparse, fallback to tencent: code=%s secid=%s points=%s",
+                        code,
+                        secid,
+                        len(points),
+                    )
+                    break
                 return points[-limit:]
         except Exception as exc:
             logger.debug("stock trend fetch failed code=%s secid=%s error=%s", code, secid, exc)
+    if normalized_hint == "us":
+        yahoo_points = _fetch_yahoo_us_history_points(code, limit)
+        if len(yahoo_points) >= 2:
+            return yahoo_points
     return _fetch_tencent_stock_history_points(code, limit, market_hint)
 
 

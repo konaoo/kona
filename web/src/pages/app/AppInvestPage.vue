@@ -42,12 +42,16 @@ function toDisplay(cnyVal: number): number {
   return cnyVal
 }
 
-function formatCurrency(cnyValue: number, signed = false): string {
+function formatCurrency(cnyValue: number, signed = false, integerOnly = false): string {
   const val = toDisplay(cnyValue)
   const sym = currMeta.value.sym
   const sign = signed && cnyValue >= 0 ? '+' : signed && cnyValue < 0 ? '-' : ''
   const absVal = Math.abs(val)
-  const formatted = absVal >= 1000 ? Math.round(absVal).toLocaleString('zh-CN') : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  const formatted = integerOnly
+    ? Math.round(absVal).toLocaleString('zh-CN')
+    : absVal >= 1000
+      ? Math.round(absVal).toLocaleString('zh-CN')
+      : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   return `${sign}${sym}${formatted}`
 }
 
@@ -351,21 +355,21 @@ const handleTradeSuccess = async () => {
             <div class="stat-item">
               <span class="sl">今日盈亏</span>
               <div class="sv-group" :class="valueClass(investTotal.dayPnl)">
-                <span class="sv-amt">{{ formatCurrency(investTotal.dayPnl, true) }}</span>
+                <span class="sv-amt">{{ formatCurrency(investTotal.dayPnl, true, true) }}</span>
                 <span class="sv-pct">{{ formatPct(investTotal.dayRate) }}</span>
               </div>
             </div>
             <div class="stat-item">
               <span class="sl">持仓收益</span>
               <div class="sv-group" :class="valueClass(investTotal.floatPnl)">
-                <span class="sv-amt">{{ formatCurrency(investTotal.floatPnl, true) }}</span>
+                <span class="sv-amt">{{ formatCurrency(investTotal.floatPnl, true, true) }}</span>
                 <span class="sv-pct">{{ formatPct(investTotal.floatRate) }}</span>
               </div>
             </div>
             <div class="stat-item">
               <span class="sl">累计盈亏</span>
               <div class="sv-group" :class="valueClass(investTotal.totalPnl)">
-                <span class="sv-amt">{{ formatCurrency(investTotal.totalPnl, true) }}</span>
+                <span class="sv-amt">{{ formatCurrency(investTotal.totalPnl, true, true) }}</span>
                 <span class="sv-pct">{{ formatPct(investTotal.totalRate) }}</span>
               </div>
             </div>
