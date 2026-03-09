@@ -54,7 +54,7 @@ kona_repo/
 ├─ docs/             # 深度架构、运维、交接文档 (30+ .md files)
 ├─ scripts/          # 仓库级工具脚本
 ├─ .github/          # GitHub Actions / CI/CD
-└─ CHANGELOG.md      # 项目演进的唯一标准标准记录
+└─ CHANGELOG.md      # 项目演进的唯一标准记录
 ```
 
 ### 仓库定位
@@ -136,11 +136,13 @@ npm install && npm run dev
 
 ### 发布规则
 
-- 版本历史统一写在 [CHANGELOG.md](./CHANGELOG.md)
-- 重要改动要写版本记录，但不是每次改动都要升版本号
+- `CHANGELOG.md` 记录的是项目变更，不是客户端真实版本号
+- Flutter 客户端真实版本只认 [flutter/pubspec.yaml](./flutter/pubspec.yaml)
+- App 内“检查更新”提示的新版本，只认后端 `/api/app/version`
+- 重要改动要写版本记录，但不是每次改动都要升 Flutter 版本号
 - 只有准备发布新的 Flutter 客户端安装包时，才升级 `flutter/pubspec.yaml` 里的版本号
+- 只有准备让 App 内“检查更新”提示新版本时，才同步更新 `CLIENT_APP_VERSION`、`CLIENT_APP_BUILD_NUMBER`、下载链接和更新文案
 - 如果只是后端修复、Web 修复、数据修复、目录整理，通常不需要升客户端版本号
-- 发布新客户端版本时，必须同步更新环境配置中的 `CLIENT_APP_DOWNLOAD_URL`
 
 ### AI 工作规则
 
@@ -184,22 +186,15 @@ npm install && npm run dev
 
 ## 📈 版本历史
 
-最新稳定版：`v1.0.51`
-- **首页趋势图、持仓真趋势与邀请码复制兜底 (v1.0.51)**
-  - 首页总资产折线图已经接到真实快照，时间切换不再是假按钮。
-  - 首页和投资页的持仓小折线改成真实历史数据，拿不到历史时明确显示“暂无趋势”。
-  - 管理后台邀请码页补了复制兜底，浏览器权限不稳时不再直接报复制失败。
-- **行情与快讯性能升级 (v1.0.31)**
-  - 四市场报价链路改为速度优先：快源先返回、慢源受控兜底。
-  - 基金净值改为确认值优先（Eastmoney F10），新增腾讯 `jj` 备源。
-  - 快讯页升级为“预加载近 50 条 + 增量刷新”。
-  - Web/Flutter 刷新节奏对齐，并补 optimistic rollback 与部署重试稳定性。
-- **UI & 交互体验升级 (v1.0.30)**
-  - 修复首页头像闪烁、添加资产面板主题闪烁、投资弹窗浅色态错色等问题。
-  - 优化分析页日期交互与多页面主题一致性。
-- `v1.0.29` 及更早：
-  - 修复 Android 16 真机图片保存与用户群弹窗层级细节。
-- 详情请查阅 [CHANGELOG.md](./CHANGELOG.md)。
+当前 Flutter 客户端版本：`1.0.28`
+
+说明：
+
+- 这个版本号只代表 Flutter 安装包版本
+- 不是 `CHANGELOG.md` 里的内部变更记录编号
+- App 内“检查更新”是否提示新版本，取决于后端 `/api/app/version` 返回值
+
+项目历史变更请直接查阅 [CHANGELOG.md](./CHANGELOG.md)。
 
 ---
 
