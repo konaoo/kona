@@ -613,7 +613,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   String _formatInputNumber(double value, {int decimals = 3}) {
     final text = value.toStringAsFixed(decimals);
-    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+    if (!text.contains('.')) return text;
+    return text
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
   bool _isFundAsset({String? assetType, String? code}) {
@@ -853,6 +856,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   String _displayCurrencyLabel(String? curr) {
     final code = _normalizeCurrencyCode(curr);
     if (code == 'HKD') return 'HK\$';
+    if (code == 'CNY') return '￥';
+    if (code == 'USD') return '\$';
     return code;
   }
 
@@ -3210,55 +3215,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
-  Widget _buildSummaryMetricBox({
-    required String label,
-    required String currency,
-    required String amount,
-  }) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 96, maxWidth: 126),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0x7512151D),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x14D4AF64), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(label, style: _dm(size: 10, color: _tokens.textSub)),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
-                currency,
-                style: _mono(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: _tokens.text,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  amount,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _mono(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: _tokens.text,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTradeInputFields() {
     if (_isTrade && _isAdjust) {
       return Column(
@@ -3700,70 +3656,162 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         ),
                     ] else ...[
                       // Stock Info Card
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _tokens.goldDim,
-                          border: Border.all(
-                            color: _tokens.gold.withValues(alpha: 0.2),
-                            width: 1,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    (widget.item?.name ?? '').length > 26
-                                        ? '${(widget.item?.name ?? '').substring(0, 26)}...'
-                                        : (widget.item?.name ?? ''),
-                                    style: _dm(
-                                      size: 13,
-                                      weight: FontWeight.w600,
-                                      color: _tokens.gold,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    summaryQtyText,
-                                    style: _mono(
-                                      size: 12,
-                                      weight: FontWeight.w600,
-                                      color: _tokens.text,
-                                    ),
-                                  ),
-                                ],
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compactLayout = constraints.maxWidth < 360;
+                          final nameText = (widget.item?.name ?? '').length > 26
+                              ? '${(widget.item?.name ?? '').substring(0, 26)}...'
+                              : (widget.item?.name ?? '');
+                          final summaryGap = compactLayout ? 6.0 : 8.0;
+                          final summaryCostValue =
+                              '$summaryCurrency $summaryCostText';
+                          final summaryAdjustmentValue =
+                              '$summaryCurrency $summaryAdjustmentText';
+                          Widget summaryCell({
+                            required Widget child,
+                            bool padRight = false,
+                          }) {
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                right: padRight ? summaryGap : 0,
                               ),
+                              child: child,
+                            );
+                          }
+
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
                             ),
-                            const SizedBox(width: 12),
-                            Row(
+                            decoration: BoxDecoration(
+                              color: _tokens.goldDim,
+                              border: Border.all(
+                                color: _tokens.gold.withValues(alpha: 0.2),
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                _buildSummaryMetricBox(
-                                  label: '持仓成本',
-                                  currency: summaryCurrency,
-                                  amount: summaryCostText,
-                                ),
-                                const SizedBox(width: 8),
-                                _buildSummaryMetricBox(
-                                  label: '调整额',
-                                  currency: summaryCurrency,
-                                  amount: summaryAdjustmentText,
+                                Table(
+                                  columnWidths: const {
+                                    0: FlexColumnWidth(5.6),
+                                    1: FlexColumnWidth(2.2),
+                                    2: FlexColumnWidth(2.2),
+                                  },
+                                  defaultVerticalAlignment:
+                                      TableCellVerticalAlignment.top,
+                                  children: [
+                                    TableRow(
+                                      children: [
+                                        summaryCell(
+                                          padRight: true,
+                                          child: Text(
+                                            nameText,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _dm(
+                                              size: 13,
+                                              weight: FontWeight.w600,
+                                              color: _tokens.gold,
+                                            ),
+                                          ),
+                                        ),
+                                        summaryCell(
+                                          padRight: true,
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              '持仓成本',
+                                              maxLines: 1,
+                                              style: _dm(
+                                                size: 10,
+                                                color: _tokens.textSub,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        summaryCell(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              '调整额',
+                                              maxLines: 1,
+                                              style: _dm(
+                                                size: 10,
+                                                color: _tokens.textSub,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const TableRow(
+                                      children: [
+                                        SizedBox(height: 4),
+                                        SizedBox(height: 4),
+                                        SizedBox(height: 4),
+                                      ],
+                                    ),
+                                    TableRow(
+                                      children: [
+                                        summaryCell(
+                                          padRight: true,
+                                          child: Text(
+                                            summaryQtyText,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _mono(
+                                              size: 12,
+                                              weight: FontWeight.w600,
+                                              color: _tokens.text,
+                                            ),
+                                          ),
+                                        ),
+                                        summaryCell(
+                                          padRight: true,
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              summaryCostValue,
+                                              maxLines: 1,
+                                              style: _mono(
+                                                size: 11,
+                                                weight: FontWeight.w700,
+                                                color: _tokens.text,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        summaryCell(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              summaryAdjustmentValue,
+                                              maxLines: 1,
+                                              style: _mono(
+                                                size: 11,
+                                                weight: FontWeight.w700,
+                                                color: _tokens.text,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ],
                     if (_isTrade) ...[
