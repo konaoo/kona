@@ -298,6 +298,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Future<void> _handleLogin() async {
+    if (_loginBtnState == 'loading') return;
     FocusManager.instance.primaryFocus?.unfocus();
     _clearErrors();
 

@@ -38,6 +38,7 @@ export type UserProfile = {
   is_admin: boolean
   is_active: boolean
   created_at: string
+  build_start_at?: string
   updated_at: string
   preferences: UserPreferences
 }

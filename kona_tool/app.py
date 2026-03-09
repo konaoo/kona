@@ -549,6 +549,29 @@ def _auth_audit(event: str, outcome: str, username: str = '', reason: str = '', 
         logger.info(msg)
 
 
+def _request_payload_diagnostics() -> str:
+    """记录请求体诊断信息，排查空 body 或错误 content-type。"""
+    content_type = (request.headers.get("Content-Type") or "").strip() or "-"
+    header_content_length = (request.headers.get("Content-Length") or "").strip() or "-"
+    request_id = (
+        request.headers.get("X-Request-Id")
+        or request.headers.get("X-Request-ID")
+        or ""
+    ).strip()[:64] or "-"
+    try:
+        body_len = len(request.get_data(cache=True) or b"")
+    except Exception:
+        body_len = -1
+    content_length = request.content_length if request.content_length is not None else "-"
+    return (
+        f"content_type={content_type} "
+        f"content_length={content_length} "
+        f"header_content_length={header_content_length} "
+        f"body_len={body_len} "
+        f"request_id={request_id}"
+    )
+
+
 def _resolve_api_policy_scope(path: str) -> str:
     p = (path or "").strip()
     if p.startswith("/api/auth/"):
@@ -2269,7 +2292,12 @@ def _handle_asset_update(update_func, asset_type, user_id=None):
 def auth_login():
     data = request.get_json(silent=True)
     if not data:
-        _auth_audit(event='auth_login', outcome='failed', reason='missing_payload', level='warning')
+        _auth_audit(
+            event='auth_login',
+            outcome='failed',
+            reason=f"missing_payload {_request_payload_diagnostics()}",
+            level='warning',
+        )
         return jsonify({"error": "请求参数缺失"}), 400
 
     username = normalize_username(data.get("username", ""))

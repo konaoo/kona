@@ -314,13 +314,19 @@ function openEditor(scene: ConfigScene) {
   editor.scene = scene; editor.visible = true; editor.saving = false; editor.message = ''; editor.ok = true;
   editor.draft = normalizePayload(configForm[scene])
 }
-function closeEditor() { if (editor.saving) return; editor.visible = false; }
+function closeEditor(force = false) {
+  if (editor.saving && !force) return
+  editor.visible = false
+}
 
 function openAppUpdateEditor() {
   appUpdateEditor.visible = true; appUpdateEditor.saving = false; appUpdateEditor.message = ''; appUpdateEditor.ok = true;
   appUpdateEditor.draft = normalizeAppUpdatePayload(appUpdateState)
 }
-function closeAppUpdateEditor() { if (appUpdateEditor.saving) return; appUpdateEditor.visible = false; }
+function closeAppUpdateEditor(force = false) {
+  if (appUpdateEditor.saving && !force) return
+  appUpdateEditor.visible = false
+}
 
 async function saveEditor() {
   const scene = editor.scene
@@ -333,7 +339,7 @@ async function saveEditor() {
     configForm[scene].image_url = normalized.image_url
     thumbLoadFailed[scene] = false
     flashPage(META[scene].saveSuccess, true)
-    closeEditor()
+    closeEditor(true)
   } catch (e) {
     editor.message = e instanceof Error ? e.message : META[scene].saveError
     editor.ok = false
@@ -351,7 +357,7 @@ async function saveAppUpdateEditor() {
     appUpdateState.text = normalized.text
     appUpdateState.download_url = normalized.download_url
     flashPage(APP_UPDATE_META.saveSuccess, true)
-    closeAppUpdateEditor()
+    closeAppUpdateEditor(true)
   } catch (e) {
     appUpdateEditor.message = e instanceof Error ? e.message : APP_UPDATE_META.saveError
     appUpdateEditor.ok = false
