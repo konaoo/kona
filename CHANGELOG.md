@@ -149,6 +149,27 @@
 - 线上如果重新安装告警或备份服务，生成的 systemd 配置是否指向 `.venv/bin/python`。
 - 线上手工执行备份、恢复、refresh token 清理等命令时，是否都按 `/opt/kaka/portfolio/kona_tool` 和 `.venv/bin/python` 这套口径走。
 
+## 2026-03-09-07
+
+### 这版一句话
+
+把价格健康告警脚本的 systemd 语义改顺了，命中告警时继续发通知，但不再把定时任务本身打成失败。
+
+### 主要变化
+- `check_price_health_alert.py` 现在把“脚本执行失败”和“脚本成功探测到异常并已告警”分开处理。
+- 当价格健康接口真的探测到异常时，脚本仍会输出告警内容并尝试发邮件，但返回值改成 `0`，避免 systemd 长期显示红色失败态。
+- 只有价格健康接口本身拉取失败、返回非法内容这类真正执行错误，脚本才继续返回 `1`。
+
+### 影响范围
+- 腾讯云上的 `kona-price-health-alert.service`
+- 价格健康巡检 timer 的 systemd 状态
+- 价格健康脚本测试
+
+### 验收重点
+- 命中价格健康告警规则时，邮件/日志是否仍然会产出。
+- `kona-price-health-alert.service` 在命中告警后是否不再显示 `failed`。
+- `test_price_health_alert_script.py` 是否继续通过。
+
 ## 2026-03-09-01
 
 ### 这版一句话

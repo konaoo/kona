@@ -1,6 +1,8 @@
 import importlib.util
+import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -95,6 +97,30 @@ class PriceHealthAlertScriptTests(unittest.TestCase):
         }
         alerts = module.build_alert_messages(current, previous)
         self.assertEqual(alerts, [])
+
+    def test_main_returns_zero_when_alert_triggered(self):
+        module = _load_module()
+        payload = {
+            "runtime": {
+                "network_fail": 0,
+                "stale_hits": 0,
+            },
+            "sources": {
+                "nasdaq_quote": {
+                    "consecutive_fail": 2,
+                    "circuit_open": True,
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            module, "STATE_FILE", str(Path(tmpdir) / "price_health_state.json")
+        ), patch.object(module, "_fetch_price_health", return_value=payload), patch.object(
+            module, "send_alert"
+        ) as mocked_send_alert:
+            result = module.main()
+
+        self.assertEqual(result, 0)
+        mocked_send_alert.assert_called_once()
 
 
 if __name__ == "__main__":

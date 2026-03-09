@@ -161,7 +161,9 @@ def main() -> int:
     except Exception as send_err:  # noqa: BLE001
         print(f"failed to send alert email: {send_err}")
     print(body)
-    return 1
+    # 发现异常并完成告警后，timer 任务本身应算执行成功，
+    # 避免 systemd 长期把“已报警”误判成“服务坏了”。
+    return 0
 
 
 if __name__ == "__main__":
