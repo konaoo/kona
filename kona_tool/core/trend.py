@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import config
@@ -212,7 +212,7 @@ def _fetch_yahoo_us_history_points(code: str, limit: int) -> List[Dict[str, Any]
             if close <= 0:
                 continue
             try:
-                date = datetime.fromtimestamp(int(raw_ts), UTC).strftime("%Y-%m-%d")
+                date = datetime.fromtimestamp(int(raw_ts), timezone.utc).strftime("%Y-%m-%d")
             except Exception:
                 continue
             points.append({"date": date, "value": close})

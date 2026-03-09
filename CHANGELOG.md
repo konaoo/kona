@@ -106,6 +106,27 @@
 - 管理后台保存配置成功后，弹窗是否会正常关闭并保留成功提示。
 - 后端登录接口如果收到空请求体，日志里是否能看到请求体诊断信息。
 
+## 2026-03-09-05
+
+### 这版一句话
+
+把趋势模块里卡 Python 3.9 的兼容问题修掉了，主干测试不再因为导入失败整串红掉。
+
+### 主要变化
+- 把 `kona_tool/core/trend.py` 里 Python 3.11 才有的 `datetime.UTC` 改回 Python 3.9 也兼容的 `timezone.utc`。
+- 修正 Yahoo 历史趋势时间戳转日期的 UTC 写法，避免 GitHub Actions 在导入趋势模块时直接抛 `ImportError`。
+- 这次修的是运行环境兼容，不改趋势口径本身；场内基金和美股趋势兜底逻辑保持不变。
+
+### 影响范围
+- 后端趋势模块导入
+- GitHub Actions 的 Python 3.9 测试环境
+- 所有依赖 `core.trend` 的后端测试
+
+### 验收重点
+- GitHub Actions 里 `python -m unittest discover -s kona_tool/tests -p "test_*.py" -v` 是否恢复通过。
+- 趋势模块导入时是否不再报 `cannot import name 'UTC' from 'datetime'`。
+- 场内基金和美股趋势相关测试是否继续通过。
+
 ## 2026-03-09-01
 
 ### 这版一句话
