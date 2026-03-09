@@ -85,6 +85,50 @@
           </table>
         </div>
 
+        <div class="mobile-invite-list">
+          <div v-for="item in invites.items || []" :key="`mobile-${item.code}`" class="mobile-invite-card">
+            <div class="mobile-invite-head">
+              <div class="mobile-invite-code">
+                <span class="mobile-invite-label">邀请码</span>
+                <code
+                  class="code-text clickable"
+                  @click="copyToClipboard(item.code)"
+                  title="点击复制"
+                >{{ item.code }}</code>
+              </div>
+              <span
+                v-if="inviteStatus === 'active'"
+                class="status-tag"
+              >{{ statusLabel(item.status) }}</span>
+              <span v-else class="mobile-used-tag">已使用</span>
+            </div>
+
+            <div v-if="copiedCode === item.code" class="mobile-copy-hint">复制成功</div>
+
+            <div v-if="inviteStatus === 'active'" class="mobile-invite-grid">
+              <div class="mobile-metric">
+                <span class="metric-label">创建时间</span>
+                <strong>{{ formatDateOnly(item.created_at) }}</strong>
+              </div>
+            </div>
+
+            <div v-else class="mobile-invite-grid">
+              <div class="mobile-metric">
+                <span class="metric-label">用户名</span>
+                <strong>{{ item.used_by_username || '-' }}</strong>
+              </div>
+              <div class="mobile-metric">
+                <span class="metric-label">使用时间</span>
+                <strong>{{ shortDateTime(item.used_at) }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!(invites.items || []).length" class="mobile-empty">
+            {{ inviteStatus === 'active' ? '暂无邀请码' : '暂无已使用邀请码' }}
+          </div>
+        </div>
+
         <div class="table-footer">
           <div class="page-size-selector">
             <label>每页显示：</label>
@@ -330,6 +374,7 @@ onMounted(() => {
 
 /* Table Style Sync */
 .table-container { background: white; border: 1px solid #edeef1; border-radius: 18px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02); }
+.mobile-invite-list { display: none; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table thead { background: #fbfbfc; }
 .data-table th { padding: 16px 22px; text-align: left; font-weight: 700; font-size: 13px; color: #888; border-bottom: 1px solid #f0f0f2; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -365,6 +410,119 @@ onMounted(() => {
   .sidebar { display: none; }
   .main-content { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
   .header { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .header-actions { width: 100%; }
   .tool-bar { width: 100%; }
+  .tool-bar .add-btn { flex: 1; }
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .section-header .all-chip {
+    align-self: flex-start;
+  }
+  .table-container {
+    display: none;
+  }
+  .mobile-invite-list {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .mobile-invite-card {
+    background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+    border: 1px solid #edeef1;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  }
+  .mobile-invite-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .mobile-invite-code {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .mobile-invite-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: #8a90a1;
+    letter-spacing: 0.02em;
+  }
+  .mobile-invite-code .code-text {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    font-size: 16px;
+    padding: 8px 10px;
+  }
+  .mobile-copy-hint {
+    margin-top: 10px;
+    color: #10b981;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .mobile-used-tag {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .mobile-invite-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .mobile-metric {
+    background: #f8f9fb;
+    border: 1px solid #eef0f4;
+    border-radius: 16px;
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .metric-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #8a90a1;
+    margin-bottom: 8px;
+  }
+  .mobile-metric strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 800;
+    color: #16181d;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .mobile-empty {
+    background: white;
+    border: 1px dashed #d8dde6;
+    border-radius: 18px;
+    padding: 32px 18px;
+    text-align: center;
+    color: #8a90a1;
+    font-weight: 700;
+  }
+  .table-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .page-size-selector,
+  .pagination-info,
+  .pagination-controls {
+    justify-content: center;
+  }
 }
 </style>

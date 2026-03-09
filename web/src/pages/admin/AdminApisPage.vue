@@ -1626,6 +1626,10 @@ button.entry-card {
     overflow-x: auto;
   }
 
+  .provider-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
   .entry-card {
     min-height: 0;
     padding: 20px;
@@ -1661,6 +1665,60 @@ button.entry-card {
   .alert-summary-grid,
   .stat-summary {
     grid-template-columns: 1fr;
+  }
+
+  .entry-summary span {
+    height: auto;
+    min-height: 24px;
+    line-height: 1.35;
+    padding: 6px 10px;
+  }
+
+  .modal-mask {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal-panel {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 24px 24px 0 0;
+  }
+
+  .modal-head,
+  .modal-footer {
+    padding: 18px 18px 16px;
+  }
+
+  .modal-body {
+    padding: 18px;
+  }
+
+  .head-info h3 {
+    font-size: 18px;
+  }
+
+  .provider-tab {
+    flex-shrink: 0;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .data-table {
+    min-width: 640px;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

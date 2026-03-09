@@ -19,6 +19,7 @@
             </div>
           </div>
           <p class="entry-desc">{{ sceneDescription(scene) }}</p>
+          <p class="entry-preview">{{ scenePreviewText(scene) }}</p>
           <div class="entry-summary">
             <span>{{ scenePreviewTag(scene) }}</span>
             <span :class="{ 'is-error-pill': thumbLoadFailed[scene] }">{{ sceneImageMeta(scene) }}</span>
@@ -33,6 +34,7 @@
             </div>
           </div>
           <p class="entry-desc">配置 App 检查更新文案和下载链接</p>
+          <p class="entry-preview">{{ appUpdatePreviewText }}</p>
           <div class="entry-summary">
             <span>{{ appUpdatePreviewTag }}</span>
             <span :class="{ 'is-error-pill': appUpdateUrlMetaClass === 'is-error' }">{{ appUpdateUrlMeta }}</span>
@@ -208,12 +210,21 @@ function scenePreviewTag(scene: ConfigScene): string {
   const text = String(configForm[scene].text || '').trim()
   return text ? '已配文案' : '默认文案'
 }
+function scenePreviewText(scene: ConfigScene): string {
+  const text = String(configForm[scene].text || '').trim()
+  return text || META[scene].defaultText
+}
 function sceneImageMeta(scene: ConfigScene): string {
   if (loading[scene]) return '图片读取中...';
   const imageUrl = String(configForm[scene].image_url || '').trim();
   if (!imageUrl) return '未配置图片';
   return thumbLoadFailed[scene] ? '图片链接无效' : '已配置预览图';
 }
+
+const appUpdatePreviewText = computed(() => {
+  const text = String(appUpdateState.text || '').trim()
+  return text || APP_UPDATE_META.defaultText
+})
 
 async function loadConfig(scene: ConfigScene) {
   loading[scene] = true; thumbLoadFailed[scene] = false;
@@ -408,6 +419,18 @@ button.entry-card {
   line-height: 1.45;
 }
 
+.entry-preview {
+  margin: 0;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .entry-summary {
   display: flex;
   flex-wrap: wrap;
@@ -437,7 +460,37 @@ button.entry-card {
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
-  .main-content { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+  .main-content { padding: 18px 18px calc(112px + env(safe-area-inset-bottom)); }
+  .page-header {
+    margin-bottom: 12px;
+  }
+  .page-header h1 {
+    font-size: 28px;
+  }
   .card-grid { grid-template-columns: 1fr; }
+  .entry-card {
+    min-height: 0;
+    padding: 20px;
+    gap: 12px;
+  }
+  .entry-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 14px;
+    font-size: 22px;
+  }
+  .entry-copy h2 {
+    font-size: 18px;
+  }
+  .entry-preview {
+    font-size: 14px;
+    -webkit-line-clamp: 3;
+  }
+  .entry-summary span {
+    height: auto;
+    min-height: 24px;
+    padding: 6px 10px;
+    line-height: 1.35;
+  }
 }
 </style>
