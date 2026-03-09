@@ -417,7 +417,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('trade adjust mode allows negative cost and calls modify', (
+  testWidgets('trade adjust mode supports target cost price and calls modify', (
     WidgetTester tester,
   ) async {
     final appState = _SaveStateAppState(
@@ -436,7 +436,11 @@ void main() {
     await tester.tap(find.text('调整'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(_k('invest_adjust_price_field'), '-1.23');
+    await tester.tap(find.text('累计收益').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成本价').last);
+    await tester.pumpAndSettle();
+
     await tester.enterText(_k('invest_adjust_amount_field'), '8.5');
     await tester.pumpAndSettle();
 
@@ -446,8 +450,8 @@ void main() {
     expect(appState.modifyCalls, 1);
     expect(appState.lastModifyCode, 'gb_tsla');
     expect(appState.lastModifyQty, 5);
-    expect(appState.lastModifyPrice, -1.23);
-    expect(appState.lastModifyAdjustment, 8.5);
+    expect(appState.lastModifyPrice, 10);
+    expect(appState.lastModifyAdjustment, 7.5);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });
