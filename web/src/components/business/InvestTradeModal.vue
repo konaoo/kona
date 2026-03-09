@@ -947,6 +947,25 @@ onUnmounted(() => {
 .search-btn:active { transform: scale(0.96); }
 .dropdown, .acct-dropdown, .curr-dropdown { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--panel-elevated, #1a1d25); border: 1px solid var(--border-b); border-radius: 8px; overflow: hidden; z-index: 200; box-shadow: var(--shadow-float); display: none; animation: dropIn 0.18s cubic-bezier(0.34,1.4,0.64,1); }
 .dropdown.open, .acct-dropdown.open, .curr-dropdown.open { display: block; }
+.acct-dropdown {
+  max-height: min(320px, calc(100vh - 260px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.acct-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+.acct-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.acct-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+.acct-dropdown::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
 .curr-dropdown { z-index: 400; }
 @keyframes dropIn { from { opacity: 0; transform: translateY(-5px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .dropdown-item, .acct-item, .curr-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--surface-divider); transition: background 0.12s; position: relative; }
