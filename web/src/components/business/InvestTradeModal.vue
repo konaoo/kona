@@ -2,8 +2,10 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
+import { computeDisplayCostPrice } from '@/shared/costBasis'
 
 type TradeAction = 'add' | 'buy' | 'sell' | 'adjust'
+type AdjustType = 'pnl' | 'costPrice' | 'quantity' | 'dividend' | 'fee'
 
 const props = defineProps<{
   show: boolean
@@ -37,9 +39,17 @@ const selectedStock = ref<any>(null)
 const price = ref('')
 const qty = ref('')
 const amount = ref('')
-const adjustPrice = ref('')
-const adjustAmount = ref('')
+const adjustType = ref<AdjustType>('pnl')
+const adjustValue = ref('')
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+const adjustTypeOptions: Array<{ value: AdjustType; label: string }> = [
+  { value: 'pnl', label: '累计收益' },
+  { value: 'costPrice', label: '成本价' },
+  { value: 'quantity', label: '数量' },
+  { value: 'dividend', label: '分红' },
+  { value: 'fee', label: '手续费' },
+]
 
 const marketMeta: Record<string, any> = {
   '港股': { color: '#e06b3a', bg: 'rgba(224,107,58,0.12)', label: '港股' },
@@ -67,6 +77,7 @@ async function loadAccounts() {
   }
 }
 const isAcctDropdownOpen = ref(false)
+const isAdjustTypeDropdownOpen = ref(false)
 const isCreateSheetOpen = ref(false)
 const createAcctType = ref('cash')
 const createCurr = ref('CNY')
@@ -84,6 +95,37 @@ const currencies = [
 
 const selectCurrInfo = computed(() => currencies.find(c => c.code === createCurr.value) || currencies[0]!)
 const currentHoldingQty = computed(() => toNumber(selectedStock.value?.holdingQty))
+const currentRawCostPrice = computed(() => toNumber(selectedStock.value?.rawCostPrice ?? selectedStock.value?.price))
+const currentAdjustment = computed(() => toNumber(selectedStock.value?.adjustment))
+const currentMarketPrice = computed(() => toNumber(selectedStock.value?.price ?? selectedStock.value?.rawCostPrice))
+const currentCurrency = computed(() => String(selectedStock.value?.curr || selectedStock.value?.currency || 'CNY').toUpperCase())
+const isFundAdjustTarget = computed(() => {
+  const marketType = String(selectedStock.value?.market_type || '').toLowerCase()
+  const assetType = String(selectedStock.value?.asset_type || '').toLowerCase()
+  return marketType === 'fund' || assetType === 'fund'
+})
+const currentDisplayCostPrice = computed(() => computeDisplayCostPrice(
+  currentRawCostPrice.value,
+  currentHoldingQty.value,
+  currentAdjustment.value,
+))
+const holdingSummaryText = computed(() => {
+  const qty = currentHoldingQty.value
+  const digits = isFundAdjustTarget.value ? 4 : 0
+  return `${formatQuoteValue(qty, digits)}${isFundAdjustTarget.value ? '份' : '股'}`
+})
+const adjustValueStep = computed(() => {
+  if (adjustType.value === 'quantity') return isFundAdjustTarget.value ? '0.0001' : '0.01'
+  if (adjustType.value === 'costPrice') return (selectedStock.value?.digits || 2) >= 4 ? '0.0001' : '0.01'
+  return '0.01'
+})
+const adjustInputLabel = computed(() => {
+  if (adjustType.value === 'costPrice') return '目标成本价'
+  if (adjustType.value === 'quantity') return '目标数量'
+  if (adjustType.value === 'dividend') return '分红金额'
+  if (adjustType.value === 'fee') return '手续费金额'
+  return '调整金额'
+})
 const sheetTitle = computed(() => {
   if (!isEditMode.value) return '添加资产'
   if (actionMode.value === 'sell') return '卖出'
@@ -156,8 +198,8 @@ function applyModeDefaults() {
     price.value = ''
     qty.value = ''
     amount.value = ''
-    adjustPrice.value = ''
-    adjustAmount.value = ''
+    adjustType.value = 'pnl'
+    adjustValue.value = ''
     return
   }
 
@@ -166,16 +208,15 @@ function applyModeDefaults() {
     price.value = ''
     qty.value = ''
     amount.value = ''
-    adjustPrice.value = formatInputValue(asset.rawCostPrice || asset.price, digits)
-    adjustAmount.value = formatInputValue(asset.adjustment, 2)
+    adjustType.value = 'pnl'
+    syncAdjustInputDefault()
     return
   }
 
   price.value = formatInputValue(asset.price, digits)
   qty.value = ''
   amount.value = ''
-  adjustPrice.value = formatInputValue(asset.rawCostPrice || asset.price, digits)
-  adjustAmount.value = formatInputValue(asset.adjustment, 2)
+  adjustValue.value = ''
 }
 
 function resetForm() {
@@ -187,8 +228,8 @@ function resetForm() {
   price.value = ''
   qty.value = ''
   amount.value = ''
-  adjustPrice.value = ''
-  adjustAmount.value = ''
+  adjustType.value = 'pnl'
+  adjustValue.value = ''
   isAcctDropdownOpen.value = false
   isCreateSheetOpen.value = false
   isCurrDropdownOpen.value = false
@@ -231,6 +272,108 @@ watch(actionMode, () => {
 watch(() => props.asset, (asset) => {
   if (!props.show || !asset) return
   initializeForAsset(asset)
+})
+
+watch(adjustType, () => {
+  if (!props.show || !isEditMode.value || actionMode.value !== 'adjust') return
+  syncAdjustInputDefault()
+})
+
+function formatAdjustInputValue(value: number, digits: number): string {
+  if (!Number.isFinite(value)) return ''
+  if (Math.abs(value) <= 1e-9) return '0'
+  return value.toFixed(digits).replace(/\.?0+$/, '')
+}
+
+function syncAdjustInputDefault() {
+  const holdingQty = currentHoldingQty.value
+  if (adjustType.value === 'costPrice') {
+    adjustValue.value = formatAdjustInputValue(currentDisplayCostPrice.value, selectedStock.value?.digits || 2)
+    return
+  }
+  if (adjustType.value === 'quantity') {
+    adjustValue.value = formatAdjustInputValue(holdingQty, isFundAdjustTarget.value ? 4 : 2)
+    return
+  }
+  if (adjustType.value === 'dividend' || adjustType.value === 'fee') {
+    adjustValue.value = ''
+    return
+  }
+  adjustValue.value = formatAdjustInputValue(currentAdjustment.value, 2)
+}
+
+function resolveAdjustPayload():
+  | { qty: number; price: number; adjustment: number }
+  | { error: string } {
+  const rawPrice = currentRawCostPrice.value
+  const holdingQty = currentHoldingQty.value
+  const currentAdj = currentAdjustment.value
+  const parsedInput = parseFloat(adjustValue.value)
+
+  if (!Number.isFinite(parsedInput)) {
+    return { error: `请输入有效${adjustInputLabel.value}` }
+  }
+
+  if (adjustType.value === 'costPrice') {
+    if (!holdingQty || holdingQty <= 0) return { error: '当前持仓数量无效，不能调整成本价' }
+    if (parsedInput <= 0) return { error: '目标成本价必须大于 0' }
+    return {
+      qty: holdingQty,
+      price: rawPrice,
+      adjustment: rawPrice * holdingQty - parsedInput * holdingQty,
+    }
+  }
+
+  if (adjustType.value === 'quantity') {
+    if (parsedInput <= 0) return { error: '目标数量必须大于 0，清仓请用卖出' }
+    return {
+      qty: parsedInput,
+      price: rawPrice,
+      adjustment: currentAdj,
+    }
+  }
+
+  if (adjustType.value === 'dividend') {
+    if (!holdingQty || holdingQty <= 0) return { error: '当前持仓数量无效，不能记录分红' }
+    if (parsedInput <= 0) return { error: '分红金额必须大于 0' }
+    return {
+      qty: holdingQty,
+      price: rawPrice,
+      adjustment: currentAdj + parsedInput,
+    }
+  }
+
+  if (adjustType.value === 'fee') {
+    if (!holdingQty || holdingQty <= 0) return { error: '当前持仓数量无效，不能记录手续费' }
+    if (parsedInput <= 0) return { error: '手续费金额必须大于 0' }
+    return {
+      qty: holdingQty,
+      price: rawPrice,
+      adjustment: currentAdj - parsedInput,
+    }
+  }
+
+  if (!holdingQty || holdingQty <= 0) {
+    return { error: '当前持仓数量无效，不能调整累计收益' }
+  }
+  return {
+    qty: holdingQty,
+    price: rawPrice,
+    adjustment: parsedInput,
+  }
+}
+
+const adjustPreview = computed(() => {
+  if (!selectedStock.value) return null
+  const payload = resolveAdjustPayload()
+  if ('error' in payload) return null
+  const nextMarketPrice = currentMarketPrice.value > 0 ? currentMarketPrice.value : payload.price
+  return {
+    qty: payload.qty,
+    costPrice: computeDisplayCostPrice(payload.price, payload.qty, payload.adjustment),
+    adjustment: payload.adjustment,
+    totalPnl: (nextMarketPrice - payload.price) * payload.qty + payload.adjustment,
+  }
 })
 
 function close() {
@@ -351,6 +494,11 @@ function formatQuoteValue(value: number | null, digits = 2): string {
   })
 }
 
+function formatCurrencyLabel(currency: string): string {
+  if (currency === 'HKD') return 'HK$'
+  return currency
+}
+
 function formatSignedMove(value: number | null, digits = 2): string {
   if (value === null || !Number.isFinite(value)) return '--'
   const sign = value >= 0 ? '+' : ''
@@ -403,9 +551,14 @@ const clearSelection = () => {
 }
 
 const toggleAcct = () => { isAcctDropdownOpen.value = !isAcctDropdownOpen.value }
+const toggleAdjustType = () => { isAdjustTypeDropdownOpen.value = !isAdjustTypeDropdownOpen.value }
 const selectAccount = (acct: any) => {
   selectedAccount.value = acct
   isAcctDropdownOpen.value = false
+}
+const selectAdjustType = (type: AdjustType) => {
+  adjustType.value = type
+  isAdjustTypeDropdownOpen.value = false
 }
 const toggleCurr = () => { isCurrDropdownOpen.value = !isCurrDropdownOpen.value }
 
@@ -527,27 +680,17 @@ async function handleConfirm() {
     }
 
     if (actionMode.value === 'adjust') {
-      const rawPrice = parseFloat(adjustPrice.value)
-      const adjustment = parseFloat(adjustAmount.value)
-      const holdingQty = currentHoldingQty.value
-      if (!holdingQty || holdingQty <= 0) {
-        searchError.value = '当前持仓数量无效，不能调整'
-        return
-      }
-      if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
-        searchError.value = '请输入有效平均成本'
-        return
-      }
-      if (!Number.isFinite(adjustment)) {
-        searchError.value = '请输入有效调整金额'
+      const payload = resolveAdjustPayload()
+      if ('error' in payload) {
+        searchError.value = payload.error
         return
       }
 
       await api.post('/api/portfolio/modify', {
         code: selectedStock.value.code,
-        qty: holdingQty,
-        price: rawPrice,
-        adjustment,
+        qty: payload.qty,
+        price: payload.price,
+        adjustment: payload.adjustment,
       })
       await submitSuccess('✓ 已调整')
       return
@@ -597,12 +740,14 @@ async function handleConfirm() {
 
 const closeSearchDropdown = () => { isDropdownOpen.value = false }
 const closeAcctDropdown = () => { isAcctDropdownOpen.value = false }
+const closeAdjustTypeDropdown = () => { isAdjustTypeDropdownOpen.value = false }
 const closeCurrDropdown = () => { isCurrDropdownOpen.value = false }
 
 const handleDocClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.search-wrap')) closeSearchDropdown()
   if (!target.closest('.acct-wrap')) closeAcctDropdown()
+  if (!target.closest('.adjust-type-wrap')) closeAdjustTypeDropdown()
   if (!target.closest('.curr-wrap')) closeCurrDropdown()
 }
 
@@ -667,24 +812,50 @@ onUnmounted(() => {
 
               <!-- Selected Pill -->
               <div v-if="selectedStock" class="selected-pill show">
-                <span 
-                  class="sp-tag di-tag" 
-                  :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
-                >
-                  {{ searchMarketLabel(selectedStock) }}
-                </span>
-                <span class="sp-code">{{ formatDisplayCode(selectedStock.code) }}</span>
-                <span class="sp-sep"></span>
-                <span class="sp-name">{{ selectedStock.name }}</span>
-                <div class="sp-quote">
-                  <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
-                  <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
-                    {{ formatSignedMove(searchChangeAmount(selectedStock), searchDigits(selectedStock)) }}
-                    <template v-if="searchChangePct(selectedStock) !== null">
-                      &nbsp;{{ formatSignedMove(searchChangePct(selectedStock), 2) }}%
-                    </template>
+                <template v-if="isEditMode">
+                  <div class="sp-summary summary-edit">
+                    <div class="sp-summary-copy">
+                      <div class="sp-summary-name">{{ selectedStock.name }}</div>
+                      <div class="sp-summary-holding">{{ holdingSummaryText }}</div>
+                    </div>
+                    <div class="sp-summary-metrics">
+                      <div class="sp-panel compact">
+                        <span class="sp-panel-label">持仓成本</span>
+                        <span class="sp-panel-value">
+                          <span class="sp-panel-currency">{{ formatCurrencyLabel(currentCurrency) }}</span>
+                          <span class="sp-panel-amount">{{ formatQuoteValue(currentRawCostPrice, selectedStock?.digits || 2) }}</span>
+                        </span>
+                      </div>
+                      <div class="sp-panel compact">
+                        <span class="sp-panel-label">调整额</span>
+                        <span class="sp-panel-value">
+                          <span class="sp-panel-currency">{{ formatCurrencyLabel(currentCurrency) }}</span>
+                          <span class="sp-panel-amount">{{ formatSignedMove(currentAdjustment, 2) }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <span 
+                    class="sp-tag di-tag" 
+                    :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
+                  >
+                    {{ searchMarketLabel(selectedStock) }}
                   </span>
-                </div>
+                  <span class="sp-code">{{ formatDisplayCode(selectedStock.code) }}</span>
+                  <span class="sp-sep"></span>
+                  <span class="sp-name">{{ selectedStock.name }}</span>
+                  <div class="sp-quote">
+                    <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
+                    <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
+                      {{ formatSignedMove(searchChangeAmount(selectedStock), searchDigits(selectedStock)) }}
+                      <template v-if="searchChangePct(selectedStock) !== null">
+                        &nbsp;{{ formatSignedMove(searchChangePct(selectedStock), 2) }}%
+                      </template>
+                    </span>
+                  </div>
+                </template>
                 <button v-if="!isEditMode" class="sp-x" @click="clearSelection">
                   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
                 </button>
@@ -726,21 +897,6 @@ onUnmounted(() => {
           </div>
 
           <div class="error-msg" :class="{ show: !!searchError }">{{ searchError }}</div>
-
-          <div v-if="isEditMode && selectedStock" class="holding-strip">
-            <div class="holding-item">
-              <span class="holding-label">当前持仓</span>
-              <span class="holding-value">{{ currentHoldingQty.toLocaleString('zh-CN') }}</span>
-            </div>
-            <div class="holding-item">
-              <span class="holding-label">原始成本</span>
-              <span class="holding-value">{{ selectedStock.rawCostPrice?.toFixed(selectedStock.digits || 2) || '--' }}</span>
-            </div>
-            <div class="holding-item">
-              <span class="holding-label">调整额</span>
-              <span class="holding-value">{{ selectedStock.adjustment?.toFixed(2) || '0.00' }}</span>
-            </div>
-          </div>
 
           <!-- Account -->
           <div v-if="!isEditMode || actionMode !== 'adjust'" class="account-section">
@@ -807,22 +963,51 @@ onUnmounted(() => {
           <div v-else class="inputs-section">
             <div class="inputs-row adjust-row">
               <div class="num-field">
-                <div class="num-label">持仓数量</div>
-                <div class="num-wrap readonly">
-                  <input type="text" class="num-input" :value="currentHoldingQty.toLocaleString('zh-CN')" readonly />
+                <div class="num-label">调整类型</div>
+                <div class="adjust-type-wrap">
+                  <div class="acct-trigger" :class="{ open: isAdjustTypeDropdownOpen }" @click="toggleAdjustType">
+                    <div class="acct-trigger-left">
+                      <span class="acct-trigger-name">{{ adjustTypeOptions.find(option => option.value === adjustType)?.label || '请选择调整类型' }}</span>
+                    </div>
+                    <svg class="acct-arrow" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg>
+                  </div>
+                  <div class="acct-dropdown adjust-type-dropdown" :class="{ open: isAdjustTypeDropdownOpen }">
+                    <div
+                      v-for="option in adjustTypeOptions"
+                      :key="option.value"
+                      class="acct-item"
+                      :class="{ selected: adjustType === option.value }"
+                      @click.stop="selectAdjustType(option.value)"
+                    >
+                      <div class="acct-item-left">
+                        <div class="acct-info">
+                          <div class="acct-item-name">{{ option.label }}</div>
+                        </div>
+                      </div>
+                      <svg class="acct-check" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l4 4 6-7"/></svg>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="num-field">
-                <div class="num-label">平均成本</div>
+                <div class="num-label">{{ adjustInputLabel }}</div>
                 <div class="num-wrap">
-                  <input type="number" class="num-input" v-model="adjustPrice" placeholder="0.00" step="0.01" />
+                  <input type="number" class="num-input" v-model="adjustValue" placeholder="0.00" :step="adjustValueStep" />
                 </div>
               </div>
-              <div class="num-field">
-                <div class="num-label">调整金额</div>
-                <div class="num-wrap">
-                  <input type="number" class="num-input" v-model="adjustAmount" placeholder="0.00" step="0.01" />
-                </div>
+            </div>
+            <div v-if="adjustPreview" class="adjust-preview">
+              <div class="adjust-preview-item">
+                <span class="adjust-preview-label">调整后数量</span>
+                <span class="adjust-preview-value">{{ formatQuoteValue(adjustPreview.qty, isFundAdjustTarget ? 4 : 2) }}</span>
+              </div>
+              <div class="adjust-preview-item">
+                <span class="adjust-preview-label">调整后成本价</span>
+                <span class="adjust-preview-value">{{ formatQuoteValue(adjustPreview.costPrice, selectedStock?.digits || 2) }}</span>
+              </div>
+              <div class="adjust-preview-item">
+                <span class="adjust-preview-label">调整后累计收益</span>
+                <span class="adjust-preview-value" :class="moveTone(adjustPreview.totalPnl)">{{ formatSignedMove(adjustPreview.totalPnl, 2) }}</span>
               </div>
             </div>
           </div>
@@ -930,10 +1115,6 @@ onUnmounted(() => {
 .action-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .action-tab { height: 34px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-muted, #1a1d25); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.18s; }
 .action-tab.active { background: linear-gradient(135deg, rgba(91,141,239,0.16), rgba(74,123,224,0.08)); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); box-shadow: 0 6px 16px rgba(91,141,239,0.12); }
-.holding-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.holding-item { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-.holding-label { font-size: 11px; color: var(--sub); }
-.holding-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
 .account-section { display: flex; flex-direction: column; gap: 6px; }
 .section-label { font-size: 11px; color: var(--sub); padding-left: 1px; }
 .field-row { display: flex; align-items: center; gap: 10px; }
@@ -984,8 +1165,20 @@ onUnmounted(() => {
 .di-move.flat { color: var(--sub); }
 .di-tag { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; letter-spacing: 0.03em; }
 .di-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--sub); letter-spacing: 0.04em; }
-.selected-pill { display: none; align-items: center; gap: 7px; background: color-mix(in srgb, var(--gold) 12%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent); border-radius: 6px; padding: 7px 10px; flex: 1; animation: fadeUp 0.2s ease; min-width: 0; }
+.selected-pill { display: none; align-items: center; gap: 7px; background: color-mix(in srgb, var(--gold) 12%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent); border-radius: 6px; padding: 12px 14px; flex: 1; animation: fadeUp 0.2s ease; min-width: 0; }
 .selected-pill.show { display: flex; }
+.sp-summary { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.sp-summary.summary-edit { flex-direction: row; align-items: stretch; justify-content: space-between; gap: 16px; }
+.sp-summary-copy { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; flex: 1; }
+.sp-summary-name { font-size: 13px; font-weight: 600; color: var(--gold, #d4af64); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-summary-holding { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+.sp-summary-metrics { display: flex; align-items: stretch; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.sp-panel { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; border-radius: 8px; background: rgba(18, 21, 29, 0.46); border: 1px solid rgba(212, 175, 100, 0.08); backdrop-filter: blur(8px); }
+.sp-panel.compact { justify-content: center; min-height: 52px; min-width: 112px; }
+.sp-panel-label { font-size: 10px; color: var(--sub); letter-spacing: 0.02em; }
+.sp-panel-value { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-family: 'JetBrains Mono', monospace; color: var(--text); }
+.sp-panel-currency { flex-shrink: 0; font-size: 13px; font-weight: 700; }
+.sp-panel-amount { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(11px, 1.35vw, 13px); font-weight: 700; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .sp-code { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--gold, #d4af64); flex-shrink: 0; }
 .sp-sep { width: 1px; height: 10px; background: rgba(212,175,100,0.25); flex-shrink: 0; }
@@ -998,7 +1191,7 @@ onUnmounted(() => {
 .sp-move.flat { color: var(--sub); }
 .sp-x { width: 17px; height: 17px; background: var(--surface-soft); border: none; border-radius: 50%; cursor: pointer; color: var(--sub); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, color 0.15s; }
 .sp-x:hover { background: var(--surface-soft-hover); color: var(--text); }
-.acct-wrap, .curr-wrap { position: relative; flex: 1; }
+.acct-wrap, .curr-wrap, .adjust-type-wrap { position: relative; flex: 1; }
 .acct-trigger, .curr-trigger { display: flex; align-items: center; justify-content: space-between; background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 8px; padding: 0 10px 0 12px; height: 38px; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; user-select: none; }
 .acct-trigger.open, .curr-trigger.open { border-color: rgba(212,175,100,0.45); box-shadow: 0 0 0 3px rgba(212,175,100,0.07); }
 .acct-trigger-left, .curr-trigger-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1033,6 +1226,14 @@ onUnmounted(() => {
 .num-wrap.readonly { background: var(--surface-faint); }
 .num-input { flex: 1; min-width: 0; width: 100%; background: transparent; border: none; outline: none; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 500; padding: 10px 10px; }
 .num-input::placeholder { color: var(--sub); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; }
+.adjust-type-dropdown { z-index: 260; }
+.adjust-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.adjust-preview-item { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+.adjust-preview-label { font-size: 11px; color: var(--sub); }
+.adjust-preview-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+.adjust-preview-value.up { color: var(--red, #f05a55); }
+.adjust-preview-value.down { color: var(--green, #3ecf82); }
+.adjust-preview-value.flat { color: var(--sub); }
 .error-msg, .field-err { font-size: 10px; color: var(--red, #f05a55); display: none; padding-left: 1px; }
 .error-msg.show, .field-err.show { display: block; }
 .sheet-actions { display: flex; gap: 8px; padding: 12px 20px 20px; }

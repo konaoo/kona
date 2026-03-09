@@ -13,6 +13,25 @@ import 'top_toast.dart';
 
 enum InvestTradeDialogPresentation { sheet, centered }
 
+class _AdjustModeOption {
+  final String value;
+  final String label;
+
+  const _AdjustModeOption(this.value, this.label);
+}
+
+class _ResolvedAdjustPayload {
+  final double qty;
+  final double price;
+  final double adjustment;
+
+  const _ResolvedAdjustPayload({
+    required this.qty,
+    required this.price,
+    required this.adjustment,
+  });
+}
+
 Future<T?> showInvestTradeSheet<T>({
   required BuildContext context,
   required String mode,
@@ -139,17 +158,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _priceFocusNode = FocusNode();
   final _qtyFocusNode = FocusNode();
   final _amountFocusNode = FocusNode();
-  final _adjustPriceFocusNode = FocusNode();
   final _adjustAmountFocusNode = FocusNode();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
   final _amountController = TextEditingController();
-  final _adjustPriceController = TextEditingController();
   final _adjustController = TextEditingController();
   final LayerLink _searchFieldLink = LayerLink();
   final LayerLink _cashFieldLink = LayerLink();
+  final LayerLink _adjustTypeFieldLink = LayerLink();
   final GlobalKey _searchTargetKey = GlobalKey();
   final GlobalKey _cashTargetKey = GlobalKey();
+  final GlobalKey _adjustTypeTargetKey = GlobalKey();
 
   bool _saving = false;
   bool _inlineClosed = false;
@@ -161,14 +180,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
   String _tradeMode = 'buy';
+  String _adjustType = 'pnl';
   String _fundInputMode = 'qty';
   int? _selectedCashAssetId;
   int _searchSeq = 0;
   int _navFetchSeq = 0;
   OverlayEntry? _searchOverlayEntry;
   OverlayEntry? _cashOverlayEntry;
+  OverlayEntry? _adjustTypeOverlayEntry;
   bool _searchOverlayVisible = false;
   bool _cashOverlayVisible = false;
+  bool _adjustTypeOverlayVisible = false;
   bool _searchTriggered = false;
   bool _syncingAmountQty = false;
   final Map<String, _SearchCacheEntry> _searchCache =
@@ -192,10 +214,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   static const Key _priceFieldKey = Key('invest_price_field');
   static const Key _qtyFieldKey = Key('invest_qty_field');
   static const Key _amountFieldKey = Key('invest_amount_field');
-  static const Key _adjustPriceFieldKey = Key('invest_adjust_price_field');
   static const Key _adjustAmountFieldKey = Key('invest_adjust_amount_field');
   static const Key _submitButtonKey = Key('invest_submit_button');
   static const Key _cancelButtonKey = Key('invest_cancel_button');
+  static const List<_AdjustModeOption> _adjustModeOptions = [
+    _AdjustModeOption('pnl', '累计收益'),
+    _AdjustModeOption('cost_price', '成本价'),
+    _AdjustModeOption('quantity', '数量'),
+    _AdjustModeOption('dividend', '分红'),
+    _AdjustModeOption('fee', '手续费'),
+  ];
 
   bool get _isAdd => widget.mode == 'add';
   bool get _isBuy => widget.mode == 'buy';
@@ -281,13 +309,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _priceController.addListener(_onPriceChanged);
     _qtyController.addListener(_onQtyChanged);
     _amountController.addListener(_onAmountChanged);
-    _adjustPriceController.addListener(_onInputControllerChanged);
     _adjustController.addListener(_onInputControllerChanged);
     _queryFocusNode.addListener(_onQueryFocusChanged);
     _priceFocusNode.addListener(_onInputControllerChanged);
     _qtyFocusNode.addListener(_onInputControllerChanged);
     _amountFocusNode.addListener(_onInputControllerChanged);
-    _adjustPriceFocusNode.addListener(_onInputControllerChanged);
     _adjustAmountFocusNode.addListener(_onInputControllerChanged);
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
@@ -295,7 +321,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (_isTrade) {
         _tradeMode = 'buy';
         _adjustController.clear();
-        _adjustPriceController.clear();
         if (_isCurrentFundTarget()) {
           _fundInputMode = 'amount';
           unawaited(_prefillFundNavForCode(widget.item!.code));
@@ -316,27 +341,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _priceController.removeListener(_onPriceChanged);
     _qtyController.removeListener(_onQtyChanged);
     _amountController.removeListener(_onAmountChanged);
-    _adjustPriceController.removeListener(_onInputControllerChanged);
     _adjustController.removeListener(_onInputControllerChanged);
     _queryFocusNode.removeListener(_onQueryFocusChanged);
     _priceFocusNode.removeListener(_onInputControllerChanged);
     _qtyFocusNode.removeListener(_onInputControllerChanged);
     _amountFocusNode.removeListener(_onInputControllerChanged);
-    _adjustPriceFocusNode.removeListener(_onInputControllerChanged);
     _adjustAmountFocusNode.removeListener(_onInputControllerChanged);
     _hideSearchOverlay(updateState: false);
     _hideCashOverlay(updateState: false);
+    _hideAdjustTypeOverlay(updateState: false);
     _queryFocusNode.dispose();
     _priceFocusNode.dispose();
     _qtyFocusNode.dispose();
     _amountFocusNode.dispose();
-    _adjustPriceFocusNode.dispose();
     _adjustAmountFocusNode.dispose();
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
     _amountController.dispose();
-    _adjustPriceController.dispose();
     _adjustController.dispose();
     super.dispose();
   }
@@ -578,6 +600,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   void _closeDialog() {
     _hideSearchOverlay();
     _hideCashOverlay();
+    _hideAdjustTypeOverlay();
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
       navigator.pop();
@@ -650,6 +673,155 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return text.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
+  double _currentHoldingQty() {
+    return (widget.item?.qty ?? 0).toDouble();
+  }
+
+  double _currentRawCostPrice() {
+    return (widget.item?.price ?? 0).toDouble();
+  }
+
+  double _currentAdjustment() {
+    return (widget.item?.adjustment ?? 0).toDouble();
+  }
+
+  double _currentDisplayCostPrice() {
+    final qty = _currentHoldingQty();
+    final rawPrice = _currentRawCostPrice();
+    final adjustment = _currentAdjustment();
+    if (qty.abs() <= 1e-9) return rawPrice;
+    return ((rawPrice * qty) - adjustment) / qty;
+  }
+
+  String _adjustInputLabel() {
+    if (_adjustType == 'cost_price') return '目标成本价';
+    if (_adjustType == 'quantity') return '目标数量';
+    if (_adjustType == 'dividend') return '分红金额';
+    if (_adjustType == 'fee') return '手续费金额';
+    return '调整金额';
+  }
+
+  int _adjustInputDecimals() {
+    if (_adjustType == 'cost_price') {
+      return _isFundAsset(
+            assetType: widget.item?.assetType,
+            code: widget.item?.code,
+          )
+          ? 4
+          : 3;
+    }
+    if (_adjustType == 'quantity') {
+      return _isFundAsset(
+            assetType: widget.item?.assetType,
+            code: widget.item?.code,
+          )
+          ? 4
+          : 2;
+    }
+    return 2;
+  }
+
+  void _syncAdjustInputDefault() {
+    if (!_isTrade || !_isAdjust) return;
+    final qty = _currentHoldingQty();
+    if (_adjustType == 'cost_price') {
+      _setControllerText(
+        _adjustController,
+        _formatInputNumber(
+          _currentDisplayCostPrice(),
+          decimals: _adjustInputDecimals(),
+        ),
+      );
+      return;
+    }
+    if (_adjustType == 'quantity') {
+      _setControllerText(
+        _adjustController,
+        _formatInputNumber(qty, decimals: _adjustInputDecimals()),
+      );
+      return;
+    }
+    if (_adjustType == 'dividend' || _adjustType == 'fee') {
+      _setControllerText(_adjustController, '');
+      return;
+    }
+    _setControllerText(
+      _adjustController,
+      _formatInputNumber(_currentAdjustment(), decimals: 2),
+    );
+  }
+
+  void _setAdjustType(String? nextType) {
+    if (nextType == null || nextType == _adjustType || _saving) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _adjustType = nextType;
+      _errorText = null;
+      _syncAdjustInputDefault();
+    });
+  }
+
+  String? _validateAdjustPayload({required double qty, required double value}) {
+    if (_adjustType == 'cost_price') {
+      if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
+      if (value <= 0) return '目标成本价必须大于 0';
+      return null;
+    }
+    if (_adjustType == 'quantity') {
+      if (value <= 0) return '目标数量必须大于 0，清仓请用卖出';
+      return null;
+    }
+    if (_adjustType == 'dividend') {
+      if (qty <= 0) return '当前持仓数量无效，不能记录分红';
+      if (value <= 0) return '分红金额必须大于 0';
+      return null;
+    }
+    if (_adjustType == 'fee') {
+      if (qty <= 0) return '当前持仓数量无效，不能记录手续费';
+      if (value <= 0) return '手续费金额必须大于 0';
+      return null;
+    }
+    if (qty <= 0) return '当前持仓数量无效，不能调整累计收益';
+    return null;
+  }
+
+  _ResolvedAdjustPayload _buildAdjustPayload({
+    required double qty,
+    required double rawPrice,
+    required double currentAdjustment,
+    required double value,
+  }) {
+    if (_adjustType == 'cost_price') {
+      return _ResolvedAdjustPayload(
+        qty: qty,
+        price: rawPrice,
+        adjustment: rawPrice * qty - value * qty,
+      );
+    }
+    if (_adjustType == 'quantity') {
+      return _ResolvedAdjustPayload(
+        qty: value,
+        price: rawPrice,
+        adjustment: currentAdjustment,
+      );
+    }
+    if (_adjustType == 'dividend') {
+      return _ResolvedAdjustPayload(
+        qty: qty,
+        price: rawPrice,
+        adjustment: currentAdjustment + value,
+      );
+    }
+    if (_adjustType == 'fee') {
+      return _ResolvedAdjustPayload(
+        qty: qty,
+        price: rawPrice,
+        adjustment: currentAdjustment - value,
+      );
+    }
+    return _ResolvedAdjustPayload(qty: qty, price: rawPrice, adjustment: value);
+  }
+
   Future<void> _prefillFundNavForCode(String code) async {
     final normalizedCode = code.trim();
     if (normalizedCode.isEmpty) return;
@@ -676,6 +848,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final code = (curr ?? '').trim().toUpperCase();
     if (code == 'USD' || code == 'HKD' || code == 'CNY') return code;
     return 'CNY';
+  }
+
+  String _displayCurrencyLabel(String? curr) {
+    final code = _normalizeCurrencyCode(curr);
+    if (code == 'HKD') return 'HK\$';
+    return code;
   }
 
   String _targetCashCurrency(AppState appState, String actionMode) {
@@ -1094,6 +1272,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_saving || _tradeMode == mode) return;
     _hideSearchOverlay();
     _hideCashOverlay();
+    _hideAdjustTypeOverlay();
     FocusScope.of(context).unfocus();
     setState(() {
       _tradeMode = mode;
@@ -1101,18 +1280,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _navErrorText = null;
       _navLoading = false;
       if (mode == 'adjust') {
-        _adjustController.clear();
-        final item = widget.item;
-        if (item != null) {
-          final decimals =
-              _isFundAsset(assetType: item.assetType, code: item.code) ? 4 : 3;
-          _adjustPriceController.text = _formatInputNumber(
-            item.price,
-            decimals: decimals,
-          );
-        } else {
-          _adjustPriceController.clear();
-        }
+        _adjustType = 'pnl';
+        _syncAdjustInputDefault();
       } else if (_priceController.text.trim().isEmpty) {
         _prefillPriceFromCurrent();
       }
@@ -1246,36 +1415,39 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       }
       if (mode == 'adjust') {
         final adjustStr = _adjustController.text.trim();
-        final adjustPriceStr = _adjustPriceController.text.trim();
         final adjustVal = double.tryParse(adjustStr);
-        final adjustPriceVal = double.tryParse(adjustPriceStr);
         if (adjustVal == null) {
           setState(() {
             _saving = false;
-            _errorText = '请输入有效调整金额';
-          });
-          return;
-        }
-        if (adjustPriceVal == null) {
-          setState(() {
-            _saving = false;
-            _errorText = '请输入有效平均成本';
+            _errorText = '请输入有效${_adjustInputLabel()}';
           });
           return;
         }
         final qtyVal = widget.item?.qty ?? 0;
-        if (qtyVal <= 0) {
+        final rawPriceVal = widget.item?.price ?? 0;
+        final currentAdjustmentVal = widget.item?.adjustment ?? 0;
+        final validationError = _validateAdjustPayload(
+          qty: qtyVal.toDouble(),
+          value: adjustVal,
+        );
+        if (validationError != null) {
           setState(() {
             _saving = false;
-            _errorText = '未找到有效持仓数量';
+            _errorText = validationError;
           });
           return;
         }
+        final payload = _buildAdjustPayload(
+          qty: qtyVal.toDouble(),
+          rawPrice: rawPriceVal.toDouble(),
+          currentAdjustment: currentAdjustmentVal.toDouble(),
+          value: adjustVal,
+        );
         actionFuture = appState.modifyInvestment(
           code: code,
-          qty: qtyVal,
-          price: adjustPriceVal,
-          adjustment: adjustVal,
+          qty: payload.qty,
+          price: payload.price,
+          adjustment: payload.adjustment,
           awaitRefresh: false,
         );
       } else if (mode == 'buy') {
@@ -1602,6 +1774,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   void _markOverlaysNeedsBuild() {
     _searchOverlayEntry?.markNeedsBuild();
     _cashOverlayEntry?.markNeedsBuild();
+    _adjustTypeOverlayEntry?.markNeedsBuild();
   }
 
   Size _targetSize(GlobalKey key) {
@@ -1754,11 +1927,22 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
   }
 
+  void _hideAdjustTypeOverlay({bool updateState = true}) {
+    _adjustTypeOverlayEntry?.remove();
+    _adjustTypeOverlayEntry = null;
+    if (updateState && mounted) {
+      setState(() => _adjustTypeOverlayVisible = false);
+    } else {
+      _adjustTypeOverlayVisible = false;
+    }
+  }
+
   void _showSearchOverlay() {
     if (!_isAdd || _selected != null) return;
     if (!_searchTriggered) return;
     if (_queryController.text.trim().isEmpty) return;
     _hideCashOverlay();
+    _hideAdjustTypeOverlay();
     if (_searchOverlayEntry != null) {
       _markOverlaysNeedsBuild();
       return;
@@ -1798,6 +1982,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_saving) return;
     if (cashOptions.isEmpty && !showAddCashAction) return;
     _hideSearchOverlay();
+    _hideAdjustTypeOverlay();
     if (_cashOverlayEntry != null) {
       _markOverlaysNeedsBuild();
       return;
@@ -1831,6 +2016,41 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       ),
     );
     overlay.insert(_cashOverlayEntry!);
+  }
+
+  void _showAdjustTypeOverlay() {
+    if (_saving) return;
+    _hideSearchOverlay();
+    _hideCashOverlay();
+    if (_adjustTypeOverlayEntry != null) {
+      _markOverlaysNeedsBuild();
+      return;
+    }
+    final overlay = Overlay.of(context, rootOverlay: true);
+    if (mounted) {
+      setState(() => _adjustTypeOverlayVisible = true);
+    } else {
+      _adjustTypeOverlayVisible = true;
+    }
+    _adjustTypeOverlayEntry = OverlayEntry(
+      builder: (overlayContext) => Stack(
+        children: [
+          CompositedTransformFollower(
+            link: _adjustTypeFieldLink,
+            showWhenUnlinked: false,
+            offset: Offset(0, _targetSize(_adjustTypeTargetKey).height + 6),
+            child: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: _targetSize(_adjustTypeTargetKey).width,
+                child: _buildAdjustTypeOverlayCard(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    overlay.insert(_adjustTypeOverlayEntry!);
   }
 
   void _selectSearchResult(Map<String, dynamic> item) {
@@ -2756,39 +2976,310 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
+  Widget _buildAdjustTypeField() {
+    final selectedOption = _adjustModeOptions.firstWhere(
+      (option) => option.value == _adjustType,
+      orElse: () => _adjustModeOptions.first,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '调整类型',
+          style: _dm(
+            size: 11,
+            weight: FontWeight.w500,
+            color: _tokens.textMuted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        CompositedTransformTarget(
+          link: _adjustTypeFieldLink,
+          child: Container(
+            key: _adjustTypeTargetKey,
+            child: InkWell(
+              onTap: _saving
+                  ? null
+                  : () {
+                      if (_adjustTypeOverlayVisible) {
+                        _hideAdjustTypeOverlay();
+                      } else {
+                        _showAdjustTypeOverlay();
+                      }
+                    },
+              borderRadius: BorderRadius.circular(8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: _tokens.surface2,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _adjustTypeOverlayVisible
+                        ? const Color(0x73D4AF64)
+                        : _tokens.border,
+                    width: 1,
+                  ),
+                  boxShadow: _adjustTypeOverlayVisible
+                      ? [
+                          const BoxShadow(
+                            color: Color(0x12D4AF64),
+                            blurRadius: 0,
+                            spreadRadius: 3,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        selectedOption.label,
+                        style: _dm(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: _tokens.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: _adjustTypeOverlayVisible ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: _tokens.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdjustTypeOverlayCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _tokens.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _tokens.borderActive, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: _adjustModeOptions.map((option) {
+          final selected = option.value == _adjustType;
+          return InkWell(
+            onTap: () {
+              _setAdjustType(option.value);
+              _hideAdjustTypeOverlay();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0x1A5B8DEF) : Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: _tokens.divider,
+                    width: option == _adjustModeOptions.last ? 0 : 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      option.label,
+                      style: _dm(
+                        size: 13,
+                        weight: selected ? FontWeight.w700 : FontWeight.w500,
+                        color: selected ? _tokens.blueStart : _tokens.text,
+                      ),
+                    ),
+                  ),
+                  if (selected)
+                    Icon(Icons.check_rounded, size: 16, color: _tokens.gold),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildAdjustPreview() {
+    final parsedValue = double.tryParse(_adjustController.text.trim());
+    if (parsedValue == null || widget.item == null) {
+      return const SizedBox.shrink();
+    }
+    final qty = _currentHoldingQty();
+    final rawPrice = _currentRawCostPrice();
+    final currentAdjustment = _currentAdjustment();
+    final validationError = _validateAdjustPayload(
+      qty: qty,
+      value: parsedValue,
+    );
+    if (validationError != null) {
+      return const SizedBox.shrink();
+    }
+    final payload = _buildAdjustPayload(
+      qty: qty,
+      rawPrice: rawPrice,
+      currentAdjustment: currentAdjustment,
+      value: parsedValue,
+    );
+    final displayCost = payload.qty.abs() <= 1e-9
+        ? payload.price
+        : ((payload.price * payload.qty) - payload.adjustment) / payload.qty;
+    final currentMarketPrice =
+        context
+            .read<AppState>()
+            .resolvePriceInfoByCode(widget.item!.code)
+            ?.price ??
+        0;
+    final previewMarketPrice = currentMarketPrice > 0
+        ? currentMarketPrice
+        : payload.price;
+    final totalPnl =
+        (previewMarketPrice - payload.price) * payload.qty + payload.adjustment;
+    final pnlColor = AppState.getPnlColor(totalPnl);
+
+    Widget item(String label, String value, {Color? color}) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: _tokens.surface2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _tokens.border, width: 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: _mono(
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: color ?? _tokens.text,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final qtyDecimals =
+        _isFundAsset(assetType: widget.item?.assetType, code: widget.item?.code)
+        ? 4
+        : 2;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          item('调整后数量', _formatInputNumber(payload.qty, decimals: qtyDecimals)),
+          const SizedBox(width: 8),
+          item(
+            '调整后成本价',
+            _formatInputNumber(displayCost, decimals: _adjustInputDecimals()),
+          ),
+          const SizedBox(width: 8),
+          item(
+            '调整后累计收益',
+            '${totalPnl >= 0 ? '+' : ''}${_formatInputNumber(totalPnl, decimals: 2)}',
+            color: pnlColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryMetricBox({
+    required String label,
+    required String currency,
+    required String amount,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 96, maxWidth: 126),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0x7512151D),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x14D4AF64), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: _dm(size: 10, color: _tokens.textSub)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                currency,
+                style: _mono(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: _tokens.text,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  amount,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _mono(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: _tokens.text,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTradeInputFields() {
     if (_isTrade && _isAdjust) {
       return Column(
         children: [
-          _buildInputCell(
-            label: '平均成本',
-            focused: _adjustPriceFocusNode.hasFocus,
-            field: _buildNumberField(
-              key: _adjustPriceFieldKey,
-              controller: _adjustPriceController,
-              focusNode: _adjustPriceFocusNode,
-              hint: '0.00',
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-            ),
-          ),
+          _buildAdjustTypeField(),
           const SizedBox(height: 8),
           _buildInputCell(
-            label: '调整金额',
+            label: _adjustInputLabel(),
             focused: _adjustAmountFocusNode.hasFocus,
             field: _buildNumberField(
               key: _adjustAmountFieldKey,
               controller: _adjustController,
               focusNode: _adjustAmountFocusNode,
               hint: '0.00',
-              keyboardType: const TextInputType.numberWithOptions(
+              keyboardType: TextInputType.numberWithOptions(
                 decimal: true,
-                signed: true,
+                signed: _adjustType == 'pnl',
               ),
             ),
           ),
+          _buildAdjustPreview(),
         ],
       );
     }
@@ -2883,8 +3374,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return _selected != null && priceReady && qtyReady;
     }
     if (mode == 'adjust') {
-      return _adjustController.text.trim().isNotEmpty &&
-          _adjustPriceController.text.trim().isNotEmpty;
+      return _adjustController.text.trim().isNotEmpty;
     }
     if (mode == 'buy' && _isFundAmountMode()) {
       return amountReady && priceReady;
@@ -3043,29 +3533,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         _isSaveInputReady() &&
         (!needsCashSource || _selectedCashAssetId != null);
     final currentItem = widget.item;
-    final marketType = (currentItem?.marketType ?? 'a').toLowerCase();
     final isCurrentFund =
         currentItem != null &&
         _isFundAsset(assetType: currentItem.assetType, code: currentItem.code);
-    final priceInfo = currentItem == null
-        ? null
-        : appState.resolvePriceInfoByCode(currentItem.code);
-    final livePrice = (priceInfo != null && priceInfo.price > 0)
-        ? priceInfo.price
-        : null;
-    final liveChangePct =
-        (priceInfo != null && (priceInfo.price > 0 || priceInfo.yclose > 0))
-        ? priceInfo.changePct
-        : null;
-    final livePriceText = livePrice == null
+    final summaryQtyText = currentItem == null
+        ? '--'
+        : '${_formatInputNumber(currentItem.qty, decimals: isCurrentFund ? 4 : 0)}${isCurrentFund ? '份' : '股'}';
+    final summaryCurrency = currentItem == null
+        ? 'CNY'
+        : _displayCurrencyLabel(currentItem.curr);
+    final summaryCostText = currentItem == null
         ? '--'
         : _formatInputNumber(
-            livePrice,
-            decimals: isCurrentFund ? 4 : (livePrice.abs() < 10 ? 3 : 2),
+            currentItem.price,
+            decimals: isCurrentFund ? 4 : 3,
           );
-    final liveChangeText = liveChangePct == null
+    final summaryAdjustmentText = currentItem == null
         ? '--'
-        : '${liveChangePct >= 0 ? '+' : ''}${_formatInputNumber(liveChangePct, decimals: 2)}%';
+        : '${currentItem.adjustment >= 0 ? '+' : ''}${_formatInputNumber(currentItem.adjustment, decimals: 2)}';
 
     final centered =
         widget.presentation == InvestTradeDialogPresentation.centered;
@@ -3217,8 +3702,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       // Stock Info Card
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 7,
+                          horizontal: 14,
+                          vertical: 12,
                         ),
                         decoration: BoxDecoration(
                           color: _tokens.goldDim,
@@ -3229,86 +3714,53 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                color: marketType == 'a'
-                                    ? const Color(0x243ECF82)
-                                    : marketType == 'hk'
-                                    ? const Color(0x24E06B3A)
-                                    : marketType == 'us'
-                                    ? const Color(0x245B8DEF)
-                                    : const Color(0x24B57ADB), // fund
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                marketType == 'hk'
-                                    ? '港股'
-                                    : marketType == 'us'
-                                    ? '美股'
-                                    : marketType == 'fund'
-                                    ? '基金'
-                                    : 'A股',
-                                style: _dm(
-                                  size: 10,
-                                  weight: FontWeight.w600,
-                                  letterSpacing: 0.03,
-                                  color: marketType == 'a'
-                                      ? const Color(0xFF3ECF82)
-                                      : marketType == 'hk'
-                                      ? const Color(0xFFE06B3A)
-                                      : marketType == 'us'
-                                      ? const Color(0xFF5B8DEF)
-                                      : const Color(0xFFB57ADB), // fund
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              _formatDisplayCode(widget.item?.code ?? ''),
-                              style: _mono(
-                                size: 12,
-                                weight: FontWeight.w500,
-                                color: _tokens.gold,
-                              ),
-                            ),
-                            const SizedBox(width: 7),
-                            Container(
-                              width: 1,
-                              height: 10,
-                              color: _tokens.gold.withValues(alpha: 0.25),
-                            ),
-                            const SizedBox(width: 7),
                             Expanded(
-                              child: Text(
-                                (widget.item?.name ?? '').length > 20
-                                    ? '${(widget.item?.name ?? '').substring(0, 20)}...'
-                                    : (widget.item?.name ?? ''),
-                                style: _dm(size: 11, color: _tokens.textSub),
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    (widget.item?.name ?? '').length > 26
+                                        ? '${(widget.item?.name ?? '').substring(0, 26)}...'
+                                        : (widget.item?.name ?? ''),
+                                    style: _dm(
+                                      size: 13,
+                                      weight: FontWeight.w600,
+                                      color: _tokens.gold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    summaryQtyText,
+                                    style: _mono(
+                                      size: 12,
+                                      weight: FontWeight.w600,
+                                      color: _tokens.text,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 7),
-                            Text(
-                              livePriceText,
-                              style: _mono(size: 11, color: _tokens.text),
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              liveChangeText,
-                              style: _dm(
-                                size: 10,
-                                weight: FontWeight.w500,
-                                color: liveChangePct == null
-                                    ? _tokens.textMuted
-                                    : liveChangePct >= 0
-                                    ? _tokens.green
-                                    : _tokens.red,
-                              ),
+                            const SizedBox(width: 12),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                _buildSummaryMetricBox(
+                                  label: '持仓成本',
+                                  currency: summaryCurrency,
+                                  amount: summaryCostText,
+                                ),
+                                const SizedBox(width: 8),
+                                _buildSummaryMetricBox(
+                                  label: '调整额',
+                                  currency: summaryCurrency,
+                                  amount: summaryAdjustmentText,
+                                ),
+                              ],
                             ),
                           ],
                         ),
