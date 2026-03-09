@@ -271,6 +271,50 @@ class ApiBaselineTests(unittest.TestCase):
         body = resp.get_json() or {}
         self.assertEqual(body.get('error'), '登录状态已过期，请重新登录')
 
+    def test_history_respects_user_build_start_at(self):
+        created = app_module.db.create_user(
+            username="history_user",
+            password_hash=app_module.hash_password("Abcd1234"),
+            user_id="u_history",
+        )
+        self.assertEqual(created.get("id"), "u_history")
+        self.assertTrue(app_module.db.set_user_build_start_at("u_history", "2026-02-12"))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-04', 100, 80, 20, 0, 0, 10, 1, 'u_history')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-12', 200, 160, 40, 0, 0, 20, 2, 'u_history')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-13', 220, 170, 50, 0, 0, 30, 3, 'u_history')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        access_token = app_module._issue_auth_tokens("u_history", "history_user")["access_token"]
+        resp = self.client.get(
+            "/api/history?days=5000",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or []
+        self.assertEqual([item.get("date") for item in payload], ["2026-02-12", "2026-02-13"])
+
     def test_prices_batch_missing_codes(self):
         resp = self.client.post('/api/prices/batch', json={})
         self.assertEqual(resp.status_code, 400)

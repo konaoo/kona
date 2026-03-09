@@ -3707,9 +3707,19 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT * FROM daily_snapshots 
                     WHERE user_id = ?
+                      AND date >= COALESCE(
+                        (
+                          SELECT SUBSTR(build_start_at, 1, 10)
+                          FROM users
+                          WHERE id = ?
+                            AND TRIM(COALESCE(build_start_at, '')) != ''
+                          LIMIT 1
+                        ),
+                        ''
+                      )
                     ORDER BY date ASC 
                     LIMIT ?
-                ''', (user_id, limit))
+                ''', (user_id, user_id, limit))
             else:
                 cursor.execute('''
                     SELECT * FROM daily_snapshots 
