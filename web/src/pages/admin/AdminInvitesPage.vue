@@ -1,45 +1,6 @@
 <template>
   <div class="container admin-invites">
-    <!-- Sidebar -->
-    <div class="sidebar">
-      <div class="logo">
-        <div class="logo-icon">🏠</div>
-        <span>咔咔管理后台</span>
-      </div>
-
-      <nav>
-        <RouterLink 
-          v-for="item in nav" 
-          :key="item.path" 
-          :to="item.path"
-          class="nav-item"
-          active-class="active"
-        >
-          <span>{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </nav>
-
-      <div class="user-profile">
-        <div class="user-info">
-          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
-          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
-          <div class="user-details">
-            <h4>{{ store.state.user?.username || '管理员' }}</h4>
-            <p>管理员</p>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="logout-btn" @click="onLogout" title="退出登录">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <AdminConsoleNav />
 
     <!-- Main Content -->
     <div class="main-content">
@@ -151,14 +112,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
-import { toAvatarSrc } from '../../shared/avatar'
-import { useKonaStore } from '../../stores/composables'
+import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { shortDateTime } from '../../shared/format'
-
-const router = useRouter()
-const store = useKonaStore()
 
 const invites = reactive<Record<string, any>>({ items: [], total: 0 })
 const count = ref(10)
@@ -171,24 +127,6 @@ const pageSizeOptions = [10, 20, 50, 100]
 const currentPage = ref(1)
 let lastRequestKey = ''
 let inflightKey = ''
-
-const nav = [
-  { path: '/admin/overview', label: '数据概览', icon: '📊' },
-  { path: '/admin/users', label: '用户管理', icon: '👥' },
-  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
-  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
-  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
-]
-
-const avatarStyle = computed(() => ({
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-}))
-
-const avatarSrc = computed(() => toAvatarSrc(store.state.user?.avatar))
-const avatarInitial = computed(() => {
-  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
-  return raw.slice(0, 1).toUpperCase()
-})
 
 const totalRows = computed(() => Number(invites.total || 0))
 const totalPages = computed(() => {
@@ -330,11 +268,6 @@ async function generate() {
   }
 }
 
-async function onLogout() {
-  await store.logout()
-  await router.push('/admin/login')
-}
-
 watch([inviteStatus, pageSize], async () => {
   currentPage.value = 1
   await load()
@@ -430,6 +363,7 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
+  .main-content { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
   .header { flex-direction: column; align-items: flex-start; gap: 20px; }
   .tool-bar { width: 100%; }
 }

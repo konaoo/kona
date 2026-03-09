@@ -1,45 +1,6 @@
 <template>
   <div class="container admin-users">
-    <!-- Sidebar -->
-    <div class="sidebar">
-      <div class="logo">
-        <div class="logo-icon">🏠</div>
-        <span>咔咔管理后台</span>
-      </div>
-
-      <nav>
-        <RouterLink 
-          v-for="item in nav" 
-          :key="item.path" 
-          :to="item.path"
-          class="nav-item"
-          active-class="active"
-        >
-          <span>{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </nav>
-
-      <div class="user-profile">
-        <div class="user-info">
-          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
-          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
-          <div class="user-details">
-            <h4>{{ store.state.user?.username || '管理员' }}</h4>
-            <p>管理员</p>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="logout-btn" @click="onLogout" title="退出登录">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <AdminConsoleNav />
 
     <!-- Main Content -->
     <div class="main-content">
@@ -119,6 +80,57 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="mobile-user-list">
+          <div v-for="u in users.items || []" :key="`mobile-${u.id}`" class="mobile-user-card">
+            <div class="mobile-user-head">
+              <div class="mobile-user-primary">
+                <strong>{{ u.nickname || u.username }}</strong>
+                <span>@{{ u.username }}</span>
+              </div>
+              <span
+                class="mobile-status-chip"
+                :class="u.status === 'disabled' ? 'is-disabled' : 'is-active'"
+              >
+                {{ u.status === 'disabled' ? '已封禁' : '正常' }}
+              </span>
+            </div>
+
+            <div class="mobile-user-grid">
+              <div class="mobile-metric">
+                <span class="metric-label">总资产</span>
+                <strong>{{ formatCny(u.total_asset_cny) }}</strong>
+              </div>
+              <div class="mobile-metric">
+                <span class="metric-label">投资资产</span>
+                <strong>{{ formatCny(u.total_invest_cny) }}</strong>
+              </div>
+              <div class="mobile-metric">
+                <span class="metric-label">注册时间</span>
+                <strong>{{ shortDateTime(u.created_at) }}</strong>
+              </div>
+              <div class="mobile-metric">
+                <span class="metric-label">最近活跃</span>
+                <strong>{{ shortDateTime(u.last_active_at || u.last_login) }}</strong>
+              </div>
+            </div>
+
+            <div class="mobile-user-actions">
+              <button class="action-btn-sm secondary" @click="openDetail(u)">查看详情</button>
+              <button
+                class="action-btn-sm"
+                :class="u.status === 'disabled' ? 'secondary' : 'danger'"
+                @click="toggleStatus(u)"
+              >
+                {{ u.status === 'disabled' ? '解除封禁' : '封禁用户' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="!(users.items || []).length" class="mobile-empty">
+            暂无匹配用户
+          </div>
         </div>
 
         <div class="table-footer">
@@ -224,14 +236,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
-import { toAvatarSrc } from '../../shared/avatar'
-import { useKonaStore } from '../../stores/composables'
+import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { money, shortDateTime } from '../../shared/format'
-
-const router = useRouter()
-const store = useKonaStore()
 
 type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'total_invest_cny' | 'created_at'
 
@@ -251,24 +258,6 @@ const totalRows = computed(() => Number(users.total || 0))
 const totalPages = computed(() => {
   const total = totalRows.value
   return total > 0 ? Math.ceil(total / pageSize.value) : 1
-})
-
-const nav = [
-  { path: '/admin/overview', label: '数据概览', icon: '📊' },
-  { path: '/admin/users', label: '用户管理', icon: '👥' },
-  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
-  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
-  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
-]
-
-const avatarStyle = computed(() => ({
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-}))
-
-const avatarSrc = computed(() => toAvatarSrc(store.state.user?.avatar))
-const avatarInitial = computed(() => {
-  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
-  return raw.slice(0, 1).toUpperCase()
 })
 
 const detail = reactive<{
@@ -419,11 +408,6 @@ function formatPct(value: unknown): string {
   const n = Number(value)
   if (!Number.isFinite(n)) return '-'
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
-}
-
-async function onLogout() {
-  await store.logout()
-  await router.push('/admin/login')
 }
 
 watch(pageSize, () => {
@@ -578,6 +562,10 @@ onMounted(() => {
   overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
 }
 
+.mobile-user-list {
+  display: none;
+}
+
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table thead { background: #fbfbfc; }
 .data-table th {
@@ -673,9 +661,124 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
-  .main-content { padding: 30px 20px; }
+  .main-content { padding: 30px 20px calc(112px + env(safe-area-inset-bottom)); }
   .header { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .header-actions { width: 100%; }
   .search-bar { width: 100%; }
   .summary-grid-simple { grid-template-columns: 1fr; }
+  .table-container {
+    display: none;
+  }
+  .mobile-user-list {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .mobile-user-card {
+    background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+    border: 1px solid #edeef1;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  }
+  .mobile-user-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .mobile-user-primary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .mobile-user-primary strong {
+    font-size: 18px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.15;
+  }
+  .mobile-user-primary span {
+    font-size: 13px;
+    color: #7b8190;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .mobile-status-chip {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .mobile-status-chip.is-active {
+    background: #ecfdf3;
+    color: #067647;
+  }
+  .mobile-status-chip.is-disabled {
+    background: #fff1f2;
+    color: #be123c;
+  }
+  .mobile-user-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .mobile-metric {
+    background: #f8f9fb;
+    border: 1px solid #eef0f4;
+    border-radius: 16px;
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .metric-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #8a90a1;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .mobile-metric strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 800;
+    color: #16181d;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .mobile-user-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .mobile-user-actions .action-btn-sm {
+    min-height: 42px;
+    border-radius: 14px;
+    font-size: 13px;
+  }
+  .mobile-empty {
+    background: white;
+    border: 1px dashed #d8dde6;
+    border-radius: 18px;
+    padding: 32px 18px;
+    text-align: center;
+    color: #8a90a1;
+    font-weight: 700;
+  }
+  .table-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .page-size-selector,
+  .pagination-info,
+  .pagination-controls {
+    justify-content: center;
+  }
 }
 </style>

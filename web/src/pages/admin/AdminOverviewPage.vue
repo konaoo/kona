@@ -1,45 +1,6 @@
 <template>
   <div class="container admin-overview">
-    <!-- Sidebar -->
-    <div class="sidebar">
-      <div class="logo">
-        <div class="logo-icon">🏠</div>
-        <span>咔咔管理后台</span>
-      </div>
-
-      <nav>
-        <RouterLink 
-          v-for="item in nav" 
-          :key="item.path" 
-          :to="item.path"
-          class="nav-item"
-          active-class="active"
-        >
-          <span>{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </nav>
-
-      <div class="user-profile">
-        <div class="user-info">
-          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
-          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
-          <div class="user-details">
-            <h4>{{ store.state.user?.username || '管理员' }}</h4>
-            <p>管理员</p>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="logout-btn" @click="onLogout" title="退出登录">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <AdminConsoleNav />
 
     <!-- Main Content -->
     <div class="main-content">
@@ -199,12 +160,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
-import { toAvatarSrc } from '../../shared/avatar'
+import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { useKonaStore } from '../../stores/composables'
 
-const router = useRouter()
 const store = useKonaStore()
 
 const overview = reactive<Record<string, any>>({
@@ -216,14 +175,6 @@ const pageSize = ref(10)
 const pageSizeOptions = [10, 30, 50, 100]
 const currentPage = ref(1)
 
-const nav = [
-  { path: '/admin/overview', label: '数据概览', icon: '📊' },
-  { path: '/admin/users', label: '用户管理', icon: '👥' },
-  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
-  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
-  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
-]
-
 const greeting = computed(() => {
   const hour = new Date().getHours()
   if (hour >= 5 && hour < 9) return '早上好'
@@ -231,19 +182,6 @@ const greeting = computed(() => {
   if (hour >= 12 && hour < 13) return '中午好'
   if (hour >= 13 && hour < 18) return '下午好'
   return '晚上好'
-})
-
-const avatarStyle = computed(() => {
-  // Use a nice gradient for anonymous avatars
-  return {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-  }
-})
-
-const avatarSrc = computed(() => toAvatarSrc(store.state.user?.avatar))
-const avatarInitial = computed(() => {
-  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
-  return raw.slice(0, 1).toUpperCase()
 })
 
 const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
@@ -341,11 +279,6 @@ function getRetentionClass(rate: any) {
   if (percent >= 50) return 'high'
   if (percent >= 30) return 'medium'
   return 'low'
-}
-
-async function onLogout() {
-  await store.logout()
-  await router.push('/admin/login')
 }
 
 watch(pageSize, () => {
@@ -908,7 +841,7 @@ onMounted(() => {
     display: none;
   }
   .main-content {
-    padding: 30px 20px;
+    padding: 30px 20px calc(112px + env(safe-area-inset-bottom));
   }
   .stats-grid {
     grid-template-columns: 1fr;

@@ -1,44 +1,6 @@
 <template>
   <div class="container admin-apis">
-    <div class="sidebar">
-      <div class="logo">
-        <div class="logo-icon">🏠</div>
-        <span>咔咔管理后台</span>
-      </div>
-
-      <nav>
-        <RouterLink
-          v-for="item in nav"
-          :key="item.path"
-          :to="item.path"
-          class="nav-item"
-          active-class="active"
-        >
-          <span>{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </nav>
-
-      <div class="user-profile">
-        <div class="user-info">
-          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" class="user-avatar" />
-          <div v-else class="user-avatar user-avatar-fallback" :style="avatarStyle">{{ avatarInitial }}</div>
-          <div class="user-details">
-            <h4>{{ store.state.user?.username || '管理员' }}</h4>
-            <p>管理员</p>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="logout-btn" @click="onLogout" title="退出登录">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    <AdminConsoleNav />
 
     <div class="main-content">
       <div class="page-header">
@@ -429,13 +391,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive } from 'vue'
-import { useRouter } from 'vue-router'
 import { api } from '../../shared/http'
-import { toAvatarSrc } from '../../shared/avatar'
-import { useKonaStore } from '../../stores/composables'
-
-const router = useRouter()
-const store = useKonaStore()
+import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 
 type ProviderKey = 'sina_quote' | 'tencent_quote' | 'eastmoney_quote' | 'forex_rate'
 type ModalKind = 'provider' | 'probe' | 'snapshot' | 'alerts'
@@ -544,24 +501,6 @@ const priceProbe = reactive<{ code: string; loading: boolean; error: string; dat
   loading: false,
   error: '',
   data: null,
-})
-
-const nav = [
-  { path: '/admin/overview', label: '数据概览', icon: '📊' },
-  { path: '/admin/users', label: '用户管理', icon: '👥' },
-  { path: '/admin/invites', label: '邀请码管理', icon: '🛡️' },
-  { path: '/admin/config', label: '运营配置', icon: '⚙️' },
-  { path: '/admin/apis', label: '接口管理', icon: '🔌' },
-]
-
-const avatarStyle = computed(() => ({
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-}))
-
-const avatarSrc = computed(() => toAvatarSrc(store.state.user?.avatar))
-const avatarInitial = computed(() => {
-  const raw = String(store.state.user?.nickname || store.state.user?.username || '管').trim()
-  return raw.slice(0, 1).toUpperCase()
 })
 
 const currentProvider = computed(
@@ -843,11 +782,6 @@ async function openProbeModal() {
   modal.visible = true
   modal.kind = 'probe'
   await runPriceProbe()
-}
-
-async function onLogout() {
-  await store.logout()
-  await router.push('/admin/login')
 }
 
 onMounted(() => {
@@ -1667,7 +1601,7 @@ button.entry-card {
   }
 
   .main-content {
-    padding: 18px;
+    padding: 18px 18px calc(112px + env(safe-area-inset-bottom));
   }
 
   .page-header {

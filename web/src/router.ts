@@ -61,3 +61,9 @@ router.beforeEach(async (to) => {
   }
   return true
 })
+
+router.afterEach((to) => {
+  document.title = to.path.startsWith('/admin')
+    ? '咔咔记账 - 管理后台'
+    : '咔咔记账 - 投资记录工具'
+})
