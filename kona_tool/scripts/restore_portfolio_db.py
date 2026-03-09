@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Optional
 
 
-DEFAULT_DB_PATH = "/home/ec2-user/portfolio/kona_tool/portfolio.db"
-DEFAULT_BACKUP_DIR = "/home/ec2-user/portfolio/kona_tool/archive/backups"
+SCRIPT_DIR = Path(__file__).resolve().parent
+APP_DIR = SCRIPT_DIR.parent
+DEFAULT_DB_PATH = str(APP_DIR / "portfolio.db")
+DEFAULT_BACKUP_DIR = str(APP_DIR / "archive" / "backups")
 
 
 def find_latest_backup(backup_dir: str) -> str:

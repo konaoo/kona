@@ -7,12 +7,15 @@ import os
 import socket
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from alert_sender import send_alert
 
 
-DB_PATH = os.getenv("KONA_DATABASE_PATH", "/home/ec2-user/portfolio/kona_tool/portfolio.db")
+SCRIPT_DIR = Path(__file__).resolve().parent
+APP_DIR = SCRIPT_DIR.parent
+DB_PATH = os.getenv("KONA_DATABASE_PATH", str(APP_DIR / "portfolio.db"))
 
 
 def main() -> int:

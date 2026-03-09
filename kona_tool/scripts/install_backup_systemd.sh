@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PYTHON_BIN="${APP_DIR}/.venv/bin/python"
+
+if [ ! -x "${PYTHON_BIN}" ]; then
+  echo "未找到虚拟环境 Python: ${PYTHON_BIN}"
+  echo "请先在 ${APP_DIR} 下创建 .venv 并安装依赖。"
+  exit 1
+fi
+
 echo "[1/3] Create kona-db-backup.service..."
 sudo tee /etc/systemd/system/kona-db-backup.service >/dev/null <<'EOF'
 [Unit]
@@ -9,11 +19,16 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-WorkingDirectory=/home/ec2-user/portfolio/kona_tool
-EnvironmentFile=/home/ec2-user/portfolio/kona_tool/.env
-ExecStart=/usr/bin/python3 /home/ec2-user/portfolio/kona_tool/scripts/backup_portfolio_db.py
+User=root
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__PYTHON_BIN__ __APP_DIR__/scripts/backup_portfolio_db.py
 EOF
+
+sudo sed -i \
+  -e "s|__APP_DIR__|${APP_DIR}|g" \
+  -e "s|__PYTHON_BIN__|${PYTHON_BIN}|g" \
+  /etc/systemd/system/kona-db-backup.service
 
 echo "[2/3] Create kona-db-backup.timer (07:20 Beijing, daily)..."
 sudo tee /etc/systemd/system/kona-db-backup.timer >/dev/null <<'EOF'

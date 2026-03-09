@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-APP_DIR="/home/ec2-user/portfolio/kona_tool"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOG_DIR="${APP_DIR}/archive/logs"
 mkdir -p "${LOG_DIR}"
 

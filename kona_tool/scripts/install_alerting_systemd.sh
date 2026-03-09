@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/home/ec2-user/portfolio/kona_tool"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PYTHON_BIN="${APP_DIR}/.venv/bin/python"
+
+if [ ! -x "${PYTHON_BIN}" ]; then
+  echo "未找到虚拟环境 Python: ${PYTHON_BIN}"
+  echo "请先在 ${APP_DIR} 下创建 .venv 并安装依赖。"
+  exit 1
+fi
 
 echo "[1/6] Create alert service for kona.service failures..."
 sudo tee /etc/systemd/system/kona-alert@.service >/dev/null <<'EOF'
@@ -11,11 +19,13 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-WorkingDirectory=/home/ec2-user/portfolio/kona_tool
-EnvironmentFile=/home/ec2-user/portfolio/kona_tool/.env
-ExecStart=/bin/bash /home/ec2-user/portfolio/kona_tool/scripts/systemd_failure_notify.sh %i
+User=root
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=/bin/bash __APP_DIR__/scripts/systemd_failure_notify.sh %i
 EOF
+
+sudo sed -i "s|__APP_DIR__|${APP_DIR}|g" /etc/systemd/system/kona-alert@.service
 
 echo "[2/6] Ensure kona.service has OnFailure hook..."
 if ! sudo grep -q '^OnFailure=kona-alert@%n.service$' /etc/systemd/system/kona.service; then
@@ -30,11 +40,16 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-WorkingDirectory=/home/ec2-user/portfolio/kona_tool
-EnvironmentFile=/home/ec2-user/portfolio/kona_tool/.env
-ExecStart=/usr/bin/python3 /home/ec2-user/portfolio/kona_tool/scripts/check_kona_health.py
+User=root
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__PYTHON_BIN__ __APP_DIR__/scripts/check_kona_health.py
 EOF
+
+sudo sed -i \
+  -e "s|__APP_DIR__|${APP_DIR}|g" \
+  -e "s|__PYTHON_BIN__|${PYTHON_BIN}|g" \
+  /etc/systemd/system/kona-healthcheck.service
 
 sudo tee /etc/systemd/system/kona-healthcheck.timer >/dev/null <<'EOF'
 [Unit]
@@ -57,11 +72,16 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-WorkingDirectory=/home/ec2-user/portfolio/kona_tool
-EnvironmentFile=/home/ec2-user/portfolio/kona_tool/.env
-ExecStart=/usr/bin/python3 /home/ec2-user/portfolio/kona_tool/scripts/check_daily_snapshot.py
+User=root
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__PYTHON_BIN__ __APP_DIR__/scripts/check_daily_snapshot.py
 EOF
+
+sudo sed -i \
+  -e "s|__APP_DIR__|${APP_DIR}|g" \
+  -e "s|__PYTHON_BIN__|${PYTHON_BIN}|g" \
+  /etc/systemd/system/kona-snapshot-verify.service
 
 sudo tee /etc/systemd/system/kona-snapshot-verify.timer >/dev/null <<'EOF'
 [Unit]
@@ -84,11 +104,16 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-WorkingDirectory=/home/ec2-user/portfolio/kona_tool
-EnvironmentFile=/home/ec2-user/portfolio/kona_tool/.env
-ExecStart=/usr/bin/python3 /home/ec2-user/portfolio/kona_tool/scripts/check_price_health_alert.py
+User=root
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__PYTHON_BIN__ __APP_DIR__/scripts/check_price_health_alert.py
 EOF
+
+sudo sed -i \
+  -e "s|__APP_DIR__|${APP_DIR}|g" \
+  -e "s|__PYTHON_BIN__|${PYTHON_BIN}|g" \
+  /etc/systemd/system/kona-price-health-alert.service
 
 sudo tee /etc/systemd/system/kona-price-health-alert.timer >/dev/null <<'EOF'
 [Unit]

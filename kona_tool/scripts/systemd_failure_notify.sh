@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/home/ec2-user/portfolio/kona_tool"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PYTHON_BIN="${APP_DIR}/.venv/bin/python"
 UNIT_NAME="${1:-kona.service}"
 HOSTNAME="$(hostname)"
 
@@ -15,6 +17,11 @@ Recent logs:
 ${LOG_TAIL}
 "
 
-python3 "${APP_DIR}/scripts/alert_sender.py" \
+if [ ! -x "${PYTHON_BIN}" ]; then
+  echo "未找到虚拟环境 Python: ${PYTHON_BIN}" >&2
+  exit 1
+fi
+
+"${PYTHON_BIN}" "${APP_DIR}/scripts/alert_sender.py" \
   --subject "[Kona][ALERT] ${UNIT_NAME} failed on ${HOSTNAME}" \
   --body "${BODY}"

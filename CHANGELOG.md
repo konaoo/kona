@@ -127,6 +127,28 @@
 - 趋势模块导入时是否不再报 `cannot import name 'UTC' from 'datetime'`。
 - 场内基金和美股趋势相关测试是否继续通过。
 
+## 2026-03-09-06
+
+### 这版一句话
+
+把后端门禁和线上运维脚本的 Python 口径统一到了当前真实环境，尽量别再让系统自带的老 Python 悄悄掺进来。
+
+### 主要变化
+- GitHub Actions 的后端门禁从 `Python 3.9/3.11` 调整成 `Python 3.10/3.11`，和项目当前 `3.10+` 口径对齐。
+- 线上相关的 systemd 安装脚本、故障告警脚本、快照/备份脚本改成优先使用当前目录下的 `.venv/bin/python`，不再写死 `/usr/bin/python3`。
+- 备份、恢复、快照检查这类脚本的默认数据库和备份路径改成按脚本所在目录自动推导，不再绑死旧机器的 `/home/ec2-user/...` 路径。
+- 部署、运维、认证和后台手册里最常用的线上命令同步改成当前腾讯云真实路径 `/opt/kaka/portfolio/kona_tool`。
+
+### 影响范围
+- GitHub Actions 后端门禁
+- 线上 systemd / 告警 / 备份 / 快照相关脚本
+- 部署与运维主文档
+
+### 验收重点
+- GitHub Actions 里 `Backend Gate` 是否只跑 `3.10` 和 `3.11`。
+- 线上如果重新安装告警或备份服务，生成的 systemd 配置是否指向 `.venv/bin/python`。
+- 线上手工执行备份、恢复、refresh token 清理等命令时，是否都按 `/opt/kaka/portfolio/kona_tool` 和 `.venv/bin/python` 这套口径走。
+
 ## 2026-03-09-01
 
 ### 这版一句话
