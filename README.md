@@ -180,7 +180,6 @@ npm install && npm run dev
 - [AI 接手规则](../AGENTS.md)
 - [AI 文档索引表](../AGENTS_文档索引表.md)
 - [版本记录规范](./版本记录规范.md)
-- [阶段性与重复文档归档](./docs/archive/20260307_阶段性与重复文档/README.md)
 
 ---
 
