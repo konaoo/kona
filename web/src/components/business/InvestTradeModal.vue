@@ -48,12 +48,24 @@ const marketMeta: Record<string, any> = {
   '基金': { color: '#b57adb', bg: 'rgba(181,122,219,0.12)', label: '基金' }
 }
 
-const accounts = ref([
-  { id: 'cmb', name: '招商银行', amount: '100,000', icon: '🏦', iconBg: 'rgba(231,76,60,0.12)' },
-  { id: 'wechat', name: '微信', amount: '10,000', icon: '💬', iconBg: 'rgba(62,207,130,0.12)' },
-  { id: 'alipay', name: '支付宝', amount: '89,349', icon: '💙', iconBg: 'rgba(91,141,239,0.12)' },
-])
-const selectedAccount = ref<any>(accounts.value[0])
+const accounts = ref<any[]>([])
+const selectedAccount = ref<any>(null)
+
+async function loadAccounts() {
+  try {
+    const res = await api.get('/api/cash_assets')
+    const realAccounts = Array.isArray(res) ? res : []
+    accounts.value = [
+      ...realAccounts,
+      { id: -999, name: '外部资金/初始转入', amount: null, curr: '', icon: '↗', iconBg: 'rgba(91,141,239,0.12)' }
+    ]
+    if (accounts.value.length > 0 && (!selectedAccount.value || !accounts.value.find(a => a.id === selectedAccount.value?.id))) {
+      selectedAccount.value = accounts.value[0]
+    }
+  } catch (err) {
+    console.error('Failed to load accounts:', err)
+  }
+}
 const isAcctDropdownOpen = ref(false)
 const isCreateSheetOpen = ref(false)
 const createAcctType = ref('cash')
@@ -187,6 +199,7 @@ function resetForm() {
 
 watch(() => props.show, (val) => {
   if (val) {
+    loadAccounts()
     modalVisible.value = true
     isAnimating.value = true
     setTimeout(() => { isAnimating.value = false }, 250)
@@ -478,6 +491,9 @@ async function handleConfirm() {
   searchError.value = ''
 
   try {
+    const isExternal = (!selectedAccount.value || selectedAccount.value.id === -999)
+    const cashId = isExternal ? null : selectedAccount.value.id
+
     if (!isEditMode.value) {
       const p = parseFloat(price.value)
       const q = parseFloat(qty.value)
@@ -486,14 +502,26 @@ async function handleConfirm() {
         return
       }
 
-      await api.post('/api/portfolio/add', {
-        code: selectedStock.value.code,
-        market: selectedStock.value.market_type || 'a',
-        qty: q,
-        price: p,
-        name: selectedStock.value.name,
-        curr: selectedStock.value.currency
-      })
+      if (isExternal) {
+        await api.post('/api/portfolio/add', {
+          code: selectedStock.value.code,
+          market: selectedStock.value.market_type || 'a',
+          qty: q,
+          price: p,
+          name: selectedStock.value.name,
+          curr: selectedStock.value.currency
+        })
+      } else {
+        await api.post('/api/portfolio/buy_with_cash', {
+          code: selectedStock.value.code,
+          name: selectedStock.value.name,
+          price: p,
+          qty: q,
+          curr: selectedStock.value.currency,
+          asset_type: selectedStock.value.asset_type || '',
+          cash_asset_id: cashId
+        })
+      }
       await submitSuccess('✓ 已添加')
       return
     }
@@ -536,13 +564,29 @@ async function handleConfirm() {
       return
     }
 
-    const endpoint = actionMode.value === 'sell' ? '/api/portfolio/sell' : '/api/portfolio/buy'
-    await api.post(endpoint, {
-      code: selectedStock.value.code,
-      price: p,
-      qty: q,
-    })
-    await submitSuccess(actionMode.value === 'sell' ? '✓ 已卖出' : '✓ 已买入')
+    if (actionMode.value === 'sell') {
+      if (isExternal) {
+        await api.post('/api/portfolio/sell', { code: selectedStock.value.code, price: p, qty: q })
+      } else {
+        await api.post('/api/portfolio/sell_to_cash', { code: selectedStock.value.code, price: p, qty: q, cash_asset_id: cashId })
+      }
+      await submitSuccess('✓ 已卖出')
+    } else {
+      if (isExternal) {
+        await api.post('/api/portfolio/buy', { code: selectedStock.value.code, price: p, qty: q })
+      } else {
+        await api.post('/api/portfolio/buy_with_cash', {
+          code: selectedStock.value.code,
+          name: selectedStock.value.name,
+          price: p,
+          qty: q,
+          curr: selectedStock.value.currency,
+          asset_type: selectedStock.value.asset_type || '',
+          cash_asset_id: cashId
+        })
+      }
+      await submitSuccess('✓ 已买入')
+    }
   } catch (e: any) {
     console.error('Invest trade error', e)
     searchError.value = extractErrorMessage(e, '保存失败，请重试')
@@ -699,12 +743,14 @@ onUnmounted(() => {
           </div>
 
           <!-- Account -->
-          <div v-if="!isEditMode" class="field-row">
+          <div v-if="!isEditMode || actionMode !== 'adjust'" class="account-section">
+            <div class="section-label">资产账户</div>
+            <div class="field-row">
             <div class="acct-wrap">
               <div class="acct-trigger" :class="{ open: isAcctDropdownOpen }" @click="toggleAcct">
                 <div class="acct-trigger-left">
-                  <span class="acct-trigger-name">{{ selectedAccount?.name }}</span>
-                  <span class="acct-trigger-amount">{{ selectedAccount?.amount }}</span>
+                  <span class="acct-trigger-name">{{ selectedAccount?.name || '请选择资金账户' }}</span>
+                  <span v-if="selectedAccount && selectedAccount.id !== -999" class="acct-trigger-amount">{{ selectedAccount?.curr }} {{ formatQuoteValue(selectedAccount?.amount) }}</span>
                 </div>
                 <svg class="acct-arrow" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg>
               </div>
@@ -715,10 +761,10 @@ onUnmounted(() => {
                   @click.stop="selectAccount(a)"
                 >
                   <div class="acct-item-left">
-                    <div class="acct-icon" :style="{ background: a.iconBg }">{{ a.icon }}</div>
+                    <div class="acct-icon" :style="{ background: a.iconBg || 'rgba(91,141,239,0.12)' }">{{ a.icon }}</div>
                     <div class="acct-info">
                       <div class="acct-item-name">{{ a.name }}</div>
-                      <div class="acct-item-amount">{{ a.amount }}</div>
+                      <div v-if="a.id !== -999" class="acct-item-amount">{{ a.curr }} {{ formatQuoteValue(a.amount) }}</div>
                     </div>
                   </div>
                   <svg class="acct-check" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l4 4 6-7"/></svg>
@@ -729,6 +775,7 @@ onUnmounted(() => {
                   <span class="acct-add-label">添加资金账户</span>
                 </div>
               </div>
+            </div>
             </div>
           </div>
 
@@ -887,6 +934,8 @@ onUnmounted(() => {
 .holding-item { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
 .holding-label { font-size: 11px; color: var(--sub); }
 .holding-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+.account-section { display: flex; flex-direction: column; gap: 6px; }
+.section-label { font-size: 11px; color: var(--sub); padding-left: 1px; }
 .field-row { display: flex; align-items: center; gap: 10px; }
 .search-wrap { position: relative; flex: 1; }
 .search-input-row { display: flex; align-items: center; background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 8px; transition: border-color 0.2s, box-shadow 0.2s; overflow: hidden; }
