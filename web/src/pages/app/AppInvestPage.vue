@@ -424,14 +424,14 @@ const handleTradeSuccess = async () => {
                 <div class="ms-item">
                     <div class="ms-lbl">今日盈亏</div>
                     <div class="ms-val-group" :class="valueClass(m.dayPnl)">
-                        <div class="ms-amt">{{ formatCurrency(m.dayPnl, true) }}</div>
+                        <div class="ms-amt">{{ formatCurrency(m.dayPnl, true, true) }}</div>
                         <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
                     </div>
                 </div>
                 <div class="ms-item">
                     <div class="ms-lbl">累计盈亏</div>
                     <div class="ms-val-group" :class="valueClass(m.totalPnl)">
-                        <div class="ms-amt">{{ formatCurrency(m.totalPnl, true) }}</div>
+                        <div class="ms-amt">{{ formatCurrency(m.totalPnl, true, true) }}</div>
                         <div class="ms-pct">{{ formatPct(m.totalRate) }}</div>
                     </div>
                 </div>

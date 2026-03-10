@@ -1389,28 +1389,14 @@ onBeforeUnmount(() => {
 }
 
 .market-strip {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.market-strip::-webkit-scrollbar {
-  display: none;
 }
 
 .market-strip > .card {
-  flex: 0 0 calc((100% - 60px) / 6);
-  min-width: 240px;
-}
-
-@media (max-width: 980px) {
-  .market-strip > .card {
-    flex-basis: 240px;
-  }
+  min-width: 0;
 }
 /* 使用全局样式以确保 :root 和 布局类生效 */
 /* New Horizontal Layout */
@@ -1669,8 +1655,21 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   /* Fix the market strip if needed (already horizontal scroll, but ensure no scrollbar) */
   .market-strip {
+    display: flex;
+    flex-wrap: nowrap;
     margin-right: -16px; /* Let it bleed to the edge */
     padding-right: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .market-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .market-strip > .card {
+    flex: 0 0 240px;
   }
   
   /* 1. Top Section - Stack total assets and period tabs */
