@@ -53,6 +53,16 @@ class TestMarketCodeNormalization(unittest.TestCase):
         self.assertEqual(parsed["code"], "f_161907")
         self.assertEqual(parsed["curr"], "CNY")
 
+    def test_parse_code_us_symbol_with_dot_uses_gb_and_usd(self):
+        parsed = parse_code("BRK.B", "")
+        self.assertEqual(parsed["code"], "gb_brk.b")
+        self.assertEqual(parsed["curr"], "USD")
+
+    def test_parse_code_us_symbol_with_dash_uses_gb_and_usd(self):
+        parsed = parse_code("BRK-B", "")
+        self.assertEqual(parsed["code"], "gb_brk-b")
+        self.assertEqual(parsed["curr"], "USD")
+
     def test_infer_asset_type_numeric_5_is_hk(self):
         self.assertEqual(infer_asset_type("00700", "腾讯控股"), "hk")
 
@@ -103,6 +113,9 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_infer_asset_type_invalid_f_prefix_letters_treated_as_us(self):
         self.assertEqual(infer_asset_type("f_NUGT", "Direxion NUGT ETF"), "us")
+
+    def test_infer_asset_type_us_symbol_with_dash_remains_us(self):
+        self.assertEqual(infer_asset_type("BRK-B", "伯克希尔B"), "us")
 
 
 if __name__ == "__main__":

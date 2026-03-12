@@ -140,6 +140,34 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertGreaterEqual(calls.count("eastmoney_us_stock"), 1)
         self.assertGreaterEqual(nasdaq_mock.call_count, 1)
 
+    def test_us_stock_special_symbol_fallbacks_to_relaxed_nasdaq(self):
+        calls = []
+
+        def fake_get(source, *args, **kwargs):
+            calls.append(source)
+            if source == "sina_us_stock":
+                return _Resp(text='var hq_str_gb_brk.b="";', status_code=200)
+            if source == "eastmoney_us_stock":
+                return _Resp(status_code=200, json_data={"data": None})
+            raise AssertionError(f"unexpected source={source}")
+
+        with patch("core.stock.monitored_http_get", side_effect=fake_get), patch(
+            "core.stock._get_nasdaq_quote",
+            return_value=None,
+        ) as nasdaq_mock, patch(
+            "core.stock._get_nasdaq_quote_relaxed",
+            side_effect=lambda symbol, assetclass: (493.57, 494.14, -0.57, -0.12)
+            if symbol == "BRK.B" and assetclass == "stocks"
+            else None,
+        ) as relaxed_mock:
+            curr, yclose, *_ = get_us_stock_price("gb_brk.b")
+
+        self.assertAlmostEqual(curr, 493.57, places=2)
+        self.assertAlmostEqual(yclose, 494.14, places=2)
+        self.assertEqual(calls, [])
+        self.assertEqual(nasdaq_mock.call_count, 0)
+        self.assertGreaterEqual(relaxed_mock.call_count, 1)
+
     def test_boursorama_fund_parser_reads_price_and_variation(self):
         html = """
         <html><body>

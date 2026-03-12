@@ -885,7 +885,10 @@ def _pick_preferred_name(current: str, incoming: str) -> str:
 
 
 def _requires_extended_fast_wait(code: str) -> bool:
-    return str(code or "").strip().lower().startswith("ft_")
+    normalized = str(code or "").strip().lower()
+    if normalized.startswith("ft_"):
+        return True
+    return normalized.startswith("gb_") and any(ch in normalized for ch in [".", "-"])
 
 
 def _asset_type_from_type_name(type_name: str, code: str = "") -> str:

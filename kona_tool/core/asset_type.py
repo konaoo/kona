@@ -66,8 +66,8 @@ def infer_asset_type(code: str, name: str = '') -> str:
     if re.fullmatch(r'\d{6}', c):
         return 'a'
 
-    # 美股（纯字母/点）
-    if re.fullmatch(r'[A-Za-z\\.]+', c):
+    # 美股（纯字母 / 点号 / 横杠）
+    if re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', c):
         return 'us'
 
     # 无明确市场代码时，名称提示基金

@@ -35,6 +35,14 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => Boolean(user.value && Number(user.value.is_admin || 0) === 1))
   const userId = computed(() => String(user.value?.id || '').trim() || 'guest')
 
+  function shouldClearAuthOnBootstrapError(error: unknown) {
+    const status = Number((error as { status?: unknown })?.status || 0)
+    if (error instanceof Error && error.message === 'AUTH_BOOTSTRAP_TIMEOUT') {
+      return false
+    }
+    return status === 401 || status === 403
+  }
+
   // ───────────────────────────────────────────────────────────────
   // Actions
   // ───────────────────────────────────────────────────────────────
@@ -66,9 +74,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       user.value = me
       persistUser(me)
-    } catch {
+    } catch (error) {
       if (timeoutId) clearTimeout(timeoutId)
-      clearAuthState()
+      if (shouldClearAuthOnBootstrapError(error)) {
+        clearAuthState()
+      }
     }
   }
 

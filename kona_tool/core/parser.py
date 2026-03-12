@@ -87,8 +87,12 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
         if not curr:
             curr = 'HKD'
     
-    # 美股（纯字母）
-    elif code.isalpha() and '_' not in code:
+    # 美股（纯字母 / 带点号 / 带横杠）
+    elif (
+        re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', code)
+        and '_' not in code
+        and not code.lower().startswith(('sh', 'sz', 'bj', 'hk'))
+    ):
         code = f"gb_{code.lower()}"
         if not curr:
             curr = 'USD'

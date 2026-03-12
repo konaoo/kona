@@ -92,6 +92,12 @@ const DEFAULT_QUOTE_POLICY: QuotePolicy = {
   interval_us_extended_sec: 10,
 }
 
+function shouldClearAuthOnBootstrapError(error: unknown) {
+  const status = Number((error as { status?: unknown })?.status || 0)
+  if (error instanceof Error && error.message === 'AUTH_BOOTSTRAP_TIMEOUT') return false
+  return status === 401 || status === 403
+}
+
 type StoreCachePayload = {
   userId: string
   savedAt: number
@@ -462,9 +468,11 @@ async function bootstrap() {
     if (timeoutId) clearTimeout(timeoutId)
     state.user = me
     persistUser(me)
-  } catch {
+  } catch (error) {
     if (timeoutId) clearTimeout(timeoutId)
-    clearAuthState()
+    if (shouldClearAuthOnBootstrapError(error)) {
+      clearAuthState()
+    }
   }
 }
 

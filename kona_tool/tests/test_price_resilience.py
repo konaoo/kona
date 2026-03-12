@@ -91,6 +91,19 @@ class TestPriceResilience(unittest.TestCase):
         self.assertIn("ft_LU1116320737", got)
         self.assertAlmostEqual(got["ft_LU1116320737"][0], 9.38, places=2)
 
+    def test_fast_batch_waits_a_bit_longer_for_us_special_symbols(self):
+        def fake_get_price(code, use_cache):
+            if code == "gb_brk.b":
+                time.sleep(0.75)
+                return (493.57, 494.14, -0.57, -0.12)
+            return (0.0, 0.0, 0.0, 0.0)
+
+        with patch("core.price.get_price", side_effect=fake_get_price):
+            got = price.batch_get_prices_fast(["gb_brk.b"], timeout_seconds=0.1)
+
+        self.assertIn("gb_brk.b", got)
+        self.assertAlmostEqual(got["gb_brk.b"][0], 493.57, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

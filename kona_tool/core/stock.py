@@ -116,6 +116,18 @@ def _normalize_us_symbol(code: str) -> str:
     return code.upper().replace('GB_', '').replace('US.', '').strip()
 
 
+def _us_symbol_candidates(code: str) -> List[str]:
+    primary = _normalize_us_symbol(code)
+    if not primary:
+        return []
+    candidates: List[str] = []
+    for symbol in [primary, primary.replace('.', '-'), primary.replace('-', '.')]:
+        normalized = str(symbol or '').strip().upper()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
 def _normalize_market_state(raw_state: Any) -> str:
     state = str(raw_state or '').strip().lower()
     if 'pre' in state:
@@ -368,59 +380,83 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     Returns:
         (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
-    s = code.upper().replace('GB_', '').replace('US.', '')
-    
-    try:
-        url = config.API_ENDPOINTS["sina_stock"].format(code=f"gb_{s.lower()}")
-        r = monitored_http_get("sina_us_stock", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
-        
-        if '="' in r.text:
-            data = r.text.split('="')[1].split(',')
-            curr = safe_float(data[1])
-            yclose = safe_float(data[26])
-            
-            if curr == 0:
-                curr = safe_float(data[21])  # 盘后价
-            
-            if curr > 0:
-                if yclose <= 0:
-                    yclose = curr
-                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
-                
-    except Exception as e:
-        _log_warn_throttled("sina_us_stock", f"Sina US stock API error: {e}")
-    
-    try:
-        for secid in [f"105.{s}", f"106.{s}"]:
-            url = f"https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=2&fields=f43,f60&secid={secid}"
-            r = monitored_http_get(
-                "eastmoney_us_stock",
-                url,
-                headers={'User-Agent': config.HEADERS['User-Agent']},
-                timeout=config.API_TIMEOUT,
-            )
-            data = r.json().get('data')
-            
-            if data:
-                curr = safe_float(data.get('f43'))
-                yclose = safe_float(data.get('f60'))
-                if curr <= 0:
-                    curr = yclose
-                if curr > 0:
-                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
-                    
-    except Exception as e:
-        _log_warn_throttled("eastmoney_us_stock", f"Eastmoney US stock API error: {e}")
+    symbols = _us_symbol_candidates(code)
+    if not symbols:
+        return 0.0, 0.0, 0.0, 0.0
 
-    # Nasdaq 备用接口（ETF/US Stocks）
+    # 对 BRK.B 这类带点号/横杠的美股，优先走更宽松的 Nasdaq，
+    # 避免先被新浪/东财这些符号兼容差的链路拖慢或拿空。
+    if any(('.' in symbol or '-' in symbol) for symbol in symbols):
+        for symbol in symbols:
+            for assetclass in ["stocks", "etf"]:
+                quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
+                if quote:
+                    curr, yclose, amt, pct = quote
+                    return curr, yclose, amt, pct
+
+    for symbol in symbols:
+        try:
+            url = config.API_ENDPOINTS["sina_stock"].format(code=f"gb_{symbol.lower()}")
+            r = monitored_http_get("sina_us_stock", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
+
+            if '="' in r.text:
+                data = r.text.split('="')[1].split(',')
+                curr = safe_float(data[1])
+                yclose = safe_float(data[26])
+
+                if curr == 0:
+                    curr = safe_float(data[21])  # 盘后价
+
+                if curr > 0:
+                    if yclose <= 0:
+                        yclose = curr
+                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+
+        except Exception as e:
+            _log_warn_throttled("sina_us_stock", f"Sina US stock API error: {e}")
+
+    for symbol in symbols:
+        try:
+            for secid in [f"105.{symbol}", f"106.{symbol}"]:
+                url = f"https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=2&fields=f43,f60&secid={secid}"
+                r = monitored_http_get(
+                    "eastmoney_us_stock",
+                    url,
+                    headers={'User-Agent': config.HEADERS['User-Agent']},
+                    timeout=config.API_TIMEOUT,
+                )
+                data = r.json().get('data')
+
+                if data:
+                    curr = safe_float(data.get('f43'))
+                    yclose = safe_float(data.get('f60'))
+                    if curr <= 0:
+                        curr = yclose
+                    if curr > 0:
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+
+        except Exception as e:
+            _log_warn_throttled("eastmoney_us_stock", f"Eastmoney US stock API error: {e}")
+
+    # Nasdaq 备用接口（美股股票优先，ETF 次之）
     try:
-        for assetclass in ["etf", "stocks"]:
-            quote = _get_nasdaq_quote(s, assetclass)
-            if quote:
-                curr, yclose, amt, pct = quote
-                return curr, yclose, amt, pct
+        for symbol in symbols:
+            for assetclass in ["stocks", "etf"]:
+                quote = _get_nasdaq_quote(symbol, assetclass)
+                if quote:
+                    curr, yclose, amt, pct = quote
+                    return curr, yclose, amt, pct
     except Exception as e:
         _log_warn_throttled("nasdaq_quote", f"Nasdaq quote API error: {e}")
+
+    # 对 BRK.B 这类带点号/横杠的美股，再给一次更宽松的纳斯达克兜底。
+    if any(('.' in symbol or '-' in symbol) for symbol in symbols):
+        for symbol in symbols:
+            for assetclass in ["stocks", "etf"]:
+                quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
+                if quote:
+                    curr, yclose, amt, pct = quote
+                    return curr, yclose, amt, pct
 
     return 0.0, 0.0, 0.0, 0.0
 
@@ -666,6 +702,38 @@ def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, flo
     if pct == 0 and yclose > 0:
         pct = amt / yclose * 100
     return curr, yclose, amt, pct
+
+
+def _get_nasdaq_quote_relaxed(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float]]:
+    url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass={assetclass}"
+    headers = config.API_HEADERS.get("default", config.HEADERS)
+    for _ in range(2):
+        try:
+            r = requests.get(url, headers=headers, timeout=max(4.0, float(config.API_TIMEOUT)))
+            if r.status_code != 200:
+                continue
+            data = (r.json() or {}).get("data") or {}
+            primary = data.get("primaryData") or {}
+            curr = safe_float(primary.get("lastSalePrice"))
+            net_change = safe_float(primary.get("netChange"))
+            pct = safe_float(primary.get("percentageChange"))
+            if curr <= 0:
+                continue
+            yclose = 0.0
+            summary = data.get("summaryData") or {}
+            if isinstance(summary, dict):
+                yclose = safe_float((summary.get("PreviousClose") or {}).get("value"))
+            if yclose <= 0 and net_change != 0:
+                yclose = curr - net_change
+            if yclose <= 0:
+                yclose = curr
+            amt = curr - yclose
+            if pct == 0 and yclose > 0:
+                pct = amt / yclose * 100
+            return curr, yclose, amt, pct
+        except Exception:
+            continue
+    return None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
