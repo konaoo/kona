@@ -63,16 +63,16 @@
               <div class="invite-badge">
                 <span class="i-dot"></span>
                 目前仅限受邀用户注册，
-                <div class="invite-link-wrap">
-                  <a href="#" class="invite-link" @click.prevent>获取邀请码</a>
-                  <div class="invite-popover">
+                <div ref="inviteLinkWrapEl" class="invite-link-wrap" :class="{ open: invitePopoverOpen }">
+                  <a href="#" class="invite-link" @click.prevent.stop="toggleInvitePopover">获取邀请码</a>
+                  <div class="invite-popover" @click.stop>
                     <div class="pop-content">
                       <p v-if="inviteAcquireText">{{ inviteAcquireText }}</p>
                       <img v-if="inviteAcquireImageUrl" :src="inviteAcquireImageUrl" alt="邀请码获取方式" />
                     </div>
                   </div>
                 </div>
-              </div>
+	              </div>
               <div class="input-wrap">
                 <span class="input-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                 <input v-model.trim="inviteCode" class="form-input invite" type="text" placeholder="XXXXXXXXXX" maxlength="10" @input="inviteCode = inviteCode.toUpperCase()"/>
@@ -207,8 +207,10 @@ const rememberMe = ref(false)
 const error = ref('')
 
 // Invitation config
-const inviteAcquireText = ref('')
-const inviteAcquireImageUrl = ref('')
+	const inviteAcquireText = ref('')
+	const inviteAcquireImageUrl = ref('')
+	const invitePopoverOpen = ref(false)
+	const inviteLinkWrapEl = ref<HTMLElement | null>(null)
 
 // Password UI state
 const showPassword = ref(false)
@@ -229,10 +231,27 @@ let quoteInterval: ReturnType<typeof setInterval>
 const isRegisterRoute = computed(() => route.path === '/app/register')
 const currentQuote = computed(() => quotes[currentQuoteIndex.value])
 
-function switchTab(type: 'login' | 'register') {
-  error.value = ''
-  router.push(type === 'login' ? '/app/login' : '/app/register')
-}
+	function switchTab(type: 'login' | 'register') {
+	  error.value = ''
+	  invitePopoverOpen.value = false
+	  router.push(type === 'login' ? '/app/login' : '/app/register')
+	}
+
+	function toggleInvitePopover() {
+	  invitePopoverOpen.value = !invitePopoverOpen.value
+	}
+
+	function handleDocumentClick(e: MouseEvent) {
+	  if (!invitePopoverOpen.value) return
+	  const el = inviteLinkWrapEl.value
+	  const target = e.target as Node | null
+	  if (!el || !target) {
+	    invitePopoverOpen.value = false
+	    return
+	  }
+	  if (el.contains(target)) return
+	  invitePopoverOpen.value = false
+	}
 
 function nextQuote() {
   quoteCardVisible.value = false
@@ -327,17 +346,19 @@ async function fetchWebConfig() {
   }
 }
 
-onMounted(() => {
-  if (!isRegisterRoute.value) {
-    readRememberFields()
-  }
-  fetchWebConfig()
-  quoteInterval = setInterval(nextQuote, 5200)
-})
+	onMounted(() => {
+	  if (!isRegisterRoute.value) {
+	    readRememberFields()
+	  }
+	  fetchWebConfig()
+	  quoteInterval = setInterval(nextQuote, 5200)
+	  document.addEventListener('click', handleDocumentClick, true)
+	})
 
-onUnmounted(() => {
-  if (quoteInterval) clearInterval(quoteInterval)
-})
+	onUnmounted(() => {
+	  if (quoteInterval) clearInterval(quoteInterval)
+	  document.removeEventListener('click', handleDocumentClick, true)
+	})
 
 </script>
 
@@ -523,9 +544,9 @@ onUnmounted(() => {
 }
 .i-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
 
-.invite-link-wrap { position: relative; display: inline-block; }
-.invite-link { color: var(--auth-text-main); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--auth-text-main) 35%, transparent); cursor: pointer; transition: 0.2s; }
-.invite-link:hover { color: var(--gold); opacity: 0.9; }
+	.invite-link-wrap { position: relative; display: inline-block; }
+	.invite-link { color: var(--auth-text-main); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--auth-text-main) 35%, transparent); cursor: pointer; transition: 0.2s; }
+	.invite-link:hover { color: var(--gold); opacity: 0.9; }
 
 .invite-popover {
   position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%) translateY(-10px);
@@ -539,13 +560,28 @@ onUnmounted(() => {
   content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
   border: 6px solid transparent; border-bottom-color: var(--auth-pop-bg);
 }
-.invite-link-wrap:hover .invite-popover {
-  visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0);
-}
-.pop-content { display: flex; flex-direction: column; gap: 10px; text-align: center; }
-.pop-content p { color: var(--auth-text-main); font-size: 13px; line-height: 1.5; margin: 0; }
-.pop-content img { width: 100%; border-radius: 8px; border: 1px solid var(--auth-input-border); }
-.form-input.invite { text-transform: uppercase; letter-spacing: .1em; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+	.invite-link-wrap:hover .invite-popover {
+	  visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto;
+	}
+	.invite-link-wrap.open .invite-popover {
+	  visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto;
+	}
+	.pop-content { display: flex; flex-direction: column; gap: 10px; text-align: center; }
+	.pop-content p { color: var(--auth-text-main); font-size: 13px; line-height: 1.5; margin: 0; }
+	.pop-content img { width: 100%; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid var(--auth-input-border); }
+	.form-input.invite { text-transform: uppercase; letter-spacing: .1em; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+
+	/* 修复移动端浏览器自动填充导致的“输入框发白/文字看不清” */
+	.form-input:-webkit-autofill,
+	.form-input:-webkit-autofill:hover,
+	.form-input:-webkit-autofill:focus,
+	.form-input:-webkit-autofill:active {
+	  -webkit-text-fill-color: var(--auth-text-main);
+	  caret-color: var(--auth-text-main);
+	  box-shadow: 0 0 0 1000px var(--auth-input-bg) inset;
+	  border: 1px solid var(--auth-input-border);
+	  transition: background-color 9999s ease-in-out 0s;
+	}
 
 .form-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; margin-top: 4px; }
 .remember-wrap { display: flex; align-items: center; gap: 7px; cursor: pointer; }
@@ -656,7 +692,7 @@ onUnmounted(() => {
 .sc-label { font-size: 10px; color: var(--auth-text-muted); }
 .sc-div { width: 1px; height: 32px; background: var(--surface-divider); }
 
-@media (max-width: 780px) {
+	@media (max-width: 780px) {
   .outer {
     padding: 0; /* Remove padding so it fills screen */
     align-items: flex-start; /* Align to top instead of center */
@@ -673,12 +709,13 @@ onUnmounted(() => {
     animation: none; /* Simple fade in mobile */
   }
   .brand-panel { display: none; }
-  .form-panel { 
-    padding: 60px 32px 32px; /* More top padding for status bar feel */
-    background: transparent;
-    min-height: 100vh;
-    justify-content: flex-start;
-  }
+	  .form-panel { 
+	    padding: 60px 32px 32px; /* More top padding for status bar feel */
+	    background: transparent;
+	    min-height: 100vh;
+	    justify-content: flex-start;
+	    overflow: visible;
+	  }
   .form-body {
     margin-top: 40px; /* Push form down a bit */
   }
@@ -699,9 +736,30 @@ onUnmounted(() => {
     margin-top: 16px;
   }
   /* Optional: reposition logo on mobile to be centered or larger */
-  .panel-logo {
-    justify-content: center;
-    margin-bottom: 10px;
-  }
-}
+	  .panel-logo {
+	    justify-content: center;
+	    margin-bottom: 10px;
+	  }
+
+	  /* 移动端：把“获取邀请码”弹层变成居中弹窗，避免被容器 overflow 裁切 */
+	  .invite-popover {
+	    position: fixed;
+	    left: 50%;
+	    top: 50%;
+	    width: min(92vw, 360px);
+	    max-height: min(78vh, 560px);
+	    overflow: auto;
+	    transform: translate(-50%, -50%);
+	  }
+	  .invite-link-wrap:hover .invite-popover,
+	  .invite-link-wrap.open .invite-popover {
+	    transform: translate(-50%, -50%);
+	  }
+	  .pop-content img {
+	    width: auto;
+	    max-width: 100%;
+	    max-height: 56vh;
+	  }
+	  .invite-popover::after { display: none; }
+	}
 </style>
