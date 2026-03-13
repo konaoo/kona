@@ -4045,6 +4045,7 @@ class DatabaseManager:
             today_str = now.strftime('%Y-%m-%d')
             items = []
             total_pnl = 0.0
+            rate_base = 0.0
 
             def _normalize_snapshot_rows(rows):
                 normalized = []
@@ -4074,6 +4075,48 @@ class DatabaseManager:
                         'pnl': round(float(pnl), 2),
                     })
                 return normalized
+
+            def _fetch_prev_invest(date_str: str) -> float:
+                cursor.execute(
+                    f'''
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE date < ? AND {user_condition}
+                    ORDER BY date DESC
+                    LIMIT 1
+                    ''',
+                    (date_str,) + user_param,
+                )
+                row = cursor.fetchone()
+                return float(row['total_invest'] or 0.0) if row else 0.0
+
+            def _fetch_last_invest(date_str: str) -> float:
+                cursor.execute(
+                    f'''
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE date <= ? AND {user_condition}
+                    ORDER BY date DESC
+                    LIMIT 1
+                    ''',
+                    (date_str,) + user_param,
+                )
+                row = cursor.fetchone()
+                return float(row['total_invest'] or 0.0) if row else 0.0
+
+            def _fetch_first_invest() -> float:
+                cursor.execute(
+                    f'''
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE {user_condition}
+                    ORDER BY date ASC
+                    LIMIT 1
+                    ''',
+                    user_param,
+                )
+                row = cursor.fetchone()
+                return float(row['total_invest'] or 0.0) if row else 0.0
 
             cursor.execute(
                 f'''
@@ -4190,6 +4233,10 @@ class DatabaseManager:
                 for row in normalized_rows:
                     day = int(str(row['date']).split('-')[2])
                     items.append({'label': f"{target_month}-{day}", 'pnl': row['pnl']})
+                period_base = _fetch_prev_invest(month_start)
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(month_end)
+                rate_base = period_base
 
                 title = f'{target_year}年{target_month}月累计'
 
@@ -4246,6 +4293,10 @@ class DatabaseManager:
                     pnl = float(month_totals.get(m, 0.0) or 0.0)
                     items.append({'label': f'{m}月', 'pnl': pnl})
                     total_pnl = round(total_pnl + pnl, 2)
+                period_base = _fetch_prev_invest(year_start)
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(year_end)
+                rate_base = period_base
 
                 title = f'{target_year}年累计'
 
@@ -4272,6 +4323,10 @@ class DatabaseManager:
                         pnl = float(year_totals.get(y, 0.0) or 0.0)
                         items.append({'label': str(y), 'pnl': pnl})
                         total_pnl = round(total_pnl + pnl, 2)
+                period_base = _fetch_first_invest()
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(today_str)
+                rate_base = period_base
 
                 title = '总累计'
             else:
@@ -4286,19 +4341,7 @@ class DatabaseManager:
                     'selectable': selectable,
                 }
 
-            cursor.execute(
-                f'''
-                SELECT total_invest
-                FROM daily_snapshots
-                WHERE {user_condition}
-                ORDER BY date ASC
-                LIMIT 1
-                ''',
-                user_param,
-            )
-            row = cursor.fetchone()
-            base = float(row['total_invest']) if row and row['total_invest'] else 0.0
-            total_rate = round(total_pnl / base * 100, 2) if base else 0.0
+            total_rate = round(total_pnl / rate_base * 100, 2) if rate_base else 0.0
 
             return {
                 'items': items,

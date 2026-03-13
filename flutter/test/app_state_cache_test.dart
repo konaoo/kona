@@ -90,4 +90,35 @@ void main() {
     expect(prefs.getString('u:guest:exchange_rates'), isNotNull);
     expect(prefs.getString('u:guest:prices'), isNotNull);
   });
+
+  test('AppState converts non-CNY cash and liability totals to CNY', () async {
+    SharedPreferences.setMockInitialValues({
+      'cache_cash_assets': jsonEncode({
+        'items': [
+          {'id': 1, 'name': '港币账户', 'amount': 100, 'curr': 'HKD'},
+        ],
+      }),
+      'cache_other_assets': jsonEncode({
+        'items': [
+          {'id': 2, 'name': '美元资产', 'amount': 10, 'curr': 'USD'},
+        ],
+      }),
+      'cache_liabilities': jsonEncode({
+        'items': [
+          {'id': 3, 'name': '美元负债', 'amount': 5, 'curr': 'USD'},
+        ],
+      }),
+      'cache_exchange_rates': jsonEncode({
+        'rates': {'USD': 7.0, 'HKD': 0.88, 'CNY': 1.0},
+      }),
+    });
+
+    final state = AppState();
+    await state.hydrateFromCache();
+
+    expect(state.totalCash, 88);
+    expect(state.totalOther, 70);
+    expect(state.totalLiability, 35);
+    expect(state.totalAsset, 123);
+  });
 }

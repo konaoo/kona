@@ -28,6 +28,7 @@ def _insert_snapshot(
     day_pnl,
     user_id="u1",
     updated_at=None,
+    total_invest=1000,
 ):
     conn = db_module.db.get_connection()
     cursor = conn.cursor()
@@ -38,7 +39,7 @@ def _insert_snapshot(
         (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (date, 0, 1000, 0, 0, 0, total_pnl, day_pnl, user_id, ts),
+        (date, 0, total_invest, 0, 0, 0, total_pnl, day_pnl, user_id, ts),
     )
     conn.commit()
     conn.close()
@@ -248,6 +249,44 @@ class CalendarWeekendTests(unittest.TestCase):
         self.assertEqual(data["selectable"]["month"]["years"], [2025, 2026])
         self.assertEqual(len(data["items"]), 3)
         self.assertEqual(data["total_pnl"], 0.0)
+
+    def test_day_view_total_rate_uses_month_start_baseline(self):
+        _insert_snapshot("2026-01-31", 0, 0, total_invest=2000)
+        _insert_snapshot("2026-02-03", 100, 100, total_invest=3000)
+        _insert_snapshot("2026-02-04", 150, 50, total_invest=3500)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 4)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=2)
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 150.0, places=2)
+        self.assertAlmostEqual(float(data["total_rate"]), 7.5, places=2)
+
+    def test_month_view_total_rate_uses_year_start_baseline(self):
+        _insert_snapshot("2025-12-31", 0, 0, total_invest=5000)
+        _insert_snapshot("2026-01-12", 100, 100, total_invest=6000)
+        _insert_snapshot("2026-02-10", 300, 200, total_invest=7000)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 10)
+            data = db_module.db.get_calendar_data("month", "u1", year=2026)
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 300.0, places=2)
+        self.assertAlmostEqual(float(data["total_rate"]), 6.0, places=2)
+
+    def test_year_view_total_rate_uses_first_snapshot_baseline(self):
+        _insert_snapshot("2025-12-31", 0, 0, total_invest=4000)
+        _insert_snapshot("2026-01-12", 100, 100, total_invest=5000)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 1, 12)
+            data = db_module.db.get_calendar_data("year", "u1")
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 100.0, places=2)
+        self.assertAlmostEqual(float(data["total_rate"]), 2.5, places=2)
 
     def test_selected_empty_period_returns_invalid_code(self):
         _insert_snapshot("2026-02-06", 100, 10)

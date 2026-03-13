@@ -1313,6 +1313,39 @@ class ApiBaselineTests(unittest.TestCase):
                 stats = app_module.calculate_portfolio_stats(None)
         self.assertAlmostEqual(float(stats.get('total_pnl') or 0.0), 20.0, places=2)
 
+    def test_calculate_stats_converts_non_invest_assets_to_cny(self):
+        add_cash = self.client.post('/api/cash_assets/add', json={
+            'name': '港币账户',
+            'amount': 100.0,
+            'curr': 'HKD',
+        })
+        self.assertEqual(add_cash.status_code, 200)
+        add_other = self.client.post('/api/other_assets/add', json={
+            'name': '美元资产',
+            'amount': 10.0,
+            'curr': 'USD',
+        })
+        self.assertEqual(add_other.status_code, 200)
+        add_liability = self.client.post('/api/liabilities/add', json={
+            'name': '美元负债',
+            'amount': 5.0,
+            'curr': 'USD',
+        })
+        self.assertEqual(add_liability.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={}):
+            with patch('core.snapshot.get_forex_rates', return_value={
+                'CNY': 1.0,
+                'HKD': 0.88,
+                'USD': 7.0,
+            }):
+                stats = app_module.calculate_portfolio_stats(None)
+
+        self.assertAlmostEqual(float(stats.get('total_cash') or 0.0), 88.0, places=2)
+        self.assertAlmostEqual(float(stats.get('total_other') or 0.0), 70.0, places=2)
+        self.assertAlmostEqual(float(stats.get('total_liability') or 0.0), 35.0, places=2)
+        self.assertAlmostEqual(float(stats.get('total_asset') or 0.0), 123.0, places=2)
+
     def test_calculate_stats_keeps_day_pnl_on_trading_day_even_off_hours(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600000',

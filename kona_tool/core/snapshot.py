@@ -58,6 +58,24 @@ def _market_trading_day_now(
         return str(status.get("reason") or "").lower() in {"off_hours", "open_session"}
 
 
+def _rate_to_cny(curr: Any, rates: Dict[str, Any]) -> float:
+    code = str(curr or "CNY").strip().upper()
+    if code == "CNY":
+        return 1.0
+    try:
+        rate = float((rates or {}).get(code, 0.0) or 0.0)
+    except Exception:
+        rate = 0.0
+    return rate if rate > 0 else 1.0
+
+
+def _asset_amount_to_cny(asset: Dict[str, Any], rates: Dict[str, Any], use_abs: bool = False) -> float:
+    amount = float(asset.get("amount") or 0.0)
+    if use_abs:
+        amount = abs(amount)
+    return amount * _rate_to_cny(asset.get("curr"), rates)
+
+
 def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, Any]:
     """
     计算当前时刻的投资组合统计数据
@@ -106,7 +124,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         adj = float(asset['adjustment'] or 0)
         
         # 汇率
-        rate = rates.get(curr, 1.0)
+        rate = _rate_to_cny(curr, rates)
         
         # 价格数据
         price_data = prices.get(code, (0, 0, 0, 0))
@@ -146,9 +164,9 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         day_pnl_by_market[market] += item_day_pnl
         
     # 4. 计算非投资资产 stats
-    total_cash = sum(a['amount'] for a in cash_assets)
-    total_other = sum(a['amount'] for a in other_assets)
-    total_liability = sum(abs(a['amount']) for a in liabilities)
+    total_cash = sum(_asset_amount_to_cny(a, rates) for a in cash_assets)
+    total_other = sum(_asset_amount_to_cny(a, rates) for a in other_assets)
+    total_liability = sum(_asset_amount_to_cny(a, rates, use_abs=True) for a in liabilities)
     
     # 5. 获取今日已实现盈亏（卖出）
     snapshot_date = now_utc.strftime("%Y-%m-%d")

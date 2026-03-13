@@ -903,11 +903,7 @@ class AppState extends ChangeNotifier {
     }
 
     // recompute totals
-    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
-    _totalInvest = investTotalMV;
-    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    _recalculateHomeTotals();
 
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
     if (hasAssetCache) {
@@ -1890,10 +1886,23 @@ class AppState extends ChangeNotifier {
     _marketTradingDayStatus = parsed.tradingDay;
   }
 
+  double _assetAmountToCny(Asset item, {bool useAbs = false}) {
+    final amount = useAbs ? item.amount.abs() : item.amount;
+    return convertToCny(amount, _normalizeAssetCurrency(item.curr));
+  }
+
+  double _sumAssetListToCny(List<Asset> items, {bool useAbs = false}) {
+    double total = 0;
+    for (final item in items) {
+      total += _assetAmountToCny(item, useAbs: useAbs);
+    }
+    return total;
+  }
+
   void _recalculateHomeTotals() {
-    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+    _totalCash = _sumAssetListToCny(_cashAssets);
+    _totalOther = _sumAssetListToCny(_otherAssets);
+    _totalLiability = _sumAssetListToCny(_liabilities, useAbs: true);
     _totalInvest = investTotalMV;
     _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
@@ -2331,9 +2340,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _recalculateAssetTotals() {
-    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalOther = _otherAssets.fold(0, (sum, item) => sum + item.amount);
-    _totalLiability = _liabilities.fold(0, (sum, item) => sum + item.amount);
+    _totalCash = _sumAssetListToCny(_cashAssets);
+    _totalOther = _sumAssetListToCny(_otherAssets);
+    _totalLiability = _sumAssetListToCny(_liabilities, useAbs: true);
     _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
     notifyListeners();
   }
@@ -3005,7 +3014,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(portfolioSnapshot);
       return const AssetActionResult.failure('买入失败，请稍后重试');
     }
-    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalCash = _sumAssetListToCny(_cashAssets);
     _recalculatePortfolioTotals();
 
     final result = await _api.buyPortfolioAssetWithCash(
@@ -3124,7 +3133,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(portfolioSnapshot);
       return const AssetActionResult.failure('卖出失败，请稍后重试');
     }
-    _totalCash = _cashAssets.fold(0, (sum, item) => sum + item.amount);
+    _totalCash = _sumAssetListToCny(_cashAssets);
     _recalculatePortfolioTotals();
 
     final result = await _api.sellPortfolioAssetToCash(
