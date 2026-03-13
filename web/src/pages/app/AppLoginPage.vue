@@ -694,13 +694,20 @@ async function fetchWebConfig() {
 
 	@media (max-width: 780px) {
   .outer {
+    /* 移动端必须允许滚动：桌面端的 overflow:hidden 会把超出一屏的内容直接裁掉 */
+    display: block;
+    height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     padding: 0; /* Remove padding so it fills screen */
     align-items: flex-start; /* Align to top instead of center */
     background: var(--auth-form-bg); /* Use solid or form bg on mobile */
   }
   .card { 
     grid-template-columns: 1fr; 
-    min-height: 100vh; /* Full viewport height */
+    /* 交给 outer 滚动，card 不要强行锁死 100vh */
+    min-height: 100%;
     border-radius: 0; /* No rounded corners */
     box-shadow: none; /* No shadow */
     background: transparent;
@@ -710,14 +717,14 @@ async function fetchWebConfig() {
   }
   .brand-panel { display: none; }
 	  .form-panel { 
-	    padding: 60px 32px 32px; /* More top padding for status bar feel */
+	    padding: calc(44px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom)); /* Safe-area aware */
 	    background: transparent;
-	    min-height: 100vh;
+	    min-height: 100%;
 	    justify-content: flex-start;
 	    overflow: visible;
 	  }
   .form-body {
-    margin-top: 40px; /* Push form down a bit */
+    margin-top: 34px; /* Push form down a bit */
   }
   .form-title {
     font-size: 28px; /* Slightly larger title for impact */
