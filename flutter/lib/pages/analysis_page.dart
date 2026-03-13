@@ -513,6 +513,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final periodData = _overview[_currentPeriod] ?? {};
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
+    // 顶部大卡只在“当日”周期读取实时行情，其余周期一律按快照概览返回值。
     final isDay = _currentPeriod == 'day';
     final pnl = isDay ? appState.investDayPnl : (apiPnl ?? 0);
     final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
@@ -604,7 +605,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           _buildPeriodButton('当日', _currentPeriod == 'day', 'day'),
           _buildPeriodButton('本月', _currentPeriod == 'month', 'month'),
           _buildPeriodButton('本年', _currentPeriod == 'year', 'year'),
-          _buildPeriodButton('全部', _currentPeriod == 'profit', 'profit'),
+          _buildPeriodButton('全部', _currentPeriod == 'all', 'all'),
         ],
       ),
     );
@@ -677,6 +678,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         pnlMap[key] = pnl;
       }
     }
+    // 收益日历只有“当前月的今天”这一格允许用实时值覆盖，其余历史格保持快照口径。
     if (_calendarTimeType == 'day' && dayYear == now.year && dayMonth == now.month) {
       final todayKey = DateTime.now().day;
       pnlMap[todayKey] = appState.investDayPnl;
@@ -1039,6 +1041,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   double _calendarSummaryRawValue() {
+    final apiTotal = _calendarData['total_pnl'];
+    if (apiTotal is num) return apiTotal.toDouble();
     double total = 0;
     final items = _calendarData['items'] as List<dynamic>? ?? [];
     for (var item in items) {

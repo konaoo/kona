@@ -3834,6 +3834,36 @@ class DatabaseManager:
             today = datetime.now()
             today_str = today.strftime('%Y-%m-%d')
 
+            def _normalize_snapshot_rows(rows):
+                normalized = []
+                prev_total = None
+                for row in rows:
+                    date_str = str(row['date'])
+                    is_market_closed = _is_market_closed_date(date_str)
+                    closed_at_snapshot = False
+                    if _is_snapshot_updated_on_same_date(date_str, row['updated_at']):
+                        closed_at_snapshot = _is_market_closed_at_snapshot_time(
+                            row['updated_at']
+                        )
+                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
+                    if is_market_closed:
+                        pnl = 0.0
+                    elif (
+                        (pnl == 0 or pnl == -0.0)
+                        and (not closed_at_snapshot)
+                        and row['total_pnl'] is not None
+                        and prev_total is not None
+                    ):
+                        pnl = float(row['total_pnl']) - prev_total
+                    if (not is_market_closed) and row['total_pnl'] is not None:
+                        prev_total = float(row['total_pnl'])
+                    normalized.append({
+                        'date': date_str,
+                        'pnl': round(float(pnl), 2),
+                        'total_invest': float(row['total_invest'] or 0.0),
+                    })
+                return normalized
+
             def _fetch_prev_snapshot(date_str: str):
                 cursor.execute(
                     f'''
@@ -3901,35 +3931,20 @@ class DatabaseManager:
                 month_start = today.strftime('%Y-%m-01')
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl, day_pnl, total_invest FROM daily_snapshots
+                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
                     (month_start, today_str) + user_param,
                 )
                 rows = cursor.fetchall()
-                business_rows = [
-                    row for row in rows if not _is_weekend_date(str(row['date']))
-                ]
+                normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(month_start)
-                if business_rows:
-                    last = business_rows[-1]
-                    if prev:
-                        base_total = float(prev['total_pnl'] or 0)
-                        base_invest = float(prev['total_invest'] or 0)
-                    else:
-                        # 修正: 无期初快照时，基准总盈亏应为本月第一天的(总盈亏 - 当日盈亏)
-                        first_day = business_rows[0]
-                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
-                        base_invest = float(first_day['total_invest'] or 0)
-                else:
-                    last = prev
-                    base_total = float(prev['total_pnl'] or 0) if prev else 0.0
-                    base_invest = float(prev['total_invest'] or 0) if prev else 0.0
-                if last:
-                    pnl = float(last['total_pnl'] or 0) - base_total
-                    base = base_invest or float(last['total_invest'] or 0) or 1
-                    # 修正：收益率分母优先使用期初本金
+                base_invest = float(prev['total_invest'] or 0) if prev else 0.0
+                if normalized_rows:
+                    pnl = round(sum(float(row['pnl'] or 0.0) for row in normalized_rows), 2)
+                    latest_invest = float(normalized_rows[-1]['total_invest'] or 0.0)
+                    base = base_invest or latest_invest or 1
                     calc_base = base_invest if base_invest > 0 else base
                     return {
                         'pnl': pnl,
@@ -3942,35 +3957,20 @@ class DatabaseManager:
                 year_start = today.strftime('%Y-01-01')
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl, day_pnl, total_invest FROM daily_snapshots
+                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
                     (year_start, today_str) + user_param,
                 )
                 rows = cursor.fetchall()
-                business_rows = [
-                    row for row in rows if not _is_weekend_date(str(row['date']))
-                ]
+                normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(year_start)
-                if business_rows:
-                    last = business_rows[-1]
-                    if prev:
-                        base_total = float(prev['total_pnl'] or 0)
-                        base_invest = float(prev['total_invest'] or 0)
-                    else:
-                        # 修正: 无期初快照时，基准总盈亏应为今年第一天的(总盈亏 - 当日盈亏)
-                        first_day = business_rows[0]
-                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
-                        base_invest = float(first_day['total_invest'] or 0)
-                else:
-                    last = prev
-                    base_total = float(prev['total_pnl'] or 0) if prev else 0.0
-                    base_invest = float(prev['total_invest'] or 0) if prev else 0.0
-                if last:
-                    pnl = float(last['total_pnl'] or 0) - base_total
-                    base = base_invest or float(last['total_invest'] or 0) or 1
-                    # 修正：收益率分母优先使用期初本金
+                base_invest = float(prev['total_invest'] or 0) if prev else 0.0
+                if normalized_rows:
+                    pnl = round(sum(float(row['pnl'] or 0.0) for row in normalized_rows), 2)
+                    latest_invest = float(normalized_rows[-1]['total_invest'] or 0.0)
+                    base = base_invest or latest_invest or 1
                     calc_base = base_invest if base_invest > 0 else base
                     return {
                         'pnl': pnl,
@@ -3982,20 +3982,19 @@ class DatabaseManager:
             else:  # all
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
                     WHERE date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
                     (today_str,) + user_param,
                 )
                 rows = cursor.fetchall()
-                if rows:
-                    last = rows[-1]
-                    # total_pnl 本身就是累计口径；all 应返回当前累计值而非差值。
-                    pnl = float(last['total_pnl'] or 0.0)
-                    latest_invest = float(last['total_invest'] or 0.0)
-                    first_invest = float(rows[0]['total_invest'] or 0.0)
-                    base = latest_invest or first_invest or 1
+                normalized_rows = _normalize_snapshot_rows(rows)
+                if normalized_rows:
+                    pnl = round(sum(float(row['pnl'] or 0.0) for row in normalized_rows), 2)
+                    latest_invest = float(normalized_rows[-1]['total_invest'] or 0.0)
+                    first_invest = float(normalized_rows[0]['total_invest'] or 0.0)
+                    base = first_invest or latest_invest or 1
                     return {
                         'pnl': pnl,
                         'pnl_rate': round(pnl / base * 100, 2) if base else 0,
@@ -4046,6 +4045,35 @@ class DatabaseManager:
             today_str = now.strftime('%Y-%m-%d')
             items = []
             total_pnl = 0.0
+
+            def _normalize_snapshot_rows(rows):
+                normalized = []
+                prev_total = None
+                for row in rows:
+                    date_str = str(row['date'])
+                    is_market_closed = _is_market_closed_date(date_str)
+                    closed_at_snapshot = False
+                    if _is_snapshot_updated_on_same_date(date_str, row['updated_at']):
+                        closed_at_snapshot = _is_market_closed_at_snapshot_time(
+                            row['updated_at']
+                        )
+                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
+                    if is_market_closed:
+                        pnl = 0.0
+                    elif (
+                        (pnl == 0 or pnl == -0.0)
+                        and (not closed_at_snapshot)
+                        and row['total_pnl'] is not None
+                        and prev_total is not None
+                    ):
+                        pnl = float(row['total_pnl']) - prev_total
+                    if (not is_market_closed) and row['total_pnl'] is not None:
+                        prev_total = float(row['total_pnl'])
+                    normalized.append({
+                        'date': date_str,
+                        'pnl': round(float(pnl), 2),
+                    })
+                return normalized
 
             cursor.execute(
                 f'''
@@ -4157,53 +4185,11 @@ class DatabaseManager:
                     (month_start, month_end) + user_param,
                 )
                 rows = cursor.fetchall()
-                
-                # 使用首尾差值计算当月总盈亏，对齐 get_pnl_overview 逻辑
-                business_rows = [r for r in rows if not _is_weekend_date(str(r['date']))]
-                true_total_pnl = 0.0
-                if business_rows:
-                    first_day = business_rows[0]
-                    last_day = business_rows[-1]
-                    cursor.execute(
-                        f'''
-                        SELECT date, total_pnl, total_invest FROM daily_snapshots
-                        WHERE date < ? AND {user_condition}
-                        ORDER BY date DESC
-                        LIMIT 1
-                        ''',
-                        (month_start,) + user_param,
-                    )
-                    prev_month_snap = cursor.fetchone()
-                    if prev_month_snap:
-                        base_total = float(prev_month_snap['total_pnl'] or 0)
-                    else:
-                        base_total = float(first_day['total_pnl'] or 0) - float(first_day['day_pnl'] or 0)
-                    true_total_pnl = float(last_day['total_pnl'] or 0) - base_total
-                total_pnl = true_total_pnl
-
-                prev_total = None
-                for row in rows:
-                    date_str = row['date']
-                    day = int(str(date_str).split('-')[2])
-                    is_market_closed = _is_market_closed_date(date_str)
-                    closed_at_snapshot = False
-                    if _is_snapshot_updated_on_same_date(date_str, row['updated_at']):
-                        closed_at_snapshot = _is_market_closed_at_snapshot_time(
-                            row['updated_at']
-                        )
-                    pnl = float(row['day_pnl']) if row['day_pnl'] is not None else 0.0
-                    if is_market_closed:
-                        pnl = 0.0
-                    elif (
-                        (pnl == 0 or pnl == -0.0)
-                        and (not closed_at_snapshot)
-                        and row['total_pnl'] is not None
-                        and prev_total is not None
-                    ):
-                        pnl = float(row['total_pnl']) - prev_total
-                    if (not is_market_closed) and row['total_pnl'] is not None:
-                        prev_total = float(row['total_pnl'])
-                    items.append({'label': f"{target_month}-{day}", 'pnl': pnl})
+                normalized_rows = _normalize_snapshot_rows(rows)
+                total_pnl = round(sum(float(row['pnl'] or 0.0) for row in normalized_rows), 2)
+                for row in normalized_rows:
+                    day = int(str(row['date']).split('-')[2])
+                    items.append({'label': f"{target_month}-{day}", 'pnl': row['pnl']})
 
                 title = f'{target_year}年{target_month}月累计'
 
@@ -4242,60 +4228,24 @@ class DatabaseManager:
                 year_end = today_str if target_year == now.year else f'{target_year:04d}-12-31'
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl
+                    SELECT date, day_pnl, total_pnl, updated_at
                     FROM daily_snapshots
                     WHERE date >= ? AND date <= ? AND {user_condition}
                     ORDER BY date ASC
                     ''',
                     (year_start, year_end) + user_param,
                 )
-
-                month_last: Dict[int, float] = {}
-                for row in cursor.fetchall():
-                    date_str = row['date']
-                    if _is_market_closed_date(date_str):
-                        continue
-                    m = int(str(date_str).split('-')[1])
-                    tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
-                    month_last[m] = tp
-
-                cursor.execute(
-                    f'''
-                    SELECT total_pnl
-                    FROM daily_snapshots
-                    WHERE date < ? AND {user_condition}
-                    ORDER BY date DESC
-                    LIMIT 1
-                    ''',
-                    (year_start,) + user_param,
-                )
-                base_row = cursor.fetchone()
-                if base_row and base_row['total_pnl'] is not None:
-                    prev_total = float(base_row['total_pnl'])
-                else:
-                    cursor.execute(
-                        f'''
-                        SELECT date, total_pnl, day_pnl
-                        FROM daily_snapshots
-                        WHERE date >= ? AND date <= ? AND {user_condition}
-                        ORDER BY date ASC
-                        LIMIT 1
-                        ''',
-                        (year_start, year_end) + user_param,
-                    )
-                    first_row = cursor.fetchone()
-                    if first_row and first_row['total_pnl'] is not None:
-                        prev_total = float(first_row['total_pnl']) - float(first_row['day_pnl'] or 0.0)
-                    else:
-                        prev_total = 0.0
+                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
+                month_totals: Dict[int, float] = {}
+                for row in normalized_rows:
+                    m = int(str(row['date']).split('-')[1])
+                    month_totals[m] = round(month_totals.get(m, 0.0) + float(row['pnl'] or 0.0), 2)
                 month_limit = now.month if target_year == now.year else 12
 
                 for m in range(1, month_limit + 1):
-                    current_total = month_last.get(m, prev_total)
-                    pnl = current_total - prev_total
+                    pnl = float(month_totals.get(m, 0.0) or 0.0)
                     items.append({'label': f'{m}月', 'pnl': pnl})
-                    total_pnl += pnl
-                    prev_total = current_total
+                    total_pnl = round(total_pnl + pnl, 2)
 
                 title = f'{target_year}年累计'
 
@@ -4303,7 +4253,7 @@ class DatabaseManager:
                 period = {'time_type': 'year'}
                 cursor.execute(
                     f'''
-                    SELECT date, total_pnl
+                    SELECT date, day_pnl, total_pnl, updated_at
                     FROM daily_snapshots
                     WHERE date <= ? AND {user_condition}
                     ORDER BY date ASC
@@ -4311,55 +4261,17 @@ class DatabaseManager:
                     (today_str,) + user_param,
                 )
 
-                rows = cursor.fetchall()
-                if rows:
-                    year_last: Dict[int, float] = {}
-                    for row in rows:
-                        date_str = row['date']
-                        if _is_market_closed_date(date_str):
-                            continue
-                        y = int(str(date_str).split('-')[0])
-                        tp = float(row['total_pnl']) if row['total_pnl'] is not None else 0.0
-                        year_last[y] = tp
-
-                    start_year = int(str(rows[0]['date']).split('-')[0])
-                    base_date = f'{start_year}-01-01'
-                    cursor.execute(
-                        f'''
-                        SELECT total_pnl
-                        FROM daily_snapshots
-                        WHERE date < ? AND {user_condition}
-                        ORDER BY date DESC
-                        LIMIT 1
-                        ''',
-                        (base_date,) + user_param,
-                    )
-                    base_row = cursor.fetchone()
-                    if base_row and base_row['total_pnl'] is not None:
-                        prev_total = float(base_row['total_pnl'])
-                    else:
-                        cursor.execute(
-                            f'''
-                            SELECT date, total_pnl, day_pnl
-                            FROM daily_snapshots
-                            WHERE date >= ? AND date <= ? AND {user_condition}
-                            ORDER BY date ASC
-                            LIMIT 1
-                            ''',
-                            (base_date, today_str) + user_param,
-                        )
-                        first_row = cursor.fetchone()
-                        if first_row and first_row['total_pnl'] is not None:
-                            prev_total = float(first_row['total_pnl']) - float(first_row['day_pnl'] or 0.0)
-                        else:
-                            prev_total = 0.0
+                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
+                if normalized_rows:
+                    year_totals: Dict[int, float] = {}
+                    for row in normalized_rows:
+                        y = int(str(row['date']).split('-')[0])
+                        year_totals[y] = round(year_totals.get(y, 0.0) + float(row['pnl'] or 0.0), 2)
+                    start_year = int(str(normalized_rows[0]['date']).split('-')[0])
                     for y in range(start_year, now.year + 1):
-                        current_total = year_last.get(y, prev_total)
-                        pnl = current_total - prev_total
+                        pnl = float(year_totals.get(y, 0.0) or 0.0)
                         items.append({'label': str(y), 'pnl': pnl})
-                        prev_total = current_total
-                    
-                    total_pnl = current_total if 'current_total' in locals() else prev_total
+                        total_pnl = round(total_pnl + pnl, 2)
 
                 title = '总累计'
             else:
