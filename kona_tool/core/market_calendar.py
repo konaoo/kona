@@ -183,6 +183,32 @@ def _is_trading_day_from_calendar(market: str, target_date: Any) -> bool:
         )
         return fallback
 
+    # exchange_calendars 在“超出数据覆盖范围”的日期上，部分版本会直接返回 False，
+    # 而不是抛异常。这里显式检测范围，超界就回退到 weekday 逻辑，避免把未来工作日误判为休市。
+    try:
+        first_session = getattr(cal, "first_session", None)
+        last_session = getattr(cal, "last_session", None)
+        if first_session is not None and last_session is not None:
+            first_date = _normalize_date(first_session)
+            last_date = _normalize_date(last_session)
+            if d < first_date or d > last_date:
+                logger.warning(
+                    "exchange_calendars data coverage insufficient for market=%s date=%s range=%s..%s fallback weekday=%s",
+                    market,
+                    d,
+                    first_date,
+                    last_date,
+                    fallback,
+                )
+                return fallback
+    except Exception as exc:
+        logger.warning(
+            "exchange_calendars range check failed for market=%s date=%s: %s",
+            market,
+            d,
+            exc,
+        )
+
     try:
         ts = pd.Timestamp(d.isoformat())
         if hasattr(cal, "is_session"):
