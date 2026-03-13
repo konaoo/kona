@@ -728,7 +728,11 @@ class ApiBaselineTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        resp = self.client.get('/api/analysis/overview?period=all')
+        # 这条用例的目标是验证“未来快照不会影响 all 汇总”。
+        # 交易日/休市判定依赖外部交易日历数据，可能随运行环境与依赖版本变化而波动，
+        # 不应影响此处对 future snapshot 的断言。
+        with patch("core.db._is_market_closed_date", return_value=False):
+            resp = self.client.get('/api/analysis/overview?period=all')
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
         all_pnl = float((payload.get('all') or {}).get('pnl', 0))
