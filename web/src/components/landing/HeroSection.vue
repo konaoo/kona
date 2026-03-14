@@ -29,7 +29,18 @@
               苹果版
             </a>
             <div class="qr-tooltip" v-if="iosQrImageUrl || iosQrText">
-              <img v-if="iosQrImageUrl" :src="iosQrImageUrl" alt="iOS QR Code" class="qr-img" />
+              <img
+                v-if="showQrImage"
+                :src="iosQrImageUrl"
+                alt="iOS QR Code"
+                class="qr-img"
+                @error="handleQrImageError"
+              />
+              <div v-else class="qr-fallback">
+                <div class="qr-fallback-icon">iOS</div>
+                <div class="qr-fallback-title">二维码暂时不可用</div>
+                <div class="qr-fallback-desc">当前图片资源已失效，请稍后再试或联系管理员更新。</div>
+              </div>
               <div v-if="iosQrText" class="qr-text">{{ iosQrText }}</div>
             </div>
           </div>
@@ -153,9 +164,25 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 
-defineProps<{ apkUrl?: string; iosQrText?: string; iosQrImageUrl?: string }>()
+const props = defineProps<{ apkUrl?: string; iosQrText?: string; iosQrImageUrl?: string }>()
+
+const qrImageLoadFailed = ref(false)
+
+const showQrImage = computed(() => Boolean(props.iosQrImageUrl) && !qrImageLoadFailed.value)
+
+watch(
+  () => props.iosQrImageUrl,
+  () => {
+    qrImageLoadFailed.value = false
+  },
+)
+
+function handleQrImageError() {
+  qrImageLoadFailed.value = true
+}
 </script>
 
 <style scoped>
@@ -314,6 +341,49 @@ defineProps<{ apkUrl?: string; iosQrText?: string; iosQrImageUrl?: string }>()
   border-radius: 8px;
   object-fit: cover;
   background: #fff;
+}
+
+.qr-fallback {
+  width: 156px;
+  min-height: 120px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255,255,255,0.16);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.qr-fallback-icon {
+  min-width: 46px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(91,141,239,0.26);
+  background: rgba(91,141,239,0.12);
+  color: #8cb0ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.qr-fallback-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.qr-fallback-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-sub);
 }
 
 .qr-text {

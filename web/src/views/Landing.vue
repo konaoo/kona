@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../shared/http'
 import TickerBar from '../components/landing/TickerBar.vue'
 import NavBar from '../components/landing/NavBar.vue'
@@ -25,7 +25,18 @@ const apkUrl = ref('https://www.pgyer.com/kakawallet')
 const iosQrText = ref('扫码下载苹果版')
 const iosQrImageUrl = ref('')
 
+function applyLandingScrollMode() {
+  document.documentElement.classList.add('landing-scroll')
+  document.body.classList.add('landing-scroll')
+}
+
+function cleanupLandingScrollMode() {
+  document.documentElement.classList.remove('landing-scroll')
+  document.body.classList.remove('landing-scroll')
+}
+
 onMounted(async () => {
+  applyLandingScrollMode()
   try {
     const payload = await api.get<{ apk_download_url?: string, ios_qr_text?: string, ios_qr_image_url?: string }>('/api/web/config', false)
     if (payload.apk_download_url && payload.apk_download_url.trim() !== '') {
@@ -37,10 +48,20 @@ onMounted(async () => {
     // keep fallback config
   }
 })
+
+onUnmounted(() => {
+  cleanupLandingScrollMode()
+})
 </script>
 
 <style>
 /* Global styles specifically for the Landing Page that mimics the original HTML */
+.landing-scroll {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+}
+
 .landing-page {
   --bg: #0a0b0e;
   --surface: #11131a;

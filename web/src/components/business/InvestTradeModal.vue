@@ -631,7 +631,25 @@ async function submitSuccess(label: string) {
 }
 
 function extractErrorMessage(error: any, fallback: string): string {
-  return error?.response?.data?.error || error?.message || fallback
+  const payload = error?.payload || error?.response?.data || {}
+  const code = String(payload?.code || '')
+  const raw = String(payload?.error || error?.message || fallback)
+
+  const codeMap: Record<string, string> = {
+    INSUFFICIENT_CASH: '账户余额不足，请更换其他账户',
+    CASH_ASSET_NOT_FOUND: '现金账户不存在',
+    INVALID_CASH_AMOUNT: '扣款金额不合法',
+    INVALID_VALUE: '数值不合法',
+  }
+
+  const messageMap: Record<string, string> = {
+    'Insufficient cash balance': '账户余额不足，请更换其他账户',
+    'Cash account not found': '现金账户不存在',
+    'Invalid cash deduction amount': '扣款金额不合法',
+    'Invalid value': '数值不合法',
+  }
+
+  return codeMap[code] || messageMap[raw] || raw || fallback
 }
 
 async function handleConfirm() {

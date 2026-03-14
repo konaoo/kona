@@ -68,7 +68,17 @@
                   <div class="invite-popover" @click.stop>
                     <div class="pop-content">
                       <p v-if="inviteAcquireText">{{ inviteAcquireText }}</p>
-                      <img v-if="inviteAcquireImageUrl" :src="inviteAcquireImageUrl" alt="邀请码获取方式" />
+                      <img
+                        v-if="showInviteAcquireImage"
+                        :src="inviteAcquireImageUrl"
+                        alt="邀请码获取方式"
+                        @error="handleInviteImageError"
+                      />
+                      <div v-else class="invite-image-fallback">
+                        <div class="invite-image-fallback-icon">提示</div>
+                        <div class="invite-image-fallback-title">当前未配置邀请码配图</div>
+                        <div class="invite-image-fallback-desc">本地环境现在只有文案，没有二维码图片，所以这里会显示文字兜底。</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -207,10 +217,11 @@ const rememberMe = ref(false)
 const error = ref('')
 
 // Invitation config
-	const inviteAcquireText = ref('')
-	const inviteAcquireImageUrl = ref('')
-	const invitePopoverOpen = ref(false)
-	const inviteLinkWrapEl = ref<HTMLElement | null>(null)
+const inviteAcquireText = ref('')
+const inviteAcquireImageUrl = ref('')
+const inviteImageLoadFailed = ref(false)
+const invitePopoverOpen = ref(false)
+const inviteLinkWrapEl = ref<HTMLElement | null>(null)
 
 // Password UI state
 const showPassword = ref(false)
@@ -230,6 +241,7 @@ let quoteInterval: ReturnType<typeof setInterval>
 
 const isRegisterRoute = computed(() => route.path === '/app/register')
 const currentQuote = computed(() => quotes[currentQuoteIndex.value])
+const showInviteAcquireImage = computed(() => Boolean(inviteAcquireImageUrl.value) && !inviteImageLoadFailed.value)
 
 	function switchTab(type: 'login' | 'register') {
 	  error.value = ''
@@ -237,9 +249,13 @@ const currentQuote = computed(() => quotes[currentQuoteIndex.value])
 	  router.push(type === 'login' ? '/app/login' : '/app/register')
 	}
 
-	function toggleInvitePopover() {
-	  invitePopoverOpen.value = !invitePopoverOpen.value
-	}
+function toggleInvitePopover() {
+  invitePopoverOpen.value = !invitePopoverOpen.value
+}
+
+function handleInviteImageError() {
+  inviteImageLoadFailed.value = true
+}
 
 	function handleDocumentClick(e: MouseEvent) {
 	  if (!invitePopoverOpen.value) return
@@ -340,6 +356,7 @@ async function fetchWebConfig() {
   try {
     const payload = await api.get<{ invite_acquire_text?: string, invite_acquire_image_url?: string }>('/api/web/config', false)
     if (payload.invite_acquire_text) inviteAcquireText.value = payload.invite_acquire_text
+    inviteImageLoadFailed.value = false
     if (payload.invite_acquire_image_url) inviteAcquireImageUrl.value = payload.invite_acquire_image_url
   } catch {
     // fallback
@@ -569,6 +586,44 @@ async function fetchWebConfig() {
 	.pop-content { display: flex; flex-direction: column; gap: 10px; text-align: center; }
 	.pop-content p { color: var(--auth-text-main); font-size: 13px; line-height: 1.5; margin: 0; }
 	.pop-content img { width: 100%; height: auto; object-fit: contain; border-radius: 8px; border: 1px solid var(--auth-input-border); }
+  .invite-image-fallback {
+    width: 100%;
+    min-height: 132px;
+    border-radius: 10px;
+    border: 1px dashed var(--auth-input-border);
+    background: color-mix(in srgb, var(--auth-input-bg) 86%, transparent);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 14px;
+    text-align: center;
+  }
+  .invite-image-fallback-icon {
+    min-width: 42px;
+    height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--gold) 38%, transparent);
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+    color: var(--gold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .invite-image-fallback-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--auth-text-main);
+  }
+  .invite-image-fallback-desc {
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--auth-text-sub);
+  }
 	.form-input.invite { text-transform: uppercase; letter-spacing: .1em; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 
 	/* 修复移动端浏览器自动填充导致的“输入框发白/文字看不清” */
