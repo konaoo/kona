@@ -24,6 +24,8 @@
 ```text
 kona_tool/
 ├─ app.py            # 主入口
+├─ app_factory.py     # Flask app 组装工厂（组装/注册，不启动后台线程）
+├─ runtime_bootstrap.py # 运行时启动入口（仅 dev：启动线程/调度 + app.run）
 ├─ analysis_handlers.py # 分析页请求参数解析 / 概览日历排行处理
 ├─ analysis_routes.py # 分析页概览 / 日历 / 排行入口
 ├─ asset_account_handlers.py # 资产账户 / 交易记录处理
@@ -142,6 +144,13 @@ kona_tool/
 
 后续任何新增能力，都应该警惕继续把路由、业务编排、数据逻辑全塞进这里。
 
+现在的入口分工（建议按这个理解）：
+
+- `app.py`：薄入口，对外导出 `app/db/limiter`；同时保留单测会 patch 的全局符号（比如 `batch_get_prices`、`WEB_DIST_DIR`、`take_snapshot`）。
+- `app_factory.py`：负责“组装与注册”（创建 Flask app、Limiter、Runtime、Blueprint、hook），不启动任何后台线程。
+- `runtime_bootstrap.py`：只承接 `python app.py` 这种开发启动需要做的“运行时副作用”（启动后台线程/调度/预取 + `app.run`）。
+- `wsgi.py`：gunicorn 入口（生产用 `wsgi:app`），当前会启动行情预取线程。
+
 ### 6.2 `core/` 是当前逻辑集中区
 
 当前最重要的核心模块都在：
@@ -203,6 +212,7 @@ kona_tool/
 `kona_tool/` 根目录更适合留这些东西：
 
 - `app.py`
+- `app_factory.py`
 - `analysis_handlers.py`
 - `analysis_routes.py`
 - `asset_account_handlers.py`
@@ -229,6 +239,7 @@ kona_tool/
 - `admin_routes.py`
 - `config.py`
 - `wsgi.py`
+- `runtime_bootstrap.py`
 - `requirements.txt`
 - `market_holidays.json`
 - `portfolio.db`

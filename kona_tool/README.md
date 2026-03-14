@@ -20,27 +20,26 @@
 
 ```
 kona_tool/
-├── app.py                 # 主程序入口
-├── config.py             # 配置文件
-├── core/                 # 核心模块
-│   ├── db.py            # 数据库管理
-│   ├── fund.py          # 基金数据获取
-│   ├── stock.py         # 股票数据获取
-│   ├── price.py         # 价格缓存和统一接口
-│   ├── parser.py        # 代码解析
-│   └── utils.py         # 工具函数
-├── templates/            # 前端模板
-│   └── index.html       # 主页面
-├── portfolio.db         # SQLite数据库
-├── requirements.txt     # Python依赖
-└── README.md           # 说明文档
+├── app.py                 # 薄入口（对外导出 app/db/limiter；保留单测 patch 点）
+├── app_factory.py         # 组装工厂（创建 app + 注册蓝图 + hook，不启动后台线程）
+├── runtime_bootstrap.py   # dev 启动入口（后台线程/调度 + app.run）
+├── wsgi.py                # gunicorn 入口（生产用 wsgi:app）
+├── config.py              # 配置文件（.env + 环境变量）
+├── core/                  # 核心逻辑（数据库/价格源/快照/分析/认证等）
+├── scripts/               # 运维/补数/巡检脚本
+├── tests/                 # 后端单测
+├── static/                # 静态资源（web 构建产物、下载等）
+├── templates/             # 模板
+├── migrations/            # 数据迁移
+├── requirements.txt       # Python 依赖
+└── README_STRUCTURE.md    # 目录职责说明（更靠谱，优先看这个）
 ```
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.10+（CI 门禁跑 3.10/3.11；线上用 `.venv/bin/python`）
 - pip
 
 ### 安装依赖
