@@ -24,6 +24,29 @@
 ```text
 kona_tool/
 ├─ app.py            # 主入口
+├─ analysis_handlers.py # 分析页请求参数解析 / 概览日历排行处理
+├─ analysis_routes.py # 分析页概览 / 日历 / 排行入口
+├─ asset_account_handlers.py # 资产账户 / 交易记录处理
+├─ asset_account_routes.py  # 现金 / 其他资产 / 负债 / 交易记录入口
+├─ auth_routes.py    # 认证路由入口
+├─ market_handlers.py # 市场状态 / 首页指数处理
+├─ market_routes.py  # 市场状态 / 首页指数 / 同步引导入口
+├─ market_runtime.py # 市场状态缓存与强制刷新运行时
+├─ misc_routes.py    # 旧页兼容跳转 / 历史 / 健康检查入口
+├─ misc_handlers.py  # 历史 / 趋势 / 健康检查处理
+├─ news_routes.py    # 快讯页 / 快讯接口入口
+├─ portfolio_handlers.py # 投资持仓 / 交易 / 快照处理
+├─ portfolio_runtime.py # 持仓标准化 / 幂等 / 撤销 / 多币种换算运行时
+├─ portfolio_routes.py # 投资持仓 / 交易 / 快照入口
+├─ quote_handlers.py # 单价 / 批量报价 / 汇率 / 搜索处理
+├─ quote_routes.py   # 单价 / 批量报价 / 汇率 / 搜索入口
+├─ request_runtime.py # 请求钩子 / 安全审计 / 接口分组限流 / 后台写审计
+├─ snapshot_runtime.py # 异步快照 / 快照节流 / 后台快照调度运行时
+├─ startup_runtime.py # 指标令牌校验 / 浏览器自动打开 / 启动线程拉起
+├─ sync_handlers.py  # sync/bootstrap 增量同步引导处理
+├─ system_routes.py  # 公开配置 / 系统路由入口
+├─ web_entry_handlers.py # Web 门户 / SPA / 兼容跳转处理
+├─ web_entry_routes.py # Web 门户 / SPA 入口 / 静态测试页入口
 ├─ core/             # 核心逻辑
 ├─ migrations/       # 数据迁移
 ├─ scripts/          # 后端脚本
@@ -162,6 +185,29 @@ kona_tool/
 `kona_tool/` 根目录更适合留这些东西：
 
 - `app.py`
+- `analysis_handlers.py`
+- `analysis_routes.py`
+- `asset_account_handlers.py`
+- `asset_account_routes.py`
+- `auth_routes.py`
+- `market_handlers.py`
+- `market_routes.py`
+- `market_runtime.py`
+- `misc_handlers.py`
+- `misc_routes.py`
+- `news_routes.py`
+- `portfolio_handlers.py`
+- `portfolio_runtime.py`
+- `portfolio_routes.py`
+- `quote_handlers.py`
+- `quote_routes.py`
+- `request_runtime.py`
+- `snapshot_runtime.py`
+- `startup_runtime.py`
+- `sync_handlers.py`
+- `system_routes.py`
+- `web_entry_handlers.py`
+- `web_entry_routes.py`
 - `admin_routes.py`
 - `config.py`
 - `wsgi.py`

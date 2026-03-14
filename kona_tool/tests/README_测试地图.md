@@ -37,6 +37,19 @@
 最重要的一组是：
 
 - [test_api_baseline.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_api_baseline.py)
+- [test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)
+- [test_asset_account_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_asset_account_api.py)
+- [test_market_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_api.py)
+- [test_market_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_runtime.py)
+- [test_misc_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_misc_api.py)
+- [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)
+- [test_portfolio_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_runtime.py)
+- [test_quote_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_quote_api.py)
+- [test_request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_request_runtime.py)
+- [test_snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_snapshot_runtime.py)
+- [test_startup_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_startup_runtime.py)
+- [test_sync_bootstrap_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_sync_bootstrap_api.py)
+- [test_web_entry_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_web_entry_api.py)
 
 它主要在保这些东西：
 
@@ -51,6 +64,201 @@
 `这是后端主链路的基础防线。`
 
 如果它挂了，通常不是小修小补，而是核心行为变了。
+
+请求运行时基础设施现在也单独补了一组：
+
+- [test_request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_request_runtime.py)
+
+它主要保这些逻辑：
+
+- 认证安全审计日志脱敏
+- API 分组策略拦截
+- 强制改密挡板
+- 用户最近活跃打点节流
+- 后台写操作审计落库
+
+一句话：
+
+`以后如果你改的是 request_runtime 这层请求钩子和审计基础设施，先跑这组。`
+
+快照运行时现在也单独补了一组：
+
+- [test_snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_snapshot_runtime.py)
+
+它主要保这些逻辑：
+
+- 测试态快照改成同步执行
+- 异步快照节流与防并发
+- 快照保存后的市场拆分落库
+- 后台调度单次执行
+
+一句话：
+
+`以后如果你改的是 snapshot_runtime 这层快照运行时服务，先跑这组。`
+
+投资交易运行时现在也单独补了一组：
+
+- [test_portfolio_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_runtime.py)
+
+它主要保这些逻辑：
+
+- 持仓代码和币种标准化
+- 请求幂等命中
+- 撤销令牌生成 / 领取 / 释放
+- 多币种金额换算
+
+一句话：
+
+`以后如果你改的是 portfolio_runtime 这层交易运行时基础设施，先跑这组。`
+
+市场状态运行时现在也单独补了一组：
+
+- [test_market_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_runtime.py)
+
+它主要保这些逻辑：
+
+- 市场状态缓存命中
+- 强制刷新绕过缓存
+- 返回结构保持稳定
+
+一句话：
+
+`以后如果你改的是 market_runtime 这层市场状态缓存基础设施，先跑这组。`
+
+启动期运行时现在也单独补了一组：
+
+- [test_startup_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_startup_runtime.py)
+
+它主要保这些逻辑：
+
+- 运行指标令牌校验
+- 浏览器自动打开
+- 启动期线程拉起
+- 启动时预取器初始化
+
+一句话：
+
+`以后如果你改的是 startup_runtime 这层启动支撑基础设施，先跑这组。`
+
+其中现在已经单独拎出一组“交易链”测试：
+
+- [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)
+
+它主要保这些接口：
+
+- 持仓新增 / 加仓 / 减仓 / 修改
+- 现金买入 / 撤销
+- 纠错删除
+- 交易链幂等
+- 快照触发 / 快照修复基础行为
+
+一句话：
+
+`以后如果你改的是 portfolio / snapshot 这条主交易链，先看这组。`
+
+分析链现在也已经单独拎出一组：
+
+- [test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)
+
+它主要保这些接口：
+
+- 分析页概览
+- 收益日历
+- 日历年份 / 月份切换
+- 分析排行
+- 历史快照与未来快照过滤口径
+
+一句话：
+
+`以后如果你改的是 analysis 这条链，先跑这组，不要再先翻大基线。`
+
+资产账户和交易记录这条链也已经单独拎出一组：
+
+- [test_asset_account_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_asset_account_api.py)
+
+它主要保这些接口：
+
+- 交易记录列表
+- 现金账户增删改
+- 其他资产必填校验
+- 负债金额校验
+
+一句话：
+
+`以后如果你改的是 cash_assets / other_assets / liabilities / transactions，先跑这组。`
+
+同步引导也已经单独拎出一组：
+
+- [test_sync_bootstrap_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_sync_bootstrap_api.py)
+
+它主要保这些接口：
+
+- `sync/bootstrap` 的版本比较
+- changed domains 返回范围
+- rates / quote_policy / market_statuses 输出结构
+
+一句话：
+
+`以后如果你改的是客户端增量同步入口，先看这组，不要再回大基线里找。`
+
+市场状态和首页指数也已经单独拎出一组：
+
+- [test_market_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_api.py)
+
+它主要保这些接口：
+
+- 市场开休市状态
+- 首页指数数据
+
+一句话：
+
+`以后如果你改的是 market/status 或 market/indices，先跑这组。`
+
+杂项接口里和真实业务入口更相关的那部分，也已经单独拎出一组：
+
+- [test_misc_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_misc_api.py)
+
+它主要保这些接口：
+
+- `/health`
+- `/api/history`
+- `/api/asset/trends`
+
+一句话：
+
+`以后如果你改的是 history / asset trends / 健康检查，先看这组。`
+
+报价链也已经单独拎出一组：
+
+- [test_quote_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_quote_api.py)
+
+它主要保这些接口：
+
+- 单价查询
+- 批量报价
+- 汇率
+- 搜索
+- 美股盘前盘后合并口径
+
+一句话：
+
+`以后如果你改的是 price / prices/batch / rates / search，先跑这组。`
+
+Web 入口壳子现在也已经单独拎出一组：
+
+- [test_web_entry_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_web_entry_api.py)
+
+它主要保这些入口：
+
+- `/`
+- `/app/*`
+- `/admin/*`
+- `/assets/*`
+- 旧入口跳转和缓存头
+
+一句话：
+
+`以后如果你改的是 Web 门户入口、SPA 壳子或静态资源缓存规则，先跑这组。`
 
 ### 2.2 管理后台接口
 

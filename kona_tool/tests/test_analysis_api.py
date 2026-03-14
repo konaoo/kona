@@ -1,0 +1,430 @@
+import os
+import sys
+import tempfile
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+from datetime import datetime, timedelta
+
+ROOT = Path(__file__).resolve().parents[2]
+KONA_TOOL = ROOT / "kona_tool"
+if str(KONA_TOOL) not in sys.path:
+    sys.path.insert(0, str(KONA_TOOL))
+
+_tmp_dir = tempfile.TemporaryDirectory()
+os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test.db")
+os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
+
+import app as app_module  # noqa: E402
+
+
+class AnalysisApiTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app_module.app.testing = True
+        cls.client = app_module.app.test_client()
+
+    def setUp(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM cash_assets")
+        cursor.execute("DELETE FROM other_assets")
+        cursor.execute("DELETE FROM liabilities")
+        cursor.execute("DELETE FROM transactions")
+        cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM daily_snapshots")
+        cursor.execute("DELETE FROM runtime_configs")
+        conn.commit()
+        conn.close()
+
+    def test_analysis_calendar_supports_year_month_query(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-03', 1, 1000, 1, 0, 0, 100, 10, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-02-04', 1, 1000, 1, 0, 0, 120, 20, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/analysis/calendar?type=day&year=2026&month=2')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('title'), '2026年2月累计')
+        self.assertEqual(payload.get('period', {}).get('year'), 2026)
+        self.assertEqual(payload.get('period', {}).get('month'), 2)
+        self.assertIn('selectable', payload)
+
+    def test_analysis_calendar_month_supports_year_query(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2024-12-31', 1, 1000, 1, 0, 0, 100, 0, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2025-01-15', 1, 1000, 1, 0, 0, 130, 0, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/analysis/calendar?type=month&year=2025')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('period', {}).get('year'), 2025)
+        self.assertEqual(payload.get('title'), '2025年累计')
+
+    def test_analysis_calendar_invalid_month_returns_400(self):
+        resp = self.client.get('/api/analysis/calendar?type=day&year=2026&month=13')
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json()
+        self.assertEqual(payload.get('code'), 'INVALID_CALENDAR_PERIOD')
+
+    def test_analysis_overview_month_year_all_uses_snapshot_day_pnl_sum(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        today_str = today.strftime('%Y-%m-%d')
+        anchor = today - timedelta(days=1)
+        anchor_str = anchor.strftime('%Y-%m-%d')
+        month_start = today.replace(day=1)
+        year_start = datetime(today.year, 1, 1).date()
+        prev_month = month_start - timedelta(days=1)
+        prev_year = year_start - timedelta(days=1)
+
+        prev_month_pnl = 120.0
+        prev_year_pnl = 90.0
+        if prev_month == prev_year:
+            prev_year_pnl = prev_month_pnl
+
+        anchor_day_pnl = 55.0
+        today_day_pnl = 70.0
+        today_invest = 1200.0
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, ?, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'), prev_year_pnl),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, ?, 0, '')
+            """,
+            (prev_month.strftime('%Y-%m-%d'), prev_month_pnl),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, ?, 1, 0, 0, ?, ?, '', ?)
+            """,
+            (anchor_str, today_invest, 9999.0, anchor_day_pnl, f"{anchor_str} 14:00:00"),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, ?, 1, 0, 0, ?, ?, '', ?)
+            """,
+            (today_str, today_invest, -999.0, today_day_pnl, f"{today_str} 14:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        expected = anchor_day_pnl + today_day_pnl
+        self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl', 0)), expected)
+        self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl', 0)), expected)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl', 0)), expected)
+
+    def test_analysis_calendar_today_item_keeps_snapshot_value(self):
+        fixed_now = datetime(2026, 2, 12, 14, 0, 0)
+        today = fixed_now.date()
+        today_str = today.strftime('%Y-%m-%d')
+        previous_day = today - timedelta(days=1)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 100, 10, '')
+            """,
+            (previous_day.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 141, 41, '')
+            """,
+            (today_str,),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            resp = self.client.get(
+                f'/api/analysis/calendar?type=day&year={today.year}&month={today.month}'
+            )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        today_item = next(
+            (item for item in items if str(item.get('label')) == f'{today.month}-{today.day}'),
+            None,
+        )
+        self.assertIsNotNone(today_item)
+        self.assertAlmostEqual(float(today_item.get('pnl', 0)), 41.0)
+
+    def test_analysis_overview_year_matches_calendar_month_total_with_future_row(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        anchor = today - timedelta(days=1)
+        future_same_month = today + timedelta(days=1)
+        prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 0, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, 1000, 1, 0, 0, 21000, 210, '', ?)
+            """,
+            (anchor.strftime('%Y-%m-%d'), f"{anchor.strftime('%Y-%m-%d')} 14:00:00"),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, 1000, 1, 0, 0, -745, -745, '', ?)
+            """,
+            (future_same_month.strftime('%Y-%m-%d'), f"{future_same_month.strftime('%Y-%m-%d')} 14:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            overview_resp = self.client.get('/api/analysis/overview?period=all')
+            calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
+        self.assertEqual(overview_resp.status_code, 200)
+        self.assertEqual(calendar_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        calendar_payload = calendar_resp.get_json() or {}
+        year_pnl = float((overview.get('year') or {}).get('pnl', 0))
+        calendar_total = float(calendar_payload.get('total_pnl', 0))
+        self.assertAlmostEqual(year_pnl, 210.0)
+        self.assertAlmostEqual(calendar_total, year_pnl)
+
+    def test_analysis_overview_year_matches_calendar_when_no_prev_year_snapshot(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        first_in_period = datetime(today.year, today.month, 3).date()
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, 1000, 1, 0, 0, 21361.58, 123.45, '', ?)
+            """,
+            (first_in_period.strftime('%Y-%m-%d'), f"{first_in_period.strftime('%Y-%m-%d')} 14:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            overview_resp = self.client.get('/api/analysis/overview?period=all')
+            calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
+        self.assertEqual(overview_resp.status_code, 200)
+        self.assertEqual(calendar_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        calendar_payload = calendar_resp.get_json() or {}
+        year_pnl = float((overview.get('year') or {}).get('pnl', 0))
+        calendar_total = float(calendar_payload.get('total_pnl', 0))
+        self.assertAlmostEqual(year_pnl, calendar_total)
+
+    def test_analysis_overview_all_ignores_future_snapshots(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        future_date = today + timedelta(days=1)
+        prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 0, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 21000, 0, '')
+            """,
+            (today.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, -745, 0, '')
+            """,
+            (future_date.strftime('%Y-%m-%d'),),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch("core.db._is_market_closed_date", return_value=False):
+            with patch('core.db.datetime') as mock_dt:
+                mock_dt.now.return_value = fixed_now
+                resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        all_pnl = float((payload.get('all') or {}).get('pnl', 0))
+        self.assertAlmostEqual(all_pnl, 21000.0)
+
+    def test_analysis_overview_all_matches_calendar_when_first_snapshot_nonzero(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        first_in_period = datetime(today.year, today.month, 2).date()
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, 1000, 1, 0, 0, 21361.58, 123.45, '', ?)
+            """,
+            (first_in_period.strftime('%Y-%m-%d'), f"{first_in_period.strftime('%Y-%m-%d')} 14:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            overview_resp = self.client.get('/api/analysis/overview?period=all')
+            calendar_resp = self.client.get("/api/analysis/calendar?type=year")
+        self.assertEqual(overview_resp.status_code, 200)
+        self.assertEqual(calendar_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        calendar_payload = calendar_resp.get_json() or {}
+        all_pnl = float((overview.get('all') or {}).get('pnl', 0))
+        calendar_total = float(calendar_payload.get('total_pnl', 0))
+        self.assertAlmostEqual(all_pnl, 123.45)
+        self.assertAlmostEqual(all_pnl, calendar_total)
+
+    def test_analysis_overview_all_returns_snapshot_day_pnl_sum_not_latest_total(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        today = fixed_now.date()
+        prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, 1, 1000, 1, 0, 0, 22106.51, 0, '')
+            """,
+            (prev_year.strftime('%Y-%m-%d'),),
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES (?, 1, 1000, 1, 0, 0, 21361.58, 55.0, '', ?)
+            """,
+            (today.strftime('%Y-%m-%d'), f"{today.strftime('%Y-%m-%d')} 14:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db.datetime') as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            overview_resp = self.client.get('/api/analysis/overview?period=all')
+        self.assertEqual(overview_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        all_pnl = float((overview.get('all') or {}).get('pnl', 0))
+        self.assertAlmostEqual(all_pnl, 55.0)
+
+    def test_analysis_baseline_route_removed_returns_404(self):
+        resp = self.client.get('/api/analysis/baseline')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_analysis_rank_uses_absolute_cost_for_pnl_rate(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600004',
+            'name': '排行负成本',
+            'price': 5.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600004',
+            'qty': 10.0,
+            'price': -2.0,
+            'adjustment': 0.0,
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600004': (0.0, 0.0, 0.0, 0.0)}):
+            rank_resp = self.client.get('/api/analysis/rank?type=all')
+        self.assertEqual(rank_resp.status_code, 200)
+        payload = rank_resp.get_json() or {}
+        items = (payload.get('gain') or []) + (payload.get('loss') or [])
+        target = next((item for item in items if item.get('code') == 'sh600004'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('pnl') or 0.0), 20.0, places=2)
+        self.assertAlmostEqual(float(target.get('pnl_rate') or 0.0), 100.0, places=2)
+
+
+if __name__ == '__main__':
+    unittest.main()
