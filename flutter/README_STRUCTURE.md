@@ -97,6 +97,29 @@ flutter/
 - 服务调用：`lib/services/`
 - 复用 UI：`lib/widgets/`
 
+这轮状态层已经先往前走了一小步：
+
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 继续当总入口
+- [app_auth_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_auth_state.dart) 先承接认证与会话内存状态
+- [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart) 先承接资产列表、持仓列表、快照恢复和乐观更新
+- [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart) 先承接汇率、市场开闭市和交易日判断
+- [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart) 先承接历史统计和概览里程碑状态
+- [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart) 先承接缓存恢复、首页刷新、增量同步和行情后台补刷编排
+- [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart) 先承接缓存规则、sync 版本和缓存元信息
+- [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart) 先承接交易辅助 helper 和老接口兜底流程
+- [app_preferences_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_preferences_state.dart) 先承接 UI 偏好
+- [app_security_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_security_state.dart) 先承接生物识别 / 锁屏
+
+这一步继续往前收了一层：
+
+- `AppState` 里原本那批只是“转手调用 `_syncState`”的缓存 helper 已经删掉
+- 现在查 Flutter 缓存 / 增量同步问题，优先先看 `app_sync_state.dart`
+- 现在查 Flutter 启动恢复、首页刷新、按版本增量同步和行情后台补刷问题，优先先看 `app_refresh_state.dart`
+- `AppState` 在这块主要只保留原入口和依赖组装，不再自己铺整条刷新细节
+- 资产 / 持仓这块也已经先切出 `app_assets_state.dart`，后面查买卖、资产列表和乐观更新问题，不用再先翻完整个 `AppState`
+- 历史概览这块也已经先切出 `app_overview_state.dart`，后面查首页大卡、历史峰值和分析概览覆盖问题，不用再先翻完整个 `AppState`
+- 交易辅助这块也已经先切出 `app_trade_state.dart`，后面查金额换算、undo 信息和老接口兜底问题，不用再先翻完整个 `AppState`
+
 这说明当前 Flutter 工程更像：
 
 `页面驱动 + AppState 集中编排`

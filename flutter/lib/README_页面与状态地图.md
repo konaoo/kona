@@ -35,7 +35,7 @@ flutter/lib/
 ├─ config/                # 接口地址、主题
 ├─ models/                # 数据模型
 ├─ pages/                 # 页面
-├─ providers/             # 全局状态（当前核心是 AppState）
+├─ providers/             # 全局状态（当前核心是 AppState，总入口下已开始拆子状态）
 ├─ services/              # API、缓存、生物识别、存储
 ├─ utils/                 # 工具函数
 └─ widgets/               # 可复用组件
@@ -86,6 +86,18 @@ flutter/lib/
 
 - [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)
 
+但这轮已经先拆出两块独立模块：
+
+- [app_auth_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_auth_state.dart)
+- [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)
+- [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
+- [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
+- [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)
+- [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart)
+- [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart)
+- [app_preferences_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_preferences_state.dart)
+- [app_security_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_security_state.dart)
+
 它负责的事情很多，包括：
 
 - 登录状态
@@ -105,7 +117,53 @@ flutter/lib/
 
 一句大白话：
 
-`AppState 现在就是 Flutter 客户端的大总管。`
+`AppState 现在还是 Flutter 客户端的大总管，但认证、行情/市场、概览、刷新编排、缓存/同步、交易辅助、UI 偏好和安全状态已经先切出第一层边界。`
+
+补充当前这一步：
+
+- 缓存作用域
+- cache envelope 读写
+- sync version 读写
+- 行情刷新策略
+- “静态数据是否可以跳过同步”的判断
+
+这些现在已经收口到 [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart)，`AppState` 在这块主要保留编排，不再继续夹一层假中转 helper。
+
+刷新编排这一步也继续往前收了一层：
+
+- 冷启动缓存恢复
+- 首页全量刷新
+- 增量同步
+- 行情后台补刷
+- 汇率刷新
+
+这些现在已经收口到 [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)，`AppState` 在这块主要保留原来的入口名和对子状态的组装，不再继续自己兼管整条刷新细节。
+
+资产 / 持仓这一步也继续往前收了一层：
+
+- 资产列表
+- 持仓列表
+- 快照恢复
+- 乐观增删改
+
+这些现在已经收口到 [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)，`AppState` 在这块主要保留交易接口调用、金额换算、总额重算和刷新编排。
+
+概览 / 历史这一步也继续往前收了一层：
+
+- 月变动 / 年变动 / 历史峰值
+- baseline 是否存在
+- overview milestone 覆盖
+- 历史统计计算
+
+这些现在已经收口到 [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)，`AppState` 在这块主要保留首页刷新、缓存恢复和分析接口编排。
+
+交易辅助这一层也继续往前收了一点：
+
+- 跨币种金额换算
+- undo 信息提取
+- 老接口交易兜底
+
+这些现在已经收口到 [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart)，`AppState` 在这块主要保留买卖入口和刷新编排。
 
 所以 Flutter 端后续如果要继续工程化，第一关注点一定也是这里。
 

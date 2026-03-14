@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/biometric_service.dart';
 import '../services/cache_service.dart';
@@ -9,23 +8,23 @@ import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
 import '../models/asset_action_result.dart';
-
-enum SessionBootState { initializing, authenticated, unauthenticated }
-
-enum AuthLogoutMode { normal, biometricReady }
+import 'app_assets_state.dart';
+import 'app_auth_state.dart';
+import 'app_market_state.dart';
+import 'app_overview_state.dart';
+import 'app_preferences_state.dart';
+import 'app_refresh_state.dart';
+import 'app_security_state.dart';
+import 'app_sync_state.dart';
+import 'app_trade_state.dart';
+export 'app_security_state.dart' show AuthLogoutMode;
+export 'app_auth_state.dart' show SessionBootState;
 
 typedef LoginHandler =
     Future<Map<String, dynamic>?> Function({
       required String username,
       required String password,
     });
-
-class _ParsedMarketStatus {
-  final Map<String, bool> open;
-  final Map<String, bool> tradingDay;
-
-  const _ParsedMarketStatus({required this.open, required this.tradingDay});
-}
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
@@ -50,9 +49,16 @@ class AppState extends ChangeNotifier {
   ];
 
   final ApiService _api;
-  final CacheService _cache;
   final SecureStorageService _secureStorage;
-  final BiometricService _biometric;
+  final AppAssetsState _assetsState;
+  final AppAuthState _authState;
+  final AppMarketState _marketState;
+  final AppOverviewState _overviewState;
+  final AppRefreshState _refreshState;
+  final AppSyncState _syncState;
+  final AppTradeState _tradeState;
+  final AppPreferencesState _preferencesState;
+  final AppSecurityState _securityState;
   final LoginHandler? _loginHandlerOverride;
   final Future<String?> Function()? _tokenLoaderOverride;
   final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
@@ -68,10 +74,48 @@ class AppState extends ChangeNotifier {
     Future<String?> Function()? tokenLoader,
     Future<Map<String, dynamic>?> Function()? profileLoader,
     Future<Map<String, dynamic>?> Function(String refreshToken)? refreshLoader,
-  }) : _api = api ?? ApiService(),
-       _cache = cache ?? CacheService(),
-       _secureStorage = secureStorage ?? SecureStorageService(),
-       _biometric = biometric ?? BiometricService(),
+  }) : this._internal(
+         api: api ?? ApiService(),
+         cache: cache ?? CacheService(),
+         secureStorage: secureStorage ?? SecureStorageService(),
+         biometric: biometric ?? BiometricService(),
+         loginHandler: loginHandler,
+         tokenLoader: tokenLoader,
+         profileLoader: profileLoader,
+         refreshLoader: refreshLoader,
+       );
+
+  AppState._internal({
+    required ApiService api,
+    required CacheService cache,
+    required SecureStorageService secureStorage,
+    required BiometricService biometric,
+    LoginHandler? loginHandler,
+    Future<String?> Function()? tokenLoader,
+    Future<Map<String, dynamic>?> Function()? profileLoader,
+    Future<Map<String, dynamic>?> Function(String refreshToken)? refreshLoader,
+  }) : _api = api,
+       _secureStorage = secureStorage,
+       _assetsState = AppAssetsState(),
+       _authState = AppAuthState(),
+       _marketState = AppMarketState(),
+       _overviewState = AppOverviewState(),
+       _refreshState = AppRefreshState(
+         api: api,
+         staticDataTtl: _staticDataTtl,
+         historyDataTtl: _historyDataTtl,
+         ratesDataTtl: _ratesDataTtl,
+         syncVersionTtl: _syncVersionTtl,
+         priceRefreshMinInterval: _priceRefreshMinInterval,
+         syncBootstrapDomains: _syncBootstrapDomains,
+       ),
+       _syncState = AppSyncState(cache: cache),
+       _tradeState = AppTradeState(api: api),
+       _preferencesState = AppPreferencesState(cache: cache),
+       _securityState = AppSecurityState(
+         secureStorage: secureStorage,
+         biometric: biometric,
+       ),
        _loginHandlerOverride = loginHandler,
        _tokenLoaderOverride = tokenLoader,
        _profileLoaderOverride = profileLoader,
@@ -79,28 +123,42 @@ class AppState extends ChangeNotifier {
     _api.onAuthExpired = () {
       unawaited(_handleAuthExpired());
     };
+    _assetsState.addListener(_relayChildStateChange);
+    _authState.addListener(_relayChildStateChange);
+    _marketState.addListener(_relayChildStateChange);
+    _overviewState.addListener(_relayChildStateChange);
+    _syncState.addListener(_relayChildStateChange);
+    _preferencesState.addListener(_relayChildStateChange);
+    _securityState.addListener(_relayChildStateChange);
     _loadTheme();
     _restoreSession();
   }
 
+  void _relayChildStateChange() {
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _assetsState.removeListener(_relayChildStateChange);
+    _authState.removeListener(_relayChildStateChange);
+    _marketState.removeListener(_relayChildStateChange);
+    _overviewState.removeListener(_relayChildStateChange);
+    _syncState.removeListener(_relayChildStateChange);
+    _preferencesState.removeListener(_relayChildStateChange);
+    _securityState.removeListener(_relayChildStateChange);
+    _assetsState.dispose();
+    _authState.dispose();
+    _marketState.dispose();
+    _overviewState.dispose();
+    _syncState.dispose();
+    _preferencesState.dispose();
+    _securityState.dispose();
+    super.dispose();
+  }
+
   // 2) 认证与安全状态
-  bool _isLoggedIn = false;
-  SessionBootState _sessionBootState = SessionBootState.initializing;
-  bool _isSessionChecking = false;
-  String? _token;
-  String? _refreshToken;
-  String? _username;
-  String? _userId;
-  int? _userNumber;
-  String? _nickname;
-  String? _avatar;
-  String? _createdAtRaw;
-  bool _biometricEnabled = false;
-  String? _authErrorMessage;
-  AuthLogoutMode _logoutMode = AuthLogoutMode.normal;
   bool _handlingAuthExpired = false;
-  // C1: App 锁屏状态
-  bool _isAppLocked = false;
 
   Future<void> _handleAuthExpired() async {
     if (_handlingAuthExpired) return;
@@ -119,87 +177,36 @@ class AppState extends ChangeNotifier {
   double _totalOther = 0;
   double _totalLiability = 0;
 
-  // 投资组合
-  List<PortfolioItem> _portfolio = [];
   Map<String, PriceInfo> _prices = {};
   Map<String, PriceInfo> _priceSnapshots = {};
   String _currentCategory = 'all';
   bool _portfolioLoaded = false;
 
-  // 资产列表
-  List<Asset> _cashAssets = [];
-  List<Asset> _otherAssets = [];
-  List<Asset> _liabilities = [];
-  int _nextTempAssetId = -1;
-
   // 4) 汇率、市场与行情状态
-  Map<String, double> _exchangeRates = {'USD': 7.25, 'HKD': 0.93, 'CNY': 1.0};
-  Map<String, bool> _marketOpenStatus = const {
-    'a': false,
-    'hk': false,
-    'us': false,
-    'fund': false,
-  };
-  Map<String, bool> _marketTradingDayStatus = const {
-    'a': false,
-    'hk': false,
-    'us': false,
-    'fund': false,
-  };
-
   // 5) 历史概览与同步状态
-  double _monthChange = 0;
-  double _yearChange = 0;
-  double _historyPeak = 0;
-  bool _hasMonthBaseline = false;
-  bool _hasYearBaseline = false;
-  bool _overviewMilestonesReady = false;
-  bool _monthFromFirst = false;
-  bool _yearFromFirst = false;
-  bool _priceRefreshInFlight = false;
-  DateTime? _lastPriceRefreshAt;
   static const Duration _priceRefreshMinInterval = Duration(seconds: 2);
-  Future<void>? _refreshAllInFlight;
-  Future<void>? _refreshByVersionInFlight;
-  final Map<String, String> _syncVersions = <String, String>{};
-  DateTime? _lastAssetDataUpdatedAt;
-  DateTime? _lastQuoteDataUpdatedAt;
-  bool _assetDataFromCache = false;
-  bool _quoteDataFromCache = false;
-  int _quoteIntervalOpenSec = 5;
-  int _quoteIntervalClosedSec = 120;
-  int _quoteIntervalUsExtendedSec = 10;
-
-  // 6) UI 偏好状态
-  bool _amountHidden = false;
-
-  // 显示币种（全局）
-  String _displayCurrency = 'CNY';
-
-  // 主题模式
-  ThemeMode _themeMode = ThemeMode.dark;
 
   // ============================================================
   // 7) 基础 getters
   // ============================================================
 
   ApiService get apiService => _api;
-  bool get isLoggedIn => _isLoggedIn;
-  SessionBootState get sessionBootState => _sessionBootState;
-  bool get isSessionReady => _sessionBootState != SessionBootState.initializing;
-  String? get token => _token;
-  String? get refreshToken => _refreshToken;
-  String? get username => _username;
-  String? get userId => _userId;
-  int? get userNumber => _userNumber;
-  String? get nickname => _nickname;
-  String? get avatar => _avatar;
-  String? get createdAtRaw => _createdAtRaw;
-  bool get biometricEnabled => _biometricEnabled;
-  String? get authErrorMessage => _authErrorMessage;
-  AuthLogoutMode get logoutMode => _logoutMode;
-  // C1: getter
-  bool get isAppLocked => _isAppLocked;
+  bool get isLoggedIn => _authState.isLoggedIn;
+  SessionBootState get sessionBootState => _authState.sessionBootState;
+  bool get isSessionReady =>
+      _authState.sessionBootState != SessionBootState.initializing;
+  String? get token => _authState.token;
+  String? get refreshToken => _authState.refreshToken;
+  String? get username => _authState.username;
+  String? get userId => _authState.userId;
+  int? get userNumber => _authState.userNumber;
+  String? get nickname => _authState.nickname;
+  String? get avatar => _authState.avatar;
+  String? get createdAtRaw => _authState.createdAtRaw;
+  bool get biometricEnabled => _securityState.biometricEnabled;
+  String? get authErrorMessage => _authState.authErrorMessage;
+  AuthLogoutMode get logoutMode => _securityState.logoutMode;
+  bool get isAppLocked => _securityState.isAppLocked;
 
   double get totalAsset => _totalAsset;
   double get totalCash => _totalCash;
@@ -207,56 +214,70 @@ class AppState extends ChangeNotifier {
   double get totalOther => _totalOther;
   double get totalLiability => _totalLiability;
 
-  List<PortfolioItem> get portfolio => _portfolio;
+  List<PortfolioItem> get portfolio => _assetsState.portfolio;
   Map<String, PriceInfo> get prices => _prices;
   String get currentCategory => _currentCategory;
   bool get portfolioLoaded => _portfolioLoaded;
 
-  List<Asset> get cashAssets => _cashAssets;
-  List<Asset> get otherAssets => _otherAssets;
-  List<Asset> get liabilities => _liabilities;
+  List<Asset> get cashAssets => _assetsState.cashAssets;
+  List<Asset> get otherAssets => _assetsState.otherAssets;
+  List<Asset> get liabilities => _assetsState.liabilities;
 
-  Map<String, double> get exchangeRates => _exchangeRates;
-  Map<String, bool> get marketOpenStatus =>
-      Map<String, bool>.from(_marketOpenStatus);
+  Map<String, double> get exchangeRates => _marketState.exchangeRates;
+  Map<String, bool> get marketOpenStatus => _marketState.marketOpenStatus;
   Map<String, bool> get marketTradingDayStatus =>
-      Map<String, bool>.from(_marketTradingDayStatus);
-  bool get amountHidden => _amountHidden;
-  String get displayCurrency => _displayCurrency;
-  ThemeMode get themeMode => _themeMode;
-  bool get isLightTheme => _themeMode == ThemeMode.light;
+      _marketState.marketTradingDayStatus;
+  bool get amountHidden => _preferencesState.amountHidden;
+  String get displayCurrency => _preferencesState.displayCurrency;
+  ThemeMode get themeMode => _preferencesState.themeMode;
+  bool get isLightTheme => _preferencesState.isLightTheme;
 
-  double get monthChange => _monthChange;
-  double get yearChange => _yearChange;
-  double get historyPeak => _historyPeak;
-  bool get hasMonthBaseline => _hasMonthBaseline;
-  bool get hasYearBaseline => _hasYearBaseline;
-  bool get overviewMilestonesReady => _overviewMilestonesReady;
-  bool get monthFromFirst => _monthFromFirst;
-  bool get yearFromFirst => _yearFromFirst;
-  DateTime? get assetDataUpdatedAt => _lastAssetDataUpdatedAt;
-  DateTime? get quoteDataUpdatedAt => _lastQuoteDataUpdatedAt;
-  bool get assetDataFromCache => _assetDataFromCache;
-  bool get quoteDataFromCache => _quoteDataFromCache;
+  double get monthChange => _overviewState.monthChange;
+  double get yearChange => _overviewState.yearChange;
+  double get historyPeak => _overviewState.historyPeak;
+  bool get hasMonthBaseline => _overviewState.hasMonthBaseline;
+  bool get hasYearBaseline => _overviewState.hasYearBaseline;
+  bool get overviewMilestonesReady => _overviewState.overviewMilestonesReady;
+  bool get monthFromFirst => _overviewState.monthFromFirst;
+  bool get yearFromFirst => _overviewState.yearFromFirst;
+  DateTime? get assetDataUpdatedAt => _syncState.assetDataUpdatedAt;
+  DateTime? get quoteDataUpdatedAt => _syncState.quoteDataUpdatedAt;
+  bool get assetDataFromCache => _syncState.assetDataFromCache;
+  bool get quoteDataFromCache => _syncState.quoteDataFromCache;
+  Map<String, String> get _syncVersions => _syncState.syncVersions;
+
+  List<PortfolioItem> get _portfolio => _assetsState.portfolio;
+  set _portfolio(List<PortfolioItem> value) {
+    _assetsState.replacePortfolio(value, notify: false);
+  }
+
+  List<Asset> get _cashAssets => _assetsState.cashAssets;
+  set _cashAssets(List<Asset> value) {
+    _assetsState.replaceCashAssets(value, notify: false);
+  }
+
+  List<Asset> get _otherAssets => _assetsState.otherAssets;
+  set _otherAssets(List<Asset> value) {
+    _assetsState.replaceOtherAssets(value, notify: false);
+  }
+
+  List<Asset> get _liabilities => _assetsState.liabilities;
+  set _liabilities(List<Asset> value) {
+    _assetsState.replaceLiabilities(value, notify: false);
+  }
+
   int get quoteRefreshIntervalSeconds {
-    if (_marketOpenStatus.values.any((open) => open)) {
-      return _quoteIntervalOpenSec;
+    if (_marketState.hasAnyMarketOpen) {
+      return _syncState.quoteIntervalOpenSec;
     }
     if (_hasActiveUsExtendedSession()) {
-      return _quoteIntervalUsExtendedSec;
+      return _syncState.quoteIntervalUsExtendedSec;
     }
-    return _quoteIntervalClosedSec;
+    return _syncState.quoteIntervalClosedSec;
   }
 
   double _rateForCurrency(String curr) {
-    switch (curr.toUpperCase()) {
-      case 'USD':
-        return _exchangeRates['USD'] ?? 7.0;
-      case 'HKD':
-        return _exchangeRates['HKD'] ?? 0.9;
-      default:
-        return 1.0;
-    }
+    return _marketState.rateForCurrency(curr);
   }
 
   double getCurrencyRate(String curr) => _rateForCurrency(curr);
@@ -266,24 +287,15 @@ class AppState extends ChangeNotifier {
   }
 
   String _normalizeMarketKey(String? market) {
-    final key = (market ?? '').trim().toLowerCase();
-    switch (key) {
-      case 'a':
-      case 'hk':
-      case 'us':
-      case 'fund':
-        return key;
-      default:
-        return 'a';
-    }
+    return _marketState.normalizeMarketKey(market);
   }
 
   bool isMarketOpen(String? market) {
-    return _marketOpenStatus[_normalizeMarketKey(market)] ?? false;
+    return _marketState.isMarketOpen(market);
   }
 
   bool isMarketTradingDay(String? market) {
-    return _marketTradingDayStatus[_normalizeMarketKey(market)] ?? false;
+    return _marketState.isMarketTradingDay(market);
   }
 
   bool isAssetMarketOpen(PortfolioItem item) {
@@ -486,569 +498,67 @@ class AppState extends ChangeNotifier {
   // 8) 缓存与同步基础
   // ============================================================
 
-  static const Map<String, String> _legacyCacheKeys = {
-    'portfolio': 'cache_portfolio',
-    'cash_assets': 'cache_cash_assets',
-    'other_assets': 'cache_other_assets',
-    'liabilities': 'cache_liabilities',
-    'prices': 'cache_prices',
-    'market_status': 'cache_market_status',
-    'history': 'cache_history',
-    'analysis_overview': 'cache_analysis_overview',
-    'exchange_rates': 'cache_exchange_rates',
-  };
-
-  List<String> _cacheScopes({bool includeGuestForAnonymous = true}) {
-    final scopes = <String>[];
-    final uname = (_username ?? '').trim().toLowerCase();
-    final uid = (_userId ?? '').trim();
-    if (uname.isNotEmpty) scopes.add('name:$uname');
-    if (uid.isNotEmpty && !scopes.contains(uid)) scopes.add(uid);
-    if (scopes.isEmpty && includeGuestForAnonymous) scopes.add('guest');
-    return scopes;
-  }
-
-  String _cachePrimaryScope() {
-    final scopes = _cacheScopes();
-    return scopes.isEmpty ? 'guest' : scopes.first;
-  }
-
-  String _cacheKeyForScope(String scope, String domain) => 'u:$scope:$domain';
-
-  List<String> _profileScopes({
-    String? usernameHint,
-    String? userIdHint,
-    bool includeCurrent = true,
-  }) {
-    final scopes = <String>[];
-
-    void addScope(String value) {
-      final trimmed = value.trim();
-      if (trimmed.isEmpty || scopes.contains(trimmed)) return;
-      scopes.add(trimmed);
-    }
-
-    final hintUsername = (usernameHint ?? '').trim().toLowerCase();
-    if (hintUsername.isNotEmpty) addScope('name:$hintUsername');
-    final hintUserId = (userIdHint ?? '').trim();
-    if (hintUserId.isNotEmpty) addScope(hintUserId);
-
-    if (includeCurrent) {
-      for (final scope in _cacheScopes(includeGuestForAnonymous: false)) {
-        addScope(scope);
-      }
-    }
-
-    return scopes;
-  }
-
-  String? _nullableTrimmedString(dynamic value) {
-    if (value == null) return null;
-    final raw = value.toString().trim();
-    if (raw.isEmpty) return null;
-    return raw;
-  }
-
-  Future<void> _persistUserProfileCache() async {
-    final username = _nullableTrimmedString(_username)?.toLowerCase();
-    final userId = _nullableTrimmedString(_userId);
-    final scopes = _profileScopes(
-      usernameHint: username,
-      userIdHint: userId,
-      includeCurrent: true,
-    );
-    if (scopes.isEmpty) return;
-
-    final data = <String, dynamic>{
-      'username': username ?? '',
-      'user_id': userId ?? '',
-      'user_number': _userNumber,
-      'nickname': _nickname ?? '',
-      'avatar': _avatar ?? '',
-      'created_at': _createdAtRaw ?? '',
-      'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
-    };
-    final envelope = _buildEnvelope(data: data, staleAfter: _userProfileTtl);
-
-    for (final scope in scopes) {
-      await _cache.setJson(
-        _cacheKeyForScope(scope, _userProfileDomain),
-        envelope,
-      );
-    }
-  }
-
-  Future<void> _restoreUserProfileCache({
-    String? usernameHint,
-    String? userIdHint,
-  }) async {
-    final scopes = _profileScopes(
-      usernameHint: usernameHint,
-      userIdHint: userIdHint,
-      includeCurrent: true,
-    );
-    for (final scope in scopes) {
-      final envelope = _normalizeEnvelope(
-        await _cache.getJson(_cacheKeyForScope(scope, _userProfileDomain)),
-      );
-      final data = _asMap(envelope?['data']);
-      if (data.isEmpty) continue;
-
-      final cachedUsername = _nullableTrimmedString(data['username']);
-      final cachedUserId = _nullableTrimmedString(data['user_id']);
-      final cachedNickname = _nullableTrimmedString(data['nickname']);
-      final cachedAvatar = _nullableTrimmedString(data['avatar']);
-      final cachedCreatedAt = _nullableTrimmedString(data['created_at']);
-      final userNumberRaw = data['user_number'];
-      final cachedUserNumber = userNumberRaw is num
-          ? userNumberRaw.toInt()
-          : int.tryParse('${userNumberRaw ?? ''}');
-
-      if ((_username ?? '').trim().isEmpty && cachedUsername != null) {
-        _username = cachedUsername;
-      }
-      if ((_userId ?? '').trim().isEmpty && cachedUserId != null) {
-        _userId = cachedUserId;
-      }
-      _nickname = cachedNickname;
-      _avatar = cachedAvatar;
-      _createdAtRaw = cachedCreatedAt;
-      _userNumber = cachedUserNumber;
-      return;
-    }
-  }
-
-  Future<void> _clearUserProfileCache({
-    String? usernameHint,
-    String? userIdHint,
-  }) async {
-    final scopes = _profileScopes(
-      usernameHint: usernameHint,
-      userIdHint: userIdHint,
-      includeCurrent: true,
-    );
-    for (final scope in scopes) {
-      await _cache.remove(_cacheKeyForScope(scope, _userProfileDomain));
-    }
-  }
-
-  Map<String, dynamic> _asMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return Map<String, dynamic>.from(value);
-    return <String, dynamic>{};
-  }
-
-  int _asInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value.trim()) ?? 0;
-    return 0;
-  }
-
-  DateTime? _envelopeSavedAt(Map<String, dynamic>? envelope) {
-    if (envelope == null) return null;
-    final savedAtMs = _asInt(envelope['saved_at_ms']);
-    if (savedAtMs <= 0) return null;
-    return DateTime.fromMillisecondsSinceEpoch(savedAtMs);
-  }
-
-  Map<String, dynamic>? _normalizeEnvelope(Map<String, dynamic>? raw) {
-    if (raw == null) return null;
-    final hasEnvelopeFields =
-        raw.containsKey('data') && raw.containsKey('saved_at_ms');
-    if (hasEnvelopeFields) return raw;
-    return <String, dynamic>{
-      'user_id': _cachePrimaryScope(),
-      'version': '',
-      'saved_at_ms': 0,
-      'stale_after_ms': 0,
-      'data': raw,
-    };
-  }
-
-  Map<String, dynamic> _buildEnvelope({
-    required dynamic data,
-    String? version,
-    required Duration staleAfter,
-  }) {
-    return <String, dynamic>{
-      'user_id': _cachePrimaryScope(),
-      'version': (version ?? '').trim(),
-      'saved_at_ms': DateTime.now().millisecondsSinceEpoch,
-      'stale_after_ms': staleAfter.inMilliseconds,
-      'data': data,
-    };
-  }
-
-  Future<Map<String, dynamic>?> _loadDomainEnvelope(String domain) async {
-    final scopes = _cacheScopes();
-    for (final scope in scopes) {
-      final scoped = _normalizeEnvelope(
-        await _cache.getJson(_cacheKeyForScope(scope, domain)),
-      );
-      if (scoped != null) return scoped;
-    }
-    final legacyKey = _legacyCacheKeys[domain];
-    if (legacyKey == null) return null;
-    return _normalizeEnvelope(await _cache.getJson(legacyKey));
-  }
-
-  Future<void> _saveDomainEnvelope(
-    String domain, {
-    required dynamic data,
-    String? version,
-    required Duration staleAfter,
-  }) async {
-    final envelope = _buildEnvelope(
-      data: data,
-      version: version,
-      staleAfter: staleAfter,
-    );
-    for (final scope in _cacheScopes()) {
-      await _cache.setJson(_cacheKeyForScope(scope, domain), envelope);
-    }
-  }
-
-  Future<void> _loadSyncVersionsFromCache() async {
-    final envelope = await _loadDomainEnvelope('sync_versions');
-    final payload = _asMap(envelope?['data']);
-    final versions = _asMap(payload['versions']);
-    if (versions.isEmpty) return;
-    _syncVersions
-      ..clear()
-      ..addAll(
-        versions.map((k, v) => MapEntry(k.toString(), (v ?? '').toString())),
-      );
-  }
-
-  Future<void> _saveSyncVersionsToCache() async {
-    if (_syncVersions.isEmpty) return;
-    await _saveDomainEnvelope(
-      'sync_versions',
-      data: <String, dynamic>{
-        'versions': Map<String, String>.from(_syncVersions),
-      },
-      staleAfter: _syncVersionTtl,
-    );
-  }
+  AppRefreshBindings get _refreshBindings => AppRefreshBindings(
+    username: () => username,
+    userId: () => userId,
+    syncState: _syncState,
+    syncVersions: () => _syncVersions,
+    portfolio: () => _portfolio,
+    replacePortfolio: (value) => _portfolio = value,
+    cashAssets: () => _cashAssets,
+    replaceCashAssets: (value) => _cashAssets = value,
+    otherAssets: () => _otherAssets,
+    replaceOtherAssets: (value) => _otherAssets = value,
+    liabilities: () => _liabilities,
+    replaceLiabilities: (value) => _liabilities = value,
+    prices: () => _prices,
+    replacePrices: (value) => _prices = value,
+    priceSnapshots: () => _priceSnapshots,
+    replacePriceSnapshots: (value) => _priceSnapshots = value,
+    portfolioLoaded: () => _portfolioLoaded,
+    setPortfolioLoaded: (value) => _portfolioLoaded = value,
+    exchangeRates: () => exchangeRates,
+    recalculateHomeTotals: _recalculateHomeTotals,
+    calculateHistoryStats: _calculateHistoryStats,
+    applyOverviewMilestones: applyOverviewMilestones,
+    updateExchangeRates: updateExchangeRates,
+    applySyncMarketStatus: _applySyncMarketStatus,
+    serializeMarketStatusForCache: _marketState.serializeMarketStatusForCache,
+    loadMarketStatusWithBudget: _loadMarketStatusWithBudget,
+    resolvePriceInfoByCode: _resolvePriceInfoByCode,
+    notifyListeners: notifyListeners,
+  );
 
   Future<void> hydrateFromCache() async {
-    await _loadSyncVersionsFromCache();
-
-    DateTime? assetSavedAt;
-    DateTime? quoteSavedAt;
-    bool hasAssetCache = false;
-    bool hasQuoteCache = false;
-
-    DateTime? mergeLatest(DateTime? current, DateTime? next) {
-      if (next == null) return current;
-      if (current == null) return next;
-      return next.isAfter(current) ? next : current;
-    }
-
-    final portfolioEnvelope = await _loadDomainEnvelope('portfolio');
-    final cachedPortfolio = _asMap(portfolioEnvelope?['data']);
-    if (cachedPortfolio['items'] is List) {
-      _portfolio = (cachedPortfolio['items'] as List)
-          .map((e) => PortfolioItem.fromJson(e))
-          .toList();
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(
-        assetSavedAt,
-        _envelopeSavedAt(portfolioEnvelope),
-      );
-      final cachedVersion = '${portfolioEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) _syncVersions['portfolio'] = cachedVersion;
-    }
-
-    final cashEnvelope = await _loadDomainEnvelope('cash_assets');
-    final cachedCash = _asMap(cashEnvelope?['data']);
-    if (cachedCash['items'] is List) {
-      _cashAssets = (cachedCash['items'] as List)
-          .map((e) => Asset.fromJson(e))
-          .toList();
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(cashEnvelope));
-      final cachedVersion = '${cashEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) {
-        _syncVersions['cash_assets'] = cachedVersion;
-      }
-    }
-
-    final otherEnvelope = await _loadDomainEnvelope('other_assets');
-    final cachedOther = _asMap(otherEnvelope?['data']);
-    if (cachedOther['items'] is List) {
-      _otherAssets = (cachedOther['items'] as List)
-          .map((e) => Asset.fromJson(e))
-          .toList();
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(otherEnvelope));
-      final cachedVersion = '${otherEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) {
-        _syncVersions['other_assets'] = cachedVersion;
-      }
-    }
-
-    final liabilitiesEnvelope = await _loadDomainEnvelope('liabilities');
-    final cachedLiabilities = _asMap(liabilitiesEnvelope?['data']);
-    if (cachedLiabilities['items'] is List) {
-      _liabilities = (cachedLiabilities['items'] as List)
-          .map((e) => Asset.fromJson(e))
-          .toList();
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(
-        assetSavedAt,
-        _envelopeSavedAt(liabilitiesEnvelope),
-      );
-      final cachedVersion = '${liabilitiesEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) {
-        _syncVersions['liabilities'] = cachedVersion;
-      }
-    }
-
-    final pricesEnvelope = await _loadDomainEnvelope('prices');
-    final cachedPrices = _asMap(pricesEnvelope?['data']);
-    if (cachedPrices['items'] is Map) {
-      _prices = {};
-      (cachedPrices['items'] as Map).forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          _prices[key.toString()] = PriceInfo.fromJson(value);
-        }
-      });
-      hasQuoteCache = true;
-      quoteSavedAt = mergeLatest(
-        quoteSavedAt,
-        _envelopeSavedAt(pricesEnvelope),
-      );
-    }
-
-    final snapshotEnvelope = await _loadDomainEnvelope('price_snapshots');
-    final cachedSnapshots = _asMap(snapshotEnvelope?['data']);
-    if (cachedSnapshots['items'] is Map) {
-      _priceSnapshots = {};
-      (cachedSnapshots['items'] as Map).forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          _priceSnapshots[key.toString()] = PriceInfo.fromJson(value);
-        }
-      });
-      hasQuoteCache = true;
-      quoteSavedAt = mergeLatest(
-        quoteSavedAt,
-        _envelopeSavedAt(snapshotEnvelope),
-      );
-    } else if (_prices.isNotEmpty) {
-      _priceSnapshots = Map<String, PriceInfo>.from(_prices);
-    }
-    if (_prices.isEmpty && _priceSnapshots.isNotEmpty) {
-      _prices = Map<String, PriceInfo>.from(_priceSnapshots);
-    }
-
-    final marketStatusEnvelope = await _loadDomainEnvelope('market_status');
-    final cachedMarketStatus = _asMap(marketStatusEnvelope?['data']);
-    if (cachedMarketStatus.isNotEmpty) {
-      final parsedStatus = _parseMarketStatus(cachedMarketStatus);
-      _marketOpenStatus = parsedStatus.open;
-      _marketTradingDayStatus = parsedStatus.tradingDay;
-      hasQuoteCache = true;
-      quoteSavedAt = mergeLatest(
-        quoteSavedAt,
-        _envelopeSavedAt(marketStatusEnvelope),
-      );
-    }
-
-    final historyEnvelope = await _loadDomainEnvelope('history');
-    final cachedHistory = _asMap(historyEnvelope?['data']);
-    if (cachedHistory['items'] is List) {
-      _calculateHistoryStats(cachedHistory['items'] as List);
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(
-        assetSavedAt,
-        _envelopeSavedAt(historyEnvelope),
-      );
-      final cachedVersion = '${historyEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) _syncVersions['history'] = cachedVersion;
-    }
-    final overviewEnvelope = await _loadDomainEnvelope('analysis_overview');
-    final cachedOverview = _asMap(overviewEnvelope?['data']);
-    if (cachedOverview['data'] is Map) {
-      applyOverviewMilestones(
-        Map<String, dynamic>.from(cachedOverview['data'] as Map),
-      );
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(
-        assetSavedAt,
-        _envelopeSavedAt(overviewEnvelope),
-      );
-      final cachedVersion = '${overviewEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) {
-        _syncVersions['overview_all'] = cachedVersion;
-      }
-    } else if (cachedOverview.isNotEmpty) {
-      applyOverviewMilestones(cachedOverview);
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(
-        assetSavedAt,
-        _envelopeSavedAt(overviewEnvelope),
-      );
-    }
-
-    final ratesEnvelope = await _loadDomainEnvelope('exchange_rates');
-    final cachedRates = _asMap(ratesEnvelope?['data']);
-    if (cachedRates['rates'] is Map) {
-      updateExchangeRates(cachedRates['rates'] as Map<String, dynamic>);
-      hasAssetCache = true;
-      assetSavedAt = mergeLatest(assetSavedAt, _envelopeSavedAt(ratesEnvelope));
-      final cachedVersion = '${ratesEnvelope?['version'] ?? ''}'.trim();
-      if (cachedVersion.isNotEmpty) _syncVersions['rates'] = cachedVersion;
-    }
-
-    // recompute totals
-    _recalculateHomeTotals();
-
-    _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
-    if (hasAssetCache) {
-      _assetDataFromCache = true;
-      if (assetSavedAt != null) {
-        _lastAssetDataUpdatedAt = assetSavedAt;
-      }
-    }
-    if (hasQuoteCache) {
-      _quoteDataFromCache = true;
-      if (quoteSavedAt != null) {
-        _lastQuoteDataUpdatedAt = quoteSavedAt;
-      }
-    }
-    notifyListeners();
+    await _refreshState.hydrateFromCache(bindings: _refreshBindings);
   }
 
   // ============================================================
   // 9) UI 偏好
   // ============================================================
 
-  Future<void> _loadTheme() async {
-    final saved = await _cache.getString('theme_mode');
-    if (saved == 'light') {
-      _themeMode = ThemeMode.light;
-      AppTheme.setMode(ThemeMode.light);
-      notifyListeners();
-    } else if (saved == 'dark') {
-      _themeMode = ThemeMode.dark;
-      AppTheme.setMode(ThemeMode.dark);
-      notifyListeners();
-    }
-  }
+  Future<void> _loadTheme() => _preferencesState.loadTheme();
 
-  Future<void> setThemeMode(ThemeMode mode, {bool save = true}) async {
-    _themeMode = mode;
-    AppTheme.setMode(mode);
-    if (save) {
-      await _cache.setString(
-        'theme_mode',
-        mode == ThemeMode.light ? 'light' : 'dark',
-      );
-    }
-    notifyListeners();
-  }
+  Future<void> setThemeMode(ThemeMode mode, {bool save = true}) =>
+      _preferencesState.setThemeMode(mode, save: save);
 
   void toggleTheme() {
-    setThemeMode(isLightTheme ? ThemeMode.dark : ThemeMode.light);
+    _preferencesState.toggleTheme();
   }
 
   Future<void> savePortfolioToCache() async {
-    await _saveDomainEnvelope(
-      'portfolio',
-      data: <String, dynamic>{
-        'items': _portfolio.map((e) => e.toJson()).toList(),
-      },
-      version: _syncVersions['portfolio'],
-      staleAfter: _staticDataTtl,
-    );
-  }
-
-  Map<String, dynamic> _serializePriceItems(Map<String, PriceInfo> source) {
-    return source.map(
-      (key, value) => MapEntry(key, {
-        'price': value.price,
-        'yclose': value.yclose,
-        'amt': value.change,
-        'chg': value.changePct,
-        'regular_price': value.regularPrice,
-        'premarket_price': value.premarketPrice,
-        'after_hours_price': value.afterHoursPrice,
-        'session': value.session,
-        'effective_session': value.effectiveSession,
-        'extended_active': value.extendedActive,
-      }),
-    );
+    await _refreshState.savePortfolioToCache(bindings: _refreshBindings);
   }
 
   Future<void> saveHomeCache(
     List<dynamic> history, {
     Map<String, dynamic>? overview,
   }) async {
-    await _saveDomainEnvelope(
-      'portfolio',
-      data: <String, dynamic>{
-        'items': _portfolio.map((e) => e.toJson()).toList(),
-      },
-      version: _syncVersions['portfolio'],
-      staleAfter: _staticDataTtl,
+    await _refreshState.saveHomeCache(
+      bindings: _refreshBindings,
+      history: history,
+      overview: overview,
     );
-    await _saveDomainEnvelope(
-      'cash_assets',
-      data: <String, dynamic>{
-        'items': _cashAssets.map((e) => e.toJson()).toList(),
-      },
-      version: _syncVersions['cash_assets'],
-      staleAfter: _staticDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'other_assets',
-      data: <String, dynamic>{
-        'items': _otherAssets.map((e) => e.toJson()).toList(),
-      },
-      version: _syncVersions['other_assets'],
-      staleAfter: _staticDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'liabilities',
-      data: <String, dynamic>{
-        'items': _liabilities.map((e) => e.toJson()).toList(),
-      },
-      version: _syncVersions['liabilities'],
-      staleAfter: _staticDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'history',
-      data: <String, dynamic>{'items': history},
-      version: _syncVersions['history'],
-      staleAfter: _historyDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'exchange_rates',
-      data: <String, dynamic>{'rates': _exchangeRates},
-      version: _syncVersions['rates'],
-      staleAfter: _ratesDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'prices',
-      data: <String, dynamic>{'items': _serializePriceItems(_prices)},
-      staleAfter: _staticDataTtl,
-    );
-    await _saveDomainEnvelope(
-      'price_snapshots',
-      data: <String, dynamic>{'items': _serializePriceItems(_priceSnapshots)},
-      staleAfter: _syncVersionTtl,
-    );
-    if (overview != null && overview.isNotEmpty) {
-      await _saveDomainEnvelope(
-        'analysis_overview',
-        data: <String, dynamic>{'data': overview},
-        version: _syncVersions['overview_all'],
-        staleAfter: _historyDataTtl,
-      );
-    }
-    await _saveSyncVersionsToCache();
   }
 
   // ============================================================
@@ -1056,214 +566,63 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   Future<void> _applyAuthResult(Map<String, dynamic> result) async {
-    final accessToken = result['access_token']?.toString();
-    final refreshToken = result['refresh_token']?.toString();
-    final user = (result['user'] is Map<String, dynamic>)
-        ? (result['user'] as Map<String, dynamic>)
-        : <String, dynamic>{};
-    if (accessToken == null || accessToken.isEmpty) {
-      throw Exception('缺少 access_token');
-    }
-    if (refreshToken == null || refreshToken.isEmpty) {
-      throw Exception('缺少 refresh_token');
-    }
-
-    _isLoggedIn = true;
-    _token = accessToken;
-    _refreshToken = refreshToken;
-    _username = user['username']?.toString() ?? _username;
-    _userId = user['id']?.toString() ?? user['user_id']?.toString();
-    final userNumberRaw = user['user_number'];
-    _userNumber = userNumberRaw is num ? userNumberRaw.toInt() : null;
-    _nickname = user.containsKey('nickname')
-        ? user['nickname']?.toString()
-        : _nickname;
-    _avatar = user.containsKey('avatar') ? user['avatar']?.toString() : _avatar;
-    _createdAtRaw = user.containsKey('created_at')
-        ? user['created_at']?.toString()
-        : _createdAtRaw;
-    _api.setToken(accessToken);
-    _sessionBootState = SessionBootState.authenticated;
-    _logoutMode = AuthLogoutMode.normal;
+    _authState.applyAuthResult(result, notify: false);
+    _api.setToken(token!);
+    _securityState.syncLocalState(
+      logoutMode: AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
     notifyListeners();
 
     try {
-      await _secureStorage.setToken(accessToken);
-      await _secureStorage.setRefreshToken(refreshToken);
-      if (_username != null && _username!.isNotEmpty) {
-        await _secureStorage.setUsername(_username!);
+      await _secureStorage.setToken(token!);
+      await _secureStorage.setRefreshToken(refreshToken!);
+      if (username != null && username!.isNotEmpty) {
+        await _secureStorage.setUsername(username!);
       }
       await _secureStorage.clearLogoutMode();
-      await _persistUserProfileCache();
+      await _syncState.persistUserProfileCache(
+        authState: _authState,
+        staleAfter: _userProfileTtl,
+        userProfileDomain: _userProfileDomain,
+      );
     } catch (e) {
       debugPrint('登录态写入本地存储失败，已保留内存登录态: $e');
     }
   }
 
   void clearAuthError() {
-    _authErrorMessage = null;
+    _authState.clearAuthError(notify: false);
   }
 
   // C2: App 锁屏控制
   void lockApp() {
-    if (_isAppLocked) return;
-    _isAppLocked = true;
-    notifyListeners();
+    _securityState.lockApp();
   }
 
   void unlockApp() {
-    if (!_isAppLocked) return;
-    _isAppLocked = false;
-    notifyListeners();
+    _securityState.unlockApp();
   }
 
-  static const Map<String, bool> _fallbackMarketOpenStatus = {
-    'a': false,
-    'hk': false,
-    'us': false,
-    'fund': false,
-  };
-  static const Map<String, bool> _fallbackMarketTradingDayStatus = {
-    'a': false,
-    'hk': false,
-    'us': false,
-    'fund': false,
-  };
-
-  bool _asBool(dynamic value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      final lower = value.trim().toLowerCase();
-      return lower == '1' || lower == 'true' || lower == 'yes';
-    }
-    return false;
-  }
-
-  bool _hasMarketStatusPayload(dynamic raw) {
-    final map = _asMap(raw);
-    if (map.isEmpty) return false;
-    final markets = map['markets'];
-    if (markets is Map && markets.isNotEmpty) return true;
-    return map.containsKey('a') ||
-        map.containsKey('hk') ||
-        map.containsKey('us') ||
-        map.containsKey('fund');
-  }
-
-  bool _inferTradingDay({required bool open, required String reason}) {
-    if (open) return true;
-    switch (reason.trim().toLowerCase()) {
-      case 'holiday_or_weekend':
-        return false;
-      case 'off_hours':
-      case 'open_session':
-        return true;
-      case 'override':
-        return false;
-      default:
-        return open;
-    }
-  }
-
-  _ParsedMarketStatus _parseMarketStatus(
-    dynamic payload, {
-    Map<String, bool>? openFallback,
-  }) {
-    final root = _asMap(payload);
-    final dynamic marketsRaw = root['markets'] ?? payload;
-    final markets = marketsRaw is Map
-        ? Map<String, dynamic>.from(marketsRaw)
-        : <String, dynamic>{};
-
-    bool parseOpenNode(String key) {
-      if (markets.isNotEmpty && markets.containsKey(key)) {
-        final node = markets[key];
-        if (node is Map) {
-          return _asBool(node['open']);
-        }
-        return _asBool(node);
-      }
-      return openFallback?[key] ?? _fallbackMarketOpenStatus[key]!;
-    }
-
-    bool parseTradingDayNode(String key, bool open) {
-      if (markets.isNotEmpty && markets.containsKey(key)) {
-        final node = markets[key];
-        if (node is Map) {
-          if (node.containsKey('trading_day')) {
-            return _asBool(node['trading_day']);
-          }
-          final reason = '${node['reason'] ?? ''}';
-          if (reason.trim().isNotEmpty) {
-            return _inferTradingDay(open: open, reason: reason);
-          }
-          return open;
-        }
-        return _asBool(node);
-      }
-      return open;
-    }
-
-    final open = {
-      'a': parseOpenNode('a'),
-      'hk': parseOpenNode('hk'),
-      'us': parseOpenNode('us'),
-      'fund': parseOpenNode('fund'),
-    };
-    final tradingDay = {
-      'a': parseTradingDayNode('a', open['a'] ?? false),
-      'hk': parseTradingDayNode('hk', open['hk'] ?? false),
-      'us': parseTradingDayNode('us', open['us'] ?? false),
-      'fund': parseTradingDayNode('fund', open['fund'] ?? false),
-    };
-    return _ParsedMarketStatus(open: open, tradingDay: tradingDay);
-  }
-
-  Map<String, dynamic> _serializeMarketStatusForCache() {
-    return <String, dynamic>{
-      'markets': {
-        'a': {
-          'open': _marketOpenStatus['a'] ?? false,
-          'trading_day': _marketTradingDayStatus['a'] ?? false,
-        },
-        'hk': {
-          'open': _marketOpenStatus['hk'] ?? false,
-          'trading_day': _marketTradingDayStatus['hk'] ?? false,
-        },
-        'us': {
-          'open': _marketOpenStatus['us'] ?? false,
-          'trading_day': _marketTradingDayStatus['us'] ?? false,
-        },
-        'fund': {
-          'open': _marketOpenStatus['fund'] ?? false,
-          'trading_day': _marketTradingDayStatus['fund'] ?? false,
-        },
-      },
-    };
-  }
-
-  Future<_ParsedMarketStatus> _loadMarketStatusSafe() async {
+  Future<ParsedMarketStatus> _loadMarketStatusSafe() async {
     try {
       final markets = await _api.getMarketStatuses();
-      return _parseMarketStatus(markets);
+      return _marketState.parseMarketStatus(markets);
     } catch (e) {
       debugPrint('读取市场状态失败，按全休市降级: $e');
-      return _ParsedMarketStatus(
-        open: Map<String, bool>.from(_fallbackMarketOpenStatus),
-        tradingDay: Map<String, bool>.from(_fallbackMarketTradingDayStatus),
+      return const ParsedMarketStatus(
+        open: AppMarketState.fallbackMarketOpenStatus,
+        tradingDay: AppMarketState.fallbackMarketTradingDayStatus,
       );
     }
   }
 
-  _ParsedMarketStatus _currentMarketStatusSnapshot() {
-    return _ParsedMarketStatus(
-      open: Map<String, bool>.from(_marketOpenStatus),
-      tradingDay: Map<String, bool>.from(_marketTradingDayStatus),
-    );
+  ParsedMarketStatus _currentMarketStatusSnapshot() {
+    return _marketState.currentMarketStatusSnapshot();
   }
 
-  Future<_ParsedMarketStatus> _loadMarketStatusWithBudget() async {
+  Future<ParsedMarketStatus> _loadMarketStatusWithBudget() async {
     try {
       return await _loadMarketStatusSafe().timeout(
         _marketStatusRefreshBudget,
@@ -1307,14 +666,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> reloadBiometricPreference() async {
-    try {
-      final enabled = await _secureStorage.isBiometricEnabled();
-      if (_biometricEnabled == enabled) return;
-      _biometricEnabled = enabled;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('刷新生物识别开关失败: $e');
-    }
+    await _securityState.reloadBiometricPreference();
   }
 
   String _mapAuthErrorMessage(Object error, {required bool isRegister}) {
@@ -1356,20 +708,20 @@ class AppState extends ChangeNotifier {
     required String username,
     required String password,
   }) async {
-    _authErrorMessage = null;
+    _authState.clearAuthError(notify: false);
     try {
       final result = _loginHandlerOverride != null
           ? await _loginHandlerOverride(username: username, password: password)
           : await _api.login(username: username, password: password);
       if (result == null) {
-        _authErrorMessage = '登录响应为空，请稍后重试';
+        _authState.setAuthError('登录响应为空，请稍后重试');
         return false;
       }
       await _applyAuthResult(result);
-      _authErrorMessage = null;
+      _authState.clearAuthError(notify: false);
       return true;
     } catch (e) {
-      _authErrorMessage = _mapAuthErrorMessage(e, isRegister: false);
+      _authState.setAuthError(_mapAuthErrorMessage(e, isRegister: false));
       debugPrint('登录异常(${e.runtimeType}): $e');
       return false;
     }
@@ -1381,7 +733,7 @@ class AppState extends ChangeNotifier {
     required String password,
     required String inviteCode,
   }) async {
-    _authErrorMessage = null;
+    _authState.clearAuthError(notify: false);
     try {
       final result = await _api.register(
         username: username,
@@ -1389,14 +741,14 @@ class AppState extends ChangeNotifier {
         inviteCode: inviteCode,
       );
       if (result == null) {
-        _authErrorMessage = '注册失败，请稍后重试';
+        _authState.setAuthError('注册失败，请稍后重试');
         return false;
       }
       await _applyAuthResult(result);
-      _authErrorMessage = null;
+      _authState.clearAuthError(notify: false);
       return true;
     } catch (e) {
-      _authErrorMessage = _mapAuthErrorMessage(e, isRegister: true);
+      _authState.setAuthError(_mapAuthErrorMessage(e, isRegister: true));
       debugPrint('注册异常: $e');
       return false;
     }
@@ -1419,9 +771,7 @@ class AppState extends ChangeNotifier {
         oldPassword: oldPassword,
         newPassword: newPassword,
       );
-      await _secureStorage.clearBiometricEnabled();
-      _biometricEnabled = false;
-      notifyListeners();
+      await _securityState.disableBiometric();
       return true;
     } catch (e) {
       debugPrint('修改密码失败: $e');
@@ -1430,71 +780,30 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> setBiometricEnabled(bool enabled) async {
-    final previous = _biometricEnabled;
-    _biometricEnabled = enabled;
-    notifyListeners();
-    if (enabled) {
-      final canUse = await _biometric.canUseBiometrics();
-      if (!canUse) {
-        _biometricEnabled = previous;
-        notifyListeners();
-        return false;
-      }
-    }
-    await _secureStorage.setBiometricEnabled(enabled);
-    debugPrint('Biometric switch updated: enabled=$_biometricEnabled');
-    return true;
+    return _securityState.setBiometricEnabled(enabled);
   }
 
   Future<bool> tryBiometricLogin() async {
-    if (!_biometricEnabled) {
-      debugPrint('Biometric login blocked: biometric switch disabled');
-      return false;
-    }
-    if (!await _biometric.canUseBiometrics()) {
-      debugPrint('Biometric login failed: device biometrics unavailable');
-      return false;
-    }
-    var refreshToken = _refreshToken;
-    if (refreshToken == null || refreshToken.isEmpty) {
-      try {
-        refreshToken = await _secureStorage.getRefreshToken();
-      } catch (_) {
-        debugPrint('Biometric login failed: unable to read refresh token');
-        return false;
-      }
-    }
-    if (refreshToken == null || refreshToken.isEmpty) {
-      debugPrint('Biometric login failed: refresh token missing');
-      return false;
-    }
-    final ok = await _biometric.authenticate();
-    if (!ok) {
-      debugPrint('Biometric login cancelled/failed in local auth');
-      return false;
-    }
-    try {
-      final result = _refreshSessionOverride != null
-          ? await _refreshSessionOverride(refreshToken)
-          : await _api.refreshSession(refreshToken: refreshToken);
-      if (result == null) return false;
-      await _applyAuthResult(result);
-      debugPrint('Biometric login success');
-      return true;
-    } catch (e) {
-      debugPrint('Biometric login refresh failed: $e');
-      return false;
-    }
+    return _securityState.tryBiometricLogin(
+      refreshToken: refreshToken,
+      refreshSession: (refreshToken) async {
+        return _refreshSessionOverride != null
+            ? _refreshSessionOverride(refreshToken)
+            : _api.refreshSession(refreshToken: refreshToken);
+      },
+      applyAuthResult: _applyAuthResult,
+    );
   }
 
   Future<bool> fetchProfile() async {
     final profile = await _api.getProfile();
     if (profile != null) {
-      _username = profile['username']?.toString() ?? _username;
-      _nickname = profile['nickname']?.toString();
-      _avatar = profile['avatar']?.toString();
-      _createdAtRaw = profile['created_at']?.toString() ?? _createdAtRaw;
-      await _persistUserProfileCache();
+      _authState.applyProfile(profile, includeIdentity: false, notify: false);
+      await _syncState.persistUserProfileCache(
+        authState: _authState,
+        staleAfter: _userProfileTtl,
+        userProfileDomain: _userProfileDomain,
+      );
       notifyListeners();
       return true;
     }
@@ -1505,11 +814,12 @@ class AppState extends ChangeNotifier {
   Future<bool> updateProfile({String? nickname, String? avatar}) async {
     final result = await _api.updateProfile(nickname: nickname, avatar: avatar);
     if (result != null) {
-      _username = result['username']?.toString() ?? _username;
-      _nickname = result['nickname']?.toString();
-      _avatar = result['avatar']?.toString();
-      _createdAtRaw = result['created_at']?.toString() ?? _createdAtRaw;
-      await _persistUserProfileCache();
+      _authState.applyProfile(result, includeIdentity: false, notify: false);
+      await _syncState.persistUserProfileCache(
+        authState: _authState,
+        staleAfter: _userProfileTtl,
+        userProfileDomain: _userProfileDomain,
+      );
       notifyListeners();
       return true;
     }
@@ -1527,33 +837,45 @@ class AppState extends ChangeNotifier {
     String? avatar,
     String? createdAtRaw,
   }) async {
-    _isLoggedIn = true;
-    _token = token;
-    _refreshToken = refreshToken;
-    _username = username;
-    _userId = userId;
-    _userNumber = userNumber;
-    _nickname = nickname;
-    _avatar = avatar;
-    _createdAtRaw = createdAtRaw;
+    _authState.syncLocalState(
+      isLoggedIn: true,
+      sessionBootState: SessionBootState.authenticated,
+      token: token,
+      refreshToken: refreshToken,
+      username: username,
+      userId: userId,
+      userNumber: userNumber,
+      nickname: nickname,
+      avatar: avatar,
+      createdAtRaw: createdAtRaw,
+      authErrorMessage: null,
+      notify: false,
+    );
     _api.setToken(token);
-    _sessionBootState = SessionBootState.authenticated;
-    _logoutMode = AuthLogoutMode.normal;
+    _securityState.syncLocalState(
+      logoutMode: AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
     await _secureStorage.setToken(token);
     await _secureStorage.setRefreshToken(refreshToken);
     await _secureStorage.setUsername(username);
     await _secureStorage.clearLogoutMode();
-    await _persistUserProfileCache();
+    await _syncState.persistUserProfileCache(
+      authState: _authState,
+      staleAfter: _userProfileTtl,
+      userProfileDomain: _userProfileDomain,
+    );
     notifyListeners();
   }
 
   /// 退出登录
   void logout() {
-    final currentRefreshToken = _refreshToken;
-    final currentUsername = _username;
-    final currentUserId = _userId;
+    final currentRefreshToken = refreshToken;
+    final currentUsername = username;
+    final currentUserId = userId;
     final preserveBiometricSession =
-        _biometricEnabled &&
+        biometricEnabled &&
         currentRefreshToken != null &&
         currentRefreshToken.isNotEmpty;
     if (!preserveBiometricSession) {
@@ -1568,33 +890,33 @@ class AppState extends ChangeNotifier {
     debugPrint(
       'Logout called. preserveBiometricSession=$preserveBiometricSession',
     );
-    _isLoggedIn = false;
-    _sessionBootState = SessionBootState.unauthenticated;
-    _logoutMode = preserveBiometricSession
-        ? AuthLogoutMode.biometricReady
-        : AuthLogoutMode.normal;
-    _token = null;
-    if (!preserveBiometricSession) {
-      _refreshToken = null;
-      _username = null;
-    }
-    _userId = null;
-    _userNumber = null;
-    _nickname = null;
-    _avatar = null;
-    _createdAtRaw = null;
+    _securityState.syncLocalState(
+      logoutMode: preserveBiometricSession
+          ? AuthLogoutMode.biometricReady
+          : AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
+    _authState.syncLocalState(
+      isLoggedIn: false,
+      sessionBootState: SessionBootState.unauthenticated,
+      isSessionChecking: false,
+      token: null,
+      refreshToken: preserveBiometricSession ? currentRefreshToken : null,
+      username: preserveBiometricSession ? currentUsername : null,
+      userId: null,
+      userNumber: null,
+      nickname: null,
+      avatar: null,
+      createdAtRaw: null,
+      authErrorMessage: null,
+      notify: false,
+    );
     _api.clearToken();
-    _portfolio = [];
+    _assetsState.clearAll(notify: false);
     _prices = {};
     _priceSnapshots = {};
-    _cashAssets = [];
-    _otherAssets = [];
-    _liabilities = [];
-    _syncVersions.clear();
-    _lastAssetDataUpdatedAt = null;
-    _lastQuoteDataUpdatedAt = null;
-    _assetDataFromCache = false;
-    _quoteDataFromCache = false;
+    _syncState.clearSyncRuntime(notify: false);
     _portfolioLoaded = false;
     if (preserveBiometricSession) {
       unawaited(() async {
@@ -1605,7 +927,9 @@ class AppState extends ChangeNotifier {
       unawaited(() async {
         await _secureStorage.clearAllAuth();
         await _secureStorage.setLogoutMode('normal');
-        await _clearUserProfileCache(
+        await _syncState.clearUserProfileCache(
+          authState: _authState,
+          userProfileDomain: _userProfileDomain,
           usernameHint: currentUsername,
           userIdHint: currentUserId,
         );
@@ -1615,8 +939,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _restoreSession() async {
-    if (_isSessionChecking) return;
-    _isSessionChecking = true;
+    if (_authState.isSessionChecking) return;
+    _authState.syncLocalState(isSessionChecking: true, notify: false);
 
     String? token;
     String? refreshToken;
@@ -1642,7 +966,7 @@ class AppState extends ChangeNotifier {
       _secureStorage.getUsername,
       'username',
     );
-    _biometricEnabled = await _safeReadStorageBool(
+    final storedBiometricEnabled = await _safeReadStorageBool(
       _secureStorage.isBiometricEnabled,
       'biometric enabled',
     );
@@ -1651,29 +975,45 @@ class AppState extends ChangeNotifier {
       'logout mode',
     );
 
-    _logoutMode = _parseLogoutMode(logoutModeRaw);
+    final parsedLogoutMode = _securityState.parseLogoutMode(logoutModeRaw);
+    _securityState.syncLocalState(
+      biometricEnabled: storedBiometricEnabled,
+      logoutMode: parsedLogoutMode,
+      notify: false,
+    );
 
     if (refreshToken != null && refreshToken.isNotEmpty) {
-      _refreshToken = refreshToken;
-      _username = username;
-      await _restoreUserProfileCache(usernameHint: username);
+      _authState.syncLocalState(
+        refreshToken: refreshToken,
+        username: username,
+        notify: false,
+      );
+      await _syncState.restoreUserProfileCache(
+        authState: _authState,
+        userProfileDomain: _userProfileDomain,
+        usernameHint: username,
+      );
     }
-    if (_logoutMode == AuthLogoutMode.biometricReady) {
-      _isLoggedIn = false;
-      _token = null;
+    if (logoutMode == AuthLogoutMode.biometricReady) {
+      _authState.syncLocalState(
+        isLoggedIn: false,
+        token: null,
+        sessionBootState: SessionBootState.unauthenticated,
+        isSessionChecking: false,
+        notify: false,
+      );
       _api.clearToken();
-      _sessionBootState = SessionBootState.unauthenticated;
-      // C3: 冷启动 biometricReady → 自动锁定，登录页会显示生物识别按钮，
-      //     同时通知 AppLockOverlay 显示锁屏层（main.dart 监听）。
-      _isAppLocked = true;
-      _isSessionChecking = false;
+      _securityState.lockApp(notify: false);
       notifyListeners();
       return;
     }
 
     if (refreshToken == null || refreshToken.isEmpty) {
-      _sessionBootState = SessionBootState.unauthenticated;
-      _isSessionChecking = false;
+      _authState.syncLocalState(
+        sessionBootState: SessionBootState.unauthenticated,
+        isSessionChecking: false,
+        notify: false,
+      );
       notifyListeners();
       return;
     }
@@ -1685,7 +1025,7 @@ class AppState extends ChangeNotifier {
             : await _api.refreshSession(refreshToken: refreshToken);
         if (refreshed != null) {
           await _applyAuthResult(refreshed);
-          _isSessionChecking = false;
+          _authState.syncLocalState(isSessionChecking: false, notify: false);
           unawaited(hydrateFromCache());
           unawaited(refreshAll());
           unawaited(_validateSessionInBackground());
@@ -1695,17 +1035,26 @@ class AppState extends ChangeNotifier {
         debugPrint('启动静默 refresh 失败: $e');
       }
       await _clearSessionAndUnauthenticated();
-      _isSessionChecking = false;
+      _authState.syncLocalState(isSessionChecking: false, notify: false);
       return;
     }
 
-    _token = token;
-    _refreshToken = refreshToken;
-    _username = username;
-    _isLoggedIn = true;
+    _authState.syncLocalState(
+      token: token,
+      refreshToken: refreshToken,
+      username: username,
+      isLoggedIn: true,
+      sessionBootState: SessionBootState.authenticated,
+      isSessionChecking: false,
+      authErrorMessage: null,
+      notify: false,
+    );
     _api.setToken(token);
-    _sessionBootState = SessionBootState.authenticated;
-    _isSessionChecking = false;
+    _securityState.syncLocalState(
+      logoutMode: AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
     notifyListeners();
     unawaited(hydrateFromCache());
     unawaited(refreshAll());
@@ -1716,11 +1065,11 @@ class AppState extends ChangeNotifier {
     Map<String, dynamic>? profile = _profileLoaderOverride != null
         ? await _profileLoaderOverride()
         : await _api.getProfile();
-    if (profile == null && _refreshToken != null && _refreshToken!.isNotEmpty) {
+    if (profile == null && refreshToken != null && refreshToken!.isNotEmpty) {
       try {
         final refreshed = _refreshSessionOverride != null
-            ? await _refreshSessionOverride(_refreshToken!)
-            : await _api.refreshSession(refreshToken: _refreshToken!);
+            ? await _refreshSessionOverride(refreshToken!)
+            : await _api.refreshSession(refreshToken: refreshToken!);
         if (refreshed != null) {
           await _applyAuthResult(refreshed);
           profile = refreshed['user'] is Map<String, dynamic>
@@ -1734,53 +1083,54 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    _username = profile['username']?.toString() ?? _username;
-    _userId = profile['id']?.toString() ?? profile['user_id']?.toString();
-    final userNumberRaw = profile['user_number'];
-    if (userNumberRaw is num) {
-      _userNumber = userNumberRaw.toInt();
-    } else {
-      _userNumber = null;
-    }
-    _nickname = profile['nickname']?.toString();
-    _avatar = profile['avatar']?.toString();
-    _createdAtRaw = profile['created_at']?.toString() ?? _createdAtRaw;
-    await _persistUserProfileCache();
-    _isLoggedIn = true;
-    _sessionBootState = SessionBootState.authenticated;
+    _authState.applyProfile(profile, notify: false);
+    await _syncState.persistUserProfileCache(
+      authState: _authState,
+      staleAfter: _userProfileTtl,
+      userProfileDomain: _userProfileDomain,
+    );
+    _securityState.syncLocalState(
+      logoutMode: AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
     notifyListeners();
   }
 
   Future<void> _clearSessionAndUnauthenticated() async {
-    final previousUsername = _username;
-    final previousUserId = _userId;
-    _isLoggedIn = false;
-    _token = null;
-    _refreshToken = null;
-    _username = null;
-    _userId = null;
-    _userNumber = null;
-    _nickname = null;
-    _avatar = null;
-    _createdAtRaw = null;
-    _logoutMode = AuthLogoutMode.normal;
-    _sessionBootState = SessionBootState.unauthenticated;
-    _api.clearToken();
-    _syncVersions.clear();
-    _priceSnapshots = {};
-    _marketOpenStatus = Map<String, bool>.from(_fallbackMarketOpenStatus);
-    _marketTradingDayStatus = Map<String, bool>.from(
-      _fallbackMarketTradingDayStatus,
+    final previousUsername = username;
+    final previousUserId = userId;
+    _authState.syncLocalState(
+      isLoggedIn: false,
+      isSessionChecking: false,
+      token: null,
+      refreshToken: null,
+      username: null,
+      userId: null,
+      userNumber: null,
+      nickname: null,
+      avatar: null,
+      createdAtRaw: null,
+      sessionBootState: SessionBootState.unauthenticated,
+      authErrorMessage: null,
+      notify: false,
     );
-    _lastAssetDataUpdatedAt = null;
-    _lastQuoteDataUpdatedAt = null;
-    _assetDataFromCache = false;
-    _quoteDataFromCache = false;
+    _api.clearToken();
+    _syncState.clearSyncRuntime(notify: false);
+    _priceSnapshots = {};
+    _marketState.resetMarketStatus(notify: false);
+    _securityState.syncLocalState(
+      logoutMode: AuthLogoutMode.normal,
+      isAppLocked: false,
+      notify: false,
+    );
     notifyListeners();
     try {
       await _secureStorage.clearAllAuth();
       await _secureStorage.clearLogoutMode();
-      await _clearUserProfileCache(
+      await _syncState.clearUserProfileCache(
+        authState: _authState,
+        userProfileDomain: _userProfileDomain,
         usernameHint: previousUsername,
         userIdHint: previousUserId,
       );
@@ -1789,36 +1139,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  AuthLogoutMode _parseLogoutMode(String? raw) {
-    if (raw == 'biometric_ready') {
-      return AuthLogoutMode.biometricReady;
-    }
-    return AuthLogoutMode.normal;
-  }
-
   /// 切换金额隐藏
   void toggleAmountHidden() {
-    _amountHidden = !_amountHidden;
-    notifyListeners();
+    _preferencesState.toggleAmountHidden();
   }
 
   void setDisplayCurrency(String currency) {
-    if (_displayCurrency == currency) return;
-    _displayCurrency = currency;
-    notifyListeners();
+    _preferencesState.setDisplayCurrency(currency);
   }
 
   /// Convert a CNY-denominated amount to the global display currency
   double convertDisplayAmount(double cnyAmount) {
-    if (_displayCurrency == 'CNY') return cnyAmount;
-    final rate = _rateForCurrency(_displayCurrency);
+    if (displayCurrency == 'CNY') return cnyAmount;
+    final rate = _rateForCurrency(displayCurrency);
     if (rate <= 0) return cnyAmount;
     return cnyAmount / rate;
   }
 
   /// 格式化金额（支持隐藏）
   String formatAmount(double value, {String prefix = '¥'}) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     return '$prefix${value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
   }
 
@@ -1830,60 +1170,15 @@ class AppState extends ChangeNotifier {
 
   /// 更新汇率
   void updateExchangeRates(Map<String, dynamic> rates) {
-    _exchangeRates = {
-      'USD': (rates['USD'] as num?)?.toDouble() ?? 7.25,
-      'HKD': (rates['HKD'] as num?)?.toDouble() ?? 0.93,
-      'CNY': 1.0,
-    };
-    notifyListeners();
-  }
-
-  int _positiveInt(dynamic value, {required int fallback}) {
-    final parsed = _asInt(value);
-    return parsed > 0 ? parsed : fallback;
-  }
-
-  void _applyQuotePolicy(dynamic rawPolicy) {
-    final policy = _asMap(rawPolicy);
-    if (policy.isEmpty) return;
-    _quoteIntervalOpenSec = _positiveInt(
-      policy['interval_open_sec'],
-      fallback: _quoteIntervalOpenSec,
-    );
-    _quoteIntervalClosedSec = _positiveInt(
-      policy['interval_closed_sec'],
-      fallback: _quoteIntervalClosedSec,
-    );
-    _quoteIntervalUsExtendedSec = _positiveInt(
-      policy['interval_us_extended_sec'],
-      fallback: _quoteIntervalUsExtendedSec,
-    );
-  }
-
-  Map<String, bool> _parseMarketOpenFallback(dynamic raw) {
-    final status = _asMap(raw);
-    if (status.isEmpty) {
-      return Map<String, bool>.from(_fallbackMarketOpenStatus);
-    }
-    return {
-      'a': _asBool(status['a']),
-      'hk': _asBool(status['hk']),
-      'us': _asBool(status['us']),
-      'fund': _asBool(status['fund']),
-    };
+    _marketState.updateExchangeRates(rates);
   }
 
   void _applySyncMarketStatus(dynamic rawStatuses, {dynamic rawOpenFallback}) {
-    if (!_hasMarketStatusPayload(rawStatuses) &&
-        !_hasMarketStatusPayload(rawOpenFallback)) {
-      return;
-    }
-    final parsed = _parseMarketStatus(
+    _marketState.applySyncMarketStatus(
       rawStatuses,
-      openFallback: _parseMarketOpenFallback(rawOpenFallback),
+      rawOpenFallback: rawOpenFallback,
+      notify: false,
     );
-    _marketOpenStatus = parsed.open;
-    _marketTradingDayStatus = parsed.tradingDay;
   }
 
   double _assetAmountToCny(Asset item, {bool useAbs = false}) {
@@ -1908,14 +1203,6 @@ class AppState extends ChangeNotifier {
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
   }
 
-  bool _canSkipStaticSyncCheck({required bool force}) {
-    if (force) return false;
-    if (_syncVersions.isEmpty) return false;
-    final lastAt = _lastAssetDataUpdatedAt;
-    if (lastAt == null) return false;
-    return DateTime.now().difference(lastAt) < _staticDataTtl;
-  }
-
   // ============================================================
   // 11) 首页、同步与行情刷新
   // ============================================================
@@ -1923,148 +1210,7 @@ class AppState extends ChangeNotifier {
   /// 刷新首页数据（全量）
   /// 刷新首页数据
   Future<void> refreshHomeData() async {
-    try {
-      // 核心数据优先返回，避免被慢行情阻塞。
-      final results = await Future.wait([
-        _api.getCashAssets(),
-        _api.getOtherAssets(),
-        _api.getLiabilities(),
-        _api.getPortfolio(),
-        _api.getHistory(),
-        _api.getAnalysisOverview(period: 'all'),
-      ]);
-
-      _cashAssets = (results[0] as List).map((e) => Asset.fromJson(e)).toList();
-      _otherAssets = (results[1] as List)
-          .map((e) => Asset.fromJson(e))
-          .toList();
-      _liabilities = (results[2] as List)
-          .map((e) => Asset.fromJson(e))
-          .toList();
-      _portfolio = (results[3] as List)
-          .map((e) => PortfolioItem.fromJson(e))
-          .toList();
-
-      // 计算总额（必须在历史数据计算之前）
-      _recalculateHomeTotals();
-
-      // 处理历史数据（必须在总资产计算之后）
-      final history = results[4] as List;
-      final overview = (results[5] as Map?)?.cast<String, dynamic>();
-      _calculateHistoryStats(history);
-      applyOverviewMilestones(overview);
-
-      await saveHomeCache(history, overview: overview);
-      _assetDataFromCache = false;
-      _lastAssetDataUpdatedAt = DateTime.now();
-
-      _portfolioLoaded = true;
-      notifyListeners();
-
-      // 行情慢时后台更新，不影响首页收益首屏展示。
-      unawaited(_refreshPortfolioPricesInBackground(force: true));
-    } catch (e) {
-      debugPrint('刷新首页数据失败: $e');
-    }
-  }
-
-  Future<void> _applySyncDomainData({
-    required String domain,
-    required dynamic payload,
-  }) async {
-    if (domain == 'portfolio') {
-      final list = (payload is List) ? payload : const <dynamic>[];
-      _portfolio = list.map((e) => PortfolioItem.fromJson(e)).toList();
-      final validCodes = _portfolio.map((e) => e.code).toSet();
-      _prices.removeWhere((code, _) => !validCodes.contains(code));
-      _priceSnapshots.removeWhere((code, _) => !validCodes.contains(code));
-      _recalculateHomeTotals();
-      await _saveDomainEnvelope(
-        'portfolio',
-        data: <String, dynamic>{
-          'items': _portfolio.map((e) => e.toJson()).toList(),
-        },
-        version: _syncVersions['portfolio'],
-        staleAfter: _staticDataTtl,
-      );
-      return;
-    }
-    if (domain == 'cash_assets') {
-      final list = (payload is List) ? payload : const <dynamic>[];
-      _cashAssets = list.map((e) => Asset.fromJson(e)).toList();
-      _recalculateHomeTotals();
-      await _saveDomainEnvelope(
-        'cash_assets',
-        data: <String, dynamic>{
-          'items': _cashAssets.map((e) => e.toJson()).toList(),
-        },
-        version: _syncVersions['cash_assets'],
-        staleAfter: _staticDataTtl,
-      );
-      return;
-    }
-    if (domain == 'other_assets') {
-      final list = (payload is List) ? payload : const <dynamic>[];
-      _otherAssets = list.map((e) => Asset.fromJson(e)).toList();
-      _recalculateHomeTotals();
-      await _saveDomainEnvelope(
-        'other_assets',
-        data: <String, dynamic>{
-          'items': _otherAssets.map((e) => e.toJson()).toList(),
-        },
-        version: _syncVersions['other_assets'],
-        staleAfter: _staticDataTtl,
-      );
-      return;
-    }
-    if (domain == 'liabilities') {
-      final list = (payload is List) ? payload : const <dynamic>[];
-      _liabilities = list.map((e) => Asset.fromJson(e)).toList();
-      _recalculateHomeTotals();
-      await _saveDomainEnvelope(
-        'liabilities',
-        data: <String, dynamic>{
-          'items': _liabilities.map((e) => e.toJson()).toList(),
-        },
-        version: _syncVersions['liabilities'],
-        staleAfter: _staticDataTtl,
-      );
-      return;
-    }
-    if (domain == 'history') {
-      final history = (payload is List) ? payload : const <dynamic>[];
-      _calculateHistoryStats(history);
-      await _saveDomainEnvelope(
-        'history',
-        data: <String, dynamic>{'items': history},
-        version: _syncVersions['history'],
-        staleAfter: _historyDataTtl,
-      );
-      return;
-    }
-    if (domain == 'overview_all') {
-      final overview = _asMap(payload);
-      applyOverviewMilestones(overview);
-      await _saveDomainEnvelope(
-        'analysis_overview',
-        data: <String, dynamic>{'data': overview},
-        version: _syncVersions['overview_all'],
-        staleAfter: _historyDataTtl,
-      );
-      return;
-    }
-    if (domain == 'rates') {
-      final rates = _asMap(payload);
-      if (rates.isNotEmpty) {
-        updateExchangeRates(rates);
-      }
-      await _saveDomainEnvelope(
-        'exchange_rates',
-        data: <String, dynamic>{'rates': _exchangeRates},
-        version: _syncVersions['rates'],
-        staleAfter: _ratesDataTtl,
-      );
-    }
+    await _refreshState.refreshHomeData(bindings: _refreshBindings);
   }
 
   /// 按版本增量刷新，失败时自动回退全量刷新。
@@ -2072,270 +1218,46 @@ class AppState extends ChangeNotifier {
     bool force = false,
     bool refreshQuotes = true,
   }) async {
-    final existing = _refreshByVersionInFlight;
-    if (existing != null) return existing;
-
-    final future = _refreshByVersionInternal(
+    await _refreshState.refreshByVersion(
+      bindings: _refreshBindings,
       force: force,
       refreshQuotes: refreshQuotes,
     );
-    _refreshByVersionInFlight = future;
-    try {
-      await future;
-    } finally {
-      _refreshByVersionInFlight = null;
-    }
-  }
-
-  Future<void> _refreshByVersionInternal({
-    required bool force,
-    required bool refreshQuotes,
-  }) async {
-    if (_canSkipStaticSyncCheck(force: force)) {
-      if (refreshQuotes) {
-        await _refreshPortfolioPricesInBackground(force: true);
-      }
-      return;
-    }
-
-    try {
-      final response = await _api.getSyncBootstrap(
-        include: _syncBootstrapDomains,
-        clientVersions: force
-            ? const <String, String>{}
-            : Map<String, String>.from(_syncVersions),
-      );
-      _applyQuotePolicy(response['quote_policy']);
-      _applySyncMarketStatus(
-        response['market_statuses'],
-        rawOpenFallback: response['market_status'],
-      );
-
-      final versions = _asMap(response['versions']);
-      if (versions.isNotEmpty) {
-        _syncVersions.addAll(
-          versions.map((k, v) => MapEntry(k.toString(), (v ?? '').toString())),
-        );
-        await _saveSyncVersionsToCache();
-      }
-
-      final changedRaw = response['changed'];
-      final changed = <String>[];
-      if (changedRaw is List) {
-        for (final item in changedRaw) {
-          final key = '$item'.trim();
-          if (key.isNotEmpty) changed.add(key);
-        }
-      }
-      final data = _asMap(response['data']);
-
-      bool staticChanged = false;
-      for (final domain in changed) {
-        await _applySyncDomainData(domain: domain, payload: data[domain]);
-        if (domain != 'rates') {
-          staticChanged = true;
-        }
-      }
-
-      await _saveDomainEnvelope(
-        'market_status',
-        data: _serializeMarketStatusForCache(),
-        staleAfter: _staticDataTtl,
-      );
-
-      if (staticChanged || changed.contains('rates')) {
-        _assetDataFromCache = false;
-        _lastAssetDataUpdatedAt = DateTime.now();
-      }
-      if (changed.isNotEmpty) {
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('版本增量刷新失败，降级全量刷新: $e');
-      await Future.wait([refreshHomeData(), loadExchangeRates()]);
-    }
-
-    if (refreshQuotes) {
-      await _refreshPortfolioPricesInBackground(force: true);
-    }
   }
 
   /// 用分析概览覆盖首页里程碑（月/年改为收益口径）。
   /// 若接口数据异常则保留历史差值口径结果（回退行为）。
   void applyOverviewMilestones(Map<String, dynamic>? overview) {
-    final data = overview ?? const <String, dynamic>{};
-    final month = data['month'];
-    final year = data['year'];
-    double? extractPnl(dynamic node) {
-      if (node is! Map) return null;
-      final raw = node['pnl'];
-      if (raw is num) return raw.toDouble();
-      if (raw is String) return double.tryParse(raw.trim());
-      return null;
-    }
-
-    final monthPnl = extractPnl(month);
-    final yearPnl = extractPnl(year);
-    _overviewMilestonesReady = monthPnl != null || yearPnl != null;
-    debugPrint('分析概览覆盖: monthPnl=$monthPnl, yearPnl=$yearPnl, raw=$data');
-    if (monthPnl != null) _monthChange = monthPnl;
-    if (yearPnl != null) _yearChange = yearPnl;
+    _overviewState.applyOverviewMilestones(overview, notify: false);
   }
 
   Future<void> _refreshPortfolioPricesInBackground({bool force = false}) async {
-    final now = DateTime.now();
-    if (_priceRefreshInFlight) return;
-    if (!force &&
-        _lastPriceRefreshAt != null &&
-        now.difference(_lastPriceRefreshAt!) < _priceRefreshMinInterval) {
-      return;
-    }
-    _priceRefreshInFlight = true;
-    try {
-      final marketStatusFuture = _loadMarketStatusWithBudget();
-      if (_portfolio.isEmpty) {
-        final marketStatus = await marketStatusFuture;
-        _marketOpenStatus = marketStatus.open;
-        _marketTradingDayStatus = marketStatus.tradingDay;
-        await _saveDomainEnvelope(
-          'market_status',
-          data: _serializeMarketStatusForCache(),
-          staleAfter: _staticDataTtl,
-        );
-        // 启动早期持仓尚未恢复时，避免把已有价格缓存清空写回。
-        if (_portfolioLoaded) {
-          _prices = {};
-          _priceSnapshots = {};
-          _totalInvest = 0;
-          _totalAsset = _totalCash + _totalOther - _totalLiability;
-          await _saveDomainEnvelope(
-            'prices',
-            data: <String, dynamic>{'items': <String, dynamic>{}},
-            staleAfter: _staticDataTtl,
-          );
-          await _saveDomainEnvelope(
-            'price_snapshots',
-            data: <String, dynamic>{'items': <String, dynamic>{}},
-            staleAfter: _syncVersionTtl,
-          );
-          _quoteDataFromCache = false;
-          _lastQuoteDataUpdatedAt = DateTime.now();
-          notifyListeners();
-        }
-        return;
-      }
-
-      final codes = _portfolio.map((e) => e.code).toList();
-      final previousPrices = Map<String, PriceInfo>.from(_prices);
-      final priceApiCodes = codes.map((code) {
-        if (code.startsWith('gb_')) {
-          return code.substring(3);
-        }
-        return code;
-      }).toList();
-
-      final pricesData = await _api.getPricesBatch(priceApiCodes);
-      final marketStatus = await marketStatusFuture;
-      _marketOpenStatus = marketStatus.open;
-      _marketTradingDayStatus = marketStatus.tradingDay;
-      final nextPrices = <String, PriceInfo>{};
-      for (int i = 0; i < codes.length; i++) {
-        final originalCode = codes[i];
-        final apiCode = priceApiCodes[i];
-        PriceInfo? parsed;
-        if (pricesData.containsKey(apiCode)) {
-          try {
-            parsed = PriceInfo.fromJson(pricesData[apiCode]);
-          } catch (e) {
-            debugPrint('解析价格失败: $originalCode (API: $apiCode), 错误: $e');
-          }
-        }
-        final resolved = _resolvePriceInfoByCode(
-          originalCode,
-          preferred: parsed,
-          runtimeFallback: previousPrices,
-        );
-        if (resolved != null) {
-          nextPrices[originalCode] = resolved;
-        }
-      }
-
-      _prices = nextPrices;
-      _priceSnapshots = Map<String, PriceInfo>.from(_priceSnapshots)
-        ..removeWhere((code, _) => !codes.contains(code))
-        ..addAll(nextPrices);
-      _totalInvest = investTotalMV;
-      _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
-      await _saveDomainEnvelope(
-        'market_status',
-        data: _serializeMarketStatusForCache(),
-        staleAfter: _staticDataTtl,
-      );
-      await _saveDomainEnvelope(
-        'prices',
-        data: <String, dynamic>{'items': _serializePriceItems(_prices)},
-        staleAfter: _staticDataTtl,
-      );
-      await _saveDomainEnvelope(
-        'price_snapshots',
-        data: <String, dynamic>{'items': _serializePriceItems(_priceSnapshots)},
-        staleAfter: _syncVersionTtl,
-      );
-      _quoteDataFromCache = false;
-      _lastQuoteDataUpdatedAt = DateTime.now();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('后台刷新行情失败: $e');
-    } finally {
-      _priceRefreshInFlight = false;
-      _lastPriceRefreshAt = DateTime.now();
-    }
+    await _refreshState.refreshPortfolioPricesInBackground(
+      bindings: _refreshBindings,
+      force: force,
+    );
   }
 
   /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
   Future<void> refreshPricesOnly() async {
-    await _refreshPortfolioPricesInBackground(force: true);
+    await _refreshState.refreshPricesOnly(bindings: _refreshBindings);
   }
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll({bool force = false}) async {
-    final existing = _refreshAllInFlight;
-    if (existing != null) return existing;
-
-    final future = _refreshAllInternal(force: force);
-    _refreshAllInFlight = future;
-    try {
-      await future;
-    } finally {
-      _refreshAllInFlight = null;
-    }
-  }
-
-  Future<void> _refreshAllInternal({required bool force}) async {
-    if (force) {
-      await Future.wait([refreshHomeData(), loadExchangeRates()]);
-      await _refreshPortfolioPricesInBackground(force: true);
-      return;
-    }
-    await refreshByVersion(force: false, refreshQuotes: true);
+    await _refreshState.refreshAll(bindings: _refreshBindings, force: force);
   }
 
   // ============================================================
   // 12) 非投资资产操作
   // ============================================================
 
-  _AssetSnapshot _captureAssetSnapshot() {
-    return _AssetSnapshot(
-      cashAssets: List<Asset>.from(_cashAssets),
-      otherAssets: List<Asset>.from(_otherAssets),
-      liabilities: List<Asset>.from(_liabilities),
-    );
+  AssetSnapshot _captureAssetSnapshot() {
+    return _assetsState.captureAssetSnapshot();
   }
 
-  void _restoreAssetSnapshot(_AssetSnapshot snapshot) {
-    _cashAssets = snapshot.cashAssets;
-    _otherAssets = snapshot.otherAssets;
-    _liabilities = snapshot.liabilities;
+  void _restoreAssetSnapshot(AssetSnapshot snapshot) {
+    _assetsState.restoreAssetSnapshot(snapshot, notify: false);
     _recalculateAssetTotals();
   }
 
@@ -2353,57 +1275,21 @@ class AppState extends ChangeNotifier {
     required double amount,
     String? curr,
   }) {
-    final normalizedCurr = _normalizeAssetCurrency(curr);
-    switch (type) {
-      case 'cash':
-        final tempAsset = Asset(
-          id: _nextTempAssetId--,
-          name: name,
-          amount: amount,
-          curr: normalizedCurr,
-        );
-        _cashAssets = [..._cashAssets, tempAsset];
-        return true;
-      case 'other':
-        final tempAsset = Asset(
-          id: _nextTempAssetId--,
-          name: name,
-          amount: amount,
-          curr: normalizedCurr,
-        );
-        _otherAssets = [..._otherAssets, tempAsset];
-        return true;
-      case 'liability':
-        final tempAsset = Asset(
-          id: _nextTempAssetId--,
-          name: name,
-          amount: amount,
-          curr: normalizedCurr,
-        );
-        _liabilities = [..._liabilities, tempAsset];
-        return true;
-      default:
-        return false;
-    }
+    return _assetsState.optimisticAddAsset(
+      type: type,
+      name: name,
+      amount: amount,
+      curr: curr,
+      notify: false,
+    );
   }
 
   bool _optimisticDeleteAsset({required String type, required int id}) {
-    switch (type) {
-      case 'cash':
-        final before = _cashAssets.length;
-        _cashAssets = _cashAssets.where((item) => item.id != id).toList();
-        return _cashAssets.length != before;
-      case 'other':
-        final before = _otherAssets.length;
-        _otherAssets = _otherAssets.where((item) => item.id != id).toList();
-        return _otherAssets.length != before;
-      case 'liability':
-        final before = _liabilities.length;
-        _liabilities = _liabilities.where((item) => item.id != id).toList();
-        return _liabilities.length != before;
-      default:
-        return false;
-    }
+    return _assetsState.optimisticDeleteAsset(
+      type: type,
+      id: id,
+      notify: false,
+    );
   }
 
   bool _optimisticUpdateAsset({
@@ -2413,34 +1299,14 @@ class AppState extends ChangeNotifier {
     required double amount,
     String? curr,
   }) {
-    final normalizedCurr = _normalizeAssetCurrency(curr);
-    bool updated = false;
-    List<Asset> updateList(List<Asset> source) {
-      return source.map((asset) {
-        if (asset.id != id) return asset;
-        updated = true;
-        return Asset(
-          id: asset.id,
-          name: name,
-          amount: amount,
-          curr: normalizedCurr,
-        );
-      }).toList();
-    }
-
-    switch (type) {
-      case 'cash':
-        _cashAssets = updateList(_cashAssets);
-        return updated;
-      case 'other':
-        _otherAssets = updateList(_otherAssets);
-        return updated;
-      case 'liability':
-        _liabilities = updateList(_liabilities);
-        return updated;
-      default:
-        return false;
-    }
+    return _assetsState.optimisticUpdateAsset(
+      type: type,
+      id: id,
+      name: name,
+      amount: amount,
+      curr: curr,
+      notify: false,
+    );
   }
 
   /// 添加资产（现金/其他/负债）
@@ -2476,11 +1342,7 @@ class AppState extends ChangeNotifier {
       _restoreAssetSnapshot(snapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return const AssetActionResult.success();
   }
 
@@ -2517,11 +1379,7 @@ class AppState extends ChangeNotifier {
       }
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return const AssetActionResult.success();
   }
 
@@ -2583,11 +1441,7 @@ class AppState extends ChangeNotifier {
       }
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return const AssetActionResult.success();
   }
 
@@ -2596,17 +1450,15 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   String _normalizeAssetCurrency(String? curr) {
-    final code = (curr ?? '').trim().toUpperCase();
-    if (code == 'USD' || code == 'HKD') return code;
-    return 'CNY';
+    return _assetsState.normalizeAssetCurrency(curr);
   }
 
-  _PortfolioSnapshot _capturePortfolioSnapshot() {
-    return _PortfolioSnapshot(portfolio: List<PortfolioItem>.from(_portfolio));
+  PortfolioSnapshot _capturePortfolioSnapshot() {
+    return _assetsState.capturePortfolioSnapshot();
   }
 
-  void _restorePortfolioSnapshot(_PortfolioSnapshot snapshot) {
-    _portfolio = snapshot.portfolio;
+  void _restorePortfolioSnapshot(PortfolioSnapshot snapshot) {
+    _assetsState.restorePortfolioSnapshot(snapshot, notify: false);
     _recalculatePortfolioTotals();
   }
 
@@ -2617,7 +1469,7 @@ class AppState extends ChangeNotifier {
   }
 
   int _portfolioIndexByCode(String code) {
-    return _portfolio.indexWhere((item) => item.code == code);
+    return _assetsState.portfolioIndexByCode(code);
   }
 
   bool _optimisticAddInvestment({
@@ -2628,25 +1480,15 @@ class AppState extends ChangeNotifier {
     String? curr,
     String? assetType,
   }) {
-    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
-    final next = PortfolioItem(
+    return _assetsState.optimisticAddInvestment(
       code: code,
       name: name,
-      qty: qty,
       price: price,
-      adjustment: 0,
-      curr: normalizedCurr,
-      assetType: (assetType == null || assetType.isEmpty) ? '' : assetType,
+      qty: qty,
+      normalizedCurr: normalizeInvestmentCurrency(code: code, curr: curr),
+      assetType: assetType,
+      notify: false,
     );
-    final index = _portfolioIndexByCode(code);
-    if (index >= 0) {
-      final updated = List<PortfolioItem>.from(_portfolio);
-      updated[index] = next;
-      _portfolio = updated;
-      return true;
-    }
-    _portfolio = [..._portfolio, next];
-    return true;
   }
 
   bool _optimisticBuyInvestment({
@@ -2654,25 +1496,12 @@ class AppState extends ChangeNotifier {
     required double price,
     required double qty,
   }) {
-    final index = _portfolioIndexByCode(code);
-    if (index < 0) return false;
-    final old = _portfolio[index];
-    final newQty = old.qty + qty;
-    if (newQty <= 0) return false;
-    final newPrice = (old.qty * old.price + qty * price) / newQty;
-    final updated = List<PortfolioItem>.from(_portfolio);
-    updated[index] = PortfolioItem(
-      id: old.id,
-      code: old.code,
-      name: old.name,
-      qty: newQty,
-      price: newPrice,
-      adjustment: old.adjustment,
-      curr: old.curr,
-      assetType: old.assetType,
+    return _assetsState.optimisticBuyInvestment(
+      code: code,
+      price: price,
+      qty: qty,
+      notify: false,
     );
-    _portfolio = updated;
-    return true;
   }
 
   bool _optimisticSellInvestment({
@@ -2680,29 +1509,12 @@ class AppState extends ChangeNotifier {
     required double price,
     required double qty,
   }) {
-    final index = _portfolioIndexByCode(code);
-    if (index < 0) return false;
-    final old = _portfolio[index];
-    if (qty > old.qty + 1e-6) return false;
-    final pnl = (price - old.price) * qty;
-    final newQty = old.qty - qty;
-    final updated = List<PortfolioItem>.from(_portfolio);
-    if (newQty < 0.001) {
-      updated.removeAt(index);
-    } else {
-      updated[index] = PortfolioItem(
-        id: old.id,
-        code: old.code,
-        name: old.name,
-        qty: newQty,
-        price: old.price,
-        adjustment: old.adjustment + pnl,
-        curr: old.curr,
-        assetType: old.assetType,
-      );
-    }
-    _portfolio = updated;
-    return true;
+    return _assetsState.optimisticSellInvestment(
+      code: code,
+      price: price,
+      qty: qty,
+      notify: false,
+    );
   }
 
   bool _optimisticModifyInvestment({
@@ -2711,50 +1523,36 @@ class AppState extends ChangeNotifier {
     required double price,
     required double adjustment,
   }) {
-    final index = _portfolioIndexByCode(code);
-    if (index < 0) return false;
-    final old = _portfolio[index];
-    final updated = List<PortfolioItem>.from(_portfolio);
-    updated[index] = PortfolioItem(
-      id: old.id,
-      code: old.code,
-      name: old.name,
+    return _assetsState.optimisticModifyInvestment(
+      code: code,
       qty: qty,
       price: price,
       adjustment: adjustment,
-      curr: old.curr,
-      assetType: old.assetType,
+      notify: false,
     );
-    _portfolio = updated;
-    return true;
   }
 
   bool _optimisticDeleteInvestment({required String code}) {
-    final before = _portfolio.length;
-    _portfolio = _portfolio.where((item) => item.code != code).toList();
-    return _portfolio.length != before;
+    return _assetsState.optimisticDeleteInvestment(code: code, notify: false);
   }
 
   bool _optimisticAdjustCashAssetAmount({
     required int cashAssetId,
     required double deltaAmount,
   }) {
-    bool updated = false;
-    _cashAssets = _cashAssets.map((asset) {
-      if (asset.id != cashAssetId) return asset;
-      final nextAmount = asset.amount + deltaAmount;
-      if (nextAmount < -1e-6) {
-        return asset;
-      }
-      updated = true;
-      return Asset(
-        id: asset.id,
-        name: asset.name,
-        amount: nextAmount < 0 ? 0 : nextAmount,
-        curr: asset.curr,
-      );
-    }).toList();
-    return updated;
+    return _assetsState.optimisticAdjustCashAssetAmount(
+      cashAssetId: cashAssetId,
+      deltaAmount: deltaAmount,
+      notify: false,
+    );
+  }
+
+  Future<void> _triggerHomeRefresh({required bool awaitRefresh}) async {
+    if (awaitRefresh) {
+      await refreshHomeData();
+    } else {
+      unawaited(refreshHomeData());
+    }
   }
 
   double _convertAmountByCurrency({
@@ -2762,25 +1560,16 @@ class AppState extends ChangeNotifier {
     required String fromCurr,
     required String toCurr,
   }) {
-    final fromRate = _rateForCurrency(fromCurr);
-    final toRate = _rateForCurrency(toCurr);
-    if (toRate <= 0) return amount * fromRate;
-    return amount * fromRate / toRate;
+    return _tradeState.convertAmountByCurrency(
+      amount: amount,
+      fromCurr: fromCurr,
+      toCurr: toCurr,
+      rateForCurrency: _rateForCurrency,
+    );
   }
 
   AssetActionResult _extractUndoInfo(AssetActionResult result) {
-    if (!result.ok) return result;
-    final data = result.data;
-    if (data == null) return result;
-    final token = data['undo_token']?.toString();
-    final expire = data['undo_expire_at']?.toString();
-    if (token == null || token.isEmpty || expire == null || expire.isEmpty) {
-      return result;
-    }
-    return AssetActionResult(
-      ok: true,
-      data: {...data, 'undo_token': token, 'undo_expire_at': expire},
-    );
+    return _tradeState.extractUndoInfo(result);
   }
 
   Future<AssetActionResult> _legacyBuyWithCashFallback({
@@ -2791,33 +1580,14 @@ class AppState extends ChangeNotifier {
     required Asset cashAsset,
     required double cashDeductAmount,
   }) async {
-    final buyResult = await _api.buyPortfolioAsset(code, price, qty);
-    if (!buyResult.ok) return buyResult;
-
-    final cashId = cashAsset.id;
-    if (cashId == null || cashId <= 0) {
-      // 尽力回滚买入，避免现金未扣减造成数据偏差。
-      await _api.sellPortfolioAsset(code, price, qty);
-      return const AssetActionResult.failure('现金账户无效，请稍后重试');
-    }
-
-    final updateResult = await _api.updateCashAsset(
-      cashId,
-      cashAsset.name,
-      cashAsset.amount - cashDeductAmount,
-      curr: cashAsset.curr,
+    return _tradeState.legacyBuyWithCashFallback(
+      code: code,
+      name: name,
+      price: price,
+      qty: qty,
+      cashAsset: cashAsset,
+      cashDeductAmount: cashDeductAmount,
     );
-    if (updateResult.ok) {
-      return const AssetActionResult.success(
-        data: {'code': 'LEGACY_BUY_WITH_CASH'},
-      );
-    }
-
-    final rollbackSell = await _api.sellPortfolioAsset(code, price, qty);
-    if (!rollbackSell.ok) {
-      return const AssetActionResult.failure('现金扣减失败，且买入回滚失败，请手动核对账户和持仓');
-    }
-    return AssetActionResult.failure(updateResult.message ?? '现金扣减失败，已回滚买入');
   }
 
   Future<AssetActionResult> _legacySellToCashFallback({
@@ -2827,38 +1597,13 @@ class AppState extends ChangeNotifier {
     required Asset cashAsset,
     required double cashCreditAmount,
   }) async {
-    final cashId = cashAsset.id;
-    if (cashId == null || cashId <= 0) {
-      return const AssetActionResult.failure('现金账户无效，请稍后重试');
-    }
-
-    final updateCashResult = await _api.updateCashAsset(
-      cashId,
-      cashAsset.name,
-      cashAsset.amount + cashCreditAmount,
-      curr: cashAsset.curr,
+    return _tradeState.legacySellToCashFallback(
+      code: code,
+      price: price,
+      qty: qty,
+      cashAsset: cashAsset,
+      cashCreditAmount: cashCreditAmount,
     );
-    if (!updateCashResult.ok) {
-      return updateCashResult;
-    }
-
-    final sellResult = await _api.sellPortfolioAsset(code, price, qty);
-    if (sellResult.ok) {
-      return const AssetActionResult.success(
-        data: {'code': 'LEGACY_SELL_TO_CASH'},
-      );
-    }
-
-    final rollbackCash = await _api.updateCashAsset(
-      cashId,
-      cashAsset.name,
-      cashAsset.amount,
-      curr: cashAsset.curr,
-    );
-    if (!rollbackCash.ok) {
-      return const AssetActionResult.failure('卖出失败，且回款回滚失败，请手动核对现金账户');
-    }
-    return sellResult;
   }
 
   /// 搜索股票/基金
@@ -3042,22 +1787,14 @@ class AppState extends ChangeNotifier {
           _restorePortfolioSnapshot(portfolioSnapshot);
           return fallbackResult;
         }
-        if (awaitRefresh) {
-          await refreshHomeData();
-        } else {
-          unawaited(refreshHomeData());
-        }
+        await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
         return fallbackResult;
       }
       _restoreAssetSnapshot(assetSnapshot);
       _restorePortfolioSnapshot(portfolioSnapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return _extractUndoInfo(result);
   }
 
@@ -3157,11 +1894,7 @@ class AppState extends ChangeNotifier {
           _restorePortfolioSnapshot(portfolioSnapshot);
           return fallbackResult;
         }
-        if (awaitRefresh) {
-          await refreshHomeData();
-        } else {
-          unawaited(refreshHomeData());
-        }
+        await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
         return fallbackResult;
       }
       _restoreAssetSnapshot(assetSnapshot);
@@ -3169,11 +1902,7 @@ class AppState extends ChangeNotifier {
       return result;
     }
 
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return _extractUndoInfo(result);
   }
 
@@ -3204,11 +1933,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(snapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return _extractUndoInfo(result);
   }
 
@@ -3241,11 +1966,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(snapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return _extractUndoInfo(result);
   }
 
@@ -3283,11 +2004,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(snapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return _extractUndoInfo(result);
   }
 
@@ -3300,7 +2017,7 @@ class AppState extends ChangeNotifier {
     if (!result.ok) {
       return result;
     }
-    unawaited(refreshHomeData());
+    unawaited(_triggerHomeRefresh(awaitRefresh: false));
     return result;
   }
 
@@ -3326,11 +2043,7 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(snapshot);
       return result;
     }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
+    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
     return const AssetActionResult.success();
   }
 
@@ -3340,101 +2053,7 @@ class AppState extends ChangeNotifier {
 
   /// 计算历史统计数据
   void _calculateHistoryStats(List<dynamic> history) {
-    _overviewMilestonesReady = false;
-    if (history.isEmpty) {
-      _monthChange = 0;
-      _yearChange = 0;
-      _historyPeak = 0;
-      _hasMonthBaseline = false;
-      _hasYearBaseline = false;
-      _monthFromFirst = false;
-      _yearFromFirst = false;
-      return;
-    }
-
-    final now = DateTime.now();
-
-    double? monthStart;
-    double? yearStart;
-    double peak = 0;
-    double? firstNonZero;
-    String? firstNonZeroDate;
-
-    // 按日期排序
-    final sortedHistory = List<Map<String, dynamic>>.from(
-      history.map((e) => e as Map<String, dynamic>),
-    );
-    sortedHistory.sort((a, b) => a['date'].compareTo(b['date']));
-
-    final latestSnapshotAsset = sortedHistory.last['total_asset'] as num;
-    final currentSnapshot = latestSnapshotAsset.toDouble();
-    debugPrint(
-      '历史数据计算: 当前日期=${now.toString().substring(0, 10)}, 快照总资产=$currentSnapshot',
-    );
-    debugPrint('历史数据条数: ${sortedHistory.length}');
-    if (sortedHistory.isNotEmpty) {
-      debugPrint(
-        '最早记录: ${sortedHistory.first['date']}, 资产=${sortedHistory.first['total_asset']}',
-      );
-      debugPrint(
-        '最新记录: ${sortedHistory.last['date']}, 资产=${sortedHistory.last['total_asset']}',
-      );
-    }
-
-    for (var item in sortedHistory) {
-      final date = DateTime.parse(item['date']);
-      final totalAsset = (item['total_asset'] as num).toDouble();
-
-      // 历史峰值
-      if (totalAsset > peak) peak = totalAsset;
-
-      if (totalAsset != 0 && firstNonZero == null) {
-        firstNonZero = totalAsset;
-        firstNonZeroDate = item['date'];
-      }
-
-      // 本月初数据（找到本月第一条记录）
-      if (date.year == now.year &&
-          date.month == now.month &&
-          monthStart == null &&
-          totalAsset != 0) {
-        monthStart = totalAsset;
-        debugPrint('找到本月数据: ${item['date']}, 资产=$totalAsset');
-      }
-
-      // 今年初数据（找到今年第一条记录）
-      if (date.year == now.year && yearStart == null && totalAsset != 0) {
-        yearStart = totalAsset;
-        debugPrint('找到今年数据: ${item['date']}, 资产=$totalAsset');
-      }
-    }
-
-    // 如果没有本月/今年数据，使用首次记账作为起点（新用户友好）
-    if (monthStart == null && firstNonZero != null) {
-      monthStart = firstNonZero;
-      _monthFromFirst = true;
-      debugPrint('使用首次记账作为本月起点: $firstNonZeroDate, 资产=$monthStart');
-    } else {
-      _monthFromFirst = false;
-    }
-
-    if (yearStart == null && firstNonZero != null) {
-      yearStart = firstNonZero;
-      _yearFromFirst = true;
-      debugPrint('使用首次记账作为今年起点: $firstNonZeroDate, 资产=$yearStart');
-    } else {
-      _yearFromFirst = false;
-    }
-
-    _historyPeak = peak;
-    _hasMonthBaseline = monthStart != null;
-    _hasYearBaseline = yearStart != null;
-    _monthChange = monthStart != null ? currentSnapshot - monthStart : 0;
-    _yearChange = yearStart != null ? currentSnapshot - yearStart : 0;
-
-    debugPrint(
-      '计算结果: 本月变动=$_monthChange (基准=$monthStart), 今年变动=$_yearChange (基准=$yearStart)',
-    );
+    _overviewState.calculateHistoryStats(history, notify: false);
   }
 
   // ============================================================
@@ -3443,42 +2062,12 @@ class AppState extends ChangeNotifier {
 
   /// 刷新投资组合
   Future<void> refreshPortfolio() async {
-    try {
-      final data = await _api.getPortfolio();
-      _portfolio = (data).map((e) => PortfolioItem.fromJson(e)).toList();
-
-      if (_portfolio.isNotEmpty) {
-        final codes = _portfolio.map((e) => e.code).toList();
-        final pricesData = await _api.getPricesBatch(codes);
-        _prices = pricesData.map(
-          (key, value) => MapEntry(key, PriceInfo.fromJson(value)),
-        );
-      }
-
-      _totalInvest = investTotalMV;
-      _portfolioLoaded = true;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('刷新投资组合失败: $e');
-    }
+    await _refreshState.refreshPortfolio(bindings: _refreshBindings);
   }
 
   /// 加载汇率
   Future<void> loadExchangeRates() async {
-    try {
-      final rates = await _api.getExchangeRates();
-      updateExchangeRates(rates);
-      await _saveDomainEnvelope(
-        'exchange_rates',
-        data: <String, dynamic>{'rates': _exchangeRates},
-        version: _syncVersions['rates'],
-        staleAfter: _ratesDataTtl,
-      );
-      _assetDataFromCache = false;
-      _lastAssetDataUpdatedAt = DateTime.now();
-    } catch (e) {
-      debugPrint('加载汇率失败: $e');
-    }
+    await _refreshState.loadExchangeRates(bindings: _refreshBindings);
   }
 
   /// 获取盈亏颜色
@@ -3490,14 +2079,14 @@ class AppState extends ChangeNotifier {
 
   /// 格式化盈亏
   String formatPnl(double value) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final sign = value >= 0 ? '+' : '';
     return '$sign${value.toStringAsFixed(2)}';
   }
 
   /// 格式化盈亏（整数）
   String formatPnlInt(double value) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
     final text = absVal
@@ -3511,7 +2100,7 @@ class AppState extends ChangeNotifier {
 
   /// 格式化盈亏（整数 + 币种）
   String formatPnlIntWithCurrency(double value, String symbol) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
     final text = absVal
@@ -3529,7 +2118,7 @@ class AppState extends ChangeNotifier {
     String prefix = '',
     int decimals = 1,
   }) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final absVal = value.abs();
     if (absVal >= 100000000) {
       return '$prefix${(absVal / 100000000).toStringAsFixed(decimals)}亿';
@@ -3552,7 +2141,7 @@ class AppState extends ChangeNotifier {
     String symbol, {
     int decimals = 1,
   }) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
     if (absVal >= 100000000) {
@@ -3572,7 +2161,7 @@ class AppState extends ChangeNotifier {
 
   /// 格式化盈亏（人民币，紧凑：万/亿，整数）
   String formatCompactPnlCny(double value) {
-    if (_amountHidden) return '****';
+    if (amountHidden) return '****';
     final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
     final absVal = value.abs();
     if (absVal >= 100000000) {
@@ -3595,22 +2184,4 @@ class AppState extends ChangeNotifier {
     final sign = value >= 0 ? '+' : '';
     return '$sign${value.toStringAsFixed(2)}%';
   }
-}
-
-class _AssetSnapshot {
-  final List<Asset> cashAssets;
-  final List<Asset> otherAssets;
-  final List<Asset> liabilities;
-
-  const _AssetSnapshot({
-    required this.cashAssets,
-    required this.otherAssets,
-    required this.liabilities,
-  });
-}
-
-class _PortfolioSnapshot {
-  final List<PortfolioItem> portfolio;
-
-  const _PortfolioSnapshot({required this.portfolio});
 }
