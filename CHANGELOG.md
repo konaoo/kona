@@ -1,3 +1,269 @@
+## 2026-03-14-13
+
+### 这版一句话
+
+后端把 `core/db.py` 那坨“数据库 + 业务口径 + 运维辅助”继续拆细了：对外 `DatabaseManager` 入口不变，但内部按职责拆成一组 `db_*.py` mixin，后面查持仓/快照/分析/后台状态会更好定位。
+
+### 主要变化
+- `kona_tool/core/db.py` 从超大文件拆成 `db_users / db_admin_state / db_asset_accounts / db_portfolio / db_snapshots / db_analysis / db_maintenance` 七个 mixin 文件，`DatabaseManager` 继续作为唯一对外入口。
+- 补了单测兼容：日历相关测试动态加载 `db.py` 时，显式把模块注册到 `sys.modules['core.db']`，确保 `datetime` 和“休市判断”这类 patch 仍然能穿透到拆分后的分析逻辑里。
+- 管理后台的行情 provider test 单测不再误触网：只测“包含基金 case”这一条规则，避免因 DNS/外网环境导致假失败。
+
+### 影响范围
+- 后端数据库层（`DatabaseManager` 内部实现）
+- 分析页收益日历 / 概览取数（测试覆盖）
+- 管理后台行情巡检（测试覆盖）
+
+### 验收重点
+- 后端 `python -m unittest discover -s kona_tool/tests -p "test_*.py" -v` 是否继续全绿。
+- 线上不应有行为变化：接口字段与对外方法名都保持不变，只是内部拆文件。
+
+## 2026-03-14-12
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里最容易缠成一团的“刷新编排层”单独收了一层：冷启动缓存恢复、首页刷新、增量同步、价格后台补刷和汇率刷新现在有了专门落点，后面查首页不同步、行情没补上、缓存没写回这种问题会顺很多。
+
+### 主要变化
+- 新增 [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)，先承接 `hydrateFromCache / saveHomeCache / refreshHomeData / refreshByVersion / refreshAll / refreshPortfolio / refreshPricesOnly / loadExchangeRates` 这条刷新编排链。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成继续保留原对外方法名，但内部把刷新流程委托给 `AppRefreshState`，总状态层主要只保留依赖组装和页面兼容门面。
+- 新增 Flutter 刷新状态测试，锁住“缓存恢复”和“缓存落盘 + sync version 落盘”这两条基础行为，并同步更新 Flutter 状态结构文档。
+
+### 影响范围
+- Flutter 全局状态层
+- 冷启动缓存恢复
+- 首页刷新 / 增量同步 / 行情后台补刷
+- 缓存写回与 sync version 写回
+
+### 验收重点
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+- 冷启动首页、下拉刷新、行情补刷和交易后首页回刷是否继续正常。
+
+## 2026-03-14-11
+
+### 这版一句话
+
+Flutter 又把交易这层里最零碎的辅助逻辑收了一下：金额换算、undo 信息和老接口兜底不再散在 `AppState` 里，交易链路查起来会更顺。
+
+### 主要变化
+- 新增 [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart)，先承接交易金额换算、undo 信息提取和老接口买卖兜底流程。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成把这些交易 helper 委托给 `AppTradeState`，并补了统一的写操作后首页刷新入口，减少重复分支。
+- 新增 Flutter 交易辅助测试，锁住金额换算、undo 信息提取和无效现金账户兜底提示。
+- 同步更新 Flutter 状态结构文档，明确现在交易链路已经拆成“资产本体 / 交易辅助 / 编排入口”三层理解。
+
+### 影响范围
+- Flutter 全局状态层
+- 买入 / 卖出交易辅助逻辑
+- 老接口交易兜底
+- 写操作后首页刷新收口
+
+### 验收重点
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+- 买入、卖出、老接口兜底和交易后首页刷新是否继续正常。
+
+## 2026-03-14-10
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里“历史概览 / 分析辅助”这层收出来了：月变动、年变动、历史峰值和概览覆盖现在有了独立状态，后面查首页大卡和分析概览问题会更直接。
+
+### 主要变化
+- 新增 [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)，先承接历史统计计算、`monthChange / yearChange / historyPeak`、baseline 状态和 overview milestone 覆盖。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成组合 `AppOverviewState`，对外继续保留 `applyOverviewMilestones` 等原入口，但内部不再自己独占概览状态本体和历史统计规则。
+- 新增 Flutter 概览子状态测试，锁住 `overview` 覆盖和首次记账兜底这两条基础规则。
+- 同步更新 Flutter 状态结构文档，明确现在 `AppState` 在概览层主要保留首页刷新、缓存恢复和分析接口编排。
+
+### 影响范围
+- Flutter 全局状态层
+- 首页大卡历史概览
+- 分析页概览覆盖
+- 历史峰值与 baseline 计算
+
+### 验收重点
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+- 首页月变动、年变动、历史峰值和分析概览覆盖是否继续正常。
+
+## 2026-03-14-09
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里最重的一坨往外收了一层：资产列表、持仓列表、快照恢复和乐观更新先拆成了独立资产状态，后面查交易和总额联动问题会顺手很多。
+
+### 主要变化
+- 新增 [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)，先承接现金/其他/负债列表、持仓列表、资产快照/持仓快照恢复、乐观增删改和资产币种规范化。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成组合 `AppAssetsState`，对外继续保留原有 `addAsset / buyInvestment / sellInvestment / modifyInvestment` 这些入口，但内部不再自己独占资产列表本体和乐观更新细节。
+- 新增 Flutter 资产子状态测试，锁住非投资资产乐观更新和持仓买卖/调整/快照恢复这两条基础行为。
+- 同步更新 Flutter 状态结构文档，明确现在 `AppState` 在资产层主要保留接口调用、金额换算、总额重算和刷新编排。
+
+### 影响范围
+- Flutter 全局状态层
+- 非投资资产操作
+- 投资持仓乐观更新与快照恢复
+- 总资产联动重算
+
+### 验收重点
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+- 买入、卖出、修改、删除、现金联动和总额重算是否继续正常。
+
+## 2026-03-14-08
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里“假拆分”的那层缓存中转清掉了：`AppSyncState` 不只是挂名模块，现在已经真接住缓存规则和同步判断，后面查缓存 / 同步问题会更直接。
+
+### 主要变化
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 删除了一批只是转手调用 `_syncState` 的 helper，像用户资料缓存、domain envelope、sync version、报价策略和静态同步跳过判断都不再继续留在总状态里当中转层。
+- [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart) 补上报价刷新策略解析和静态同步跳过判断，缓存 / 同步这层的纯规则能力进一步收口。
+- 新增同步状态测试，锁住 `quote policy` 和 `canSkipStaticSyncCheck` 这两条规则，避免后面又把判断散回 `AppState`。
+- 同步更新 Flutter 状态结构文档，明确现在缓存 / 同步这一层的职责已经从“挂名拆出”变成了“真实收口”。
+
+### 影响范围
+- Flutter 全局状态层
+- 启动缓存恢复与增量同步
+- 行情刷新策略与缓存元信息判断
+
+### 验收重点
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+- 冷启动缓存恢复、增量同步、行情轮询节奏是否继续正常。
+
+## 2026-03-14-07
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里最黏的一层往外抠了一块：缓存规则、sync 版本和缓存元信息先收成了独立状态模块，后面查缓存和启动恢复问题会顺手很多。
+
+### 主要变化
+- 新增 [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart)，先承接用户缓存作用域、cache envelope 读写、sync 版本缓存、缓存命中标记和行情刷新间隔策略状态。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成把缓存辅助方法和同步元信息更多地委托给 `AppSyncState`，但 `hydrateFromCache / refreshByVersion / refreshAll` 这些对外入口和编排逻辑继续保留原位置。
+- 新增 Flutter 同步状态测试，锁住缓存 key 规则、用户资料缓存恢复和 domain envelope 写入行为。
+- 同步更新 Flutter 状态结构文档，明确现在已经拆出的 5 块子状态边界。
+
+### 影响范围
+- Flutter 全局状态层
+- 启动缓存恢复
+- sync 版本缓存与缓存作用域规则
+- 用户资料缓存读写
+
+### 验收重点
+- 冷启动缓存恢复、登录态恢复、登出后缓存清理是否继续正常。
+- `flutter test` 是否继续全绿。
+- `flutter analyze` 是否没有新增告警噪音。
+
+## 2026-03-14-06
+
+### 这版一句话
+
+Flutter 又把 `AppState` 里一大块纯规则状态收出来了：汇率、市场开闭市和交易日判断不再继续混在总状态文件里。
+
+### 主要变化
+- 新增 [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)，先承接汇率换算、市场状态解析、交易日判断和市场状态缓存序列化。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成组合 `AppMarketState`，首页、投资页、分析页继续沿用原有 `getCurrencyRate / convertToCny / isMarketOpen` 这些入口。
+- 行情价格刷新和价格快照编排还暂时留在 `AppState`，先只拆纯状态和规则判断，避免一口气把报价链路拆散。
+- 新增市场子状态测试，并同步补充 Flutter 状态结构文档。
+
+### 影响范围
+- Flutter 全局状态层
+- 汇率换算、市场开闭市、交易日判断
+- 行情缓存恢复与市场状态缓存写回
+
+### 验收重点
+- 首页市场开市状态、投资页当日盈亏启用条件、汇率折算是否继续正常。
+- `flutter test` 全量和市场相关测试是否继续通过。
+- `flutter analyze` 是否没有新增告警噪音。
+
+## 2026-03-14-05
+
+### 这版一句话
+
+Flutter 又给 `AppState` 动了第二刀：认证和会话恢复相关的内存状态也先拆出去了，登录链路继续保留原入口，但内部边界比之前清楚一层。
+
+### 主要变化
+- 新增 [app_auth_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_auth_state.dart)，先承接登录态、token、用户资料、启动恢复状态和认证错误文案。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成同时组合 `AppAuthState / AppPreferencesState / AppSecurityState`，页面层和现有测试继续沿用原 getter、原方法名。
+- 启动恢复、静默 refresh、登出、生物识别登录这些流程还先留在 `AppState` 编排，但底层认证状态更新已经统一收口到 `AppAuthState`。
+- 新增 Flutter 认证子状态测试，并补更新结构文档，避免后面继续把认证细节散回总状态文件。
+
+### 影响范围
+- Flutter 全局状态层
+- 登录、登出、启动恢复、生物识别登录链路
+- Flutter 认证相关测试与结构文档
+
+### 验收重点
+- 用户名密码登录、邀请码注册、启动恢复、登出是否继续正常。
+- 生物识别保留 refresh token 的退出逻辑是否继续正常。
+- `flutter test` 和 `flutter analyze` 是否没有新增阻塞错误。
+
+## 2026-03-14-04
+
+### 这版一句话
+
+Flutter 先对 `AppState` 下了第一刀：UI 偏好和生物识别 / 锁屏不再继续死塞在一个 3000 多行总控类里，先拆成了两个独立状态模块。
+
+### 主要变化
+- 新增 [app_preferences_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_preferences_state.dart)，先承接主题、金额隐藏和显示币种。
+- 新增 [app_security_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_security_state.dart)，先承接生物识别开关、锁屏状态和生物识别登录流程。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 改成组合这两个子状态，对页面继续保留原 getter 和方法名，避免一口气改爆页面层。
+- 补了 Flutter 状态层测试，锁住 UI 偏好和生物识别模块的基础行为。
+
+### 影响范围
+- Flutter 全局状态层
+- 登录态 / 生物识别 / 锁屏链路
+- Flutter 主题与金额显示偏好
+
+### 验收重点
+- 主题切换、金额隐藏、显示币种切换是否继续正常。
+- 生物识别开关、锁屏解锁和生物识别登录是否继续正常。
+- Flutter 相关测试和分析是否继续通过。
+
+## 2026-03-14-03
+
+### 这版一句话
+
+把 Web 的遗留壳和测试目录边界正式钉死了：`Legacy` 层不再继续长新职责，正式测试和调试脚本也彻底分家。
+
+### 主要变化
+- Web 文档和代码里明确补上 `LegacyAppShell / LegacyAdminShell / legacy.css` 的冻结规则，这层现在只保稳定，不再承接新布局、新状态和新样式职责。
+- `web/tests` 重新分成 `unit / e2e / debug` 三层，正式单元测试、正式页面验收和临时排障脚本不再混在一个目录里。
+- 新增 `web/tests/README.md` 和 `web/vitest.config.ts`，把 Web 测试入口、目录分工和执行方式写清楚。
+- Web 脚本入口收口成 `npm run test / test:e2e / test:e2e:debug`，并让前端 CI 门禁先跑 `npm run test` 再构建。
+
+### 影响范围
+- Web 遗留布局层
+- Web 测试目录结构
+- Web 本地测试命令与前端 CI 门禁
+
+### 验收重点
+- 后续新增页面和状态逻辑时，是否还能明确避开 `Legacy` 层。
+- `npm run test` 是否只跑正式单元测试，不再把 Playwright 调试脚本一起卷进去。
+- `npm run build` 和前端 GitHub Actions 是否继续正常。
+
+## 2026-03-14-02
+
+### 这版一句话
+
+先把仓库卫生和 CI 守门补硬了一层：构建产物、本地数据库和缓存不该再混进 Git，重要工程改动如果没写版本记录也会被自动拦下来。
+
+### 主要变化
+- 仓库根 `.gitignore` 补上了 Web / Flutter 构建产物、测试结果、缓存目录和生成报告的忽略规则，减少生成物回流主仓库。
+- 新增 `scripts/ci/check_repo_hygiene.sh`，专门检查构建产物、缓存目录和本地数据库有没有被 Git 跟踪。
+- 新增 `scripts/ci/check_changelog_guard.sh`，重要工程或业务改动如果没同步更新 `CHANGELOG.md`，GitHub Actions 会直接拦下。
+- 部署工作流新增 `Repo Guard` 前置门禁，先过仓库卫生和版本记录检查，再继续跑后端和前端构建测试。
+
+### 影响范围
+- 仓库提交流程
+- GitHub Actions 门禁
+- 本地构建产物与缓存管理
+
+### 验收重点
+- `git status` 不再被构建产物、缓存目录和本地数据库反复污染。
+- 提交重要工程改动但没补 `CHANGELOG.md` 时，CI 是否会明确报错拦下。
+- 现有后端 / Flutter / Web 的基础构建与测试流程是否不受影响。
+
 ## 2026-03-14-01
 
 ### 这版一句话
