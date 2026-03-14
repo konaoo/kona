@@ -42,6 +42,13 @@ core/
 ├─ admin/               # 管理后台相关规则
 ├─ asset_type.py        # 资产类型判断
 ├─ auth.py              # 认证相关
+├─ db_admin_state.py    # refresh token / 邀请码 / 后台审计 / 接口策略 / 运行时配置 / 巡检报表
+├─ db_asset_accounts.py # 交易记录 / 现金资产 / 其他资产 / 负债 CRUD
+├─ db_portfolio.py      # 持仓 / 交易 / 已实现盈亏 / 组合兼容迁移
+├─ db_snapshots.py      # 快照写入 / 历史曲线 / sync 版本号
+├─ db_analysis.py       # 分析概览 / 收益日历 / 排行
+├─ db_maintenance.py    # 休市日清理 / 快照修复
+├─ db_users.py          # 用户查询 / 登录活跃打点 / 密码初始化 / 用户表兼容迁移 / 数据重绑
 ├─ db.py                # 数据库访问与大量业务口径
 ├─ email.py             # 邮件相关
 ├─ fund.py              # 基金取价
@@ -113,6 +120,11 @@ core/
 最重的一份文件是：
 
 - [db.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db.py)
+- [db_asset_accounts.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_asset_accounts.py)
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)
+- [db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py)
+- [db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py)
+- [db_maintenance.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_maintenance.py)
 
 它不只是“数据库工具”，而是当前后端的大型数据中心。
 
@@ -125,6 +137,39 @@ core/
 - 分析数据查询
 - 收益统计
 - 后台巡检结果存储
+
+这轮已经先把“交易记录 + 资产账户 CRUD”从 `db.py` 里抽成：
+
+- [db_asset_accounts.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_asset_accounts.py)
+
+这轮也把“持仓交易 + 已实现盈亏”从 `db.py` 里抽成：
+
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)
+
+这轮还把“快照写入 + 历史曲线 + sync 版本号”从 `db.py` 里抽成：
+
+- [db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py)
+
+这轮还把“分析概览 / 收益日历 / 排行”从 `db.py` 里抽成：
+
+- [db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py)
+
+这轮还把“休市日清理 / 快照修复”从 `db.py` 里抽成：
+
+- [db_maintenance.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_maintenance.py)
+
+这轮也继续把“后台状态与认证辅助”从 `db.py` 里抽成：
+
+- [db_admin_state.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_admin_state.py)
+
+这轮还把“用户与登录状态”从 `db.py` 里抽成：
+
+- [db_users.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_users.py)
+
+也就是：
+
+- `db.py` 继续当数据库主入口
+- 但资产账户细节、持仓交易、快照写入、分析查询、清理修复、邀请码、refresh token、后台审计日志、接口策略、运行时配置、用户登录状态、用户表兼容迁移这些，不再继续全塞在一个超大文件里
 
 一句大白话：
 

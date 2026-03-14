@@ -156,6 +156,24 @@ kona_tool/
 - 任务逻辑
 - 管理后台逻辑
 
+这轮已经先往前走了一小步：
+
+- `core/db_asset_accounts.py`
+- `core/db_admin_state.py`
+- `core/db_users.py`
+- `core/db_portfolio.py`
+- `core/db_snapshots.py`
+- `core/db_analysis.py`
+- `core/db_maintenance.py`
+
+它把持仓交易、快照、分析、清理这些职责从 `core/db.py` 里抽了出来。
+
+说人话就是：
+
+- `db.py` 还在
+- `DatabaseManager` 对外方法名也没变
+- 但资产账户、持仓交易、快照写入、分析查询、清理修复、邀请码 / refresh token / 后台审计日志 / 后台接口策略 / 运营配置 / 巡检报表 / 用户登录状态 / 用户表兼容迁移这些能力，不再继续和分析查询全挤在一个文件里
+
 ### 6.3 数据文件和源码要分开认知
 
 当前目录里有：

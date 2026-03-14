@@ -1,0 +1,851 @@
+"""
+分析页概览、收益日历与排行数据库能力。
+
+这一层只做：
+- 分析页概览（pnl overview）
+- 收益日历
+- 分市场收益日历
+- 盈亏排行
+"""
+import logging
+import sys
+from datetime import datetime, timedelta
+import datetime as dt
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from .market_calendar import all_markets_closed, is_markets_closed_on_date
+except ImportError:  # 兼容被单文件动态加载的测试场景
+    from core.market_calendar import all_markets_closed, is_markets_closed_on_date
+
+logger = logging.getLogger(__name__)
+DEFAULT_MARKETS = ("a", "hk", "us", "fund")
+MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
+
+
+def _is_weekend_date(date_str: str) -> bool:
+    try:
+        return dt.datetime.strptime(date_str, "%Y-%m-%d").weekday() >= 5
+    except Exception:
+        return False
+
+
+def _is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MARKETS) -> bool:
+    try:
+        return is_markets_closed_on_date(markets, date_str)
+    except Exception:
+        return _is_weekend_date(date_str)
+
+
+def _get_db_module():
+    """
+    获取 db.py 对应的模块对象，用于测试里 patch datetime / 休市判断时仍可生效。
+
+    典型情况：
+    - 线上/正常运行：模块名是 core.db 或 kona_tool.core.db
+    - 单测里动态加载 core/db.py：模块名可能是 db_module（见 test_calendar_weekend.py）
+    """
+    direct = sys.modules.get("core.db") or sys.modules.get("kona_tool.core.db")
+    if direct is not None:
+        return direct
+
+    # 兜底：寻找“文件路径指向 core/db.py”的模块（兼容动态加载的模块名）。
+    for mod in list(sys.modules.values()):
+        if mod is None:
+            continue
+        path = getattr(mod, "__file__", "") or ""
+        normalized = str(path).replace("\\", "/")
+        if normalized.endswith("/core/db.py") or normalized.endswith("/kona_tool/core/db.py"):
+            return mod
+    return None
+
+
+def _get_datetime_now() -> datetime:
+    db_module = _get_db_module()
+    if db_module is not None:
+        dt_ref = getattr(db_module, "datetime", None)
+        if dt_ref is not None and hasattr(dt_ref, "now"):
+            try:
+                return dt_ref.now()
+            except Exception:
+                pass
+    return datetime.now()
+
+
+def _get_is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MARKETS) -> bool:
+    db_module = _get_db_module()
+    override = getattr(db_module, "_is_market_closed_date", None) if db_module else None
+    if override is not None and override is not _is_market_closed_date:
+        try:
+            return override(date_str, markets)
+        except TypeError:
+            return override(date_str)
+        except Exception:
+            pass
+    return _is_market_closed_date(date_str, markets)
+
+
+def _is_market_closed_at_snapshot_time(
+    updated_at: Any, markets: Tuple[str, ...] = DEFAULT_MARKETS
+) -> bool:
+    """
+    判断快照写入时刻是否处于全市场休市。
+    用于避免在非交易时段快照里用 total_pnl 反推 day_pnl。
+    """
+    if not updated_at:
+        return False
+    try:
+        raw = str(updated_at).strip()
+        if not raw:
+            return False
+        snapshot_time = dt.datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=dt.timezone.utc
+        )
+        return all_markets_closed(markets, now=snapshot_time)
+    except Exception:
+        return False
+
+
+def _is_snapshot_updated_on_same_date(date_str: Any, updated_at: Any) -> bool:
+    """
+    仅当 updated_at 与快照日期同日时，才认为它可用于快照写入时刻判断。
+    避免后续运维操作改写 updated_at 导致历史交易日被误判为休市时写入。
+    """
+    if not date_str or not updated_at:
+        return False
+    try:
+        d = str(date_str).strip()[:10]
+        ts = str(updated_at).strip()[:10]
+        if not d or not ts:
+            return False
+        return d == ts
+    except Exception:
+        return False
+
+
+class AnalysisDatabaseMixin:
+    """给 DatabaseManager 提供分析页相关方法。"""
+
+    def get_pnl_overview(self, period: str = "day", user_id: str = None) -> Dict[str, Any]:
+        """
+        获取盈亏概览数据。
+
+        Args:
+            period: day|month|year|all
+            user_id: 用户ID
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            today = _get_datetime_now()
+            today_str = today.strftime("%Y-%m-%d")
+
+            def _normalize_snapshot_rows(rows):
+                normalized = []
+                prev_total = None
+                for row in rows:
+                    date_str = str(row["date"])
+                    is_market_closed = _get_is_market_closed_date(date_str)
+                    closed_at_snapshot = False
+                    if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
+                        closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
+                    pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
+                    if is_market_closed:
+                        pnl = 0.0
+                    elif (
+                        (pnl == 0 or pnl == -0.0)
+                        and (not closed_at_snapshot)
+                        and row["total_pnl"] is not None
+                        and prev_total is not None
+                    ):
+                        pnl = float(row["total_pnl"]) - prev_total
+                    if (not is_market_closed) and row["total_pnl"] is not None:
+                        prev_total = float(row["total_pnl"])
+                    normalized.append(
+                        {
+                            "date": date_str,
+                            "pnl": round(float(pnl), 2),
+                            "total_invest": float(row["total_invest"] or 0.0),
+                        }
+                    )
+                return normalized
+
+            def _fetch_prev_snapshot(date_str: str):
+                cursor.execute(
+                    f"""
+                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    WHERE date < ? AND {user_condition}
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    (date_str,) + user_param,
+                )
+                return cursor.fetchone()
+
+            if period == "day":
+                cursor.execute(
+                    f"""
+                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    WHERE date = ? AND {user_condition}
+                    LIMIT 1
+                    """,
+                    (today_str,) + user_param,
+                )
+                row = cursor.fetchone()
+                if row:
+                    today_total = float(row["total_pnl"]) if row["total_pnl"] else 0
+                    base = float(row["total_invest"]) if row["total_invest"] else 1
+                    cursor.execute(
+                        f"""
+                        SELECT total_pnl, total_invest FROM daily_snapshots
+                        WHERE date < ? AND {user_condition}
+                        ORDER BY date DESC
+                        LIMIT 1
+                        """,
+                        (today_str,) + user_param,
+                    )
+                    prev = cursor.fetchone()
+                    if not prev:
+                        return {"pnl": 0, "pnl_rate": 0, "base_value": base}
+                    prev_total = float(prev["total_pnl"]) if prev["total_pnl"] else 0
+                    prev_invest = float(prev["total_invest"]) if prev["total_invest"] else 0
+                    calc_base = prev_invest if prev_invest > 0 else base
+                    pnl = today_total - prev_total
+                    return {
+                        "pnl": pnl,
+                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "base_value": base,
+                    }
+                return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+
+            if period == "month":
+                month_start = today.strftime("%Y-%m-01")
+                cursor.execute(
+                    f"""
+                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (month_start, today_str) + user_param,
+                )
+                rows = cursor.fetchall()
+                normalized_rows = _normalize_snapshot_rows(rows)
+                prev = _fetch_prev_snapshot(month_start)
+                base_invest = float(prev["total_invest"] or 0) if prev else 0.0
+                if normalized_rows:
+                    pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                    latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
+                    base = base_invest or latest_invest or 1
+                    calc_base = base_invest if base_invest > 0 else base
+                    return {
+                        "pnl": pnl,
+                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "base_value": base,
+                    }
+                return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+
+            if period == "year":
+                year_start = today.strftime("%Y-01-01")
+                cursor.execute(
+                    f"""
+                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (year_start, today_str) + user_param,
+                )
+                rows = cursor.fetchall()
+                normalized_rows = _normalize_snapshot_rows(rows)
+                prev = _fetch_prev_snapshot(year_start)
+                base_invest = float(prev["total_invest"] or 0) if prev else 0.0
+                if normalized_rows:
+                    pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                    latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
+                    base = base_invest or latest_invest or 1
+                    calc_base = base_invest if base_invest > 0 else base
+                    return {
+                        "pnl": pnl,
+                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "base_value": base,
+                    }
+                return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+
+            cursor.execute(
+                f"""
+                SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
+                WHERE date <= ? AND {user_condition}
+                ORDER BY date ASC
+                """,
+                (today_str,) + user_param,
+            )
+            rows = cursor.fetchall()
+            normalized_rows = _normalize_snapshot_rows(rows)
+            if normalized_rows:
+                pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
+                first_invest = float(normalized_rows[0]["total_invest"] or 0.0)
+                base = first_invest or latest_invest or 1
+                return {
+                    "pnl": pnl,
+                    "pnl_rate": round(pnl / base * 100, 2) if base else 0,
+                    "base_value": base,
+                }
+            return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+
+        except Exception as exc:
+            logger.error("Failed to get pnl overview: %s", exc)
+            return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+        finally:
+            conn.close()
+
+    def get_calendar_data(
+        self,
+        time_type: str = "day",
+        user_id: str = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """获取收益日历数据。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            now = _get_datetime_now()
+            today_str = now.strftime("%Y-%m-%d")
+            items = []
+            total_pnl = 0.0
+            rate_base = 0.0
+
+            def _normalize_snapshot_rows(rows):
+                normalized = []
+                prev_total = None
+                for row in rows:
+                    date_str = str(row["date"])
+                    is_market_closed = _get_is_market_closed_date(date_str)
+                    closed_at_snapshot = False
+                    if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
+                        closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
+                    pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
+                    if is_market_closed:
+                        pnl = 0.0
+                    elif (
+                        (pnl == 0 or pnl == -0.0)
+                        and (not closed_at_snapshot)
+                        and row["total_pnl"] is not None
+                        and prev_total is not None
+                    ):
+                        pnl = float(row["total_pnl"]) - prev_total
+                    if (not is_market_closed) and row["total_pnl"] is not None:
+                        prev_total = float(row["total_pnl"])
+                    normalized.append({"date": date_str, "pnl": round(float(pnl), 2)})
+                return normalized
+
+            def _fetch_prev_invest(date_str: str) -> float:
+                cursor.execute(
+                    f"""
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE date < ? AND {user_condition}
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    (date_str,) + user_param,
+                )
+                row = cursor.fetchone()
+                return float(row["total_invest"] or 0.0) if row else 0.0
+
+            def _fetch_last_invest(date_str: str) -> float:
+                cursor.execute(
+                    f"""
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE date <= ? AND {user_condition}
+                    ORDER BY date DESC
+                    LIMIT 1
+                    """,
+                    (date_str,) + user_param,
+                )
+                row = cursor.fetchone()
+                return float(row["total_invest"] or 0.0) if row else 0.0
+
+            def _fetch_first_invest() -> float:
+                cursor.execute(
+                    f"""
+                    SELECT total_invest
+                    FROM daily_snapshots
+                    WHERE {user_condition}
+                    ORDER BY date ASC
+                    LIMIT 1
+                    """,
+                    user_param,
+                )
+                row = cursor.fetchone()
+                return float(row["total_invest"] or 0.0) if row else 0.0
+
+            cursor.execute(
+                f"""
+                SELECT date
+                FROM daily_snapshots
+                WHERE {user_condition}
+                ORDER BY date ASC
+                """,
+                user_param,
+            )
+            all_dates = [str(row["date"]) for row in cursor.fetchall() if row["date"]]
+            months_by_year: Dict[int, set] = {}
+            for date_str in all_dates:
+                parts = date_str.split("-")
+                if len(parts) != 3:
+                    continue
+                y = int(parts[0])
+                m = int(parts[1])
+                months_by_year.setdefault(y, set()).add(m)
+            months_by_year.setdefault(now.year, set()).add(now.month)
+
+            selectable_years = sorted(months_by_year.keys())
+            selectable_months_by_year = {str(y): sorted(list(months_by_year[y])) for y in selectable_years}
+            selectable = {
+                "day": {"years": selectable_years, "months_by_year": selectable_months_by_year},
+                "month": {"years": selectable_years},
+            }
+
+            latest_year = selectable_years[-1] if selectable_years else None
+            latest_month = max(months_by_year[latest_year]) if latest_year is not None else None
+
+            period: Dict[str, Any] = {"time_type": time_type}
+
+            if time_type == "day":
+                if not selectable_years:
+                    period.update({"year": now.year, "month": now.month})
+                    return {
+                        "items": [],
+                        "total_pnl": 0.0,
+                        "total_rate": 0.0,
+                        "title": f"{now.year}年{now.month}月累计",
+                        "period": period,
+                        "selectable": selectable,
+                    }
+
+                target_year = year
+                target_month = month
+                if target_year is None and target_month is None:
+                    if now.year in months_by_year and now.month in months_by_year[now.year]:
+                        target_year = now.year
+                        target_month = now.month
+                    else:
+                        target_year = latest_year
+                        target_month = latest_month
+                else:
+                    if target_year is None:
+                        target_year = now.year
+                    if target_month is None:
+                        target_month = now.month
+
+                period.update({"year": int(target_year), "month": int(target_month)})
+
+                if target_year not in months_by_year or target_month not in months_by_year[target_year]:
+                    return {
+                        "error": "Selected period has no snapshot data",
+                        "code": "INVALID_CALENDAR_PERIOD",
+                        "items": [],
+                        "total_pnl": 0.0,
+                        "total_rate": 0.0,
+                        "title": f"{target_year}年{target_month}月累计",
+                        "period": period,
+                        "selectable": selectable,
+                    }
+
+                month_start = f"{target_year:04d}-{target_month:02d}-01"
+                if target_month == 12:
+                    next_month = dt.datetime(target_year + 1, 1, 1)
+                else:
+                    next_month = dt.datetime(target_year, target_month + 1, 1)
+                month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+                if target_year == now.year and target_month == now.month:
+                    month_end = min(month_end, today_str)
+
+                cursor.execute(
+                    f"""
+                    SELECT date, day_pnl, total_pnl, updated_at
+                    FROM daily_snapshots
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (month_start, month_end) + user_param,
+                )
+                rows = cursor.fetchall()
+                normalized_rows = _normalize_snapshot_rows(rows)
+                total_pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                for row in normalized_rows:
+                    day = int(str(row["date"]).split("-")[2])
+                    items.append({"label": f"{target_month}-{day}", "pnl": row["pnl"]})
+                period_base = _fetch_prev_invest(month_start)
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(month_end)
+                rate_base = period_base
+                title = f"{target_year}年{target_month}月累计"
+
+            elif time_type == "month":
+                if not selectable_years:
+                    period.update({"year": now.year})
+                    return {
+                        "items": [],
+                        "total_pnl": 0.0,
+                        "total_rate": 0.0,
+                        "title": f"{now.year}年累计",
+                        "period": period,
+                        "selectable": selectable,
+                    }
+
+                target_year = year or (now.year if now.year in months_by_year else latest_year)
+                period.update({"year": int(target_year)})
+
+                if target_year not in months_by_year:
+                    return {
+                        "error": "Selected period has no snapshot data",
+                        "code": "INVALID_CALENDAR_PERIOD",
+                        "items": [],
+                        "total_pnl": 0.0,
+                        "total_rate": 0.0,
+                        "title": f"{target_year}年累计",
+                        "period": period,
+                        "selectable": selectable,
+                    }
+
+                year_start = f"{target_year:04d}-01-01"
+                year_end = today_str if target_year == now.year else f"{target_year:04d}-12-31"
+                cursor.execute(
+                    f"""
+                    SELECT date, day_pnl, total_pnl, updated_at
+                    FROM daily_snapshots
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (year_start, year_end) + user_param,
+                )
+                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
+                month_totals: Dict[int, float] = {}
+                for row in normalized_rows:
+                    m = int(str(row["date"]).split("-")[1])
+                    month_totals[m] = round(month_totals.get(m, 0.0) + float(row["pnl"] or 0.0), 2)
+                month_limit = now.month if target_year == now.year else 12
+
+                for m in range(1, month_limit + 1):
+                    pnl = float(month_totals.get(m, 0.0) or 0.0)
+                    items.append({"label": f"{m}月", "pnl": pnl})
+                    total_pnl = round(total_pnl + pnl, 2)
+                period_base = _fetch_prev_invest(year_start)
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(year_end)
+                rate_base = period_base
+                title = f"{target_year}年累计"
+
+            elif time_type == "year":
+                period = {"time_type": "year"}
+                cursor.execute(
+                    f"""
+                    SELECT date, day_pnl, total_pnl, updated_at
+                    FROM daily_snapshots
+                    WHERE date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (today_str,) + user_param,
+                )
+                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
+                if normalized_rows:
+                    year_totals: Dict[int, float] = {}
+                    for row in normalized_rows:
+                        y = int(str(row["date"]).split("-")[0])
+                        year_totals[y] = round(year_totals.get(y, 0.0) + float(row["pnl"] or 0.0), 2)
+                    start_year = int(str(normalized_rows[0]["date"]).split("-")[0])
+                    for y in range(start_year, now.year + 1):
+                        pnl = float(year_totals.get(y, 0.0) or 0.0)
+                        items.append({"label": str(y), "pnl": pnl})
+                        total_pnl = round(total_pnl + pnl, 2)
+                period_base = _fetch_first_invest()
+                if period_base <= 0:
+                    period_base = _fetch_last_invest(today_str)
+                rate_base = period_base
+                title = "总累计"
+            else:
+                return {
+                    "error": "Invalid time type",
+                    "code": "INVALID_CALENDAR_PERIOD",
+                    "items": [],
+                    "total_pnl": 0.0,
+                    "total_rate": 0.0,
+                    "title": "",
+                    "period": period,
+                    "selectable": selectable,
+                }
+
+            total_rate = round(total_pnl / rate_base * 100, 2) if rate_base else 0.0
+            return {
+                "items": items,
+                "total_pnl": total_pnl,
+                "total_rate": total_rate,
+                "title": title,
+                "period": period,
+                "selectable": selectable,
+            }
+
+        except Exception as exc:
+            logger.error("Failed to get calendar data: %s", exc)
+            return {
+                "items": [],
+                "total_pnl": 0.0,
+                "total_rate": 0.0,
+                "title": "",
+                "period": {"time_type": time_type},
+                "selectable": {"day": {"years": [], "months_by_year": {}}, "month": {"years": []}},
+            }
+        finally:
+            conn.close()
+
+    def get_market_breakdown_calendar_data(
+        self,
+        time_type: str = "day",
+        user_id: str = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """获取按市场拆分的收益日历数据。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        if time_type != "day":
+            return {
+                "error": "Invalid calendar type",
+                "code": "INVALID_CALENDAR_PERIOD",
+                "time_type": "day",
+                "year": int(year or 0),
+                "month": int(month or 0),
+                "items": [],
+            }
+
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            now = _get_datetime_now()
+            cursor.execute(
+                f"""
+                SELECT date
+                FROM daily_snapshots
+                WHERE {user_condition}
+                ORDER BY date ASC
+                """,
+                user_param,
+            )
+            all_dates = [str(r["date"]) for r in cursor.fetchall() if r["date"]]
+
+            if not all_dates:
+                return {
+                    "time_type": "day",
+                    "year": int(year or now.year),
+                    "month": int(month or now.month),
+                    "items": [],
+                }
+
+            months_by_year: Dict[int, set] = {}
+            for date_str in all_dates:
+                parts = date_str.split("-")
+                if len(parts) != 3:
+                    continue
+                y = int(parts[0])
+                m = int(parts[1])
+                months_by_year.setdefault(y, set()).add(m)
+
+            selectable_years = sorted(months_by_year.keys())
+            latest_year = selectable_years[-1]
+            latest_month = max(months_by_year[latest_year])
+
+            target_year = year
+            target_month = month
+            if target_year is None and target_month is None:
+                if now.year in months_by_year and now.month in months_by_year[now.year]:
+                    target_year = now.year
+                    target_month = now.month
+                else:
+                    target_year = latest_year
+                    target_month = latest_month
+            else:
+                if target_year is None:
+                    target_year = now.year
+                if target_month is None:
+                    target_month = now.month
+
+            if target_year not in months_by_year or target_month not in months_by_year[target_year]:
+                return {
+                    "error": "Selected period has no snapshot data",
+                    "code": "INVALID_CALENDAR_PERIOD",
+                    "time_type": "day",
+                    "year": int(target_year),
+                    "month": int(target_month),
+                    "items": [],
+                }
+
+            month_start = f"{target_year:04d}-{target_month:02d}-01"
+            if target_month == 12:
+                next_month = dt.datetime(target_year + 1, 1, 1)
+            else:
+                next_month = dt.datetime(target_year, target_month + 1, 1)
+            month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+            if target_year == now.year and target_month == now.month:
+                month_end = min(month_end, now.strftime("%Y-%m-%d"))
+
+            cursor.execute(
+                f"""
+                SELECT date, day_pnl
+                FROM daily_snapshots
+                WHERE date >= ? AND date <= ? AND {user_condition}
+                ORDER BY date ASC
+                """,
+                (month_start, month_end) + user_param,
+            )
+            snapshot_rows = cursor.fetchall()
+
+            cursor.execute(
+                f"""
+                SELECT date, market, day_pnl, source
+                FROM daily_snapshot_market_breakdowns
+                WHERE date >= ? AND date <= ? AND {user_condition}
+                ORDER BY date ASC
+                """,
+                (month_start, month_end) + user_param,
+            )
+            breakdown_rows = cursor.fetchall()
+
+            by_date: Dict[str, Dict[str, Any]] = {}
+            for row in breakdown_rows:
+                d = str(row["date"])
+                data = by_date.setdefault(
+                    d,
+                    {"markets": {m: None for m in MARKET_BREAKDOWN_MARKETS}, "sources": set()},
+                )
+                market = str(row["market"] or "").lower()
+                if market not in data["markets"]:
+                    continue
+                data["markets"][market] = round(float(row["day_pnl"] or 0.0), 2)
+                source = str(row["source"] or "").strip().lower() or "estimated"
+                data["sources"].add(source)
+
+            items: List[Dict[str, Any]] = []
+            for row in snapshot_rows:
+                date_str = str(row["date"])
+                day_total = round(float(row["day_pnl"] or 0.0), 2)
+                breakdown = by_date.get(date_str)
+                if not breakdown:
+                    markets = {m: None for m in MARKET_BREAKDOWN_MARKETS}
+                    source = "missing"
+                else:
+                    markets = {}
+                    for market in MARKET_BREAKDOWN_MARKETS:
+                        value = breakdown["markets"].get(market)
+                        markets[market] = None if value is None else round(float(value), 2)
+                    source_set = breakdown["sources"]
+                    source = "exact" if source_set == {"exact"} else "estimated"
+                items.append({"date": date_str, "markets": markets, "total_pnl": day_total, "source": source})
+
+            return {
+                "time_type": "day",
+                "year": int(target_year),
+                "month": int(target_month),
+                "items": items,
+            }
+        except Exception as exc:
+            logger.error("Failed to get market breakdown calendar data: %s", exc)
+            return {"time_type": "day", "year": int(year or 0), "month": int(month or 0), "items": []}
+        finally:
+            conn.close()
+
+    def get_rank_data(self, rank_type: str = "gain", market: str = "all", user_id: str = None) -> List[Dict[str, Any]]:
+        """获取盈亏排行数据。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            if market == "all":
+                cursor.execute(
+                    f"""
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE {user_condition}
+                    """,
+                    user_param,
+                )
+            elif market == "a":
+                cursor.execute(
+                    f"""
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%') AND {user_condition}
+                    """,
+                    user_param,
+                )
+            elif market == "us":
+                cursor.execute(
+                    f"""
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'gb_%' AND {user_condition}
+                    """,
+                    user_param,
+                )
+            elif market == "hk":
+                cursor.execute(
+                    f"""
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE code LIKE 'hk%' AND {user_condition}
+                    """,
+                    user_param,
+                )
+            elif market == "fund":
+                cursor.execute(
+                    f"""
+                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    WHERE (code LIKE 'f_%' OR code LIKE 'ft_%') AND {user_condition}
+                    """,
+                    user_param,
+                )
+            else:
+                return []
+
+            data = []
+            for row in cursor.fetchall():
+                data.append(
+                    {
+                        "code": row["code"],
+                        "name": row["name"],
+                        "qty": float(row["qty"]),
+                        "cost_price": float(row["price"]),
+                        "curr": row["curr"],
+                        "adjustment": float(row["adjustment"]),
+                        "market": self._detect_market(row["code"]),
+                    }
+                )
+
+            return data
+        except Exception as exc:
+            logger.error("Failed to get rank data: %s", exc)
+            return []
+        finally:
+            conn.close()
+
+    def _detect_market(self, code: str) -> str:
+        if code.startswith("sh") or code.startswith("sz") or code.startswith("bj"):
+            return "a"
+        if code.startswith("hk"):
+            return "hk"
+        if code.startswith("gb_"):
+            return "us"
+        if code.startswith("f_") or code.startswith("ft_"):
+            return "fund"
+        return "other"

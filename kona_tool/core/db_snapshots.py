@@ -1,0 +1,306 @@
+"""
+快照写入、历史曲线与同步版本数据库能力。
+
+这一层只做：
+- daily_snapshots 表兼容迁移
+- 每日快照与分市场快照写入
+- 历史曲线读取
+- sync/bootstrap 版本号计算
+"""
+import hashlib
+import json
+import logging
+import sqlite3
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
+
+
+class SnapshotDatabaseMixin:
+    """给 DatabaseManager 提供快照、历史与同步版本相关方法。"""
+
+    def _ensure_daily_snapshots_schema(self, cursor) -> None:
+        """
+        统一 daily_snapshots 表结构到：
+        - user_id 非空（默认 ''）
+        - 唯一键 UNIQUE(date, user_id)
+        并对历史重复数据做去重（保留最新 id）。
+        """
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_snapshots'")
+        row = cursor.fetchone()
+        table_sql = (row[0] or "").upper() if row and row[0] else ""
+        has_old_date_unique = "DATE TEXT NOT NULL UNIQUE" in table_sql
+        has_new_unique = "UNIQUE(DATE, USER_ID)" in table_sql
+
+        if has_old_date_unique or not has_new_unique:
+            logger.info("Migrating daily_snapshots schema to UNIQUE(date, user_id)")
+            cursor.execute("DROP TABLE IF EXISTS daily_snapshots_new")
+            cursor.execute(
+                """
+                CREATE TABLE daily_snapshots_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    total_asset REAL NOT NULL,
+                    total_invest REAL NOT NULL,
+                    total_cash REAL NOT NULL,
+                    total_other REAL NOT NULL,
+                    total_liability REAL NOT NULL,
+                    total_pnl REAL NOT NULL,
+                    day_pnl REAL NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT '',
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(date, user_id)
+                )
+                """
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots_new (
+                    date, total_asset, total_invest, total_cash,
+                    total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
+                )
+                SELECT
+                    d.date, d.total_asset, d.total_invest, d.total_cash,
+                    d.total_other, d.total_liability, d.total_pnl, d.day_pnl,
+                    COALESCE(d.user_id, '') AS user_id,
+                    d.updated_at
+                FROM daily_snapshots d
+                INNER JOIN (
+                    SELECT MAX(id) AS id
+                    FROM daily_snapshots
+                    GROUP BY date, COALESCE(user_id, '')
+                ) t ON d.id = t.id
+                """
+            )
+
+            cursor.execute("DROP TABLE daily_snapshots")
+            cursor.execute("ALTER TABLE daily_snapshots_new RENAME TO daily_snapshots")
+            logger.info("daily_snapshots schema migration completed")
+
+    def save_daily_snapshot_market_breakdown(
+        self,
+        date_str: str,
+        day_pnl_by_market: Dict[str, float],
+        total_day_pnl: float,
+        user_id: str = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """保存每日分市场收益快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            normalized = {k: 0.0 for k in MARKET_BREAKDOWN_MARKETS}
+            for market in ("a", "hk", "us", "fund"):
+                normalized[market] = float((day_pnl_by_market or {}).get(market, 0.0) or 0.0)
+            explicit_unallocated = (day_pnl_by_market or {}).get("unallocated")
+            if explicit_unallocated is None:
+                allocated = sum(normalized[m] for m in ("a", "hk", "us", "fund"))
+                normalized["unallocated"] = float(total_day_pnl or 0.0) - allocated
+            else:
+                normalized["unallocated"] = float(explicit_unallocated or 0.0)
+
+            market_meta = meta_by_market or {}
+            for market in MARKET_BREAKDOWN_MARKETS:
+                payload = market_meta.get(market)
+                meta_json = None
+                if payload is not None:
+                    try:
+                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    except Exception:
+                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
+                cursor.execute(
+                    """
+                    INSERT INTO daily_snapshot_market_breakdowns
+                    (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(date, user_id, market) DO UPDATE SET
+                        day_pnl = excluded.day_pnl,
+                        source = excluded.source,
+                        confidence = excluded.confidence,
+                        meta_json = excluded.meta_json,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        str(date_str),
+                        uid,
+                        market,
+                        round(float(normalized[market]), 2),
+                        str(source or "exact"),
+                        float(confidence),
+                        meta_json,
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("Failed to save market breakdown date=%s user_id=%s: %s", date_str, uid, exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
+        """保存每日资产快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots (
+                    date, total_asset, total_invest, total_cash,
+                    total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(date, user_id) DO UPDATE SET
+                    total_asset = excluded.total_asset,
+                    total_invest = excluded.total_invest,
+                    total_cash = excluded.total_cash,
+                    total_other = excluded.total_other,
+                    total_liability = excluded.total_liability,
+                    total_pnl = excluded.total_pnl,
+                    day_pnl = excluded.day_pnl,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    today,
+                    data.get("total_asset", 0),
+                    data.get("total_invest", 0),
+                    data.get("total_cash", 0),
+                    data.get("total_other", 0),
+                    data.get("total_liability", 0),
+                    data.get("total_pnl", 0),
+                    data.get("day_pnl", 0),
+                    uid,
+                ),
+            )
+
+            conn.commit()
+            logger.info("Daily snapshot saved for %s", today)
+            return True
+        except Exception as exc:
+            logger.error("Failed to save snapshot: %s", exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def get_history(self, limit: int = 365, user_id: str = None) -> List[Dict[str, Any]]:
+        """获取历史资产数据。"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT * FROM daily_snapshots
+                    WHERE user_id = ?
+                      AND date >= COALESCE(
+                        (
+                          SELECT SUBSTR(build_start_at, 1, 10)
+                          FROM users
+                          WHERE id = ?
+                            AND TRIM(COALESCE(build_start_at, '')) != ''
+                          LIMIT 1
+                        ),
+                        ''
+                      )
+                    ORDER BY date ASC
+                    LIMIT ?
+                    """,
+                    (user_id, user_id, limit),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT * FROM daily_snapshots
+                    WHERE user_id IS NULL OR user_id = ''
+                    ORDER BY date ASC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def _sync_version_from_parts(self, domain: str, *parts: str) -> str:
+        raw = f"{domain}|" + "|".join(str(p or "") for p in parts)
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+    def get_sync_versions(self, user_id: str = None) -> Dict[str, str]:
+        """计算客户端增量同步版本号。"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        uid = str(user_id or "")
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        def _table_version(table: str) -> str:
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(updated_at), '') AS max_updated, COUNT(*) AS cnt
+                FROM {table}
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            row = cursor.fetchone() or {}
+            max_updated = str((row["max_updated"] if isinstance(row, sqlite3.Row) else "") or "")
+            cnt = str((row["cnt"] if isinstance(row, sqlite3.Row) else 0) or 0)
+            return self._sync_version_from_parts(table, max_updated, cnt, uid)
+
+        try:
+            versions: Dict[str, str] = {
+                "portfolio": _table_version("portfolio"),
+                "cash_assets": _table_version("cash_assets"),
+                "other_assets": _table_version("other_assets"),
+                "liabilities": _table_version("liabilities"),
+            }
+
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(date), '') AS max_date, COUNT(*) AS cnt
+                FROM daily_snapshots
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            history_row = cursor.fetchone() or {}
+            max_date = str((history_row["max_date"] if isinstance(history_row, sqlite3.Row) else "") or "")
+            history_cnt = str((history_row["cnt"] if isinstance(history_row, sqlite3.Row) else 0) or 0)
+            versions["history"] = self._sync_version_from_parts("history", max_date, history_cnt, uid)
+
+            cursor.execute(
+                f"""
+                SELECT COALESCE(MAX(updated_at), '') AS max_updated, COUNT(*) AS cnt
+                FROM daily_snapshots
+                WHERE {user_condition}
+                """,
+                user_param,
+            )
+            overview_row = cursor.fetchone() or {}
+            overview_updated = str((overview_row["max_updated"] if isinstance(overview_row, sqlite3.Row) else "") or "")
+            overview_cnt = str((overview_row["cnt"] if isinstance(overview_row, sqlite3.Row) else 0) or 0)
+            versions["overview_all"] = self._sync_version_from_parts(
+                "overview_all",
+                overview_updated,
+                overview_cnt,
+                uid,
+            )
+            return versions
+        finally:
+            conn.close()

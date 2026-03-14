@@ -187,6 +187,86 @@
 
 `以后如果你改的是 cash_assets / other_assets / liabilities / transactions，先跑这组。`
 
+这轮结构治理后，这条链在代码里的主要落点变成了：
+
+- [db_asset_accounts.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_asset_accounts.py)
+- [asset_account_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/asset_account_handlers.py)
+- [asset_account_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/asset_account_routes.py)
+
+也就是说以后这块出问题，先别再去 `db.py` 里全局乱翻，先从这几处找入口。
+
+持仓交易与已实现盈亏这条链，这轮也有了更清楚的数据库落点：
+
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)
+
+它主要承接：
+
+- 持仓增删改
+- 买入 / 卖出 / 撤销
+- 已实现盈亏统计
+- 组合表兼容迁移
+
+快照写入和历史曲线这条链，这轮也有了更清楚的数据库落点：
+
+- [db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py)
+
+它主要承接：
+
+- daily_snapshots 结构兼容迁移
+- 快照写入 / 分市场快照
+- 历史曲线读取
+- sync 版本号计算
+
+分析链这轮也有了更清楚的数据库落点：
+
+- [db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py)
+
+它主要承接：
+
+- 分析概览
+- 收益日历
+- 分市场收益日历
+- 盈亏排行
+
+清理与修复相关的链路，这轮也有了更清楚的数据库落点：
+
+- [db_maintenance.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_maintenance.py)
+
+它主要承接：
+
+- 休市日清理预览 / 执行
+- 指定日期 day_pnl 修复
+
+和后台状态、邀请码、refresh token、运营配置更相关的那条链，这轮也有了更清楚的数据库落点：
+
+- [db_admin_state.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_admin_state.py)
+
+它主要承接：
+
+- refresh token 生命周期
+- 邀请码池与消耗
+- 后台写操作审计日志
+- 后台接口策略
+- 运营配置持久化
+- 价格巡检 / 行情测试报表快照
+
+所以以后如果你改的是这条链，也不用再先在 `db.py` 里整页搜索。
+
+用户与登录状态这条链，这轮也有了更清楚的数据库落点：
+
+- [db_users.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_users.py)
+
+它主要承接：
+
+- 用户基础查询
+- 登录 / 活跃时间打点
+- 用户资料修改
+- 密码初始化与后台重置
+- 用户表兼容迁移 / 用户名归一化
+- 本地数据重绑预览与执行
+
+也就是说以后如果你改的是认证后半段、用户资料、管理员重绑数据，先从这里找。
+
 同步引导也已经单独拎出一组：
 
 - [test_sync_bootstrap_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_sync_bootstrap_api.py)

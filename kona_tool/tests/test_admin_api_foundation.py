@@ -60,6 +60,10 @@ class AdminApiFoundationTests(unittest.TestCase):
         cursor.execute("DELETE FROM user_daily_activity")
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM transactions")
+        cursor.execute("DELETE FROM cash_assets")
+        cursor.execute("DELETE FROM other_assets")
+        cursor.execute("DELETE FROM liabilities")
         cursor.execute("DELETE FROM users")
         cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
@@ -287,7 +291,14 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertNotIn("f_110017", codes)
 
     def test_market_provider_test_keeps_fund_for_eastmoney_quote(self):
-        payload = admin_routes._run_market_provider_test("eastmoney_quote")
+        # 这里要测的是“eastmoney_quote 会包含场外基金 case”，不是测上游网络稳定性。
+        # 单测环境可能无 DNS/无外网，所以把基金取价入口 patch 掉，避免误触网导致不稳定。
+        with patch.object(
+            admin_routes,
+            "get_fund_eastmoney_f10",
+            return_value=(1.23, 1.22, 0.0, 0.0),
+        ):
+            payload = admin_routes._run_market_provider_test("eastmoney_quote")
         items = payload.get("items") or []
         codes = {str(item.get("code")) for item in items}
         self.assertIn("f_110017", codes)

@@ -20,6 +20,13 @@ db_path = KONA_TOOL / "core" / "db.py"
 spec = importlib.util.spec_from_file_location("db_module", db_path)
 db_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(db_module)
+# 这份测试用 importlib 动态加载 db.py，不会自动注册到 sys.modules。
+# 但拆分后的 db_analysis 会通过 sys.modules["core.db"] 查找可被 patch 的 db 模块，
+# 所以这里显式注册，保证 patch(datetime/_is_market_closed_date) 仍然生效。
+# 覆盖注册，确保后续 core.db_analysis 读取到的就是这份动态加载的 db_module，
+# 否则测试进程里可能已经存在其他名字的 core.db，导致 patch 失效。
+sys.modules["core.db"] = db_module
+sys.modules["kona_tool.core.db"] = db_module
 
 
 def _insert_snapshot(
