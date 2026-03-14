@@ -154,8 +154,8 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        # 直接 patch 分析层的“当前时间”入口，避免被其他测试对 sys.modules/core.db 的覆盖污染。
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             resp = self.client.get('/api/analysis/overview?period=all')
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
@@ -191,8 +191,7 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             resp = self.client.get(
                 f'/api/analysis/calendar?type=day&year={today.year}&month={today.month}'
             )
@@ -242,8 +241,7 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             overview_resp = self.client.get('/api/analysis/overview?period=all')
             calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
         self.assertEqual(overview_resp.status_code, 200)
@@ -273,8 +271,7 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             overview_resp = self.client.get('/api/analysis/overview?period=all')
             calendar_resp = self.client.get(f"/api/analysis/calendar?type=month&year={today.year}")
         self.assertEqual(overview_resp.status_code, 200)
@@ -320,9 +317,8 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch("core.db._is_market_closed_date", return_value=False):
-            with patch('core.db.datetime') as mock_dt:
-                mock_dt.now.return_value = fixed_now
+        with patch("core.db_analysis._get_is_market_closed_date", return_value=False):
+            with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
                 resp = self.client.get('/api/analysis/overview?period=all')
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
@@ -347,8 +343,7 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             overview_resp = self.client.get('/api/analysis/overview?period=all')
             calendar_resp = self.client.get("/api/analysis/calendar?type=year")
         self.assertEqual(overview_resp.status_code, 200)
@@ -386,8 +381,7 @@ class AnalysisApiTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
-        with patch('core.db.datetime') as mock_dt:
-            mock_dt.now.return_value = fixed_now
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
             overview_resp = self.client.get('/api/analysis/overview?period=all')
         self.assertEqual(overview_resp.status_code, 200)
         overview = overview_resp.get_json() or {}

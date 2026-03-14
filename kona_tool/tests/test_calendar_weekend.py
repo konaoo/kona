@@ -20,6 +20,9 @@ db_path = KONA_TOOL / "core" / "db.py"
 spec = importlib.util.spec_from_file_location("db_module", db_path)
 db_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(db_module)
+# 记录并在模块结束时恢复，避免污染后续单测进程（不同 Python 版本下 patch 解析路径不一致）。
+_prev_core_db_module = sys.modules.get("core.db")
+_prev_kona_tool_core_db_module = sys.modules.get("kona_tool.core.db")
 # 这份测试用 importlib 动态加载 db.py，不会自动注册到 sys.modules。
 # 但拆分后的 db_analysis 会通过 sys.modules["core.db"] 查找可被 patch 的 db 模块，
 # 所以这里显式注册，保证 patch(datetime/_is_market_closed_date) 仍然生效。
@@ -27,6 +30,25 @@ spec.loader.exec_module(db_module)
 # 否则测试进程里可能已经存在其他名字的 core.db，导致 patch 失效。
 sys.modules["core.db"] = db_module
 sys.modules["kona_tool.core.db"] = db_module
+
+
+def tearDownModule():  # noqa: N802
+    """
+    恢复 sys.modules 的覆盖，避免影响其他 test_* 模块。
+
+    现象：若不恢复，后续测试里 `patch("core.db.datetime")` 可能会 patch 到
+    “core 包属性上的另一个 core.db 模块对象”，导致时间 patch 不生效，
+    进一步引发分析页概览类单测间歇性失败（Python 3.10 更容易触发）。
+    """
+    if _prev_core_db_module is None:
+        sys.modules.pop("core.db", None)
+    else:
+        sys.modules["core.db"] = _prev_core_db_module
+
+    if _prev_kona_tool_core_db_module is None:
+        sys.modules.pop("kona_tool.core.db", None)
+    else:
+        sys.modules["kona_tool.core.db"] = _prev_kona_tool_core_db_module
 
 
 def _insert_snapshot(
