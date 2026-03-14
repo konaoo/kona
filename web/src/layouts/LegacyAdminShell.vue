@@ -36,6 +36,7 @@
 </template>
 
 <script setup lang="ts">
+// 遗留壳只保稳定，不再承接新的后台布局规范或状态职责。
 import { RouterLink, useRouter } from 'vue-router'
 import { useKonaStore } from '../stores/composables'
 import AdminButton from '../components/admin/ui/AdminButton.vue'

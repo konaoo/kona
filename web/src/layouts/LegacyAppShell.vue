@@ -62,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+// 遗留壳只保稳定，不再承接新的布局或状态职责。
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeDisplayCostPrice } from '../src/shared/costBasis'
+import { computeDisplayCostPrice } from '../../src/shared/costBasis'
 
 describe('computeDisplayCostPrice', () => {
   it('calculates diluted cost after partial profit taking', () => {

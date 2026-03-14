@@ -1,3 +1,4 @@
+/* 遗留样式层只保稳定，不再继续承接新的页面样式职责。 */
 :root {
   --legacy-theme: dark;
   --legacy-bg-primary: #0a0e27;
