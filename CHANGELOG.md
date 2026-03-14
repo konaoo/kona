@@ -1,3 +1,22 @@
+## 2026-03-14-16
+
+### 这版一句话
+
+后端把 `app.py` 入口真正变薄：组装逻辑收进 `app_factory.py`，启动后台线程单独放到 `runtime_bootstrap.py`，对外入口和单测 patch 点保持不变。
+
+### 主要变化
+- 新增 [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py)：集中做 Flask app / limiter / runtime / blueprint 的组装，不在 import 阶段启动任何后台线程。
+- 新增 [runtime_bootstrap.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/runtime_bootstrap.py)：承接 `python app.py` 的启动逻辑（启动 scheduler / 预取线程 / app.run），避免把运行时副作用塞回入口文件。
+- [app.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py) 改成薄入口：仍然导出 `app/db/limiter`，并保留 `batch_get_prices / get_forex_rates / WEB_DIST_DIR / take_snapshot` 等单测会 patch 的全局符号。
+
+### 影响范围
+- 后端工程结构（入口拆分），接口字段与路由不变
+- `gunicorn` 入口和单测 `import app as app_module` 行为不变
+
+### 验收重点
+- 后端单测 `python -m unittest discover -s kona_tool/tests -p "test_*.py" -v` 全绿
+- 线上启动方式（systemd/gunicorn/wsgi）不受影响
+
 ## 2026-03-14-14
 
 ### 这版一句话
