@@ -41,7 +41,8 @@ fi
 impactful_files="$(
   printf '%s\n' "$changed_files" \
     | grep -E '^(web/|flutter/|kona_tool/|\.github/workflows/|scripts/ci/|\.gitignore$)' \
-    | grep -Ev '(^web/tests/|^kona_tool/tests/|^flutter/test/|(^|/)(README[^/]*\.md)$|^docs/)'
+    | grep -Ev '(^web/tests/|^kona_tool/tests/|^flutter/test/|(^|/)(README[^/]*\.md)$|^docs/)' \
+    || true
 )"
 
 if [ -n "$impactful_files" ]; then

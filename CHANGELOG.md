@@ -13,6 +13,21 @@
 ### 验收重点
 - GitHub Actions `Backend Gate (Python 3.10/3.11)` 是否全绿（重点看 `test_analysis_overview_month_year_all_uses_snapshot_day_pnl_sum`）。
 
+## 2026-03-14-15
+
+### 这版一句话
+
+修了一个 CI “CHANGELOG 守门”脚本的坑：只改测试文件时不该误判失败。
+
+### 主要变化
+- [check_changelog_guard.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/ci/check_changelog_guard.sh) 修复管道在被过滤为空时会因 `set -euo pipefail` 直接退出的问题，避免“只改测试/说明文件也被卡死”。
+
+### 影响范围
+- GitHub Actions `Repo Guard` / `CHANGELOG guard`
+
+### 验收重点
+- 推送只包含测试文件的提交时，`Repo Guard` 也应保持通过。
+
 ## 2026-03-14-13
 
 ### 这版一句话
