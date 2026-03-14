@@ -50,6 +50,21 @@ app_output.log
 
 # Node modules
 node_modules/
+node_modules.old.*/
+
+# Frontend build / test artifacts
+web/dist/
+web/test-results/
+web/dev.log
+
+# Flutter build / cache artifacts
+flutter/.dart_tool/
+flutter/build/
+flutter/**/build/
+
+# Python cache artifacts
+**/__pycache__/
+**/.pytest_cache/
 
 # local temp files
 kona_tool/app.pid
@@ -60,3 +75,6 @@ kona_tool/config.py.backup
 
 # local APK artifacts (do not track binaries)
 kona_tool/static/downloads/*.apk
+
+# Generated reports
+flutter/android/build/reports/problems/

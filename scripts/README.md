@@ -35,6 +35,8 @@
 - `check_calendar2.py`
 - `test_pnl_debug.py`
 - `check_calendar2_output.txt`
+- `ci/check_repo_hygiene.sh`
+- `ci/check_changelog_guard.sh`
 
 ---
 
@@ -63,7 +65,17 @@
 
 - `kona_tool/scripts/`
 
-### 3.3 临时排障类
+### 3.3 仓库门禁类
+
+- `ci/check_repo_hygiene.sh`
+  用途：检查构建产物、缓存和本地数据库有没有误进 Git。
+
+- `ci/check_changelog_guard.sh`
+  用途：检查重要工程或业务改动是否同步补了 `CHANGELOG.md`。
+
+这类脚本符合 `scripts/` 的定位，属于仓库级 CI / 发布守门脚本。
+
+### 3.4 临时排障类
 
 - `check_calendar.py`
 - `check_calendar2.py`
@@ -77,7 +89,7 @@
 
 它们更像“调试工具”或“临时排障脚本”，不适合长期作为仓库骨架的一部分。
 
-### 3.4 脚本输出产物
+### 3.5 脚本输出产物
 
 - `check_calendar2_output.txt`
 
@@ -180,4 +192,3 @@
 而不是：
 
 `所有临时脚本的垃圾桶`
-

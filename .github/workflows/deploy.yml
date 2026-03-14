@@ -15,8 +15,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  repo-guard:
+    name: Repo Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repo hygiene guard
+        run: bash scripts/ci/check_repo_hygiene.sh
+
+      - name: CHANGELOG guard
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          BASE_SHA="$PUSH_BEFORE_SHA"
+          HEAD_SHA="$CURRENT_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="$PR_BASE_SHA"
+            HEAD_SHA="$PR_HEAD_SHA"
+          fi
+          bash scripts/ci/check_changelog_guard.sh "$BASE_SHA" "$HEAD_SHA"
+
   backend-gate:
     name: Backend Gate (Python ${{ matrix.python-version }})
+    needs: [ repo-guard ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -51,6 +81,7 @@ jobs:
 
   frontend-gate:
     name: Frontend Gate (Flutter + Web)
+    needs: [ repo-guard ]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -105,6 +136,10 @@ jobs:
       - name: Install Web dependencies
         working-directory: web
         run: npm ci
+
+      - name: Run Web unit tests
+        working-directory: web
+        run: npm run test
 
       - name: Build Web
         working-directory: web
