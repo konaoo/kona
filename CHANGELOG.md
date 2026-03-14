@@ -1,3 +1,18 @@
+## 2026-03-14-14
+
+### 这版一句话
+
+修复分析页概览在某些 Python 环境下会把未来工作日误判成“全市场休市”，导致本月/本年/全部收益被清零的问题（接口字段不变）。
+
+### 主要变化
+- [market_calendar.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/market_calendar.py) 的交易日判断范围检测更稳：兼容 `exchange_calendars` 在不同 Python / pandas 版本下返回的首尾 session 类型差异，必要时从 `sessions` 取首尾并用 `pandas.Timestamp` 兜底解析，避免“超出日历覆盖范围”时把工作日当休市。
+
+### 影响范围
+- 后端分析页概览/日历中依赖“是否休市”的 day_pnl 归零规则
+
+### 验收重点
+- GitHub Actions `Backend Gate (Python 3.10/3.11)` 是否全绿（重点看 `test_analysis_overview_month_year_all_uses_snapshot_day_pnl_sum`）。
+
 ## 2026-03-14-13
 
 ### 这版一句话

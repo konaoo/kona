@@ -70,6 +70,13 @@ def _normalize_date(value: Any) -> date:
         return value.date()
     if isinstance(value, str):
         return datetime.strptime(value.strip()[:10], "%Y-%m-%d").date()
+    # 兜底：exchange_calendars / pandas / numpy 可能返回非标准类型（如 numpy.datetime64）。
+    # 只要 pandas 可用，就尝试用 Timestamp 解析成 date。
+    if pd is not None:
+        try:
+            return pd.Timestamp(value).date()
+        except Exception:
+            pass
     raise ValueError(f"Unsupported date value: {value!r}")
 
 
@@ -183,14 +190,46 @@ def _is_trading_day_from_calendar(market: str, target_date: Any) -> bool:
         )
         return fallback
 
+    def _resolve_session_date(raw: Any) -> Optional[date]:
+        if raw is None:
+            return None
+        # 某些版本可能暴露为方法而不是属性
+        if callable(raw):
+            try:
+                raw = raw()
+            except Exception:
+                return None
+        try:
+            return _normalize_date(raw)
+        except Exception:
+            if pd is None:
+                return None
+            try:
+                return pd.Timestamp(raw).date()
+            except Exception:
+                return None
+
     # exchange_calendars 在“超出数据覆盖范围”的日期上，部分版本会直接返回 False，
     # 而不是抛异常。这里显式检测范围，超界就回退到 weekday 逻辑，避免把未来工作日误判为休市。
     try:
-        first_session = getattr(cal, "first_session", None)
-        last_session = getattr(cal, "last_session", None)
-        if first_session is not None and last_session is not None:
-            first_date = _normalize_date(first_session)
-            last_date = _normalize_date(last_session)
+        first_raw = getattr(cal, "first_session", None)
+        last_raw = getattr(cal, "last_session", None)
+        first_date = _resolve_session_date(first_raw)
+        last_date = _resolve_session_date(last_raw)
+
+        # 再兜底一次：从 sessions 列表取首尾（避免 first/last API 变动）
+        if (first_date is None or last_date is None) and hasattr(cal, "sessions"):
+            try:
+                sessions = getattr(cal, "sessions", None)
+                if sessions is not None and len(sessions) > 0:
+                    if first_date is None:
+                        first_date = _resolve_session_date(sessions[0])
+                    if last_date is None:
+                        last_date = _resolve_session_date(sessions[-1])
+            except Exception:
+                pass
+
+        if first_date is not None and last_date is not None:
             if d < first_date or d > last_date:
                 logger.warning(
                     "exchange_calendars data coverage insufficient for market=%s date=%s range=%s..%s fallback weekday=%s",
