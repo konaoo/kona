@@ -896,13 +896,13 @@ class InvestPageState extends State<InvestPage> {
         : AppState.getPnlColor(holdingPnl);
 
     final dayPnlValue = navUpdatePending
-        ? '待净值更新'
+        ? '+0'
         : (dayPnlEnabled ? _fmtPnlNullable(dailyPnl, sym) : '--');
     final totalPnlValue = _fmtPnlNullable(holdingPnl, sym);
     final totalPnlRateValue = _fmtPctNullable(holdingPnlPct);
 
     final badgeLabel = navUpdatePending
-        ? '待净值更新'
+        ? '+0%'
         : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--');
     final badgeColor = navUpdatePending
         ? AppTheme.textMuted

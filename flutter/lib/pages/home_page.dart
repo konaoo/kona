@@ -372,12 +372,12 @@ class HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '咔咔记账',
+                  '你好，$name',
                   style: _S.brandTitle.copyWith(color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '你好，$name',
+                  '今天又是元气满满的一天。',
                   style: _S.brandSub.copyWith(color: AppTheme.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
