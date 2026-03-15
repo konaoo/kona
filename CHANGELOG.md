@@ -1,3 +1,22 @@
+## 2026-03-15-11
+
+### 这版一句话
+
+Flutter 分析页测试口径对齐后端展示规则，并支持排行测试注入数据。
+
+### 主要变化
+- [analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)：分析页/排行页新增 `rankLoader` 注入入口，测试不再走真实网络。
+- [analysis_rank_abs_cost_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/analysis_rank_abs_cost_test.dart)：使用注入排行数据，避免依赖 HTTP。
+- [analysis_realtime_snapshot_policy_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/analysis_realtime_snapshot_policy_test.dart)：顶部大卡与日历预期改为后端口径。
+- [app_state_cache_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_cache_test.dart)：缓存样例补充口径字段。
+- [app_state_smoke_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_smoke_test.dart)：负成本场景无口径时收益率为 0 的预期。
+
+### 影响范围
+- Flutter 分析页测试与缓存样例（不影响线上接口）
+
+### 验收重点
+- `flutter test test/analysis_rank_abs_cost_test.dart test/analysis_realtime_snapshot_policy_test.dart test/app_state_cache_test.dart test/app_state_smoke_test.dart` 通过
+
 ## 2026-03-15-10
 
 ### 这版一句话
