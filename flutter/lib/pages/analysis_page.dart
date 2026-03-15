@@ -15,6 +15,12 @@ enum CalendarPeriodWheelMode { day, month }
 const kCalendarYearWheelKey = Key('calendar-year-wheel');
 const kCalendarMonthWheelKey = Key('calendar-month-wheel');
 
+String _currencySymbol(String curr) {
+  final upper = curr.trim().toUpperCase();
+  if (upper == 'HKD') return 'HK\$';
+  if (upper == 'USD') return '\$';
+  return '¥';
+}
 
 // ──────────────────────────────────────────────────
 // Cached TextStyles – DM Sans for labels, JetBrains Mono for numbers
@@ -108,6 +114,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
+  Map<String, dynamic> _rankData = {};
+  bool _rankLoading = false;
+  int _rankRetryCount = 0;
+  Timer? _rankRetryTimer;
 
   @override
   void initState() {
@@ -118,12 +128,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _selectedMonthYear = now.year;
     _loadData();
     _loadCalendar();
+    _loadRank();
   }
 
   @override
   void dispose() {
     _overviewRetryTimer?.cancel();
     _calendarRetryTimer?.cancel();
+    _rankRetryTimer?.cancel();
     super.dispose();
   }
 
@@ -272,6 +284,35 @@ class _AnalysisPageState extends State<AnalysisPage> {
         _calendarRetryTimer = Timer(Duration(milliseconds: delayMs), () {
           if (!mounted) return;
           unawaited(_loadCalendar(force: true));
+        });
+      }
+    }
+  }
+
+  Future<void> _loadRank({bool force = false}) async {
+    if (_rankLoading && !force) return;
+    setState(() => _rankLoading = true);
+    try {
+      final data = await _api.getAnalysisRank(rankType: 'all', market: 'all');
+      if (!mounted) return;
+      setState(() {
+        _rankData = data;
+        _rankLoading = false;
+        _rankRetryCount = 0;
+      });
+      _rankRetryTimer?.cancel();
+    } catch (e) {
+      debugPrint('加载盈亏排行失败: $e');
+      if (!mounted) return;
+      setState(() => _rankLoading = false);
+      if (_rankRetryCount < _maxTransientRetry) {
+        _rankRetryCount += 1;
+        final retryCount = _rankRetryCount;
+        final delayMs = 600 * retryCount;
+        _rankRetryTimer?.cancel();
+        _rankRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+          if (!mounted) return;
+          unawaited(_loadRank(force: true));
         });
       }
     }
@@ -510,16 +551,29 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _buildOverviewCard(AppState appState) {
-    final periodData = _overview[_currentPeriod] ?? {};
+    final periodData = _asMap(_overview[_currentPeriod]);
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
-    // 顶部大卡只在“当日”周期读取实时行情，其余周期一律按快照概览返回值。
-    final isDay = _currentPeriod == 'day';
-    final pnl = isDay ? appState.investDayPnl : (apiPnl ?? 0);
-    final pnlRate = isDay ? appState.investDayPnlRate : (apiRate ?? 0);
-    final pnlColor = pnl >= 0 ? AppTheme.danger : AppTheme.success;
-    final showLoading = _loading && !_overviewLoaded && !isDay;
-    final amountText = appState.amountHidden ? '****' : '¥${pnl.toStringAsFixed(0)}';
+    final hasPnl = apiPnl != null;
+    final hasRate = apiRate != null;
+    final pnl = apiPnl ?? 0;
+    final pnlColor = hasPnl
+        ? (pnl >= 0 ? AppTheme.danger : AppTheme.success)
+        : AppTheme.textMuted;
+    final showLoading = _loading && !_overviewLoaded;
+    final pnlValue = apiPnl ?? 0;
+    final amountText = appState.amountHidden
+        ? '****'
+        : (hasPnl ? '¥${pnlValue.toStringAsFixed(0)}' : '--');
+    final rateValue = apiRate ?? 0;
+    final rateText = appState.amountHidden
+        ? '--'
+        : (hasRate
+            ? '${rateValue >= 0 ? '+' : ''}${rateValue.toStringAsFixed(2)}%'
+            : '--');
+    final rateIcon = hasRate
+        ? (rateValue >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded)
+        : Icons.remove_rounded;
 
     String title;
     switch (_currentPeriod) {
@@ -564,20 +618,23 @@ class _AnalysisPageState extends State<AnalysisPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                pnlRate >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                rateIcon,
                 size: 16,
-                color: pnlColor,
+                color: hasRate ? pnlColor : AppTheme.textMuted,
               ),
               const SizedBox(width: 4),
               Text(
                 '收益率',
-                style: _S.label.copyWith(color: pnlColor, fontSize: 13),
+                style: _S.label.copyWith(
+                  color: hasRate ? pnlColor : AppTheme.textMuted,
+                  fontSize: 13,
+                ),
               ),
               const SizedBox(width: 4),
               Text(
-                showLoading ? '--' : '${pnlRate >= 0 ? '+' : ''}${pnlRate.toStringAsFixed(2)}%',
+                showLoading ? '--' : rateText,
                 style: _S.pnlRate.copyWith(
-                  color: pnlColor,
+                  color: hasRate ? pnlColor : AppTheme.textMuted,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),
@@ -678,12 +735,6 @@ class _AnalysisPageState extends State<AnalysisPage> {
         pnlMap[key] = pnl;
       }
     }
-    // 收益日历只有“当前月的今天”这一格允许用实时值覆盖，其余历史格保持快照口径。
-    if (_calendarTimeType == 'day' && dayYear == now.year && dayMonth == now.month) {
-      final todayKey = DateTime.now().day;
-      pnlMap[todayKey] = appState.investDayPnl;
-    }
-
     for (var gridItem in calendarGrid) {
       final key = gridItem['day'] as int;
       if (pnlMap.containsKey(key)) {
@@ -996,10 +1047,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
       pnlLabel = '累计盈亏';
     }
 
-    final pnlValue = _calendarSummaryText(appState);
-    final pnlRate = _calendarSummaryRate(appState);
     final pnlRaw = _calendarSummaryRawValue();
-    final pnlColor = pnlRaw >= 0 ? AppTheme.danger : AppTheme.success;
+    final pnlValue = _calendarSummaryText(appState, pnlRaw);
+    final pnlRate = _calendarSummaryRate(appState);
+    final hasSummary = pnlRaw != null;
+    final pnlColor = !hasSummary
+        ? AppTheme.textMuted
+        : (pnlRaw >= 0 ? AppTheme.danger : AppTheme.success);
 
     return Container(
       width: double.infinity,
@@ -1057,15 +1111,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
-  double _calendarSummaryRawValue() {
+  double? _calendarSummaryRawValue() {
     final apiTotal = _calendarData['total_pnl'];
     if (apiTotal is num) return apiTotal.toDouble();
-    double total = 0;
-    final items = _calendarData['items'] as List<dynamic>? ?? [];
-    for (var item in items) {
-      total += (item['pnl'] as num?)?.toDouble() ?? 0;
-    }
-    return total;
+    return null;
   }
 
   Widget _buildRankSection(AppState appState) {
@@ -1153,16 +1202,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _buildRankItems(AppState appState) {
-    final items = _buildRankItemsData(appState);
-    final isProfit = _rankType == 'profit';
-    final filtered = items.where((i) => isProfit ? i.pnlCny > 0 : i.pnlCny < 0).toList();
-    
-    // 排序：盈利榜降序，亏损榜升序（绝对值大的排前面）
-    filtered.sort((a, b) => isProfit 
-        ? b.pnlCny.compareTo(a.pnlCny) 
-        : a.pnlCny.compareTo(b.pnlCny));
-    
-    if (filtered.isEmpty) {
+    final items = _buildRankItemsData();
+    if (_rankLoading && items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Text('加载中...', style: _S.label.copyWith(color: AppTheme.textMuted)),
+        ),
+      );
+    }
+    if (items.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -1171,8 +1220,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
       );
     }
 
-    final limit = filtered.length > 5 ? 5 : filtered.length;
-    final topItems = filtered.sublist(0, limit);
+    final limit = items.length > 5 ? 5 : items.length;
+    final topItems = items.sublist(0, limit);
 
     return Column(
       children: List.generate(topItems.length, (idx) {
@@ -1230,31 +1279,25 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
-  List<_RankItem> _buildRankItemsData(AppState appState) {
-    final list = <_RankItem>[];
-    for (var asset in appState.portfolio) {
-      final priceInfo = appState.resolvePriceInfo(asset);
-      final currentPrice = (priceInfo != null && priceInfo.price > 0)
-          ? priceInfo.price
-          : (asset.price > 0 ? asset.price : 0.0);
-      
-      // 累计盈亏 = (现价 - 均价) * 数量 + 调整额
-      final pnl = appState.amountHidden ? 0.0 : (currentPrice - asset.price) * asset.qty + asset.adjustment;
-      final cost = asset.price * asset.qty;
-      final absCost = cost.abs();
-      final rate = absCost > 0 ? (pnl / absCost) * 100 : 0.0;
-      
-      final exchangeRate = appState.getCurrencyRate(asset.curr);
-      list.add(_RankItem(
-        code: asset.code,
-        name: asset.name,
+  List<_RankItem> _buildRankItemsData() {
+    final key = _rankType == 'loss' ? 'loss' : 'gain';
+    final raw = _rankData[key];
+    if (raw is! List) return [];
+    return raw.map((item) {
+      final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+      final code = (map['code'] ?? '').toString();
+      final name = (map['name'] ?? '').toString();
+      final pnl = (map['pnl'] as num?)?.toDouble() ?? 0.0;
+      final pnlRate = (map['pnl_rate'] as num?)?.toDouble() ?? 0.0;
+      final curr = (map['curr'] ?? 'CNY').toString();
+      return _RankItem(
+        code: code,
+        name: name,
         pnl: pnl,
-        pnlCny: pnl * exchangeRate,
-        pnlRate: rate,
-        currencySymbol: asset.currencySymbol,
-      ));
-    }
-    return list;
+        pnlRate: pnlRate,
+        currencySymbol: _currencySymbol(curr),
+      );
+    }).toList();
   }
 
   Widget _buildHeaderToggle(String text, bool isSelected, VoidCallback onTap) {
@@ -1311,9 +1354,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return pnl.toStringAsFixed(0);
   }
 
-  String _calendarSummaryText(AppState appState) {
+  String _calendarSummaryText(AppState appState, double? total) {
     if (appState.amountHidden) return '****';
-    double total = _calendarSummaryRawValue();
+    if (total == null) return '--';
     return '¥${total.toStringAsFixed(0)}';
   }
 
@@ -1326,43 +1369,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final rate = (apiRate as num).toDouble();
       return (rate > 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
     }
-
-    // Fallback 1: If the selected calendar date represents the CURRENT period, 
-    // we can accurately borrow the rate from the `_overview` API response.
-    final now = DateTime.now();
-    bool isCurrentPeriod = false;
-    double? overviewRate;
-
-    if (_calendarTimeType == 'day') {
-      final selectedYear = _selectedDayYear ?? now.year;
-      final selectedMonth = _selectedDayMonth ?? now.month;
-      isCurrentPeriod = (selectedYear == now.year && selectedMonth == now.month);
-      if (isCurrentPeriod) overviewRate = (_overview['month']?['pnl_rate'] as num?)?.toDouble();
-    } else if (_calendarTimeType == 'month') {
-      final selectedYear = _selectedMonthYear ?? now.year;
-      isCurrentPeriod = (selectedYear == now.year);
-      if (isCurrentPeriod) overviewRate = (_overview['year']?['pnl_rate'] as num?)?.toDouble();
-    } else if (_calendarTimeType == 'year') {
-      isCurrentPeriod = true;
-      overviewRate = (_overview['all']?['pnl_rate'] as num?)?.toDouble();
-    }
-
-    if (isCurrentPeriod && overviewRate != null) {
-      // Note: overviewRate is already a percentage (e.g. -0.94 means -0.94%)
-      return (overviewRate > 0 ? '+' : '') + overviewRate.toStringAsFixed(2) + '%';
-    }
-
-    // Fallback 2: Manual calculation (will be 0.00% if cost is missing)
-    double totalPnl = 0;
-    double totalCost = 0;
-    final items = _calendarData['items'] as List<dynamic>? ?? [];
-    for (var item in items) {
-      totalPnl += (item['pnl'] as num?)?.toDouble() ?? 0;
-      totalCost += (item['cost'] as num?)?.toDouble() ?? 0;
-    }
-    if (totalCost == 0) return '0.00%';
-    final rate = (totalPnl / totalCost) * 100;
-    return (rate > 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
+    return '--%';
   }
 
   Widget _rankBadge(int rank) {
@@ -1423,25 +1430,86 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 }
 
-class AnalysisRankAllPage extends StatelessWidget {
+class AnalysisRankAllPage extends StatefulWidget {
   final String rankType; // profit / loss
   const AnalysisRankAllPage({super.key, required this.rankType});
 
   @override
-  Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final items = _buildRankItemsData(appState);
-    final isProfit = rankType == 'profit';
-    final list = isProfit
-        ? items.where((x) => x.pnlCny > 0).toList()
-        : items.where((x) => x.pnlCny < 0).toList();
-    
-    if (isProfit) {
-      list.sort((a, b) => b.pnlCny.compareTo(a.pnlCny));
-    } else {
-      list.sort((a, b) => a.pnlCny.compareTo(b.pnlCny));
-    }
+  State<AnalysisRankAllPage> createState() => _AnalysisRankAllPageState();
+}
 
+class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
+  final ApiService _api = ApiService();
+  bool _loading = true;
+  List<_RankItem> _items = const [];
+  int _retryCount = 0;
+  Timer? _retryTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRank();
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadRank({bool force = false}) async {
+    if (_loading && !force) return;
+    setState(() => _loading = true);
+    try {
+      final data = await _api.getAnalysisRank(rankType: 'all', market: 'all');
+      if (!mounted) return;
+      final items = _parseRankItems(data);
+      setState(() {
+        _items = items;
+        _loading = false;
+        _retryCount = 0;
+      });
+      _retryTimer?.cancel();
+    } catch (e) {
+      debugPrint('加载盈亏排行失败: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (_retryCount < 3) {
+        _retryCount += 1;
+        final delayMs = 600 * _retryCount;
+        _retryTimer?.cancel();
+        _retryTimer = Timer(Duration(milliseconds: delayMs), () {
+          if (!mounted) return;
+          unawaited(_loadRank(force: true));
+        });
+      }
+    }
+  }
+
+  List<_RankItem> _parseRankItems(Map<String, dynamic> data) {
+    final key = widget.rankType == 'loss' ? 'loss' : 'gain';
+    final raw = data[key];
+    if (raw is! List) return [];
+    return raw.map((item) {
+      final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+      final code = (map['code'] ?? '').toString();
+      final name = (map['name'] ?? '').toString();
+      final pnl = (map['pnl'] as num?)?.toDouble() ?? 0.0;
+      final pnlRate = (map['pnl_rate'] as num?)?.toDouble() ?? 0.0;
+      final curr = (map['curr'] ?? 'CNY').toString();
+      return _RankItem(
+        code: code,
+        name: name,
+        pnl: pnl,
+        pnlRate: pnlRate,
+        currencySymbol: _currencySymbol(curr),
+      );
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.rankType == 'profit' ? '盈利榜' : '亏损榜';
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
@@ -1449,7 +1517,7 @@ class AnalysisRankAllPage extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         title: Text(
-          rankType == 'profit' ? '盈利榜' : '亏损榜',
+          title,
           style: _S.label.copyWith(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -1461,19 +1529,27 @@ class AnalysisRankAllPage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: list.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final item = list[index];
-          return _buildRankCard(item, appState, index + 1);
-        },
-      ),
+      body: _loading
+          ? Center(
+              child: Text('加载中...', style: _S.label.copyWith(color: AppTheme.textMuted)),
+            )
+          : _items.isEmpty
+              ? Center(
+                  child: Text('暂无数据', style: _S.label.copyWith(color: AppTheme.textMuted)),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _items.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = _items[index];
+                    return _buildRankCard(item, index + 1);
+                  },
+                ),
     );
   }
 
-  Widget _buildRankCard(_RankItem item, AppState appState, int rank) {
+  Widget _buildRankCard(_RankItem item, int rank) {
     final pnlColor = item.pnl >= 0 ? AppTheme.danger : AppTheme.success;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1519,31 +1595,6 @@ class AnalysisRankAllPage extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  List<_RankItem> _buildRankItemsData(AppState appState) {
-    final list = <_RankItem>[];
-    for (var asset in appState.portfolio) {
-      final priceInfo = appState.resolvePriceInfo(asset);
-      final currentPrice = (priceInfo != null && priceInfo.price > 0)
-          ? priceInfo.price
-          : (asset.price > 0 ? asset.price : 0.0);
-      
-      final pnl = appState.amountHidden ? 0.0 : (currentPrice - asset.price) * asset.qty + asset.adjustment;
-      final cost = asset.price * asset.qty;
-      final rate = cost > 0 ? (pnl / cost) * 100 : 0.0;
-      
-      final exchangeRate = appState.getCurrencyRate(asset.curr);
-      list.add(_RankItem(
-        code: asset.code,
-        name: asset.name,
-        pnl: pnl,
-        pnlCny: pnl * exchangeRate,
-        pnlRate: rate,
-        currencySymbol: asset.currencySymbol,
-      ));
-    }
-    return list;
   }
 
   String _formatDisplayCode(String code) {
@@ -1615,7 +1666,6 @@ class _RankItem {
   final String code;
   final String name;
   final double pnl;
-  final double pnlCny;
   final double pnlRate;
   final String currencySymbol;
 
@@ -1623,7 +1673,6 @@ class _RankItem {
     required this.code,
     required this.name,
     required this.pnl,
-    required this.pnlCny,
     required this.pnlRate,
     required this.currencySymbol,
   });

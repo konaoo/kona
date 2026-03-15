@@ -1758,6 +1758,61 @@ def _get_user_retention_rows(cursor, days: int = 60) -> List[Dict[str, Any]]:
     return result
 
 
+def _sort_retention_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(rows, key=lambda item: str(item.get("date") or ""))
+
+
+def _build_mini_bars(
+    rows: List[Dict[str, Any]],
+    key: str,
+    *,
+    points: int = 7,
+    min_height: int = 24,
+) -> List[Dict[str, Any]]:
+    series = _sort_retention_rows(rows)
+    if points > 0:
+        series = series[-points:]
+
+    values = [int(item.get(key) or 0) for item in series]
+    max_value = max(values) if values else 1
+    max_value = max(max_value, 1)
+
+    bars: List[Dict[str, Any]] = []
+    for idx, item in enumerate(series):
+        value = int(item.get(key) or 0)
+        height_pct = max(min_height, round((value / max_value) * 100))
+        bars.append(
+            {
+                "date": str(item.get("date") or ""),
+                "value": value,
+                "height": f"{height_pct}%",
+                "is_latest": idx == len(series) - 1,
+            }
+        )
+    return bars
+
+
+def _build_trend_text(
+    rows: List[Dict[str, Any]],
+    key: str,
+    *,
+    unit: str,
+    empty_text: str,
+    single_text: str,
+) -> str:
+    series = _sort_retention_rows(rows)
+    if not series:
+        return empty_text
+    if len(series) == 1:
+        return single_text
+    current = int(series[-1].get(key) or 0)
+    previous = int(series[-2].get(key) or 0)
+    diff = current - previous
+    if diff == 0:
+        return "较昨日持平"
+    return f"较昨日 +{diff}{unit}" if diff > 0 else f"较昨日 {diff}{unit}"
+
+
 def _recent_admin_audits(cursor, limit: int = 20) -> List[Dict[str, Any]]:
     cursor.execute(
         """
@@ -1825,6 +1880,23 @@ def create_admin_blueprint(db, admin_write_audit):
             try:
                 user_ops = _get_user_ops_metrics(cursor)
                 retention_rows = _get_user_retention_rows(cursor, days=60)
+                new_user_bars = _build_mini_bars(retention_rows, "new_users")
+                active_user_bars = _build_mini_bars(retention_rows, "active_users")
+                new_user_trend_text = _build_trend_text(
+                    retention_rows,
+                    "new_users",
+                    unit="人",
+                    empty_text="近7天新增走势",
+                    single_text="仅有今日数据",
+                )
+                active_user_trend_text = _build_trend_text(
+                    retention_rows,
+                    "active_users",
+                    unit="人",
+                    empty_text="近7天活跃走势",
+                    single_text="仅有今日数据",
+                )
+                new_users_avatar_count = int(user_ops["new_today"] or 0) // 10
 
                 cursor.execute("SELECT COUNT(*) AS c FROM daily_snapshots")
                 snapshot_total = int(cursor.fetchone()["c"])
@@ -1839,6 +1911,11 @@ def create_admin_blueprint(db, admin_write_audit):
                         "new_users_today": user_ops["new_today"],
                         "active_users_today": user_ops["dau"],
                         "total_users": user_ops["user_total"],
+                        "new_users_avatar_count": new_users_avatar_count,
+                        "new_user_trend_text": new_user_trend_text,
+                        "active_user_trend_text": active_user_trend_text,
+                        "new_user_bars": new_user_bars,
+                        "active_user_bars": active_user_bars,
                     },
                     "retention_rows": retention_rows,
                     "users": {

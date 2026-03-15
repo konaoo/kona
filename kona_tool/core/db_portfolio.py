@@ -253,6 +253,24 @@ class PortfolioDatabaseMixin:
         conn.close()
         return data
 
+    def get_distinct_portfolio_codes(self, include_closed: bool = False) -> List[str]:
+        """获取全库唯一证券代码列表（用于行情预取）。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        qty_condition = "" if include_closed else " AND qty > 0"
+        try:
+            cursor.execute(
+                f"""
+                SELECT DISTINCT code
+                FROM portfolio
+                WHERE COALESCE(code, '') != ''{qty_condition}
+                ORDER BY code
+                """
+            )
+            return [row[0] for row in cursor.fetchall() if row and row[0]]
+        finally:
+            conn.close()
+
     def get_asset(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
         """获取单个资产信息。"""
         conn = self.get_connection()

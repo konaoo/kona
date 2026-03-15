@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import config
-from core.price import PricePreloader
 
 
 def run_dev_server(*, components: Dict[str, Any]) -> None:
@@ -25,6 +24,7 @@ def run_dev_server(*, components: Dict[str, Any]) -> None:
     app = components["app"]
     snapshot_runtime = components["snapshot_runtime"]
     startup_runtime = components["startup_runtime"]
+    price_runtime = components["price_runtime"]
     run_provider_test_report_job = components.get("run_provider_test_report_job")
 
     logger.info("Starting Portfolio Management System v10.0...")
@@ -50,11 +50,7 @@ def run_dev_server(*, components: Dict[str, Any]) -> None:
         ),
         enable_startup_snapshot=bool(config.ENABLE_STARTUP_SNAPSHOT),
         startup_snapshot_target=lambda: snapshot_runtime.background_snapshot_runner(),
-        preloader_factory=lambda db_path, interval: PricePreloader.get_instance(
-            db_path=db_path,
-            interval=interval,
-        ),
-        db_path=str(config.DATABASE_PATH),
+        preloader_start=lambda interval: price_runtime.start_preloader(interval),
         preload_interval=config.PRELOAD_INTERVAL_SECONDS,
         open_browser_target=lambda: startup_runtime.open_browser(
             f"http://{config.HOST}:{config.PORT}"
@@ -62,4 +58,3 @@ def run_dev_server(*, components: Dict[str, Any]) -> None:
     )
 
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
-

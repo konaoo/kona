@@ -164,6 +164,7 @@ API_HEADERS = {
 CACHE_ENABLED = True
 CACHE_TTL = 60
 CACHE_STALE_TTL = int(os.getenv("CACHE_STALE_TTL", "300"))
+PRICE_CACHE_MAX_SIZE = int(os.getenv("PRICE_CACHE_MAX_SIZE", "5000"))
 ADMIN_READ_CACHE_TTL_SECONDS = int(os.getenv("ADMIN_READ_CACHE_TTL_SECONDS", "120"))
 
 # 行情预取间隔（秒），设为小于 CACHE_TTL 以确保缓存永远不过期
@@ -230,6 +231,20 @@ SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 # 本地开发可用 memory://，生产建议：
 # RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
+
+# 请求运行时共享存储（用于接口分组限流与活跃打点）
+# 默认复用 RATELIMIT_STORAGE_URL，可单独指定：
+# REQUEST_RUNTIME_STORAGE_URL=redis://127.0.0.1:6379/0
+REQUEST_RUNTIME_STORAGE_URL = os.getenv(
+    "REQUEST_RUNTIME_STORAGE_URL",
+    RATELIMIT_STORAGE_URL,
+)
+
+# 请求运行时共享存储的 key 前缀（避免与其他系统冲突）
+REQUEST_RUNTIME_STORAGE_PREFIX = os.getenv(
+    "REQUEST_RUNTIME_STORAGE_PREFIX",
+    "kona:req",
+)
 
 # 运行指标接口鉴权（为空表示不鉴权；生产建议设置）
 PRICE_HEALTH_TOKEN = os.getenv("PRICE_HEALTH_TOKEN", "").strip()

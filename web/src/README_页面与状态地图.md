@@ -18,8 +18,9 @@ Web 端现在可以理解成三层：
 
 当前最关键的两个入口是：
 
-- [router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts)
-- [stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
+- 业务端路由：[router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts)
+- 管理端路由：[router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)
+- 状态统一入口：[stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
 
 一句话：
 
@@ -111,7 +112,8 @@ web/src/
 
 路由入口在：
 
-- [router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts)
+- 业务端：[router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts)
+- 管理端：[router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)
 
 当前主要分三段：
 
@@ -146,11 +148,10 @@ web/src/
 
 然后判断：
 
-- 是否已登录
-- 是否需要管理员权限
-- 是否该跳回登录页
+- 业务端是否已登录（未登录跳 `/app/login`）
+- 管理端是否已登录 + 是否管理员（未登录或无权限跳 `/admin/login`）
 
-所以 `router.ts` 不只是跳页面，它也是登录恢复和权限控制入口。
+所以路由文件不只是跳页面，它也是登录恢复和权限控制入口。
 
 ---
 

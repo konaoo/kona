@@ -281,6 +281,7 @@ export const useSyncStore = defineStore('sync', () => {
         {
           include,
           client_versions: clientVersions,
+          portfolio_metrics: true,
         },
         true
       )

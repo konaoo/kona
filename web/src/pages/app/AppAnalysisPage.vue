@@ -11,7 +11,7 @@
            <div class="hero-label">{{ periodLabel }}总计盈亏</div>
            <div class="hero-val" :class="valueClass(periodPnl)">{{ formatCny(periodPnl) }}</div>
            <div class="hero-rate" :class="valueClass(periodRate)">
-              {{ periodRate >= 0 ? '+' : '' }}{{ (periodRate || 0).toFixed(2) }}%
+              {{ formatPct(periodRate) }}
            </div>
         </div>
 
@@ -81,7 +81,7 @@
           </div>
         </div>
 
-        <div class="calendar-footer" v-if="calendarState.totalPnl">
+        <div class="calendar-footer" v-if="calendarState.totalPnl !== null">
           <span class="calendar-footer-label">{{ calendarSummaryLabel }}</span>
           <span class="calendar-footer-value" :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
           <span class="calendar-footer-rate" :class="valueClass(calendarState.totalRate)">{{ formatPct(calendarState.totalRate) }}</span>
@@ -113,7 +113,7 @@
                     <div class="asset-code">{{ formatDisplayCode(item.code) }}</div>
                   </div>
                </div>
-               <div class="rank-values" :class="valueClass(rankPnlCny(item))">
+               <div class="rank-values" :class="valueClass(rankPnlValue(item))">
                   <div class="val-pnl">{{ formatRankPnl(item) }}</div>
                   <div class="val-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
                 </div>
@@ -202,14 +202,13 @@ type AnalysisCachePayload = {
   calendarState: {
     title: string
     items: CalendarItem[]
-    totalPnl: number
-    totalRate: number
+    totalPnl: number | null
+    totalRate: number | null
   }
   rank: {
     gain: RankItem[]
     loss: RankItem[]
   }
-  rates: Record<string, number>
   calendarType: CalendarType
   rankType: 'profit' | 'loss'
   selectedDayYear: number | null
@@ -234,8 +233,8 @@ const overview = reactive<Record<PeriodKey, OverviewItem>>({
 const calendarState = reactive({
   title: '',
   items: [] as CalendarItem[],
-  totalPnl: 0,
-  totalRate: 0,
+  totalPnl: null as number | null,
+  totalRate: null as number | null,
 })
 
 const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
@@ -243,9 +242,7 @@ const rank = reactive<{ gain: RankItem[]; loss: RankItem[] }>({
   loss: [],
 })
 
-const rates = reactive<Record<string, number>>({})
 const store = useKonaStore()
-const realtimeDayReady = ref(false)
 let reloadInflight: Promise<void> | null = null
 
 const calendarType = ref<CalendarType>('day')
@@ -326,11 +323,6 @@ function persistAnalysisCache() {
       overview,
       calendarState,
       rank,
-      rates: {
-        CNY: toNum(rates.CNY, 1),
-        HKD: toNum(rates.HKD, 1),
-        USD: toNum(rates.USD, 1),
-      },
       calendarType: calendarType.value,
       rankType: rankType.value,
       selectedDayYear: selectedDayYear.value,
@@ -355,7 +347,6 @@ function restoreAnalysisCache(): boolean {
   Object.assign(overview, cached.overview)
   Object.assign(calendarState, cached.calendarState)
   Object.assign(rank, cached.rank)
-  Object.assign(rates, cached.rates)
   calendarType.value = cached.calendarType
   rankType.value = cached.rankType || 'profit'
   selectedDayYear.value = cached.selectedDayYear
@@ -367,29 +358,6 @@ function restoreAnalysisCache(): boolean {
   return true
 }
 
-function rateToCnyForCurr(curr: unknown): number {
-  const code = String(curr || 'CNY').toUpperCase()
-  if (code === 'CNY') return 1
-  const rate = toNum(store.state.rates?.[code] ?? rates[code], 0)
-  return rate > 0 ? rate : 1
-}
-
-const realtimeDayOverview = computed(() => {
-  let pnl = 0
-  let base = 0
-  for (const row of store.rows.value) {
-    const rate = rateToCnyForCurr((row as any).curr)
-    const rowValue = toNum((row as any).value)
-    const rowDayPnl = toNum((row as any).dayPnlAggregate)
-    pnl += rowDayPnl * rate
-    base += (rowValue - rowDayPnl) * rate
-  }
-  return {
-    pnl,
-    rate: base > 0 ? (pnl / base) * 100 : 0,
-  }
-})
-
 const periodLabel = computed(() => {
   if (overviewPeriod.value === 'day') return '当日'
   if (overviewPeriod.value === 'month') return '本月'
@@ -399,14 +367,14 @@ const periodLabel = computed(() => {
 
 const periodPnl = computed(() => {
   const key = overviewPeriod.value
-  if (key === 'day') return realtimeDayOverview.value.pnl
-  return toNum(overview[key]?.pnl)
+  const value = overview[key]?.pnl
+  return value == null ? null : toNum(value)
 })
 
 const periodRate = computed(() => {
   const key = overviewPeriod.value
-  if (key === 'day') return realtimeDayOverview.value.rate
-  return toNum(overview[key]?.pnl_rate)
+  const value = overview[key]?.pnl_rate
+  return value == null ? null : toNum(value)
 })
 
 const calendarColumns = computed(() => {
@@ -436,17 +404,7 @@ const calendarPeriodButtonText = computed(() => {
 
 const filteredRankItems = computed(() => {
   const source = rankType.value === 'profit' ? rank.gain : rank.loss
-  const items = [...(source || [])].filter(item => {
-     // Optional: fallback filtering if backend returns mixed. We assume backend returns pre-categorized.
-     const rv = rankPnlCny(item)
-     return rankType.value === 'profit' ? rv > 0 : rv < 0
-  })
-  items.sort((a, b) => {
-    const pnlA = rankPnlCny(a)
-    const pnlB = rankPnlCny(b)
-    return rankType.value === 'profit' ? pnlB - pnlA : pnlA - pnlB
-  })
-  return items.slice(0, 10)
+  return [...(source || [])].slice(0, 10)
 })
 
 const calendarSummaryLabel = computed(() => {
@@ -477,27 +435,24 @@ const calendarGrid = computed(() => {
     if (key !== null) map.set(key, toNum(item?.pnl))
   }
 
-  if (calendarType.value === 'day') {
-    if (selectedDayYear.value === now.getFullYear() && selectedDayMonth.value === now.getMonth() + 1) {
-      map.set(now.getDate(), realtimeDayOverview.value.pnl)
-    }
-  }
-
   return grid.map((item) => ({ ...item, pnl: map.has(item.key) ? Number(map.get(item.key)) : null }))
 })
 
-function valueClass(value: number): 'up' | 'down' | 'flat' {
+function valueClass(value: number | null): 'up' | 'down' | 'flat' {
+  if (value == null) return 'flat'
   if (value > 0) return 'up'
   if (value < 0) return 'down'
   return 'flat'
 }
 
-function formatCny(value: number): string {
+function formatCny(value: number | null): string {
+  if (value == null) return '--'
   const val = Math.round(toNum(value))
   return (val >= 0 ? '+¥ ' : '-¥ ') + Math.abs(val).toLocaleString()
 }
 
-function formatPct(value: number): string {
+function formatPct(value: number | null): string {
+  if (value == null) return '--'
   const val = toNum(value)
   return (val >= 0 ? '+' : '') + val.toFixed(2) + '%'
 }
@@ -557,11 +512,8 @@ function formatRankPnl(item: RankItem): string {
   return `${pnl >= 0 ? '+' : '-'}${symbol} ${formatted}`
 }
 
-function rankPnlCny(item: RankItem): number {
-  const pnl = toNum(item.pnl)
-  const code = String(item.curr || 'CNY').toUpperCase()
-  const rate = toNum(rates[code], 1)
-  return pnl * rate
+function rankPnlValue(item: RankItem): number {
+  return toNum(item.pnl)
 }
 
 function parseLabelKey(label: string | number | undefined): number | null {
@@ -601,11 +553,6 @@ async function loadOverview() {
   Object.assign(overview, payload)
 }
 
-async function loadRates() {
-  const payload = await api.get<Record<string, number>>('/api/rates')
-  Object.assign(rates, { CNY: 1, ...payload })
-}
-
 async function loadCalendar(recoverOnInvalid = true) {
   const requestId = ++calendarRequestId
   const params = new URLSearchParams({ type: calendarType.value })
@@ -629,8 +576,8 @@ async function loadCalendar(recoverOnInvalid = true) {
     
     calendarState.title = payload.title || ''
     calendarState.items = payload.items || []
-    calendarState.totalPnl = toNum(payload.total_pnl)
-    calendarState.totalRate = toNum(payload.total_rate)
+    calendarState.totalPnl = payload.total_pnl == null ? null : toNum(payload.total_pnl)
+    calendarState.totalRate = payload.total_rate == null ? null : toNum(payload.total_rate)
   } catch (error) {
     const inv = invalidCalendarPeriodPayload(error)
     if (recoverOnInvalid && inv) {
@@ -651,10 +598,9 @@ async function reload(mode: 'light' | 'force' = 'light', includeAnalysis = true)
   reloadInflight = (async () => {
     try {
       if (mode === 'force') await store.refreshAll(); else await store.refreshStaticOnly()
-      realtimeDayReady.value = true
-    } catch { realtimeDayReady.value = false }
+    } catch {}
     if (includeAnalysis) {
-      await Promise.all([loadOverview(), loadRates()])
+      await Promise.all([loadOverview()])
       await Promise.all([loadCalendar(), loadRank()])
     }
     persistAnalysisCache()
@@ -674,7 +620,6 @@ function onCalendarTypeChange(nextType: CalendarType) {
 
 onMounted(() => {
   restoreAnalysisCache()
-  realtimeDayReady.value = store.rows.value.length > 0
   void reload('light', true)
 })
 </script>

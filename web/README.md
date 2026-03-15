@@ -212,6 +212,14 @@ cd /Users/kona/Desktop/kaka/kona_repo/web
 npm run build
 ```
 
+只构建某一端：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/web
+npm run build:app
+npm run build:admin
+```
+
 预览：
 
 ```bash
@@ -219,20 +227,36 @@ cd /Users/kona/Desktop/kaka/kona_repo/web
 npm run preview
 ```
 
+管理端预览：
+
+```bash
+cd /Users/kona/Desktop/kaka/kona_repo/web
+npm run preview:admin
+```
+
 ---
 
 ## 8. 部署到 Flask 静态目录
 
-Web 打包产物由后端托管：`kona_tool/static/web`
+Web 打包产物由后端托管，拆成两份目录：
+
+- 业务端：`kona_tool/static/web/app`
+- 管理端：`kona_tool/static/web/admin`
 
 ```bash
 cd /Users/kona/Desktop/kaka/kona_repo/web
 npm run build
 
-mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web
+mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/app
+mkdir -p /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/admin
+
 rsync -a --delete \
-  /Users/kona/Desktop/kaka/kona_repo/web/dist/ \
-  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/
+  /Users/kona/Desktop/kaka/kona_repo/web/dist/app/ \
+  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/app/
+
+rsync -a --delete \
+  /Users/kona/Desktop/kaka/kona_repo/web/dist/admin/ \
+  /Users/kona/Desktop/kaka/kona_repo/kona_tool/static/web/admin/
 ```
 
 若访问根路径返回 `{"error":"Web bundle not found"}`，说明静态目录没有最新构建产物，按上面同步一次即可。

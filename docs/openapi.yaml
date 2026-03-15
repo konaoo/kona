@@ -24,6 +24,1801 @@ components:
         status:
           type: string
           example: ok
+    RequestRuntimeMetrics:
+      type: object
+      properties:
+        policy_rate_allowed:
+          type: integer
+        policy_rate_limited:
+          type: integer
+        policy_rate_errors:
+          type: integer
+        activity_touch_write:
+          type: integer
+        activity_touch_skipped:
+          type: integer
+        activity_touch_errors:
+          type: integer
+        storage_errors:
+          type: integer
+        last_error:
+          type: string
+        last_error_at:
+          type: number
+        storage:
+          type: object
+          properties:
+            backend:
+              type: string
+            shared:
+              type: boolean
+        activity_touch_interval_seconds:
+          type: number
+        policy_rate_ttl_seconds:
+          type: number
+    PriceCacheStats:
+      type: object
+      properties:
+        size:
+          type: integer
+        max_size:
+          type: integer
+        evictions:
+          type: integer
+        ttl:
+          type: integer
+        stale_ttl:
+          type: integer
+    PriceRuntimeMetrics:
+      type: object
+      properties:
+        cache_hits:
+          type: integer
+        stale_hits:
+          type: integer
+        network_fetch:
+          type: integer
+        network_fail:
+          type: integer
+        last_fetch_at:
+          type: number
+        cache:
+          $ref: "#/components/schemas/PriceCacheStats"
+    PriceSourceHealthItem:
+      type: object
+      properties:
+        ok:
+          type: integer
+        fail:
+          type: integer
+        timeout:
+          type: integer
+        consecutive_fail:
+          type: integer
+        latency_avg_ms:
+          type: number
+        last_error:
+          type: string
+        last_ok_at:
+          type: string
+        last_fail_at:
+          type: string
+        circuit_open_until:
+          type: number
+        circuit_open:
+          type: boolean
+    PriceSourceHealthMap:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/PriceSourceHealthItem"
+    PnlOverviewItem:
+      type: object
+      properties:
+        pnl:
+          type: number
+        pnl_rate:
+          type: number
+        base_value:
+          type: number
+    AnalysisOverviewResponse:
+      type: object
+      properties:
+        day:
+          $ref: "#/components/schemas/PnlOverviewItem"
+        month:
+          $ref: "#/components/schemas/PnlOverviewItem"
+        year:
+          $ref: "#/components/schemas/PnlOverviewItem"
+        all:
+          $ref: "#/components/schemas/PnlOverviewItem"
+    AnalysisCalendarItem:
+      type: object
+      properties:
+        label:
+          type: string
+        pnl:
+          type: number
+    AnalysisCalendarPeriod:
+      type: object
+      properties:
+        time_type:
+          type: string
+          enum: [day, month, year]
+        year:
+          type: integer
+        month:
+          type: integer
+    AnalysisCalendarSelectableDay:
+      type: object
+      properties:
+        years:
+          type: array
+          items:
+            type: integer
+        months_by_year:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: integer
+    AnalysisCalendarSelectableMonth:
+      type: object
+      properties:
+        years:
+          type: array
+          items:
+            type: integer
+    AnalysisCalendarSelectable:
+      type: object
+      properties:
+        day:
+          $ref: "#/components/schemas/AnalysisCalendarSelectableDay"
+        month:
+          $ref: "#/components/schemas/AnalysisCalendarSelectableMonth"
+    AnalysisCalendarResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisCalendarItem"
+        total_pnl:
+          type: number
+        total_rate:
+          type: number
+        title:
+          type: string
+        period:
+          $ref: "#/components/schemas/AnalysisCalendarPeriod"
+        selectable:
+          $ref: "#/components/schemas/AnalysisCalendarSelectable"
+    AnalysisCalendarErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisCalendarItem"
+        total_pnl:
+          type: number
+        total_rate:
+          type: number
+        title:
+          type: string
+        period:
+          $ref: "#/components/schemas/AnalysisCalendarPeriod"
+        selectable:
+          $ref: "#/components/schemas/AnalysisCalendarSelectable"
+    AnalysisMarketBreakdownItem:
+      type: object
+      properties:
+        date:
+          type: string
+        markets:
+          type: object
+          properties:
+            a:
+              type: number
+              nullable: true
+            hk:
+              type: number
+              nullable: true
+            us:
+              type: number
+              nullable: true
+            fund:
+              type: number
+              nullable: true
+            unallocated:
+              type: number
+              nullable: true
+        total_pnl:
+          type: number
+        source:
+          type: string
+          enum: [exact, estimated, missing]
+    AnalysisMarketBreakdownResponse:
+      type: object
+      properties:
+        time_type:
+          type: string
+        year:
+          type: integer
+        month:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisMarketBreakdownItem"
+        error:
+          type: string
+        code:
+          type: string
+    AnalysisRankItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        pnl:
+          type: number
+        pnl_rate:
+          type: number
+        market:
+          type: string
+        curr:
+          type: string
+    AnalysisRankResponse:
+      type: object
+      properties:
+        gain:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisRankItem"
+        loss:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisRankItem"
+    SnapshotSaveRequest:
+      type: object
+      properties:
+        date:
+          type: string
+        total_asset:
+          type: number
+        total_invest:
+          type: number
+        total_cash:
+          type: number
+        total_other:
+          type: number
+        total_liability:
+          type: number
+        total_pnl:
+          type: number
+        day_pnl:
+          type: number
+        day_pnl_by_market:
+          type: object
+          additionalProperties:
+            type: number
+        market_breakdown_source:
+          type: string
+        market_breakdown_confidence:
+          type: number
+        market_breakdown_meta:
+          type: object
+          additionalProperties: true
+    SnapshotFixRequest:
+      type: object
+      properties:
+        dates:
+          type: array
+          items:
+            type: string
+    PortfolioBuyWithCashRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        qty:
+          type: number
+        cash_asset_id:
+          type: integer
+        curr:
+          type: string
+        request_id:
+          type: string
+    PortfolioBuyWithCashResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        cash_deducted:
+          type: number
+        cash_curr:
+          type: string
+        undo_token:
+          type: string
+        undo_expire_at:
+          type: string
+    PortfolioDeleteCorrectiveRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        request_id:
+          type: string
+    PortfolioDeleteCorrectiveResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        code:
+          type: string
+        deleted:
+          type: object
+          properties:
+            portfolio:
+              type: integer
+            transactions:
+              type: integer
+            snapshots:
+              type: integer
+        from_date:
+          type: string
+    PortfolioUndoRequest:
+      type: object
+      properties:
+        undo_token:
+          type: string
+    PortfolioUndoResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        code:
+          type: string
+    MarketStatusItem:
+      type: object
+      properties:
+        open:
+          type: boolean
+        trading_day:
+          type: boolean
+        reason:
+          type: string
+    MarketStatusResponse:
+      type: object
+      properties:
+        server_time_utc:
+          type: string
+        markets:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/MarketStatusItem"
+        all_closed:
+          type: boolean
+    MarketIndexItem:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        change:
+          type: number
+        change_pct:
+          type: number
+    SyncBootstrapRequest:
+      type: object
+      properties:
+        include:
+          type: array
+          items:
+            type: string
+            enum: [portfolio, cash_assets, other_assets, liabilities, history, overview_all, rates]
+        client_versions:
+          type: object
+          additionalProperties:
+            type: string
+        portfolio_metrics:
+          type: boolean
+    SyncBootstrapResponse:
+      type: object
+      properties:
+        server_time:
+          type: string
+        versions:
+          type: object
+          properties:
+            portfolio:
+              type: string
+            cash_assets:
+              type: string
+            other_assets:
+              type: string
+            liabilities:
+              type: string
+            history:
+              type: string
+            overview_all:
+              type: string
+            rates:
+              type: string
+        changed:
+          type: array
+          items:
+            type: string
+        data:
+          type: object
+          additionalProperties: true
+        market_statuses:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/MarketStatusItem"
+        market_status:
+          type: object
+          additionalProperties:
+            type: boolean
+        quote_policy:
+          type: object
+          properties:
+            interval_open_sec:
+              type: integer
+            interval_closed_sec:
+              type: integer
+            interval_us_extended_sec:
+              type: integer
+    AssetTrendsRequestItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        market:
+          type: string
+    AssetTrendsRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetTrendsRequestItem"
+        codes:
+          type: array
+          items:
+            type: string
+        points:
+          type: integer
+    AssetTrendPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        value:
+          type: number
+    AssetTrendItem:
+      type: object
+      properties:
+        code:
+          type: string
+        resolved_code:
+          type: string
+        kind:
+          type: string
+          enum: [stock, fund]
+        label:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetTrendPoint"
+    AssetTrendsResponse:
+      type: object
+      properties:
+        items:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AssetTrendItem"
+        points:
+          type: integer
+        label:
+          type: string
+    AppVersionResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        buildNumber:
+          oneOf:
+            - type: string
+            - type: integer
+        releaseNotes:
+          type: string
+        downloadUrl:
+          type: string
+        forceUpdate:
+          type: boolean
+    WebConfigResponse:
+      type: object
+      properties:
+        portal_title:
+          type: string
+        apk_download_url:
+          type: string
+        app_version:
+          type: string
+        invite_acquire_text:
+          type: string
+        invite_acquire_image_url:
+          type: string
+        user_group_text:
+          type: string
+        user_group_image_url:
+          type: string
+        ios_qr_text:
+          type: string
+        ios_qr_image_url:
+          type: string
+    PriceHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        server_time_utc:
+          type: string
+        runtime:
+          $ref: "#/components/schemas/PriceRuntimeMetrics"
+        sources:
+          $ref: "#/components/schemas/PriceSourceHealthMap"
+    AdminPolicyItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        scope_key:
+          type: string
+        scope_type:
+          type: string
+        enabled:
+          type: boolean
+        limit_per_min:
+          type: integer
+          nullable: true
+        note:
+          type: string
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+        display_name:
+          type: string
+        impact:
+          type: string
+        scope_type_label:
+          type: string
+    AdminPoliciesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPolicyItem"
+    AdminPolicyUpdateRequest:
+      type: object
+      properties:
+        scope_key:
+          type: string
+        enabled:
+          type: boolean
+        limit_per_min:
+          type: integer
+          nullable: true
+        note:
+          type: string
+    AdminPolicyUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        policy:
+          $ref: "#/components/schemas/AdminPolicyItem"
+    AdminPolicyBatchUpdateRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPolicyUpdateRequest"
+    AdminPolicyBatchUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        updated_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPolicyItem"
+    AdminUpstreamStatusItem:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        latency:
+          type: integer
+        error:
+          type: string
+        disabled:
+          type: boolean
+    AdminApiHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        server_time_utc:
+          type: string
+        db:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            error:
+              type: string
+        upstream:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AdminUpstreamStatusItem"
+        policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPolicyItem"
+        runtime:
+          $ref: "#/components/schemas/PriceRuntimeMetrics"
+        sources:
+          $ref: "#/components/schemas/PriceSourceHealthMap"
+        version_info:
+          type: object
+          properties:
+            version:
+              type: string
+            commit_hash:
+              type: string
+            last_update:
+              type: string
+    AdminPriceAlertSourceItem:
+      type: object
+      properties:
+        source_key:
+          type: string
+        source_label:
+          type: string
+        price:
+          type: number
+        yclose:
+          type: number
+        amt:
+          type: number
+        chg:
+          type: number
+        ok:
+          type: boolean
+        delta_pct:
+          type: number
+    AdminPriceAlertItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        curr:
+          type: string
+        user_count:
+          type: integer
+        usernames:
+          type: array
+          items:
+            type: string
+        current_price:
+          type: number
+        current_yclose:
+          type: number
+        baseline_price:
+          type: number
+        baseline_yclose:
+          type: number
+        baseline_source:
+          type: string
+        baseline_source_key:
+          type: string
+        delta_pct:
+          type: number
+        severity:
+          type: string
+        alert_type:
+          type: string
+        reason:
+          type: string
+        suggestion:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPriceAlertSourceItem"
+    AdminPriceAlertSummary:
+      type: object
+      properties:
+        critical:
+          type: integer
+        warning:
+          type: integer
+        info:
+          type: integer
+    AdminPriceAlertReportSummary:
+      type: object
+      properties:
+        report_date:
+          type: string
+        tested_at_utc:
+          type: string
+        total_assets:
+          type: integer
+        alert_count:
+          type: integer
+        summary:
+          $ref: "#/components/schemas/AdminPriceAlertSummary"
+        updated_at:
+          type: string
+    AdminPriceAlertsResponse:
+      type: object
+      properties:
+        tested_at_utc:
+          type: string
+        total_assets:
+          type: integer
+        alert_count:
+          type: integer
+        summary:
+          $ref: "#/components/schemas/AdminPriceAlertSummary"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPriceAlertItem"
+        report_date:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPriceAlertReportSummary"
+        cache:
+          type: object
+          properties:
+            state:
+              type: string
+            elapsed_ms:
+              type: integer
+    AdminPriceProbeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+    AdminPriceProbeCurrent:
+      type: object
+      properties:
+        price:
+          type: number
+        yclose:
+          type: number
+        amt:
+          type: number
+        chg:
+          type: number
+        source_hint:
+          type: string
+    AdminPriceProbeDiagnosis:
+      type: object
+      properties:
+        status:
+          type: string
+        summary:
+          type: string
+    AdminPriceProbeResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        asset_type:
+          type: string
+        asset_type_label:
+          type: string
+        current:
+          $ref: "#/components/schemas/AdminPriceProbeCurrent"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPriceAlertSourceItem"
+        diagnosis:
+          $ref: "#/components/schemas/AdminPriceProbeDiagnosis"
+    AdminProviderTestItem:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        asset_type:
+          type: string
+        ok:
+          type: boolean
+        status:
+          type: string
+        price:
+          type: number
+        yclose:
+          type: number
+        change:
+          type: number
+        change_pct:
+          type: number
+        rate:
+          type: number
+        latency_ms:
+          type: integer
+        detail:
+          type: string
+    AdminProviderTestResponse:
+      type: object
+      properties:
+        provider_key:
+          type: string
+        provider_label:
+          type: string
+        status:
+          type: string
+        tested_at_utc:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminProviderTestItem"
+    AdminProviderTestSummary:
+      type: object
+      properties:
+        status:
+          type: string
+        label:
+          type: string
+        alert_keys:
+          type: array
+          items:
+            type: string
+    AdminProviderTestReport:
+      type: object
+      properties:
+        report_slot:
+          type: string
+        tested_at_utc:
+          type: string
+        updated_at:
+          type: string
+        summary:
+          $ref: "#/components/schemas/AdminProviderTestSummary"
+        providers:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AdminProviderTestResponse"
+    AdminProviderTestReportRun:
+      type: object
+      properties:
+        tested_at_utc:
+          type: string
+        summary:
+          $ref: "#/components/schemas/AdminProviderTestSummary"
+        providers:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AdminProviderTestResponse"
+    AdminSmokeTestItem:
+      type: object
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+        detail:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+    AdminSmokeTestResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSmokeTestItem"
+    AdminConfigItem:
+      type: object
+      properties:
+        key:
+          type: string
+        display_name:
+          type: string
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: integer
+            - type: boolean
+        default_value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: integer
+            - type: boolean
+        type:
+          type: string
+        description:
+          type: string
+        min:
+          type: number
+          nullable: true
+        max:
+          type: number
+          nullable: true
+        choices:
+          type: array
+          items:
+            type: string
+        recommended:
+          type: string
+    AdminConfigListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminConfigItem"
+    AdminConfigUpdateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: integer
+            - type: boolean
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: integer
+                  - type: boolean
+    AdminConfigUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        updated:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: integer
+                  - type: boolean
+    AdminOpsTextImageResponse:
+      type: object
+      properties:
+        text:
+          type: string
+        image_url:
+          type: string
+    AdminOpsTextImageUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        text:
+          type: string
+        image_url:
+          type: string
+    AdminOpsAppUpdateResponse:
+      type: object
+      properties:
+        text:
+          type: string
+        download_url:
+          type: string
+    AdminOpsAppUpdateUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        text:
+          type: string
+        download_url:
+          type: string
+    AdminMiniBar:
+      type: object
+      properties:
+        date:
+          type: string
+        value:
+          type: integer
+        height:
+          type: string
+        is_latest:
+          type: boolean
+    AdminRetentionRow:
+      type: object
+      properties:
+        date:
+          type: string
+        new_users:
+          type: integer
+        active_users:
+          type: integer
+        retention_1d:
+          type: number
+          nullable: true
+        retention_3d:
+          type: number
+          nullable: true
+        retention_7d:
+          type: number
+          nullable: true
+        retention_14d:
+          type: number
+          nullable: true
+        retention_30d:
+          type: number
+          nullable: true
+        active_retention_1d:
+          type: number
+          nullable: true
+        active_retention_3d:
+          type: number
+          nullable: true
+        active_retention_7d:
+          type: number
+          nullable: true
+        active_retention_14d:
+          type: number
+          nullable: true
+    AdminAuditItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        admin_user_id:
+          type: string
+        admin_username:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        method:
+          type: string
+        path:
+          type: string
+        status_code:
+          type: integer
+        result:
+          type: string
+        error:
+          type: string
+        created_at:
+          type: string
+    AdminUserOpsMetrics:
+      type: object
+      properties:
+        user_total:
+          type: integer
+        new_today:
+          type: integer
+        new_7d:
+          type: integer
+        new_30d:
+          type: integer
+        dau:
+          type: integer
+        wau:
+          type: integer
+        mau:
+          type: integer
+        last_login_distribution:
+          type: object
+          properties:
+            within_1d:
+              type: integer
+            within_7d:
+              type: integer
+            within_30d:
+              type: integer
+            over_30d:
+              type: integer
+            never_login:
+              type: integer
+    AdminUserMetricsResponse:
+      type: object
+      properties:
+        user_total:
+          type: integer
+        new_today:
+          type: integer
+        new_7d:
+          type: integer
+        new_30d:
+          type: integer
+        dau:
+          type: integer
+        wau:
+          type: integer
+        mau:
+          type: integer
+        last_login_distribution:
+          type: object
+          properties:
+            within_1d:
+              type: integer
+            within_7d:
+              type: integer
+            within_30d:
+              type: integer
+            over_30d:
+              type: integer
+            never_login:
+              type: integer
+        as_of:
+          type: string
+    AdminOverviewResponse:
+      type: object
+      properties:
+        dashboard:
+          type: object
+          properties:
+            new_users_today:
+              type: integer
+            active_users_today:
+              type: integer
+            total_users:
+              type: integer
+            new_users_avatar_count:
+              type: integer
+            new_user_trend_text:
+              type: string
+            active_user_trend_text:
+              type: string
+            new_user_bars:
+              type: array
+              items:
+                $ref: "#/components/schemas/AdminMiniBar"
+            active_user_bars:
+              type: array
+              items:
+                $ref: "#/components/schemas/AdminMiniBar"
+        retention_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRetentionRow"
+        users:
+          type: object
+          properties:
+            total:
+              type: integer
+        user_ops:
+          $ref: "#/components/schemas/AdminUserOpsMetrics"
+        snapshots:
+          type: object
+          properties:
+            total:
+              type: integer
+            latest_date:
+              type: string
+        recent_audits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuditItem"
+    AdminTodoItem:
+      type: object
+      properties:
+        code:
+          type: string
+        level:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        suggestion:
+          type: string
+    AdminSummaryTodoResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTodoItem"
+        snapshot:
+          type: object
+          properties:
+            active_invites:
+              type: integer
+            invite_threshold:
+              type: integer
+            disabled_policies:
+              type: integer
+            degraded_upstream:
+              type: integer
+            failed_audits_today:
+              type: integer
+            disabled_users:
+              type: integer
+    AdminMetaDictionariesResponse:
+      type: object
+      properties:
+        status_labels:
+          type: object
+          additionalProperties:
+            type: string
+        action_labels:
+          type: object
+          additionalProperties:
+            type: string
+        policy_labels:
+          type: object
+          additionalProperties:
+            type: string
+        policy_impacts:
+          type: object
+          additionalProperties:
+            type: string
+        policy_type_labels:
+          type: object
+          additionalProperties:
+            type: string
+        register_method_labels:
+          type: object
+          additionalProperties:
+            type: string
+        error_labels:
+          type: object
+          additionalProperties:
+            type: string
+        config_labels:
+          type: object
+          additionalProperties:
+            type: string
+    AdminUserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        nickname:
+          type: string
+        phone:
+          type: string
+        user_number:
+          type: integer
+          nullable: true
+        register_method:
+          type: string
+        is_admin:
+          type: integer
+        must_change_password:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+        last_login:
+          type: string
+        last_active_at:
+          type: string
+        last_login_ip:
+          type: string
+        last_login_region:
+          type: string
+        last_active_ip:
+          type: string
+        last_active_region:
+          type: string
+        active_sessions:
+          type: integer
+        total_asset_cny:
+          type: number
+        total_invest_cny:
+          type: number
+        can_manage:
+          type: integer
+    AdminUsersListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserSummary"
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+    AdminUserDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        nickname:
+          type: string
+        phone:
+          type: string
+        user_number:
+          type: integer
+          nullable: true
+        register_method:
+          type: string
+        is_admin:
+          type: integer
+        must_change_password:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+        last_login:
+          type: string
+        last_active_at:
+          type: string
+        last_login_ip:
+          type: string
+        last_login_region:
+          type: string
+        last_active_ip:
+          type: string
+        last_active_region:
+          type: string
+        active_sessions:
+          type: integer
+        can_manage:
+          type: integer
+    AdminUserUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            username:
+              type: string
+            nickname:
+              type: string
+            phone:
+              type: string
+            user_number:
+              type: integer
+              nullable: true
+            is_admin:
+              type: boolean
+            must_change_password:
+              type: boolean
+            status:
+              type: string
+            created_at:
+              type: string
+            last_login:
+              type: string
+    AdminUserStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        user_id:
+          type: string
+        new_status:
+          type: string
+    AdminUserPasswordResetResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        user_id:
+          type: string
+        must_change_password:
+          type: boolean
+        revoked_refresh_tokens:
+          type: integer
+        temp_password:
+          type: string
+    AdminUserSessionsRevokeResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        user_id:
+          type: string
+        revoked_refresh_tokens:
+          type: integer
+    AdminUserSessionsCountResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        active_sessions:
+          type: integer
+    AdminUserPortfolioItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        qty:
+          type: number
+        price:
+          type: number
+        curr:
+          type: string
+        asset_type:
+          type: string
+        latest_price:
+          type: number
+        pnl_cny:
+          type: number
+        pnl_rate:
+          type: number
+        type_label:
+          type: string
+    AdminUserPortfolioResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+        total:
+          type: integer
+        summary:
+          type: object
+          properties:
+            cash_cny:
+              type: number
+            other_cny:
+              type: number
+            liability_cny:
+              type: number
+            as_of:
+              type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserPortfolioItem"
+        cache:
+          type: object
+          properties:
+            cached_at:
+              type: string
+            expires_at:
+              type: string
+    AdminSnapshotRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+        user_id:
+          type: string
+        username:
+          type: string
+        user_number:
+          type: integer
+          nullable: true
+        total_asset:
+          type: number
+        total_invest:
+          type: number
+        total_cash:
+          type: number
+        total_other:
+          type: number
+        total_liability:
+          type: number
+        total_pnl:
+          type: number
+        day_pnl:
+          type: number
+        updated_at:
+          type: string
+    AdminDataSnapshotsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSnapshotRow"
+        limit:
+          type: integer
+        offset:
+          type: integer
+    AdminSnapshotHealthUser:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        total_snapshots:
+          type: integer
+        earliest_date:
+          type: string
+        latest_date:
+          type: string
+        last_updated_at:
+          type: string
+        gap_days:
+          type: integer
+        has_today:
+          type: boolean
+        status:
+          type: string
+    AdminSnapshotHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        server_time:
+          type: string
+        today:
+          type: string
+        today_snapshot_users:
+          type: integer
+        total_users:
+          type: integer
+        max_gap_days:
+          type: integer
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSnapshotHealthUser"
+    AdminSnapshotCleanupPreviewResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        affected:
+          type: integer
+        markets:
+          type: array
+          items:
+            type: string
+    AdminSnapshotCleanupResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        cleaned:
+          type: integer
+        markets:
+          type: array
+          items:
+            type: string
+    AdminBackupRequest:
+      type: object
+      properties:
+        backup_dir:
+          type: string
+        retention_days:
+          type: integer
+    AdminBackupResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        backup_file:
+          type: string
+        backup_dir:
+          type: string
+        retention_days:
+          type: integer
+        deleted_count:
+          type: integer
+        deleted:
+          type: array
+          items:
+            type: string
+    AdminBackupLatestResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        backup_file:
+          type: string
+        backup_dir:
+          type: string
+        modified_at:
+          type: string
+        size_bytes:
+          type: integer
+    AdminRestoreRequest:
+      type: object
+      properties:
+        backup_dir:
+          type: string
+        backup_file:
+          type: string
+    AdminRestoreResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        restored_from:
+          type: string
+        db_path:
+          type: string
+        pre_restore_copy:
+          type: string
+    AdminRebindPreviewResponse:
+      type: object
+      properties:
+        target_user_id:
+          type: string
+        target_username:
+          type: string
+        tables:
+          type: object
+          additionalProperties:
+            type: integer
+        sources:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
+        total:
+          type: integer
+    AdminRebindExecuteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        result:
+          type: object
+          properties:
+            target_user_id:
+              type: string
+            tables:
+              type: object
+              additionalProperties:
+                type: integer
+            total:
+              type: integer
+    AdminInviteItem:
+      type: object
+      properties:
+        code:
+          type: string
+        batch_id:
+          type: string
+        status:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+        used_by_user_id:
+          type: string
+        used_at:
+          type: string
+        note:
+          type: string
+        used_by_username:
+          type: string
+        used_by_user_number:
+          type: integer
+          nullable: true
+    AdminInvitesListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminInviteItem"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    AdminInvitesGenerateRequest:
+      type: object
+      properties:
+        count:
+          type: integer
+        batch_id:
+          type: string
+        note:
+          type: string
+    AdminInvitesGenerateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        batch_id:
+          type: string
+        requested:
+          type: integer
+        inserted:
+          type: integer
+        codes:
+          type: array
+          items:
+            type: string
+    AdminInvitesRevokeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+    AdminInvitesRevokeResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        code:
+          type: string
+    AdminInvitesStatsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        active:
+          type: integer
+        used:
+          type: integer
+        revoked:
+          type: integer
+        batch_id:
+          type: string
 paths:
   /health:
     get:
@@ -40,6 +1835,8 @@ paths:
                     type: string
                   version:
                     type: string
+                  request_runtime:
+                    $ref: "#/components/schemas/RequestRuntimeMetrics"
   /api/rates:
     get:
       summary: Get FX rates
@@ -858,6 +2655,10 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisOverviewResponse"
   /api/analysis/calendar:
     get:
       summary: PnL calendar
@@ -888,8 +2689,16 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisCalendarResponse"
         "400":
           description: Invalid calendar period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisCalendarErrorResponse"
   /api/analysis/rank:
     get:
       summary: PnL rank
@@ -911,6 +2720,10 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisRankResponse"
   /api/snapshot/save:
     post:
       summary: Save daily snapshot
@@ -921,16 +2734,47 @@ paths:
         content:
           application/json:
             schema:
-              type: object
+              $ref: "#/components/schemas/SnapshotSaveRequest"
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+        "400":
+          description: Missing payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Save failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/snapshot/trigger:
     post:
       summary: Trigger snapshot
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+        "500":
+          description: Trigger failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/snapshot/fix:
     post:
       summary: Fix snapshot day_pnl
@@ -941,12 +2785,2277 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                dates:
-                  type: array
-                  items:
-                    type: string
+              $ref: "#/components/schemas/SnapshotFixRequest"
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+        "400":
+          description: Missing or invalid dates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Fix failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # AUTO-GENERATED PATH STUBS (请补 summary/fields)
+  /api/admin/apis/health:
+    get:
+      summary: 后台接口健康与策略汇总
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminApiHealthResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/policies:
+    get:
+      summary: 后台接口策略列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: scope_type
+          required: false
+          schema:
+            type: string
+            enum: [all, upstream, api_group]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPoliciesResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/policies/batch_update:
+    post:
+      summary: 批量更新后台接口策略
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPolicyBatchUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPolicyBatchUpdateResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 策略不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/policies/update:
+    post:
+      summary: 更新单条后台接口策略
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPolicyUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPolicyUpdateResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 策略不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/price_alerts:
+    get:
+      summary: 行情价格告警与历史快照
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPriceAlertsResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/price_probe:
+    post:
+      summary: 单资产价格诊断
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPriceProbeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPriceProbeResponse"
+        "400":
+          description: 缺少或不合法的资产代码
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/provider_test:
+    post:
+      summary: 单个行情/汇率源测试
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider_key:
+                  type: string
+                  enum: [sina_quote, tencent_quote, eastmoney_quote, forex_rate]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProviderTestResponse"
+        "400":
+          description: 不支持的 provider_key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/provider_tests/latest:
+    get:
+      summary: 最近一次行情源测试报告
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProviderTestReport"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/provider_tests/run:
+    post:
+      summary: 运行行情源测试并保存报告
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProviderTestReportRun"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/apis/smoke_test:
+    post:
+      summary: 后台冒烟测试
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSmokeTestResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/config:
+    get:
+      summary: 后台系统配置白名单
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigListResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/config/reset:
+    post:
+      summary: 恢复系统配置默认值
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigUpdateResponse"
+        "400":
+          description: 配置键不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/config/update:
+    post:
+      summary: 更新系统配置
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminConfigUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConfigUpdateResponse"
+        "400":
+          description: 配置键或值不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/backup:
+    post:
+      summary: 创建数据库备份
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBackupRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBackupResponse"
+        "400":
+          description: 备份参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/backup/latest:
+    get:
+      summary: 获取最近一次备份信息
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: backup_dir
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBackupLatestResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/rebind/execute:
+    post:
+      summary: 执行历史数据归属迁移
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_user_id:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRebindExecuteResponse"
+        "400":
+          description: 参数不合法或迁移失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/rebind/preview:
+    get:
+      summary: 预览历史数据归属迁移
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: target_user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRebindPreviewResponse"
+        "400":
+          description: 缺少 target_user_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 目标用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/restore:
+    post:
+      summary: 恢复数据库备份
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRestoreRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRestoreResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 备份文件不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/cleanup_market_closed:
+    post:
+      summary: 清理休市日快照日盈亏
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                start_date:
+                  type: string
+                end_date:
+                  type: string
+                markets:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSnapshotCleanupResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/cleanup_market_closed/preview:
+    post:
+      summary: 预览休市日清理影响范围
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                start_date:
+                  type: string
+                end_date:
+                  type: string
+                markets:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSnapshotCleanupPreviewResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/cleanup_weekend:
+    post:
+      summary: 清理周末快照日盈亏
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                start_date:
+                  type: string
+                end_date:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSnapshotCleanupResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/cleanup_weekend/preview:
+    post:
+      summary: 预览周末清理影响范围
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                start_date:
+                  type: string
+                end_date:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSnapshotCleanupPreviewResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/health:
+    get:
+      summary: 快照任务健康检查
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSnapshotHealthResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshot/trigger:
+    post:
+      summary: 手动触发快照
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+        "500":
+          description: 触发失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/data/snapshots:
+    get:
+      summary: 查询快照明细
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: user_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: start_date
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: end_date
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 100
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDataSnapshotsResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/invites:
+    get:
+      summary: 邀请码列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [all, active, used, revoked]
+        - in: query
+          name: batch_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 200
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - in: query
+          name: random
+          required: false
+          schema:
+            type: string
+            enum: ["0", "1"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminInvitesListResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/invites/export:
+    get:
+      summary: 导出邀请码 CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [all, active, used, revoked]
+        - in: query
+          name: batch_id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/invites/generate:
+    post:
+      summary: 生成邀请码
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminInvitesGenerateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminInvitesGenerateResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/invites/revoke:
+    post:
+      summary: 作废邀请码
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminInvitesRevokeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminInvitesRevokeResponse"
+        "400":
+          description: 缺少邀请码
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 邀请码不存在或不可作废
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/invites/stats:
+    get:
+      summary: 邀请码统计
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: batch_id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminInvitesStatsResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/meta/dictionaries:
+    get:
+      summary: 后台字典与标签
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMetaDictionariesResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/app_update:
+    get:
+      summary: 运营配置-更新提示
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsAppUpdateResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/app_update/update:
+    post:
+      summary: 更新运营配置-更新提示
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                download_url:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsAppUpdateUpdateResponse"
+        "400":
+          description: 文案或下载地址不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/invite_acquire:
+    get:
+      summary: 运营配置-邀请码获取页
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/invite_acquire/update:
+    post:
+      summary: 更新运营配置-邀请码获取页
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                image_url:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageUpdateResponse"
+        "400":
+          description: 文案或图片地址不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/ios_qr:
+    get:
+      summary: 运营配置-iOS 下载二维码
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/ios_qr/update:
+    post:
+      summary: 更新运营配置-iOS 下载二维码
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                image_url:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageUpdateResponse"
+        "400":
+          description: 文案或图片地址不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/user_group:
+    get:
+      summary: 运营配置-用户群页
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/ops/user_group/update:
+    post:
+      summary: 更新运营配置-用户群页
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                image_url:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOpsTextImageUpdateResponse"
+        "400":
+          description: 文案或图片地址不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/overview:
+    get:
+      summary: 后台概览看板
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOverviewResponse"
+        "400":
+          description: force 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/summary/todo:
+    get:
+      summary: 后台待办与巡检摘要
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: invite_threshold
+          required: false
+          schema:
+            type: integer
+            default: 200
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSummaryTodoResponse"
+        "400":
+          description: invite_threshold 不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users:
+    get:
+      summary: 后台用户列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [all, active, disabled]
+        - in: query
+          name: sort_by
+          required: false
+          schema:
+            type: string
+            enum: [last_active_at, total_asset_cny, total_invest_cny, created_at]
+        - in: query
+          name: sort_dir
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - in: query
+          name: include_local
+          required: false
+          schema:
+            type: boolean
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 100
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsersListResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/disable:
+    post:
+      summary: 停用用户
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserStatusResponse"
+        "400":
+          description: 参数不合法或不能停用当前管理员
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/enable:
+    post:
+      summary: 启用用户
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserStatusResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/metrics:
+    get:
+      summary: 用户运营指标
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserMetricsResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/password/reset:
+    post:
+      summary: 重置用户密码
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                temp_password:
+                  type: string
+                force_change:
+                  type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserPasswordResetResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/sessions/count:
+    get:
+      summary: 用户在线会话数
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: user_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserSessionsCountResponse"
+        "400":
+          description: 缺少 user_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/sessions/revoke:
+    post:
+      summary: 强制用户下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserSessionsRevokeResponse"
+        "400":
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/status:
+    post:
+      summary: 设置用户状态
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, disabled]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserStatusResponse"
+        "400":
+          description: 参数不合法或不能操作当前管理员
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/update:
+    post:
+      summary: 更新用户信息
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                is_admin:
+                  type: boolean
+                status:
+                  type: string
+                  enum: [active, disabled]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserUpdateResponse"
+        "400":
+          description: 参数不合法或无可更新字段
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/{user_id}:
+    parameters:
+      - in: path
+        name: user_id
+        required: true
+        schema:
+          type: string
+    get:
+      summary: 用户详情
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDetail"
+        "400":
+          description: 缺少 user_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/admin/users/{user_id}/portfolio:
+    parameters:
+      - in: path
+        name: user_id
+        required: true
+        schema:
+          type: string
+    get:
+      summary: 用户持仓与资产概览
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: force
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserPortfolioResponse"
+        "400":
+          description: 参数不合法或本机匿名用户不可查看
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: 无后台权限或账号不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/analysis/calendar/market_breakdown:
+    get:
+      summary: 收益日历按市场拆分
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [day]
+        - in: query
+          name: time_type
+          required: false
+          schema:
+            type: string
+            enum: [day]
+        - in: query
+          name: year
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisMarketBreakdownResponse"
+        "400":
+          description: Invalid calendar period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisCalendarErrorResponse"
+
+  /api/app/version:
+    get:
+      summary: 获取客户端更新配置
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppVersionResponse"
+
+  /api/asset/trends:
+    post:
+      summary: 批量资产趋势线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetTrendsRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetTrendsResponse"
+        "401":
+          description: 未登录或登录过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/market/indices:
+    get:
+      summary: 首页指数与汇率
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketIndexItem"
+
+  /api/market/status:
+    get:
+      summary: 市场开休市状态
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketStatusResponse"
+
+  /api/portfolio/buy_with_cash:
+    post:
+      summary: 现金账户买入资产
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortfolioBuyWithCashRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioBuyWithCashResponse"
+        "400":
+          description: 参数不合法或余额不足
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 资产或现金账户不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: 现金买入失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/portfolio/delete_corrective:
+    post:
+      summary: 纠正性删除资产及历史记录
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortfolioDeleteCorrectiveRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioDeleteCorrectiveResponse"
+        "400":
+          description: 缺少资产代码
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: 删除失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/portfolio/undo:
+    post:
+      summary: 撤销最近一次投资操作
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortfolioUndoRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioUndoResponse"
+        "400":
+          description: 撤销令牌不合法或已过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: 撤销令牌已使用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: 撤销失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/sync/bootstrap:
+    post:
+      summary: 客户端增量同步引导
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncBootstrapRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncBootstrapResponse"
+
+  /api/system/price_health:
+    get:
+      summary: 行情运行健康指标
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceHealthResponse"
+        "401":
+          description: 未授权访问指标
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/web/config:
+    get:
+      summary: Web 门户公开配置
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebConfigResponse"

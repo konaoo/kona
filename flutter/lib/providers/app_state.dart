@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/biometric_service.dart';
 import '../services/cache_service.dart';
+import '../services/portfolio_metrics_service.dart';
 import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
@@ -425,103 +426,27 @@ class AppState extends ChangeNotifier {
 
   /// 投资总市值
   double get investTotalMV {
-    double total = 0;
-    for (var item in _portfolio) {
-      final valueCny = item.valueCny;
-      if (valueCny != null) {
-        total += valueCny;
-        continue;
-      }
-      final priceInfo = resolvePriceInfo(item);
-      final currentPrice = (priceInfo != null && priceInfo.price > 0)
-          ? priceInfo.price
-          : (item.price > 0 ? item.price : 0.0);
-      final rate = _rateForCurrency(item.curr);
-      total += currentPrice * item.qty * rate;
-    }
-    return total;
+    return PortfolioMetricsService.calcInvestTotalMV(_portfolio);
   }
 
   /// 投资今日盈亏
   double get investDayPnl {
-    double total = 0;
-    for (var item in _portfolio) {
-      final dayPnlCny = item.dayPnlAggregateCny;
-      if (dayPnlCny != null) {
-        total += dayPnlCny;
-        continue;
-      }
-      final priceInfo = resolvePriceInfo(item);
-      if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
-      if (priceInfo != null) {
-        final rate = _rateForCurrency(item.curr);
-        total += priceInfo.change * item.qty * rate;
-      }
-    }
-    return total;
+    return PortfolioMetricsService.calcInvestDayPnl(_portfolio);
   }
 
   /// 投资今日盈亏率
   double get investDayPnlRate {
-    double pnl = 0;
-    double base = 0;
-    for (var item in _portfolio) {
-      final dayPnlCny = item.dayPnlAggregateCny;
-      final valueCny = item.valueCny;
-      if (dayPnlCny != null && valueCny != null) {
-        pnl += dayPnlCny;
-        base += (valueCny - dayPnlCny);
-        continue;
-      }
-      final priceInfo = resolvePriceInfo(item);
-      if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
-      if (priceInfo != null) {
-        final rate = _rateForCurrency(item.curr);
-        final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
-        pnl += priceInfo.change * item.qty * rate;
-        base += yclose * item.qty * rate;
-      } else {
-        final rate = _rateForCurrency(item.curr);
-        base += item.price * item.qty * rate;
-      }
-    }
-    return base > 0 ? (pnl / base * 100) : 0;
+    return PortfolioMetricsService.calcInvestDayPnlRate(_portfolio);
   }
 
   /// 投资持仓盈亏
   double get investHoldingPnl {
-    double total = 0;
-    for (var item in _portfolio) {
-      final totalPnlCny = item.totalPnlCny;
-      if (totalPnlCny != null) {
-        total += totalPnlCny;
-        continue;
-      }
-      final priceInfo = resolvePriceInfo(item);
-      final currentPrice = (priceInfo != null && priceInfo.price > 0)
-          ? priceInfo.price
-          : (item.price > 0 ? item.price : 0.0);
-      final rate = _rateForCurrency(item.curr);
-      final mv = currentPrice * item.qty * rate;
-      final cost = item.price * item.qty * rate;
-      total += mv - cost + item.adjustment * rate;
-    }
-    return total;
+    return PortfolioMetricsService.calcInvestHoldingPnl(_portfolio);
   }
 
   /// 投资持仓盈亏率
   double get investHoldingPnlRate {
-    double totalCostAbs = 0;
-    for (var item in _portfolio) {
-      final costCny = item.costCny;
-      if (costCny != null) {
-        totalCostAbs += costCny.abs();
-        continue;
-      }
-      final rate = _rateForCurrency(item.curr);
-      totalCostAbs += (item.price * item.qty * rate).abs();
-    }
-    return totalCostAbs > 0 ? (investHoldingPnl / totalCostAbs * 100) : 0;
+    return PortfolioMetricsService.calcInvestHoldingPnlRate(_portfolio);
   }
 
   // ============================================================

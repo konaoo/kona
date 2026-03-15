@@ -29,6 +29,9 @@
 
 - `generate_api_docs.py`
 - `generate_api_details.py`
+- `generate_openapi_types_web.sh`
+- `generate_openapi_types_flutter.sh`
+- `sync_openapi_paths.py`
 - `fix_snapshot_rates.py`
 - `force_snapshot_now.py`
 - `check_calendar.py`
@@ -49,6 +52,15 @@
 
 - `generate_api_details.py`
   用途：从后端代码中提取更细的接口参数和返回信息。
+
+- `generate_openapi_types_web.sh`
+  用途：基于 `docs/openapi.yaml` 生成 Web 端类型文件。
+
+- `generate_openapi_types_flutter.sh`
+  用途：基于 `docs/openapi.yaml` 生成 Flutter 端类型文件（需要 Java 环境）。
+
+- `sync_openapi_paths.py`
+  用途：基于后端实际路由补齐 `openapi.yaml` 的缺失路径（只填路径与占位响应）。
 
 这两类脚本符合 `scripts/` 的定位，属于长期可复用的仓库级脚本。
 

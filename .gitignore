@@ -54,6 +54,8 @@ node_modules.old.*/
 
 # Frontend build / test artifacts
 web/dist/
+web/app/
+web/admin/
 web/test-results/
 web/dev.log
 
@@ -75,6 +77,10 @@ kona_tool/config.py.backup
 
 # local APK artifacts (do not track binaries)
 kona_tool/static/downloads/*.apk
+
+# Backend web build artifacts
+kona_tool/static/web/
+kona_tool/static/app/
 
 # Generated reports
 flutter/android/build/reports/problems/

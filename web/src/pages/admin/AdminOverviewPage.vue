@@ -24,21 +24,21 @@
             <div class="avatars">
               <div class="avatar" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
               <div class="avatar" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
-              <div class="avatar-count">+{{ Math.floor((overview.dashboard?.new_users_today || 0) / 10) }}</div>
+              <div class="avatar-count">+{{ overview.dashboard?.new_users_avatar_count || 0 }}</div>
             </div>
           </div>
           <div class="stat-value">{{ overview.dashboard?.new_users_today || 0 }}</div>
           <div class="chart-mini">
             <div
-              v-for="(item, i) in newUserChartBars"
+              v-for="(item, i) in overview.dashboard?.new_user_bars || []"
               :key="`new-${item.date}-${i}`"
               class="chart-bar"
-              :style="{ height: item.height, background: item.isToday ? '#000' : '#FFB84D' }"
+              :style="{ height: item.height, background: item.is_latest ? '#000' : '#FFB84D' }"
             ></div>
           </div>
           <div class="percentage">
             <span>⚫</span>
-            <span>{{ newUserTrendText }}</span>
+            <span>{{ overview.dashboard?.new_user_trend_text || '近7天新增走势' }}</span>
           </div>
         </div>
 
@@ -50,15 +50,15 @@
           <div class="stat-value">{{ overview.dashboard?.active_users_today || 0 }}</div>
           <div class="chart-mini">
             <div
-              v-for="(item, i) in activeUserChartBars"
+              v-for="(item, i) in overview.dashboard?.active_user_bars || []"
               :key="`active-${item.date}-${i}`"
               class="chart-bar"
-              :style="{ height: item.height, background: item.isToday ? '#FF8B94' : '#000' }"
+              :style="{ height: item.height, background: item.is_latest ? '#FF8B94' : '#000' }"
             ></div>
           </div>
           <div class="percentage">
             <span>⚫</span>
-            <span>{{ activeUserTrendText }}</span>
+            <span>{{ overview.dashboard?.active_user_trend_text || '近7天活跃走势' }}</span>
           </div>
         </div>
 
@@ -185,10 +185,6 @@ const greeting = computed(() => {
 })
 
 const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
-const retentionRowsByDate = computed(() => {
-  const sorted = [...retentionRows.value].sort((a, b) => String(a?.date || '').localeCompare(String(b?.date || '')))
-  return sorted
-})
 const totalRows = computed(() => retentionRows.value.length)
 const totalPages = computed(() => Math.ceil(totalRows.value / pageSize.value) || 1)
 const startIndex = computed(() => (currentPage.value - 1) * pageSize.value)
@@ -204,44 +200,6 @@ const visiblePages = computed(() => {
   return pages
 })
 
-function buildMiniBars(rows: Array<Record<string, any>>, key: 'new_users' | 'active_users') {
-  const series = rows.slice(-7)
-  const values = series.map((item) => Number(item?.[key] || 0))
-  const maxValue = Math.max(...values, 1)
-  return series.map((item) => {
-    const value = Number(item?.[key] || 0)
-    const height = `${Math.max(24, Math.round((value / maxValue) * 100))}%`
-    return {
-      date: String(item?.date || ''),
-      value,
-      height,
-      isToday: String(item?.date || '') === series[series.length - 1]?.date,
-    }
-  })
-}
-
-function buildDiffText(current: number, previous: number, unit = '人') {
-  const diff = current - previous
-  if (diff === 0) return `较昨日持平`
-  return diff > 0 ? `较昨日 +${diff}${unit}` : `较昨日 ${diff}${unit}`
-}
-
-const newUserChartBars = computed(() => buildMiniBars(retentionRowsByDate.value, 'new_users'))
-const activeUserChartBars = computed(() => buildMiniBars(retentionRowsByDate.value, 'active_users'))
-
-const newUserTrendText = computed(() => {
-  const series = retentionRowsByDate.value.slice(-2)
-  if (!series.length) return '近7天新增走势'
-  if (series.length === 1) return '仅有今日数据'
-  return buildDiffText(Number(series[1]?.new_users || 0), Number(series[0]?.new_users || 0))
-})
-
-const activeUserTrendText = computed(() => {
-  const series = retentionRowsByDate.value.slice(-2)
-  if (!series.length) return '近7天活跃走势'
-  if (series.length === 1) return '仅有今日数据'
-  return buildDiffText(Number(series[1]?.active_users || 0), Number(series[0]?.active_users || 0))
-})
 
 async function load(force = false) {
   const suffix = force ? '?force=1' : ''

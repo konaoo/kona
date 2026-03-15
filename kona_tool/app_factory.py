@@ -4,7 +4,7 @@ Flask App 组装工厂（只做“组装”，不做“启动后台线程”）�
 为什么要单独做一层工厂：
 - 让 app.py 变薄：对外入口仍保持 `app:app / db / limiter` 等不变；
 - 把“依赖组装 + blueprint 注册 + hook 注册”集中管理，后面加/改接口不需要在入口文件里翻半天；
-- 兼容单测：很多测试会 `patch(app_module.batch_get_prices / get_forex_rates / WEB_DIST_DIR / take_snapshot...)`，
+- 兼容单测：很多测试会 `patch(app_module.batch_get_prices / get_forex_rates / WEB_APP_DIST_DIR / WEB_ADMIN_DIST_DIR / take_snapshot...)`，
   所以所有“可能被 patch 的 getter”必须从 app.py 传进来，不能在这里 import 后直接闭包成常量引用。
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from dataclasses import dataclass
+import atexit
 from typing import Any, Callable, Dict, Optional
 
 from flask import Flask, jsonify, request
@@ -49,12 +50,14 @@ from quote_routes import create_quote_blueprint
 from request_runtime import create_request_runtime
 from snapshot_runtime import create_snapshot_runtime
 from startup_runtime import create_startup_runtime
+from price_runtime import create_price_runtime
 from sync_handlers import create_sync_payload_handlers
 from system_routes import create_system_blueprint
 from web_entry_handlers import create_web_entry_handlers
 from web_entry_routes import create_web_entry_blueprint
 
 from core.db import DatabaseManager
+from core.price import PricePreloader
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,10 @@ class AppWiring:
     database_path: Any
     backup_csv_path: Any
     ratelimit_storage_url: str
-    web_dist_dir_getter: Callable[[], Any]
+    request_runtime_storage_url: str
+    request_runtime_storage_prefix: str
+    web_app_dist_dir_getter: Callable[[], Any]
+    web_admin_dist_dir_getter: Callable[[], Any]
     app_version: str
     price_health_token_getter: Callable[[], str]
     time_getter: Callable[[], float]
@@ -198,6 +204,8 @@ def create_app_components(
         is_policy_enabled=wiring.is_policy_enabled,
         get_policy_limit_per_min=wiring.get_policy_limit_per_min,
         time_getter=wiring.time_getter,
+        storage_url=wiring.request_runtime_storage_url,
+        storage_prefix=wiring.request_runtime_storage_prefix,
     )
     request_runtime.register_hooks(app)
 
@@ -227,6 +235,15 @@ def create_app_components(
     )
 
     startup_runtime = create_startup_runtime(logger=logger)
+    price_runtime = create_price_runtime(
+        logger=logger,
+        db=db,
+        preloader_factory=lambda db_manager, interval: PricePreloader.get_instance(
+            db_manager=db_manager,
+            interval=interval,
+        ),
+    )
+    atexit.register(price_runtime.stop_preloader)
 
     if create_admin_blueprint is not None:
         app.register_blueprint(
@@ -240,7 +257,8 @@ def create_app_components(
         price_batch_getter=wiring.batch_get_prices_getter,
     )
     web_entry_handlers = create_web_entry_handlers(
-        web_dist_dir_getter=wiring.web_dist_dir_getter,
+        web_app_dist_dir_getter=wiring.web_app_dist_dir_getter,
+        web_admin_dist_dir_getter=wiring.web_admin_dist_dir_getter,
         base_dir=config.BASE_DIR,
     )
     market_payload_handlers = create_market_payload_handlers(
@@ -298,6 +316,7 @@ def create_app_components(
         auth_audit=request_runtime.auth_audit,
         price_runtime_metrics_getter=wiring.price_runtime_metrics_getter,
         price_source_health_getter=wiring.price_source_health_getter,
+        request_runtime_metrics_getter=request_runtime.get_runtime_metrics,
     )
     quote_payload_handlers = create_quote_payload_handlers(
         get_price_getter=wiring.get_price_getter,
@@ -447,5 +466,6 @@ def create_app_components(
         "portfolio_runtime": portfolio_runtime,
         "market_runtime": market_runtime,
         "startup_runtime": startup_runtime,
+        "price_runtime": price_runtime,
         "run_provider_test_report_job": run_provider_test_report_job,
     }

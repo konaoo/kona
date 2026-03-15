@@ -1,3 +1,131 @@
+## 2026-03-15-10
+
+### 这版一句话
+
+OpenAPI 说明补齐：把后台、分析、同步、行情等关键接口的请求/响应/错误码写清楚。
+
+### 主要变化
+- [openapi.yaml](/Users/kona/Desktop/kaka/kona_repo/docs/openapi.yaml)：补齐后台接口、分析页、快照、同步、行情、门户配置等路径的 schema 与错误码定义。
+
+### 影响范围
+- 接口文档与类型生成（OpenAPI）
+
+### 验收重点
+- openapi.yaml 里不再有 TODO 占位
+- 关键接口能在 schema 中看到请求体/响应体/错误码
+
+## 2026-03-15-09
+
+### 这版一句话
+
+行情预取线程收口到运行时服务并改走 DatabaseManager，价格缓存加上限与统计；构建产物与运行数据边界更明确。
+
+### 主要变化
+- [price_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/price_runtime.py)：新增行情预取运行时管理器，统一启动与关闭入口。
+- [price.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/price.py)：预取改走 `DatabaseManager` 取码；缓存增加上限与统计输出。
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)：新增“全库唯一证券代码”查询方法，给预取使用。
+- [startup_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/startup_runtime.py) / [runtime_bootstrap.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/runtime_bootstrap.py) / [wsgi.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/wsgi.py)：预取启动入口收口到运行时服务。
+- [.gitignore](/Users/kona/Desktop/kaka/kona_repo/.gitignore) / [cleanup_artifacts.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/cleanup_artifacts.sh)：构建产物与运行输出清理规则固定化。
+
+### 影响范围
+- 行情预取线程启动方式
+- 价格缓存容量与运行时指标
+- 本地构建产物与运行数据边界
+
+### 验收重点
+- 预取线程仍能正常启动，且不会绕开 `DatabaseManager`
+- `get_price_runtime_metrics` 包含缓存统计字段
+- 清理脚本执行后不影响源码结构
+
+## 2026-03-15-08
+
+### 这版一句话
+
+管理后台的新增/活跃趋势与小柱图改为后端给口径，前端只做展示。
+
+### 主要变化
+- [admin_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes.py)：`/api/admin/overview` 增加趋势文案与迷你柱图数据，后端统一计算。
+- [AdminOverviewPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/admin/AdminOverviewPage.vue)：去掉前端趋势计算，直接展示后端返回的趋势文案与柱图。
+
+### 影响范围
+- 管理后台概览页的新增/活跃趋势展示
+
+### 验收重点
+- 管理后台概览页“今日新增/活跃”趋势文案与柱图与后端口径一致
+
+## 2026-03-15-07
+
+### 这版一句话
+
+Web 构建产物拆成业务端与管理端两份，后端按不同静态目录分别托管。
+
+### 主要变化
+- [vite.config.ts](/Users/kona/Desktop/kaka/kona_repo/web/vite.config.ts)：构建拆成 `dist/app` 与 `dist/admin` 两套输出。
+- [app.html](/Users/kona/Desktop/kaka/kona_repo/web/app.html) / [admin.html](/Users/kona/Desktop/kaka/kona_repo/web/admin.html)：拆分入口 HTML，对应不同打包入口。
+- [router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts) / [router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)：业务端与管理端路由拆分。
+- [web_entry_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/web_entry_handlers.py) / [app.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py)：后端按 app/admin 两套静态目录提供入口。
+
+### 影响范围
+- Web 构建产物目录结构与部署路径
+- `/app/*` 与 `/admin/*` 的前端入口与静态资源路径
+
+### 验收重点
+- `npm run build` 能输出 `web/dist/app` 与 `web/dist/admin`
+- `/app/login` 与 `/admin/login` 能分别落到正确的入口页面
+
+## 2026-03-15-06
+
+### 这版一句话
+
+Web 分析页改成只展示后端口径数据，前端不再用本地持仓去算“当日盈亏”。
+
+### 主要变化
+- [AppAnalysisPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAnalysisPage.vue)：概览、日历、排行全部直接使用后端接口返回值；移除前端按持仓再算实时盈亏的逻辑。
+
+### 影响范围
+- Web 分析页展示口径
+
+### 验收重点
+- 分析页顶部盈亏/收益率只跟后端接口一致，不再受前端行情影响
+
+## 2026-03-15-05
+
+### 这版一句话
+
+Web 端投资与首页改成只展示后端口径字段，前端不再自行算盈亏/现价。
+
+### 主要变化
+- [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts)：bootstrap 请求默认带 `portfolio_metrics=true`。
+- [portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts)：持仓行与摘要优先使用后端口径字段，缺口径时不再自行计算盈亏。
+- [AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)：投资页汇总/分市场/持仓列表只展示后端口径字段。
+- [AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)：首页投资汇总与持仓卡片只展示后端口径字段。
+
+### 影响范围
+- Web 投资页与首页展示口径
+
+### 验收重点
+- 投资页与首页的大数字、当日盈亏、累计盈亏与后端口径一致
+- 后端未返回口径字段时，页面不要自己“算一套”
+
+## 2026-03-15-04
+
+### 这版一句话
+
+Flutter 投资页与分析页改成只展示后端口径字段，前端不再自己算盈亏与现价。
+
+### 主要变化
+- [invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart)：投资页汇总与单卡展示改成使用后端口径字段（市值/盈亏/当日盈亏），本地只做格式化与简单汇总。
+- [analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)：分析页顶部盈亏不再读前端实时口径，统一展示后端概览返回值；排行完全使用后端字段。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：投资相关总额/盈亏汇总改为只吃后端口径字段，不再落回本地行情计算。
+
+### 影响范围
+- Flutter 投资页、分析页展示口径
+- 首页投资总额汇总（依赖投资口径字段）
+
+### 验收重点
+- 投资页总市值/当日盈亏/累计盈亏与后端口径一致，缺口径时显示 `--`
+- 分析页顶部盈亏与日历/排行均来自后端接口
+
 ## 2026-03-15-03
 
 ### 这版一句话
@@ -60,7 +188,7 @@ Flutter 投资页开始优先吃后端口径字段：持仓与汇总展示不再
 ### 主要变化
 - 新增 [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py)：集中做 Flask app / limiter / runtime / blueprint 的组装，不在 import 阶段启动任何后台线程。
 - 新增 [runtime_bootstrap.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/runtime_bootstrap.py)：承接 `python app.py` 的启动逻辑（启动 scheduler / 预取线程 / app.run），避免把运行时副作用塞回入口文件。
-- [app.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py) 改成薄入口：仍然导出 `app/db/limiter`，并保留 `batch_get_prices / get_forex_rates / WEB_DIST_DIR / take_snapshot` 等单测会 patch 的全局符号。
+- [app.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py) 改成薄入口：仍然导出 `app/db/limiter`，并保留 `batch_get_prices / get_forex_rates / WEB_APP_DIST_DIR / WEB_ADMIN_DIST_DIR / take_snapshot` 等单测会 patch 的全局符号。
 
 ### 影响范围
 - 后端工程结构（入口拆分），接口字段与路由不变
@@ -2056,3 +2184,98 @@ Flutter 先对 `AppState` 下了第一刀：UI 偏好和生物识别 / 锁屏不
 ### 验收重点
 - gunicorn 多 worker 启动后只应有一个预取线程在跑（看日志或 `lsof`）
 - 行情缓存仍能持续刷新，接口响应不降级
+## 2026-03-15-10
+
+### 这版一句话
+
+Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统一走同一套入口。
+
+### 主要变化
+- [portfolio_metrics_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/portfolio_metrics_service.dart)：新增投资口径汇总与比例计算的集中入口。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：投资汇总与收益率计算改走服务层。
+- [invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart)：投资页汇总与分类汇总改走服务层计算。
+
+### 影响范围
+- Flutter 投资页汇总展示口径计算路径
+- AppState 投资汇总口径计算路径
+
+### 验收重点
+- 投资页总市值 / 当日盈亏 / 累计盈亏与之前一致
+- 分类汇总的当日盈亏率 / 累计盈亏率展示正常
+
+## 2026-03-15-11
+
+### 这版一句话
+
+请求运行时的分组限流与活跃打点支持共享存储，健康检查里能看到运行时指标。
+
+### 主要变化
+- [request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/request_runtime.py)：接口分组限流与活跃打点支持 Redis 共享存储，增加运行时指标。
+- [misc_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/misc_handlers.py)：`/health` 增加 `request_runtime` 指标输出。
+- [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py) / [app.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app.py)：补齐请求运行时共享存储配置注入。
+- [config.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/config.py)：新增 `REQUEST_RUNTIME_STORAGE_URL/REQUEST_RUNTIME_STORAGE_PREFIX` 配置。
+
+### 影响范围
+- 接口分组限流的计数口径（多 worker 可共享）
+- 用户活跃打点的节流口径（多 worker 可共享）
+- `/health` 返回内容
+
+### 验收重点
+- 多 worker 场景下限流仍然生效且不会被分裂
+- `/health` 能看到 `request_runtime` 字段
+
+## 2026-03-15-12
+
+### 这版一句话
+
+确立 OpenAPI 为接口唯一口径，并补上 Web/Flutter 的类型生成流程。
+
+### 主要变化
+- [openapi.yaml](/Users/kona/Desktop/kaka/kona_repo/docs/openapi.yaml)：补充 `/health` 的 `request_runtime` 字段 schema。
+- [package.json](/Users/kona/Desktop/kaka/kona_repo/web/package.json)：新增 Web 端 `gen:api` 类型生成脚本与依赖。
+- [openapi.generated.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/types/openapi.generated.ts)：新增 OpenAPI 生成类型文件。
+- [接口Schema与类型生成.md](/Users/kona/Desktop/kaka/kona_repo/docs/接口Schema与类型生成.md)：固定 schema 与类型生成流程说明。
+- [generate_openapi_types_web.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/generate_openapi_types_web.sh) / [generate_openapi_types_flutter.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/generate_openapi_types_flutter.sh)：固化 Web / Flutter 生成入口脚本。
+
+### 影响范围
+- Web 类型生成流程
+- `/health` 返回字段 schema
+
+### 验收重点
+- `npm run gen:api` 能生成 `openapi.generated.ts`
+- 文档里能查到生成入口与输出路径
+
+## 2026-03-15-13
+
+### 这版一句话
+
+补齐 OpenAPI 路径清单并把 Web 依赖安全修复推进到“仅剩不可修项”。
+
+### 主要变化
+- [sync_openapi_paths.py](/Users/kona/Desktop/kaka/kona_repo/scripts/sync_openapi_paths.py)：新增 OpenAPI 路径补齐脚本。
+- [openapi.yaml](/Users/kona/Desktop/kaka/kona_repo/docs/openapi.yaml)：自动补齐缺失路径（带 TODO 占位响应）。
+- [openapi.generated.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/types/openapi.generated.ts)：根据补齐后的 schema 重新生成。
+- [package.json](/Users/kona/Desktop/kaka/kona_repo/web/package.json)：升级 `puppeteer` 与 `@typescript-eslint/*` 以消除可修复漏洞。
+
+### 影响范围
+- OpenAPI 路径覆盖率
+- Web 端依赖版本与安全审计结果
+
+### 验收重点
+- `python3 scripts/sync_openapi_paths.py` 可重复执行且不产生重复路径
+- `npm run gen:api` 正常生成类型
+
+## 2026-03-15-14
+
+### 这版一句话
+
+补齐分析页、快照、后台关键接口的字段级契约测试。
+
+### 主要变化
+- [test_contracts_analysis_snapshot_admin.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_contracts_analysis_snapshot_admin.py)：新增分析页（overview / calendar / rank / market_breakdown）、快照、后台关键接口的字段级契约测试。
+
+### 影响范围
+- 后端契约测试覆盖面
+
+### 验收重点
+- `python3 -m unittest tests.test_contracts_analysis_snapshot_admin -v` 通过

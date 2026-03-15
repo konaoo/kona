@@ -7,7 +7,6 @@ import logging
 import re
 import threading
 import os
-import sqlite3
 from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
@@ -35,8 +34,8 @@ def _sina_headers() -> Dict[str, Any]:
 
 class PriceCache:
     """价格缓存类"""
-    
-    def __init__(self, ttl: int = 60, stale_ttl: int = 300):
+
+    def __init__(self, ttl: int = 60, stale_ttl: int = 300, max_size: int = 0):
         """
         初始化缓存
         
@@ -46,6 +45,8 @@ class PriceCache:
         self.cache: Dict[str, Tuple[Tuple[float, float, float, float], float]] = {}
         self.ttl = ttl
         self.stale_ttl = max(stale_ttl, ttl)
+        self.max_size = max(0, int(max_size or 0))
+        self.evictions = 0
     
     def get(self, code: str) -> Optional[Tuple[float, float, float, float]]:
         """
@@ -89,7 +90,30 @@ class PriceCache:
             price_data: 价格数据
         """
         self.cache[code] = (price_data, time.time())
+        self._evict_if_needed()
         logger.debug(f"Cache set for {code}")
+
+    def _evict_if_needed(self) -> None:
+        if self.max_size <= 0:
+            return
+        overflow = len(self.cache) - self.max_size
+        if overflow <= 0:
+            return
+        items = sorted(self.cache.items(), key=lambda item: item[1][1])
+        for idx in range(overflow):
+            key = items[idx][0]
+            if key in self.cache:
+                del self.cache[key]
+                self.evictions += 1
+
+    def stats(self) -> Dict[str, Any]:
+        return {
+            "size": len(self.cache),
+            "max_size": self.max_size,
+            "evictions": self.evictions,
+            "ttl": self.ttl,
+            "stale_ttl": self.stale_ttl,
+        }
     
     def clear(self):
         """清空缓存"""
@@ -98,7 +122,11 @@ class PriceCache:
 
 
 # 全局缓存实例
-price_cache = PriceCache(ttl=config.CACHE_TTL, stale_ttl=config.CACHE_STALE_TTL)
+price_cache = PriceCache(
+    ttl=config.CACHE_TTL,
+    stale_ttl=config.CACHE_STALE_TTL,
+    max_size=getattr(config, "PRICE_CACHE_MAX_SIZE", 0),
+)
 
 _runtime_lock = threading.Lock()
 _runtime_metrics: Dict[str, Any] = {
@@ -138,7 +166,9 @@ def _mark_metric(key: str, inc: int = 1) -> None:
 
 def get_price_runtime_metrics() -> Dict[str, Any]:
     with _runtime_lock:
-        return dict(_runtime_metrics)
+        metrics = dict(_runtime_metrics)
+    metrics["cache"] = price_cache.stats()
+    return metrics
 
 
 def _normalize_code_key(code: Any) -> str:
@@ -458,8 +488,8 @@ class PricePreloader:
 
     _instance = None
 
-    def __init__(self, db_path: str, interval: int = 30):
-        self._db_path = db_path
+    def __init__(self, db_manager: Any, interval: int = 30):
+        self._db_manager = db_manager
         self._interval = interval
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -473,9 +503,14 @@ class PricePreloader:
         self._lock_fd: Optional[int] = None
 
     @classmethod
-    def get_instance(cls, db_path: str = '', interval: int = 30) -> 'PricePreloader':
+    def get_instance(cls, db_manager: Any = None, interval: int = 30) -> 'PricePreloader':
         if cls._instance is None:
-            cls._instance = cls(db_path, interval)
+            cls._instance = cls(db_manager, interval)
+        else:
+            if db_manager is not None:
+                cls._instance._db_manager = db_manager
+            if interval:
+                cls._instance._interval = interval
         return cls._instance
 
     def start(self) -> None:
@@ -536,38 +571,15 @@ class PricePreloader:
             pass
         self._lock_fd = None
 
-    def _open_readonly_connection(self) -> Optional[sqlite3.Connection]:
-        db_path = str(self._db_path or "").strip()
-        if not db_path:
-            return None
-        timeout = float(getattr(config, "SQLITE_TIMEOUT_SECONDS", 1.5))
-        busy_timeout = int(getattr(config, "SQLITE_BUSY_TIMEOUT_MS", 1500))
-        journal_mode = str(getattr(config, "SQLITE_JOURNAL_MODE", "WAL")).upper()
-        synchronous = str(getattr(config, "SQLITE_SYNCHRONOUS", "NORMAL")).upper()
-        uri = f"file:{db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=timeout, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout={busy_timeout}")
-        conn.execute(f"PRAGMA journal_mode={journal_mode}")
-        conn.execute(f"PRAGMA synchronous={synchronous}")
-        return conn
-
     def _collect_codes(self) -> List[str]:
         """从数据库收集所有用户持有的唯一证券代码"""
-        codes: List[str] = []
+        if self._db_manager is None:
+            return []
         try:
-            conn = self._open_readonly_connection()
-            if conn is None:
-                return codes
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT DISTINCT code FROM portfolio")
-                codes = [row[0] for row in cursor.fetchall() if row[0]]
-            finally:
-                conn.close()
+            return self._db_manager.get_distinct_portfolio_codes()
         except Exception as exc:
             logger.error("PricePreloader failed to collect codes: %s", exc)
-        return codes
+            return []
 
     def _run(self) -> None:
         logger.info("PricePreloader thread started.")
