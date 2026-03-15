@@ -59,8 +59,7 @@ class StartupRuntime:
         background_scheduler_target: Callable[[], Any],
         enable_startup_snapshot: bool,
         startup_snapshot_target: Callable[[], Any],
-        preloader_factory: Callable[[str, int], Any],
-        db_path: str,
+        preloader_start: Callable[[int], Any],
         preload_interval: int,
         open_browser_target: Callable[[], Any],
     ) -> Any:
@@ -72,8 +71,7 @@ class StartupRuntime:
         if enable_startup_snapshot:
             self.start_thread(target=startup_snapshot_target)
 
-        preloader = preloader_factory(db_path, preload_interval)
-        preloader.start()
+        preloader = preloader_start(preload_interval)
 
         self.start_thread(target=open_browser_target)
         return preloader

@@ -11,6 +11,7 @@ export type PositionRow = {
   // 基础信息
   code: string
   name?: string
+  curr?: string
   market: MarketCode
   category?: MarketCode
   asset_type: string
@@ -24,6 +25,12 @@ export type PositionRow = {
   // 价值相关
   value: number
   cost: number
+  valueCny?: number
+  costCny?: number
+  totalPnlCny?: number
+  dayPnlCny?: number
+  dayPnlAggregateCny?: number
+  rateToCny?: number
   totalPnl: number
   totalPnlRate: number
 
@@ -34,6 +41,9 @@ export type PositionRow = {
   dayPnlRateDisplay: number
   dayPnlAggregate: number
   dayPnlRateAggregate: number
+  quotePrice?: number
+  quoteChange?: number
+  quoteChangePct?: number
 
   // 市场状态
   marketOpen: boolean

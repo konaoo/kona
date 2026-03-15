@@ -18,6 +18,7 @@ def create_misc_payload_handlers(
     auth_audit: Callable[..., None],
     price_runtime_metrics_getter: Callable[[], Dict[str, Any]],
     price_source_health_getter: Callable[[], Dict[str, Any]],
+    request_runtime_metrics_getter: Callable[[], Dict[str, Any]],
 ):
     def build_history_payload():
         days = request.args.get('days', 365, type=int)
@@ -53,7 +54,11 @@ def create_misc_payload_handlers(
         }
 
     def build_health_payload() -> Dict[str, Any]:
-        return {"status": "ok", "version": app_version}
+        return {
+            "status": "ok",
+            "version": app_version,
+            "request_runtime": request_runtime_metrics_getter(),
+        }
 
     def build_price_health_payload():
         if not metrics_token_ok_getter():

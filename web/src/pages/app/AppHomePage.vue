@@ -116,13 +116,19 @@ const investTotal = computed(() => {
     if (!row || typeof row !== 'object') continue
     try {
       const rate = rateToCny(String(row.curr))
-      const rowValue = Number(row.value) || 0
-      const rowCost = (Number(row.cost) || 0) * rate
-      mv += rowValue * rate
-      cost += Math.abs(rowCost)
-      dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
-      floatPnl += ((rowValue * rate) - rowCost)
-      totalPnl += (Number(row.totalPnl) || 0) * rate
+      const rowValueCnyRaw = (row as any).valueCny ?? (row as any).value_cny
+      const rowCostCnyRaw = (row as any).costCny ?? (row as any).cost_cny
+      const rowDayPnlCnyRaw = (row as any).dayPnlAggregateCny ?? (row as any).day_pnl_aggregate_cny
+      const rowTotalPnlCnyRaw = (row as any).totalPnlCny ?? (row as any).total_pnl_cny
+      const mvCny = rowValueCnyRaw == null ? (Number(row.value) || 0) * rate : toNumber(rowValueCnyRaw)
+      const costCny = rowCostCnyRaw == null ? (Number(row.cost) || 0) * rate : toNumber(rowCostCnyRaw)
+      const dayPnlCny = rowDayPnlCnyRaw == null ? (Number(row.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw)
+      const totalPnlCny = rowTotalPnlCnyRaw == null ? (Number(row.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw)
+      mv += mvCny
+      cost += Math.abs(costCny)
+      dayPnl += dayPnlCny
+      floatPnl += (mvCny - costCny)
+      totalPnl += totalPnlCny
     } catch (e) {
       console.error('Error processing row:', e)
     }
@@ -479,9 +485,12 @@ const filteredRows = computed(() => {
     const displayCostPrice = Number(row?.displayCostPrice || 0)
     const currentPrice = Number(row?.currentPrice || 0)
     
-    const localMv = Number(row?.value) || (qty * currentPrice)
+    const localMv = Number(row?.value) || 0
     const rate = rateToCny(String(row?.curr || 'CNY'))
-    const cnyMv = localMv * rate
+    const rowMvCnyRaw = row?.valueCny ?? row?.value_cny
+    const rowDayPnlCnyRaw = row?.dayPnlAggregateCny ?? row?.day_pnl_aggregate_cny
+    const rowTotalPnlCnyRaw = row?.totalPnlCny ?? row?.total_pnl_cny
+    const cnyMv = rowMvCnyRaw == null ? (localMv * rate) : toNumber(rowMvCnyRaw)
     const pct = (cnyMv / totalMarketMv) * 100
 
     return {
@@ -491,11 +500,13 @@ const filteredRows = computed(() => {
       unit: String(row?.unit || (row?.market === 'fund' ? '份' : '股')),
       costPrice: displayCostPrice, // 首页展示摊薄后成本
       price: currentPrice || 0,
-      dayPnlRate: Number(row?.dayPnlRate || 0),
+      dayPnlRate: Number(row?.dayPnlRateAggregate ?? row?.dayPnlRate ?? 0),
       // 保持 Store 中的原始字段
-      cost: Number(row?.cost) || (qty * displayCostPrice),
+      cost: Number(row?.cost) || 0,
       mv: localMv,
-      totalPnl: Number(row?.totalPnl) || 0,
+      mvCny: cnyMv,
+      dayPnl: rowDayPnlCnyRaw == null ? (Number(row?.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw),
+      totalPnl: rowTotalPnlCnyRaw == null ? (Number(row?.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw),
       quoteReady: Boolean(row?.quoteReady),
       quotePending: Boolean(row?.quotePending),
       navUpdatePending: Boolean(row?.navUpdatePending),
@@ -522,7 +533,7 @@ function quoteLabel(row: any): string {
 }
 
 function dayPnlRateLabel(row: any): string {
-  if (row?.navUpdatePending || row?.quotePending) return '--'
+  if (row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
   return formatPct(toNumber(row?.dayPnlRate))
 }
 
@@ -549,15 +560,6 @@ function formatValue(value: number, curr?: string): string {
   const absVal = Math.abs(value)
   const formatted = absVal % 1 !== 0 ? absVal.toFixed(2) : absVal.toLocaleString('zh-CN')
   return `${symbol} ${formatted}`
-}
-
-function formatHoldingValue(value: number, curr?: string): string {
-  if (currentCurrency.value !== 'CNY') {
-    return formatCurrency(Math.round(Math.abs(toCny(value, curr))))
-  }
-
-  const symbol = getCurrencySymbol(curr)
-  return `${symbol} ${Math.round(Math.abs(value)).toLocaleString('zh-CN')}`
 }
 
 function formatHoldingCardValue(cnyValue: number): string {
@@ -1094,7 +1096,7 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="h-mv-right">
-                  {{ masked(formatHoldingCardValue((Number(row?.mv) || 0) * rateToCny(String(row?.curr || 'CNY')))) }}
+                  {{ masked(formatHoldingCardValue(Number(row?.mvCny) || 0)) }}
                 </div>
               </div>
 
@@ -1191,7 +1193,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatHoldingValue(toNumber(row?.mv), row?.curr as any)) }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatHoldingCardValue(toNumber(row?.mvCny))) }}</div>
                 </div>
                 <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                   <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>

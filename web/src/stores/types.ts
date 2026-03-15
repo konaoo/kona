@@ -39,6 +39,39 @@ export type PortfolioItem = {
   category_type?: string
   logo_url?: string | null
   adjustment?: number
+  market?: string
+  // 后端口径字段（可选）
+  current_price?: number
+  yclose?: number
+  display_cost_price?: number
+  cost?: number
+  raw_cost_total?: number
+  value?: number
+  total_pnl?: number
+  total_pnl_rate?: number
+  day_pnl?: number
+  day_pnl_rate?: number
+  day_pnl_display?: number
+  day_pnl_rate_display?: number
+  day_pnl_aggregate?: number
+  day_pnl_rate_aggregate?: number
+  nav_update_pending?: boolean
+  day_pnl_display_enabled?: boolean
+  day_pnl_aggregate_enabled?: boolean
+  market_open?: boolean
+  market_trading_day?: boolean
+  market_status_reason?: string
+  rate_to_cny?: number
+  value_cny?: number
+  cost_cny?: number
+  total_pnl_cny?: number
+  day_pnl_cny?: number
+  day_pnl_aggregate_cny?: number
+  quote_price?: number
+  quote_change?: number
+  quote_change_pct?: number
+  quote_ready?: boolean
+  quote_pending?: boolean
   [k: string]: unknown
 }
 
@@ -93,6 +126,7 @@ export type StoreCachePayload = {
 export type PositionRow = {
   code: string
   name?: string
+  curr?: string
   market: MarketCode
   category: MarketCode
   qty: number
@@ -104,6 +138,12 @@ export type PositionRow = {
   currentPrice: number
   yclose: number
   value: number
+  valueCny?: number
+  costCny?: number
+  totalPnlCny?: number
+  dayPnlCny?: number
+  dayPnlAggregateCny?: number
+  rateToCny?: number
   totalPnl: number
   dayPnl: number
   dayPnlRate: number
@@ -112,6 +152,9 @@ export type PositionRow = {
   dayPnlAggregate: number
   dayPnlRateAggregate: number
   totalPnlRate: number
+  quotePrice?: number
+  quoteChange?: number
+  quoteChangePct?: number
   session: string
   marketOpen: boolean
   marketTradingDay: boolean

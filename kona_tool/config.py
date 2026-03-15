@@ -164,10 +164,17 @@ API_HEADERS = {
 CACHE_ENABLED = True
 CACHE_TTL = 60
 CACHE_STALE_TTL = int(os.getenv("CACHE_STALE_TTL", "300"))
+PRICE_CACHE_MAX_SIZE = int(os.getenv("PRICE_CACHE_MAX_SIZE", "5000"))
 ADMIN_READ_CACHE_TTL_SECONDS = int(os.getenv("ADMIN_READ_CACHE_TTL_SECONDS", "120"))
 
 # 行情预取间隔（秒），设为小于 CACHE_TTL 以确保缓存永远不过期
 PRELOAD_INTERVAL_SECONDS = int(os.getenv("PRELOAD_INTERVAL_SECONDS", "30"))
+# 行情预取开关与锁文件（避免多 worker 重复启动）
+ENABLE_PRICE_PRELOADER = os.getenv("ENABLE_PRICE_PRELOADER", "true").lower() == "true"
+PRICE_PRELOADER_LOCK_FILE = os.getenv(
+    "PRICE_PRELOADER_LOCK_FILE",
+    "/tmp/kona_price_preloader.lock",
+)
 
 # 汇率配置
 DEFAULT_FOREX_RATES = {
@@ -224,6 +231,20 @@ SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
 # 本地开发可用 memory://，生产建议：
 # RATELIMIT_STORAGE_URL=redis://127.0.0.1:6379/0
 RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
+
+# 请求运行时共享存储（用于接口分组限流与活跃打点）
+# 默认复用 RATELIMIT_STORAGE_URL，可单独指定：
+# REQUEST_RUNTIME_STORAGE_URL=redis://127.0.0.1:6379/0
+REQUEST_RUNTIME_STORAGE_URL = os.getenv(
+    "REQUEST_RUNTIME_STORAGE_URL",
+    RATELIMIT_STORAGE_URL,
+)
+
+# 请求运行时共享存储的 key 前缀（避免与其他系统冲突）
+REQUEST_RUNTIME_STORAGE_PREFIX = os.getenv(
+    "REQUEST_RUNTIME_STORAGE_PREFIX",
+    "kona:req",
+)
 
 # 运行指标接口鉴权（为空表示不鉴权；生产建议设置）
 PRICE_HEALTH_TOKEN = os.getenv("PRICE_HEALTH_TOKEN", "").strip()

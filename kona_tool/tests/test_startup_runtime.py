@@ -78,10 +78,10 @@ class StartupRuntimeTests(unittest.TestCase):
     def test_launch_runtime_services_starts_expected_threads_and_preloader(self):
         created_preloaders = []
 
-        def _preloader_factory(db_path, interval):
-            self.assertEqual(db_path, "/tmp/test.db")
+        def _preloader_start(interval):
             self.assertEqual(interval, 30)
             preloader = _FakePreloader()
+            preloader.start()
             created_preloaders.append(preloader)
             return preloader
 
@@ -93,8 +93,7 @@ class StartupRuntimeTests(unittest.TestCase):
             background_scheduler_target=lambda: scheduler_calls.append("scheduler"),
             enable_startup_snapshot=True,
             startup_snapshot_target=lambda: snapshot_calls.append("snapshot"),
-            preloader_factory=_preloader_factory,
-            db_path="/tmp/test.db",
+            preloader_start=_preloader_start,
             preload_interval=30,
             open_browser_target=lambda: browser_calls.append("browser"),
         )
@@ -110,8 +109,7 @@ class StartupRuntimeTests(unittest.TestCase):
             background_scheduler_target=lambda: None,
             enable_startup_snapshot=False,
             startup_snapshot_target=lambda: None,
-            preloader_factory=lambda db_path, interval: _FakePreloader(),
-            db_path="/tmp/test.db",
+            preloader_start=lambda interval: _FakePreloader(),
             preload_interval=10,
             open_browser_target=lambda: None,
         )

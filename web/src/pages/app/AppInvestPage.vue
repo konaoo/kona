@@ -73,12 +73,18 @@ const investTotal = computed(() => {
   const rowsData = rows.value || []
   for (const row of rowsData) {
     const rate = rateToCny(String(row.curr))
-    const rowMv = (Number(row.value) || 0) * rate
-    const rowCost = (Number(row.cost) || 0) * rate
-    mv += rowMv
-    cost += Math.abs(rowCost)
-    dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
-    totalPnl += (Number(row.totalPnl) || 0) * rate
+    const rowMvCnyRaw = (row as any).valueCny ?? (row as any).value_cny
+    const rowCostCnyRaw = (row as any).costCny ?? (row as any).cost_cny
+    const rowDayPnlCnyRaw = (row as any).dayPnlAggregateCny ?? (row as any).day_pnl_aggregate_cny
+    const rowTotalPnlCnyRaw = (row as any).totalPnlCny ?? (row as any).total_pnl_cny
+    const mvCny = rowMvCnyRaw == null ? (Number(row.value) || 0) * rate : toNumber(rowMvCnyRaw)
+    const costCny = rowCostCnyRaw == null ? (Number(row.cost) || 0) * rate : toNumber(rowCostCnyRaw)
+    const dayPnlCny = rowDayPnlCnyRaw == null ? (Number(row.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw)
+    const totalPnlCny = rowTotalPnlCnyRaw == null ? (Number(row.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw)
+    mv += mvCny
+    cost += Math.abs(costCny)
+    dayPnl += dayPnlCny
+    totalPnl += totalPnlCny
   }
   const floatPnl = mv - cost
   return {
@@ -105,12 +111,16 @@ const marketCards = computed(() => {
     const m = String(row.category || row.market || '')
     if (result[m]) {
       const rate = rateToCny(String(row.curr))
-      const rowMv = (Number(row.value) || 0) * rate
-      const rowCost = (Number(row.cost) || 0) * rate
-      result[m].mv += rowMv
-      result[m].cost += Math.abs(rowCost)
-      result[m].dayPnl += (Number(row.dayPnlAggregate) || 0) * rate
-      result[m].totalPnl += (Number(row.totalPnl) || 0) * rate
+      const rowMvCnyRaw = row.valueCny ?? row.value_cny
+      const rowCostCnyRaw = row.costCny ?? row.cost_cny
+      const rowDayPnlCnyRaw = row.dayPnlAggregateCny ?? row.day_pnl_aggregate_cny
+      const rowTotalPnlCnyRaw = row.totalPnlCny ?? row.total_pnl_cny
+      const mvCny = rowMvCnyRaw == null ? (Number(row.value) || 0) * rate : toNumber(rowMvCnyRaw)
+      const costCny = rowCostCnyRaw == null ? (Number(row.cost) || 0) * rate : toNumber(rowCostCnyRaw)
+      result[m].mv += mvCny
+      result[m].cost += Math.abs(costCny)
+      result[m].dayPnl += rowDayPnlCnyRaw == null ? (Number(row.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw)
+      result[m].totalPnl += rowTotalPnlCnyRaw == null ? (Number(row.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw)
     }
   })
   
@@ -171,14 +181,16 @@ const filteredRows = computed(() => {
     const qty = Number(row.qty) || 0
     const currentPrice = Number(row.currentPrice) || 0
     const displayCostPrice = Number(row.displayCostPrice) || 0
-    const mv = Number(row.value) || (qty * currentPrice)
-    const cost = Number(row.cost) || (qty * displayCostPrice)
-    const totalPnl = Number(row.totalPnl) || 0
-    const dayPnl = Number(row.dayPnlAggregate) || 0
-    const totalPnlRate = Number(row.totalPnlRate) || (cost > 0 ? (totalPnl / cost) * 100 : 0)
+    const mv = Number(row.value) || 0
+    const cost = Number(row.cost) || 0
+    const totalPnlRate = Number(row.totalPnlRate) || 0
+    const dayPnlAggregate = Number(row.dayPnlAggregate) || 0
     
     const rate = rateToCny(String(row.curr || 'CNY'))
-    const cnyMv = mv * rate
+    const rowMvCnyRaw = row.valueCny ?? row.value_cny
+    const rowDayPnlCnyRaw = row.dayPnlAggregateCny ?? row.day_pnl_aggregate_cny
+    const rowTotalPnlCnyRaw = row.totalPnlCny ?? row.total_pnl_cny
+    const cnyMv = rowMvCnyRaw == null ? (mv * rate) : toNumber(rowMvCnyRaw)
     const totalMarketMv = investTotal.value.mv || 1
     const pct = (cnyMv / totalMarketMv) * 100
 
@@ -191,9 +203,10 @@ const filteredRows = computed(() => {
       costPrice: displayCostPrice,
       cost,
       mv,
-      dayPnl,
-      totalPnl,
-      dayPnlRate: Number(row.dayPnlRate) || 0,
+      mvCny: cnyMv,
+      dayPnl: rowDayPnlCnyRaw == null ? (dayPnlAggregate * rate) : toNumber(rowDayPnlCnyRaw),
+      totalPnl: rowTotalPnlCnyRaw == null ? (Number(row.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw),
+      dayPnlRate: Number(row.dayPnlRateAggregate ?? row.dayPnlRate) || 0,
       totalPnlRate,
       pct,
       price: currentPrice || 0,
@@ -218,7 +231,7 @@ function quoteLabel(row: any): string {
 }
 
 function dayPnlRateLabel(row: any): string {
-  if (row?.navUpdatePending || row?.quotePending) return '--'
+  if (row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
   return formatPct(toNumber(row?.dayPnlRate))
 }
 
@@ -500,7 +513,7 @@ const handleTradeSuccess = async () => {
                     </div>
                     <!-- Market Value in Top Right -->
                     <div class="h-mv-right">
-                      {{ formatHoldingCurrency((Number(row.mv) || 0) * rateToCny(String(row.curr || 'CNY'))) }}
+                      {{ formatHoldingCurrency(Number(row.mvCny) || 0) }}
                     </div>
                   </div>
 
@@ -615,7 +628,7 @@ const handleTradeSuccess = async () => {
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
                       <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
                       <div style="font-family: 'JetBrains Mono', monospace; font-size:12.5px; font-weight:600; color:var(--text)">
-                        {{ formatHoldingCurrency((Number(row.mv) || 0) * rateToCny(String(row.curr || 'CNY'))) }}
+                        {{ formatHoldingCurrency(Number(row.mvCny) || 0) }}
                       </div>
                     </div>
                     <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">

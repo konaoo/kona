@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
+import '../services/portfolio_metrics_service.dart';
 import '../widgets/invest_trade_dialog.dart';
 import '../widgets/fab_scroll_visibility_controller.dart';
 
@@ -229,6 +230,16 @@ class InvestPageState extends State<InvestPage> {
     return '$prefix${value.toStringAsFixed(2)}%';
   }
 
+  String _fmtPnlNullable(double? value, String symbol) {
+    if (value == null) return '--';
+    return _fmtPnl(value, symbol);
+  }
+
+  String _fmtPctNullable(double? value) {
+    if (value == null) return '--';
+    return _fmtPct(value);
+  }
+
   // ─── Build ───────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -271,12 +282,37 @@ class InvestPageState extends State<InvestPage> {
 
   // ─── Hero Card ─────────────────────────────────
   Widget _buildHeroCard(AppState appState) {
-    final dayPnl = appState.investDayPnl;
-    final dayPnlRate = appState.investDayPnlRate;
-    final dayColor = AppState.getPnlColor(dayPnl);
-    final holdPnl = appState.investHoldingPnl;
-    final holdPnlRate = appState.investHoldingPnlRate;
-    final holdColor = AppState.getPnlColor(holdPnl);
+    final items = appState.portfolio;
+    final totalValueCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      (item) => item.valueCny,
+    );
+    final dayPnlCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      (item) => item.dayPnlAggregateCny,
+    );
+    final holdPnlCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      (item) => item.totalPnlCny,
+    );
+    final costAbsCny = PortfolioMetricsService.sumAbsMetricOrNull(
+      items,
+      (item) => item.costCny,
+    );
+    final dayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
+      dayPnlCny,
+      totalValueCny,
+    );
+    final holdPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
+      holdPnlCny,
+      costAbsCny,
+    );
+    final dayColor = dayPnlCny == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(dayPnlCny);
+    final holdColor = holdPnlCny == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(holdPnlCny);
 
     return Container(
       width: double.infinity,
@@ -319,10 +355,12 @@ class InvestPageState extends State<InvestPage> {
                             child: Text(
                               appState.amountHidden
                                   ? '****'
-                                  : appState.formatAmount(
-                                      appState.investTotalMV,
-                                      prefix: '',
-                                    ),
+                                  : (totalValueCny == null
+                                      ? '--'
+                                      : appState.formatAmount(
+                                          totalValueCny,
+                                          prefix: '',
+                                        )),
                               style: _S.heroAmount.copyWith(
                                 color: AppTheme.heroValueColor,
                               ),
@@ -362,13 +400,17 @@ class InvestPageState extends State<InvestPage> {
                     Text(
                       appState.amountHidden
                           ? '****'
-                          : appState.formatPnlInt(dayPnl),
+                          : (dayPnlCny == null
+                              ? '--'
+                              : appState.formatPnlInt(dayPnlCny)),
                       style: _S.heroDayVal.copyWith(color: dayColor),
                     ),
                     Text(
                       appState.amountHidden
                           ? ''
-                          : appState.formatPct(dayPnlRate),
+                          : (dayPnlRate == null
+                              ? '--'
+                              : appState.formatPct(dayPnlRate)),
                       style: _S.heroDayPct.copyWith(color: dayColor),
                     ),
                   ],
@@ -389,25 +431,29 @@ class InvestPageState extends State<InvestPage> {
               children: [
                 _statItem(
                   '持仓盈亏',
-                  appState.formatPnlInt(holdPnl),
+                  holdPnlCny == null
+                      ? '--'
+                      : appState.formatPnlInt(holdPnlCny),
                   holdColor,
                   true,
                 ),
                 _statItem(
                   '持仓盈亏率',
-                  appState.formatPct(holdPnlRate),
+                  holdPnlRate == null ? '--' : appState.formatPct(holdPnlRate),
                   holdColor,
                   true,
                 ),
                 _statItem(
                   '累计盈亏',
-                  appState.formatPnlInt(holdPnl),
+                  holdPnlCny == null
+                      ? '--'
+                      : appState.formatPnlInt(holdPnlCny),
                   holdColor,
                   true,
                 ),
                 _statItem(
                   '累计盈亏率',
-                  appState.formatPct(holdPnlRate),
+                  holdPnlRate == null ? '--' : appState.formatPct(holdPnlRate),
                   holdColor,
                   false,
                 ),
@@ -493,41 +539,37 @@ class InvestPageState extends State<InvestPage> {
     final filtered = appState.filteredPortfolio;
     if (filtered.isEmpty) return const SizedBox.shrink();
 
-    // Calculate category-level PnL from filtered list
-    double catDayPnl = 0, catDayBase = 0;
-    double catHoldPnl = 0, catAdjustedCostAbs = 0;
+    final catValueCny = PortfolioMetricsService.sumMetricOrNull(
+      filtered,
+      (item) => item.valueCny,
+    );
+    final catDayPnl = PortfolioMetricsService.sumMetricOrNull(
+      filtered,
+      (item) => item.dayPnlAggregateCny,
+    );
+    final catHoldPnl = PortfolioMetricsService.sumMetricOrNull(
+      filtered,
+      (item) => item.totalPnlCny,
+    );
+    final catCostAbs = PortfolioMetricsService.sumAbsMetricOrNull(
+      filtered,
+      (item) => item.costCny,
+    );
+    final catDayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
+      catDayPnl,
+      catValueCny,
+    );
+    final catHoldPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
+      catHoldPnl,
+      catCostAbs,
+    );
 
-    for (final item in filtered) {
-      final priceInfo = appState.resolvePriceInfoByCode(
-        item.code,
-        preferred: appState.prices[item.code],
-      );
-      final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-      final price = hasValidPrice
-          ? priceInfo.price
-          : (item.price > 0 ? item.price : 0.0);
-      final rate = appState.getCurrencyRate(item.curr);
-      final mv = price * item.qty * rate;
-      final cost = item.price * item.qty * rate;
-      final adjustedCost = cost - item.adjustment * rate;
-      catHoldPnl += mv - cost + item.adjustment * rate;
-      catAdjustedCostAbs += adjustedCost.abs();
-
-      if (appState.isAssetDayPnlEnabled(item, priceInfo: priceInfo) &&
-          hasValidPrice) {
-        catDayPnl += priceInfo.change * item.qty * rate;
-        final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
-        catDayBase += yclose * item.qty * rate;
-      }
-    }
-
-    final catDayPnlRate = catDayBase > 0 ? (catDayPnl / catDayBase * 100) : 0.0;
-    final catHoldPnlRate = catAdjustedCostAbs > 0
-        ? (catHoldPnl / catAdjustedCostAbs * 100)
-        : 0.0;
-
-    final dayColor = AppState.getPnlColor(catDayPnl);
-    final holdColor = AppState.getPnlColor(catHoldPnl);
+    final dayColor = catDayPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(catDayPnl);
+    final holdColor = catHoldPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(catHoldPnl);
 
     return Container(
       decoration: BoxDecoration(
@@ -560,11 +602,13 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden
                             ? '****'
-                            : appState.formatPnlIntWithCurrency(catDayPnl, '¥'),
+                            : (catDayPnl == null
+                                ? '--'
+                                : appState.formatPnlIntWithCurrency(catDayPnl, '¥')),
                         style: _S.sumVal.copyWith(color: dayColor),
                       ),
                       Text(
-                        appState.amountHidden ? '' : _fmtPct(catDayPnlRate),
+                        appState.amountHidden ? '' : _fmtPctNullable(catDayPnlRate),
                         style: _S.sumPct.copyWith(
                           color: dayColor.withValues(alpha: 0.85),
                         ),
@@ -594,14 +638,16 @@ class InvestPageState extends State<InvestPage> {
                       Text(
                         appState.amountHidden
                             ? '****'
-                            : appState.formatPnlIntWithCurrency(
-                                catHoldPnl,
-                                '¥',
-                              ),
+                            : (catHoldPnl == null
+                                ? '--'
+                                : appState.formatPnlIntWithCurrency(
+                                    catHoldPnl,
+                                    '¥',
+                                  )),
                         style: _S.sumVal.copyWith(color: holdColor),
                       ),
                       Text(
-                        appState.amountHidden ? '' : _fmtPct(catHoldPnlRate),
+                        appState.amountHidden ? '' : _fmtPctNullable(catHoldPnlRate),
                         style: _S.sumPct.copyWith(
                           color: holdColor.withValues(alpha: 0.85),
                         ),
@@ -623,32 +669,11 @@ class InvestPageState extends State<InvestPage> {
 
     // Sort by today's PnL descending
     filtered.sort((a, b) {
-      final priceInfoA = appState.resolvePriceInfoByCode(
-        a.code,
-        preferred: appState.prices[a.code],
-      );
-      final priceInfoB = appState.resolvePriceInfoByCode(
-        b.code,
-        preferred: appState.prices[b.code],
-      );
-
-      final rateA = appState.getCurrencyRate(a.curr);
-      final rateB = appState.getCurrencyRate(b.curr);
-
-      double pnlA = 0;
-      if (appState.isAssetDayPnlEnabled(a, priceInfo: priceInfoA) &&
-          priceInfoA != null &&
-          priceInfoA.price > 0) {
-        pnlA = priceInfoA.change * a.qty * rateA;
-      }
-
-      double pnlB = 0;
-      if (appState.isAssetDayPnlEnabled(b, priceInfo: priceInfoB) &&
-          priceInfoB != null &&
-          priceInfoB.price > 0) {
-        pnlB = priceInfoB.change * b.qty * rateB;
-      }
-
+      final pnlA = (a.dayPnlAggregateCny as num?)?.toDouble();
+      final pnlB = (b.dayPnlAggregateCny as num?)?.toDouble();
+      if (pnlA == null && pnlB == null) return 0;
+      if (pnlA == null) return 1;
+      if (pnlB == null) return -1;
       return pnlB.compareTo(pnlA); // Descending
     });
 
@@ -674,14 +699,10 @@ class InvestPageState extends State<InvestPage> {
 
     return Column(
       children: filtered.map((item) {
-        final priceInfo = appState.resolvePriceInfoByCode(
-          item.code,
-          preferred: appState.prices[item.code],
-        );
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: RepaintBoundary(
-            child: _buildStockCard(item, priceInfo, appState),
+            child: _buildStockCard(item, appState),
           ),
         );
       }).toList(),
@@ -689,41 +710,34 @@ class InvestPageState extends State<InvestPage> {
   }
 
   // ─── Stock Card ────────────────────────────────
-  Widget _buildStockCard(dynamic item, dynamic priceInfo, AppState appState) {
+  Widget _buildStockCard(dynamic item, AppState appState) {
     final qty = (item.qty as num?)?.toDouble() ?? 0.0;
     final rawCostPrice = (item.price as num?)?.toDouble() ?? 0.0;
-    final adjustment = (item.adjustment as num?)?.toDouble() ?? 0.0;
-    final displayCostPrice = qty.abs() > 1e-9
-        ? ((rawCostPrice * qty) - adjustment) / qty
-        : rawCostPrice;
+    final displayCostPrice =
+        (item.displayCostPrice as num?)?.toDouble() ?? rawCostPrice;
 
-    final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-    final currentPrice = hasValidPrice
-        ? priceInfo.price
-        : (rawCostPrice > 0 ? rawCostPrice : 0.0);
+    final backendCurrentPrice = (item.currentPrice as num?)?.toDouble() ?? 0.0;
+    final currentPrice =
+        backendCurrentPrice > 0 ? backendCurrentPrice : rawCostPrice;
 
-    final mv = currentPrice * qty;
-    final costTotal = rawCostPrice * qty;
-    final adjustedCostTotal = costTotal - adjustment;
-    final holdingPnl = mv - costTotal + adjustment;
-    final holdingPnlPct = adjustedCostTotal.abs() > 0
-        ? (holdingPnl / adjustedCostTotal.abs() * 100)
-        : 0.0;
-    final pnlColor = AppState.getPnlColor(holdingPnl);
+    final mv = (item.value as num?)?.toDouble();
+    final holdingPnl = (item.totalPnl as num?)?.toDouble();
+    final holdingPnlPct = (item.totalPnlRate as num?)?.toDouble();
+    final pnlColor = holdingPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(holdingPnl);
 
-    final navUpdatePending = appState.isNavUpdatePendingAsset(item);
-    final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(
-      item,
-      priceInfo: priceInfo,
-    );
-    final dailyPnl = (dayPnlEnabled && hasValidPrice)
-        ? priceInfo.change * qty
-        : 0.0;
-    final dailyBase = (dayPnlEnabled && hasValidPrice && priceInfo.yclose > 0)
-        ? priceInfo.yclose * qty
-        : 0.0;
-    final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
-    final dailyColor = AppState.getPnlColor(dailyPnl);
+    final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
+    final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
+    final dailyPnl = (item.dayPnlDisplay as num?)?.toDouble() ??
+        (item.dayPnl as num?)?.toDouble() ??
+        (item.dayPnlAggregate as num?)?.toDouble();
+    final dailyPnlPct = (item.dayPnlRateDisplay as num?)?.toDouble() ??
+        (item.dayPnlRate as num?)?.toDouble() ??
+        (item.dayPnlRateAggregate as num?)?.toDouble();
+    final dailyColor = dailyPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(dailyPnl);
 
     // Market type tag
     final marketType = (item.marketType as String? ?? 'a').toLowerCase();
@@ -731,10 +745,11 @@ class InvestPageState extends State<InvestPage> {
     final tagLabel = _tagLabels[marketType] ?? 'A股';
 
     // Progress bar calculation
-    final isProfit = currentPrice >= displayCostPrice;
-    final priceDiffPct = displayCostPrice > 0
+    final hasDiff = currentPrice > 0 && displayCostPrice > 0;
+    final priceDiffPct = hasDiff
         ? ((currentPrice - displayCostPrice) / displayCostPrice * 100)
-        : 0.0;
+        : null;
+    final isProfit = priceDiffPct == null ? true : priceDiffPct >= 0;
 
     // Currency symbol
     final sym = item.currencySymbol as String? ?? '¥';
@@ -820,7 +835,9 @@ class InvestPageState extends State<InvestPage> {
                     Text(
                       appState.amountHidden
                           ? '****'
-                          : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}',
+                          : (mv == null
+                              ? '--'
+                              : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}'),
                       style: _S.cardMktVal.copyWith(
                         color: AppTheme.isLight
                             ? AppTheme.textPrimary
@@ -862,18 +879,14 @@ class InvestPageState extends State<InvestPage> {
                   builder: (context) {
                     // Maximum change rate for 50% width is 30% (0.3)
                     const double maxRate = 0.3;
-                    double costPrice = item.price;
-
-                    // We can derive current price from market value and quantity
-                    double currentPrice = costPrice;
-                    if (qty > 0) {
-                      currentPrice = mv / qty;
-                    }
+                    final double costPrice = displayCostPrice;
+                    final double livePrice =
+                        currentPrice > 0 ? currentPrice : costPrice;
 
                     // Use the refined high-performance animated progress bar
                     return PnlProgressBar(
                       costPrice: costPrice,
-                      currentPrice: currentPrice,
+                      currentPrice: livePrice,
                       maxRate: maxRate,
                     );
                   },
@@ -900,8 +913,9 @@ class InvestPageState extends State<InvestPage> {
                             ),
                           ),
                           TextSpan(
-                            text:
-                                '${isProfit ? '↑' : '↓'}${priceDiffPct.abs().toStringAsFixed(2)}%',
+                            text: priceDiffPct == null
+                                ? '--'
+                                : '${isProfit ? '↑' : '↓'}${priceDiffPct.abs().toStringAsFixed(2)}%',
                             style: _S.cardProgressLabel.copyWith(
                               color: isProfit
                                   ? AppTheme.danger
@@ -924,9 +938,17 @@ class InvestPageState extends State<InvestPage> {
                 Expanded(
                   child: _pnlBox(
                     label: '当日盈亏',
-                    value: navUpdatePending ? '待净值更新' : _fmtPnl(dailyPnl, sym),
-                    pct: navUpdatePending ? '' : _fmtPct(dailyPnlPct),
-                    color: navUpdatePending ? AppTheme.textMuted : dailyColor,
+                    value: navUpdatePending
+                        ? '待净值更新'
+                        : (dayPnlEnabled
+                            ? _fmtPnlNullable(dailyPnl, sym)
+                            : '--'),
+                    pct: navUpdatePending
+                        ? ''
+                        : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--'),
+                    color: navUpdatePending
+                        ? AppTheme.textMuted
+                        : (dayPnlEnabled ? dailyColor : AppTheme.textMuted),
                     hidden: appState.amountHidden,
                   ),
                 ),
@@ -934,9 +956,9 @@ class InvestPageState extends State<InvestPage> {
                 Expanded(
                   child: _pnlBox(
                     label: '累计盈亏',
-                    value: _fmtPnl(holdingPnl, sym),
-                    pct: _fmtPct(holdingPnlPct),
-                    color: pnlColor,
+                    value: _fmtPnlNullable(holdingPnl, sym),
+                    pct: _fmtPctNullable(holdingPnlPct),
+                    color: holdingPnl == null ? AppTheme.textMuted : pnlColor,
                     hidden: appState.amountHidden,
                   ),
                 ),

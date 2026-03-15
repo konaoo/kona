@@ -11,7 +11,8 @@ from flask import jsonify, make_response, redirect, send_from_directory
 
 def create_web_entry_handlers(
     *,
-    web_dist_dir_getter: Callable[[], Path],
+    web_app_dist_dir_getter: Callable[[], Path],
+    web_admin_dist_dir_getter: Callable[[], Path],
     base_dir: Path,
 ):
     def _is_long_cache_asset(path: str) -> bool:
@@ -27,8 +28,7 @@ def create_web_entry_handlers(
             return False
         return suffix in {".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico", ".map", ".woff", ".woff2", ".ttf"}
 
-    def _serve_web_asset(asset_path: str = ""):
-        web_dir = web_dist_dir_getter()
+    def _serve_web_asset(web_dir: Path, asset_path: str = ""):
         index_file = web_dir / "index.html"
         if not index_file.exists():
             return jsonify({"error": "Web bundle not found"}), 404
@@ -53,16 +53,16 @@ def create_web_entry_handlers(
         return response
 
     def serve_index_route():
-        return _serve_web_asset()
+        return _serve_web_asset(web_app_dist_dir_getter())
 
     def serve_web_app_route(asset_path: str = ""):
-        return _serve_web_asset(asset_path)
+        return _serve_web_asset(web_app_dist_dir_getter(), asset_path)
 
     def serve_web_admin_route(asset_path: str = ""):
-        return _serve_web_asset(asset_path)
+        return _serve_web_asset(web_admin_dist_dir_getter(), asset_path)
 
     def serve_web_assets_route(asset_path: str):
-        return _serve_web_asset(f"assets/{asset_path}")
+        return _serve_web_asset(web_app_dist_dir_getter(), f"assets/{asset_path}")
 
     def redirect_assets_route():
         return redirect('/app/invest', code=302)

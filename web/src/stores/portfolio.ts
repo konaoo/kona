@@ -6,7 +6,6 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
-import { computeDisplayCostPrice } from '@/shared/costBasis'
 import type {
   MarketCode,
   PortfolioItem,
@@ -14,7 +13,6 @@ import type {
   PortfolioSummary,
 } from './types'
 import { useMarketStore } from './market'
-import { useQuoteStore } from './quote'
 
 export const usePortfolioStore = defineStore('portfolio', () => {
   // ───────────────────────────────────────────────────────────────
@@ -33,81 +31,116 @@ export const usePortfolioStore = defineStore('portfolio', () => {
    */
   const rows = computed<PositionRow[]>(() => {
     const marketStore = useMarketStore()
-    const quoteStore = useQuoteStore()
+
+    function pickNumber(item: PortfolioItem, keys: string[]): number | null {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null || value === '') continue
+        const n = toNumber(value)
+        if (Number.isFinite(n)) return n
+      }
+      return null
+    }
+
+    function pickBool(item: PortfolioItem, keys: string[]): boolean | null {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null) continue
+        return Boolean(value)
+      }
+      return null
+    }
+
+    function pickString(item: PortfolioItem, keys: string[]): string {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null) continue
+        return String(value)
+      }
+      return ''
+    }
+
+    function normalizeMarketCode(raw: unknown): MarketCode | null {
+      const text = String(raw || '').trim().toLowerCase()
+      if (text === 'a' || text === 'hk' || text === 'us' || text === 'fund') {
+        return text as MarketCode
+      }
+      return null
+    }
 
     return portfolio.value.map((item) => {
-      const quote = quoteStore.quotes[item.code] || {}
+      const marketFromPayload = normalizeMarketCode((item as any).market)
+      const market = marketFromPayload ?? inferMarket(item)
+      const category = inferCategory(item)
       const qty = toNumber(item.qty)
       const rawCostPrice = toNumber(item.price)
-      const yclose = toNumber(quote.yclose)
-      const quotedCurrentPrice = firstPositiveNumber(
-        quote.price,
-        quote.regular_price,
-        quote.premarket_price,
-        quote.after_hours_price,
-        yclose,
-      )
-
-      const currentPrice = firstPositiveNumber(
-        quotedCurrentPrice,
-        rawCostPrice
-      )
-
-      const adjustment = toNumber(item.adjustment)
-      const market = inferMarket(item)
-      const category = inferCategory(item)
       const marketStatus = marketStore.marketStatus[market]
       const open = Boolean(marketStatus?.open)
       const marketTradingDay = Boolean(marketStatus?.trading_day)
-      const navUpdatePending = isNavUpdatePendingAsset(item)
-      const quoteReady = quotedCurrentPrice > 0
-      const quotePending = !navUpdatePending && !quoteReady
 
-      const effectiveSession = normalizeSession(quote.effective_session ?? quote.session)
-      const usExtendedActive =
-        market === 'us' &&
-        (Boolean(quote.extended_active) || effectiveSession === 'pre' || effectiveSession === 'post')
-
-      const dayPnlDisplayEnabled = !navUpdatePending && currentPrice > 0 && yclose > 0
-      const dayPnlAggregateEnabled = dayPnlDisplayEnabled && (marketTradingDay || usExtendedActive)
-
-      const value = currentPrice * qty
-      const cost = rawCostPrice * qty
-      const rawCostTotal = cost
-      const displayCostPrice = computeDisplayCostPrice(rawCostPrice, qty, adjustment)
-      const totalPnl = value - cost + adjustment
-      const dayPnlDisplay = dayPnlDisplayEnabled ? (currentPrice - yclose) * qty : 0
-      const dayPnlRateDisplay = dayPnlDisplayEnabled ? ((currentPrice - yclose) / yclose) * 100 : 0
-      const dayPnlAggregate = dayPnlAggregateEnabled ? dayPnlDisplay : 0
-      const dayPnlRateAggregate = dayPnlAggregateEnabled ? dayPnlRateDisplay : 0
-      const totalPnlRate = Math.abs(cost) > 0 ? (totalPnl / Math.abs(cost)) * 100 : 0
+      const currentPrice = pickNumber(item, ['current_price', 'currentPrice']) ?? 0
+      const yclose = pickNumber(item, ['yclose']) ?? 0
+      const displayCostPrice =
+        pickNumber(item, ['display_cost_price', 'displayCostPrice']) ?? rawCostPrice
+      const cost = pickNumber(item, ['cost']) ?? pickNumber(item, ['raw_cost_total']) ?? 0
+      const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
+      const value = pickNumber(item, ['value']) ?? 0
+      const totalPnl = pickNumber(item, ['total_pnl']) ?? 0
+      const totalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
+      const dayPnlDisplay = pickNumber(item, ['day_pnl_display', 'day_pnl']) ?? 0
+      const dayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
+      const dayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
+      const dayPnlRateAggregate = pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
+      const navUpdatePending = pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
+      const quotePrice = pickNumber(item, ['quote_price'])
+      const quoteReady = pickBool(item, ['quote_ready']) ?? Boolean(quotePrice && quotePrice > 0)
+      const quotePending = pickBool(item, ['quote_pending']) ?? false
+      const dayPnlDisplayEnabled = pickBool(item, ['day_pnl_display_enabled']) ?? false
+      const dayPnlAggregateEnabled = pickBool(item, ['day_pnl_aggregate_enabled']) ?? false
+      const marketOpen = pickBool(item, ['market_open']) ?? open
+      const marketTradingDayValue = pickBool(item, ['market_trading_day']) ?? marketTradingDay
+      const marketStatusReason =
+        pickString(item, ['market_status_reason']) || (marketStatus?.reason || '')
 
       return {
         ...item,
         market,
         category,
+        curr: String(item.curr || 'CNY'),
         qty,
         costPrice: rawCostPrice,
+        rawCostPrice,
         cost,
         rawCostTotal,
-        rawCostPrice,
         displayCostPrice,
         currentPrice,
         yclose,
         value,
+        valueCny: pickNumber(item, ['value_cny']) ?? undefined,
+        costCny: pickNumber(item, ['cost_cny']) ?? undefined,
+        totalPnlCny: pickNumber(item, ['total_pnl_cny']) ?? undefined,
+        dayPnlCny: pickNumber(item, ['day_pnl_cny']) ?? undefined,
+        dayPnlAggregateCny: pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined,
+        rateToCny: pickNumber(item, ['rate_to_cny']) ?? undefined,
         totalPnl,
-        dayPnl: dayPnlDisplay,
-        dayPnlRate: dayPnlRateDisplay,
+        dayPnl: dayPnlAggregate,
+        dayPnlRate: dayPnlRateAggregate,
         dayPnlDisplay,
         dayPnlRateDisplay,
         dayPnlAggregate,
         dayPnlRateAggregate,
         totalPnlRate,
-        session: effectiveSession,
-        marketOpen: open,
-        marketTradingDay,
-        marketStatusReason: marketStatus?.reason || '',
-        usExtendedActive,
+        quotePrice: quotePrice ?? undefined,
+        quoteChange: pickNumber(item, ['quote_change']) ?? undefined,
+        quoteChangePct: pickNumber(item, ['quote_change_pct']) ?? undefined,
+        session: 'closed',
+        marketOpen,
+        marketTradingDay: marketTradingDayValue,
+        marketStatusReason,
+        usExtendedActive: false,
         navUpdatePending,
         quoteReady,
         quotePending,
@@ -121,10 +154,22 @@ export const usePortfolioStore = defineStore('portfolio', () => {
    * Summary - 投资组合摘要
    */
   const summary = computed<PortfolioSummary>(() => {
-    const totalValue = rows.value.reduce((sum, row) => sum + row.value, 0)
-    const totalPnl = rows.value.reduce((sum, row) => sum + row.totalPnl, 0)
-    const todayPnl = rows.value.reduce((sum, row) => sum + row.dayPnlAggregate, 0)
-    const totalCostAbs = rows.value.reduce((sum, row) => sum + Math.abs(row.costPrice * row.qty), 0)
+    const totalValue = rows.value.reduce((sum, row) => {
+      const valueCny = row.valueCny ?? (row.value * (row.rateToCny ?? 1))
+      return sum + valueCny
+    }, 0)
+    const totalPnl = rows.value.reduce((sum, row) => {
+      const pnlCny = row.totalPnlCny ?? (row.totalPnl * (row.rateToCny ?? 1))
+      return sum + pnlCny
+    }, 0)
+    const todayPnl = rows.value.reduce((sum, row) => {
+      const pnlCny = row.dayPnlAggregateCny ?? (row.dayPnlAggregate * (row.rateToCny ?? 1))
+      return sum + pnlCny
+    }, 0)
+    const totalCostAbs = rows.value.reduce((sum, row) => {
+      const costCny = row.costCny ?? (row.costPrice * row.qty * (row.rateToCny ?? 1))
+      return sum + Math.abs(costCny)
+    }, 0)
 
     return {
       totalValue,
@@ -190,28 +235,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     return code.startsWith('f_') || code.startsWith('ft_')
   }
 
-  /**
-   * FirstPositiveNumber - 获取第一个正数
-   */
-  function firstPositiveNumber(...values: unknown[]): number {
-    for (const value of values) {
-      const n = Number(value)
-      if (Number.isFinite(n) && n > 0) {
-        return n
-      }
-    }
-    return 0
-  }
-
-  /**
-   * NormalizeSession - 标准化会话
-   */
-  function normalizeSession(raw: unknown): string {
-    const text = String(raw || '').trim().toLowerCase()
-    if (text === 'pre' || text === 'post' || text === 'regular') return text
-    return 'closed'
-  }
-
   // ───────────────────────────────────────────────────────────────
   // Actions
   // ───────────────────────────────────────────────────────────────
@@ -222,7 +245,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   async function loadPortfolio() {
     loading.value = true
     try {
-      const items = await api.get<PortfolioItem[]>('/api/portfolio?type=all', true)
+      const items = await api.get<PortfolioItem[]>('/api/portfolio?type=all&with_metrics=1', true)
       portfolio.value = Array.isArray(items) ? items : []
     } finally {
       loading.value = false

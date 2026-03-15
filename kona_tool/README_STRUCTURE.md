@@ -43,6 +43,7 @@ kona_tool/
 ├─ quote_handlers.py # 单价 / 批量报价 / 汇率 / 搜索处理
 ├─ quote_routes.py   # 单价 / 批量报价 / 汇率 / 搜索入口
 ├─ request_runtime.py # 请求钩子 / 安全审计 / 接口分组限流 / 后台写审计
+├─ price_runtime.py   # 行情预取线程生命周期管理
 ├─ snapshot_runtime.py # 异步快照 / 快照节流 / 后台快照调度运行时
 ├─ startup_runtime.py # 指标令牌校验 / 浏览器自动打开 / 启动线程拉起
 ├─ sync_handlers.py  # sync/bootstrap 增量同步引导处理
@@ -146,7 +147,7 @@ kona_tool/
 
 现在的入口分工（建议按这个理解）：
 
-- `app.py`：薄入口，对外导出 `app/db/limiter`；同时保留单测会 patch 的全局符号（比如 `batch_get_prices`、`WEB_DIST_DIR`、`take_snapshot`）。
+- `app.py`：薄入口，对外导出 `app/db/limiter`；同时保留单测会 patch 的全局符号（比如 `batch_get_prices`、`WEB_APP_DIST_DIR`、`WEB_ADMIN_DIST_DIR`、`take_snapshot`）。
 - `app_factory.py`：负责“组装与注册”（创建 Flask app、Limiter、Runtime、Blueprint、hook），不启动任何后台线程。
 - `runtime_bootstrap.py`：只承接 `python app.py` 这种开发启动需要做的“运行时副作用”（启动后台线程/调度/预取 + `app.run`）。
 - `wsgi.py`：gunicorn 入口（生产用 `wsgi:app`），当前会启动行情预取线程。

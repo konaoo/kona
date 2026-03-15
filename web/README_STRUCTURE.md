@@ -18,11 +18,13 @@
 
 ```text
 web/
+├─ app/                   # 业务端构建入口（index.html）
+├─ admin/                 # 管理端构建入口（index.html）
 ├─ src/                    # Web 主源码
 ├─ public/                 # 公共静态资源
 ├─ tests/                  # 测试
 ├─ screenshots/            # 页面截图/验收素材
-├─ dist/                   # 构建产物
+├─ dist/                   # 构建产物（app / admin 两份）
 ├─ node_modules/           # 当前依赖安装目录
 ├─ node_modules.old.*      # 历史依赖备份目录
 └─ package.json            # 依赖和脚本入口
@@ -126,7 +128,8 @@ npm run build
 
 构建产物默认进入：
 
-- `dist/`
+- `dist/app/`
+- `dist/admin/`
 
 ### 6.3 当前最大结构风险
 

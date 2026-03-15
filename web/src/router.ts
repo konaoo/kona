@@ -7,12 +7,6 @@ import AppAnalysisPage from './pages/app/AppAnalysisPage.vue'
 import AppNewsPage from './pages/app/AppNewsPage.vue'
 import AppMePage from './pages/app/AppMePage.vue'
 import AppAssetDetailPage from './pages/app/AppAssetDetailPage.vue'
-import AdminLoginPage from './pages/admin/AdminLoginPage.vue'
-import AdminOverviewPage from './pages/admin/AdminOverviewPage.vue'
-import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
-import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
-import AdminApisPage from './pages/admin/AdminApisPage.vue'
-import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
 import { useKonaStore } from './stores/composables'
 
 const routes: RouteRecordRaw[] = [
@@ -28,14 +22,6 @@ const routes: RouteRecordRaw[] = [
   { path: '/app/profile', redirect: '/app/me' },
   { path: '/app/asset/:code', component: AppAssetDetailPage, meta: { requiresAuth: true } },
 
-  { path: '/admin', redirect: '/admin/overview' },
-  { path: '/admin/login', component: AdminLoginPage },
-  { path: '/admin/overview', component: AdminOverviewPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/users', component: AdminUsersPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/invites', component: AdminInvitesPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/apis', component: AdminApisPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/config', component: AdminConfigPage, meta: { requiresAuth: true, requiresAdmin: true } },
-  { path: '/admin/data', redirect: '/admin/overview' },
 ]
 
 export const router = createRouter({
@@ -50,20 +36,12 @@ router.beforeEach(async (to) => {
   if ((to.path === '/app/login' || to.path === '/app/register') && store.isAuthenticated.value) {
     return '/app/home'
   }
-  if (to.path === '/admin/login' && store.isAuthenticated.value && store.isAdmin.value) {
-    return '/admin/overview'
-  }
   if (to.meta.requiresAuth && !store.isAuthenticated.value) {
-    return to.path.startsWith('/admin') ? '/admin/login' : '/app/login'
-  }
-  if (to.meta.requiresAdmin && !store.isAdmin.value) {
-    return '/app/home'
+    return '/app/login'
   }
   return true
 })
 
-router.afterEach((to) => {
-  document.title = to.path.startsWith('/admin')
-    ? '咔咔记账 - 管理后台'
-    : '咔咔记账 - 投资记录工具'
+router.afterEach(() => {
+  document.title = '咔咔记账 - 投资记录工具'
 })

@@ -17,6 +17,11 @@ from collections import defaultdict
 from functools import wraps
 from typing import Any, Callable, Dict
 
+try:  # pragma: no cover - 运行时可选依赖
+    import redis
+except Exception:  # pragma: no cover
+    redis = None
+
 from flask import Flask, g, jsonify, make_response, request
 
 
@@ -26,6 +31,8 @@ _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/me",
 }
 _ACTIVITY_TOUCH_STALE_SECONDS = 3600.0
+_POLICY_RATE_TTL_SECONDS = 120
+_DEFAULT_STORAGE_PREFIX = "kona:req"
 
 
 class RequestRuntime:
@@ -43,6 +50,8 @@ class RequestRuntime:
         get_policy_limit_per_min: Callable[[str], int],
         time_getter: Callable[[], float] | None = None,
         activity_touch_interval_seconds: float = 30.0,
+        storage_url: str = "memory://",
+        storage_prefix: str = _DEFAULT_STORAGE_PREFIX,
     ) -> None:
         self.db = db
         self.logger = logger
@@ -58,10 +67,115 @@ class RequestRuntime:
         self._policy_rate_counters: Dict[tuple[str, str, int], int] = defaultdict(int)
         self._activity_touch_lock = threading.Lock()
         self._activity_touch_last_ts: Dict[str, float] = {}
+        self._metrics_lock = threading.Lock()
+        self._metrics: Dict[str, Any] = {
+            "policy_rate_allowed": 0,
+            "policy_rate_limited": 0,
+            "policy_rate_errors": 0,
+            "activity_touch_write": 0,
+            "activity_touch_skipped": 0,
+            "activity_touch_errors": 0,
+            "storage_errors": 0,
+            "last_error": "",
+            "last_error_at": None,
+        }
+
+        self.storage_url = str(storage_url or "memory://").strip() or "memory://"
+        self.storage_prefix = str(storage_prefix or _DEFAULT_STORAGE_PREFIX).strip() or _DEFAULT_STORAGE_PREFIX
+        self._storage_backend = "memory"
+        self._redis_client = None
+        self._activity_touch_script = None
+        self._init_shared_storage()
 
     def register_hooks(self, app: Flask) -> None:
         app.before_request(self.enforce_api_group_policy)
         app.after_request(self.mark_user_recent_activity)
+
+    def _init_shared_storage(self) -> None:
+        url = self.storage_url
+        if not url or url == "memory://":
+            return
+        if not (url.startswith("redis://") or url.startswith("rediss://")):
+            self.logger.info("request runtime storage fallback: unsupported url=%s", url)
+            return
+        if redis is None:
+            self.logger.warning("request runtime storage fallback: redis library not available")
+            self._metric_inc("storage_errors")
+            return
+        try:
+            client = redis.Redis.from_url(url, decode_responses=True)
+            client.ping()
+        except Exception as exc:  # pragma: no cover
+            self.logger.warning("request runtime storage fallback: redis unavailable: %s", exc)
+            self._metric_error("storage_errors", exc)
+            return
+        self._redis_client = client
+        self._storage_backend = "redis"
+
+    def _metric_inc(self, key: str, inc: int = 1) -> None:
+        with self._metrics_lock:
+            self._metrics[key] = int(self._metrics.get(key, 0)) + inc
+
+    def _metric_error(self, key: str, exc: Exception | None = None) -> None:
+        self._metric_inc(key)
+        if exc is None:
+            return
+        with self._metrics_lock:
+            self._metrics["last_error"] = str(exc)
+            self._metrics["last_error_at"] = self.time_getter()
+
+    def _policy_rate_key(self, scope_key: str, ip: str, minute: int) -> str:
+        return f"{self.storage_prefix}:policy:{scope_key}:{ip}:{minute}"
+
+    def _activity_touch_key(self, user_id: str) -> str:
+        return f"{self.storage_prefix}:active:{user_id}"
+
+    def _touch_user_activity_redis(self, user_id: str) -> bool | None:
+        if self._redis_client is None:
+            return None
+        now_ts = int(self.time_getter())
+        ttl_seconds = int(
+            max(_ACTIVITY_TOUCH_STALE_SECONDS, self.activity_touch_interval_seconds * 2)
+        )
+        if self._activity_touch_script is None:
+            script = """
+            local key = KEYS[1]
+            local now = tonumber(ARGV[1])
+            local interval = tonumber(ARGV[2])
+            local ttl = tonumber(ARGV[3])
+            local last = redis.call("GET", key)
+            if not last then
+                redis.call("SET", key, now, "EX", ttl)
+                return 1
+            end
+            if (now - tonumber(last)) >= interval then
+                redis.call("SET", key, now, "EX", ttl)
+                return 1
+            end
+            return 0
+            """
+            self._activity_touch_script = self._redis_client.register_script(script)
+        try:
+            result = self._activity_touch_script(
+                keys=[self._activity_touch_key(user_id)],
+                args=[now_ts, self.activity_touch_interval_seconds, ttl_seconds],
+            )
+            return bool(int(result))
+        except Exception as exc:
+            self._metric_error("activity_touch_errors", exc)
+            self.logger.debug("activity touch redis failed: %s", exc)
+            return None
+
+    def get_runtime_metrics(self) -> Dict[str, Any]:
+        with self._metrics_lock:
+            metrics = dict(self._metrics)
+        metrics["storage"] = {
+            "backend": self._storage_backend,
+            "shared": self._storage_backend == "redis",
+        }
+        metrics["activity_touch_interval_seconds"] = self.activity_touch_interval_seconds
+        metrics["policy_rate_ttl_seconds"] = _POLICY_RATE_TTL_SECONDS
+        return metrics
 
     def mask_username(self, username: str) -> str:
         """用户名脱敏，避免日志暴露完整标识。"""
@@ -116,18 +230,50 @@ class RequestRuntime:
         if limit_per_min <= 0:
             return True
         now_minute = int(self.time_getter() // 60)
-        key = (scope_key, self.client_ip_getter(), now_minute)
+        client_ip = self.client_ip_getter()
+
+        if self._storage_backend == "redis" and self._redis_client is not None:
+            redis_key = self._policy_rate_key(scope_key, client_ip, now_minute)
+            try:
+                current = self._redis_client.incr(redis_key)
+                if current == 1:
+                    self._redis_client.expire(redis_key, _POLICY_RATE_TTL_SECONDS)
+                allowed = current <= limit_per_min
+                if allowed:
+                    self._metric_inc("policy_rate_allowed")
+                else:
+                    self._metric_inc("policy_rate_limited")
+                return allowed
+            except Exception as exc:
+                self._metric_error("policy_rate_errors", exc)
+                self.logger.debug("policy rate redis failed: %s", exc)
+
+        key = (scope_key, client_ip, now_minute)
         with self._policy_rate_lock:
             stale_keys = [item for item in self._policy_rate_counters.keys() if item[2] < now_minute - 1]
             for stale_key in stale_keys:
                 self._policy_rate_counters.pop(stale_key, None)
             self._policy_rate_counters[key] += 1
-            return self._policy_rate_counters[key] <= limit_per_min
+            allowed = self._policy_rate_counters[key] <= limit_per_min
+            if allowed:
+                self._metric_inc("policy_rate_allowed")
+            else:
+                self._metric_inc("policy_rate_limited")
+            return allowed
 
     def should_touch_user_activity(self, user_id: str) -> bool:
         value = str(user_id or "").strip()
         if not value:
             return False
+        if self._storage_backend == "redis" and self._redis_client is not None:
+            touched = self._touch_user_activity_redis(value)
+            if touched is not None:
+                if touched:
+                    self._metric_inc("activity_touch_write")
+                else:
+                    self._metric_inc("activity_touch_skipped")
+                return touched
+
         now_ts = self.time_getter()
         with self._activity_touch_lock:
             stale_keys = [
@@ -139,8 +285,10 @@ class RequestRuntime:
                 self._activity_touch_last_ts.pop(stale_key, None)
             last_ts = self._activity_touch_last_ts.get(value, 0.0)
             if (now_ts - last_ts) < self.activity_touch_interval_seconds:
+                self._metric_inc("activity_touch_skipped")
                 return False
             self._activity_touch_last_ts[value] = now_ts
+            self._metric_inc("activity_touch_write")
             return True
 
     def enforce_api_group_policy(self):

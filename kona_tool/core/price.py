@@ -18,6 +18,11 @@ from .utils import monitored_http_get
 from .utils import safe_float
 from .policy_runtime import is_policy_enabled
 
+try:
+    import fcntl
+except Exception:  # pragma: no cover
+    fcntl = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +34,8 @@ def _sina_headers() -> Dict[str, Any]:
 
 class PriceCache:
     """价格缓存类"""
-    
-    def __init__(self, ttl: int = 60, stale_ttl: int = 300):
+
+    def __init__(self, ttl: int = 60, stale_ttl: int = 300, max_size: int = 0):
         """
         初始化缓存
         
@@ -40,6 +45,8 @@ class PriceCache:
         self.cache: Dict[str, Tuple[Tuple[float, float, float, float], float]] = {}
         self.ttl = ttl
         self.stale_ttl = max(stale_ttl, ttl)
+        self.max_size = max(0, int(max_size or 0))
+        self.evictions = 0
     
     def get(self, code: str) -> Optional[Tuple[float, float, float, float]]:
         """
@@ -83,7 +90,30 @@ class PriceCache:
             price_data: 价格数据
         """
         self.cache[code] = (price_data, time.time())
+        self._evict_if_needed()
         logger.debug(f"Cache set for {code}")
+
+    def _evict_if_needed(self) -> None:
+        if self.max_size <= 0:
+            return
+        overflow = len(self.cache) - self.max_size
+        if overflow <= 0:
+            return
+        items = sorted(self.cache.items(), key=lambda item: item[1][1])
+        for idx in range(overflow):
+            key = items[idx][0]
+            if key in self.cache:
+                del self.cache[key]
+                self.evictions += 1
+
+    def stats(self) -> Dict[str, Any]:
+        return {
+            "size": len(self.cache),
+            "max_size": self.max_size,
+            "evictions": self.evictions,
+            "ttl": self.ttl,
+            "stale_ttl": self.stale_ttl,
+        }
     
     def clear(self):
         """清空缓存"""
@@ -92,7 +122,11 @@ class PriceCache:
 
 
 # 全局缓存实例
-price_cache = PriceCache(ttl=config.CACHE_TTL, stale_ttl=config.CACHE_STALE_TTL)
+price_cache = PriceCache(
+    ttl=config.CACHE_TTL,
+    stale_ttl=config.CACHE_STALE_TTL,
+    max_size=getattr(config, "PRICE_CACHE_MAX_SIZE", 0),
+)
 
 _runtime_lock = threading.Lock()
 _runtime_metrics: Dict[str, Any] = {
@@ -132,7 +166,9 @@ def _mark_metric(key: str, inc: int = 1) -> None:
 
 def get_price_runtime_metrics() -> Dict[str, Any]:
     with _runtime_lock:
-        return dict(_runtime_metrics)
+        metrics = dict(_runtime_metrics)
+    metrics["cache"] = price_cache.stats()
+    return metrics
 
 
 def _normalize_code_key(code: Any) -> str:
@@ -452,21 +488,39 @@ class PricePreloader:
 
     _instance = None
 
-    def __init__(self, db_path: str, interval: int = 30):
-        self._db_path = db_path
+    def __init__(self, db_manager: Any, interval: int = 30):
+        self._db_manager = db_manager
         self._interval = interval
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._lock_file = str(
+            getattr(
+                config,
+                "PRICE_PRELOADER_LOCK_FILE",
+                "/tmp/kona_price_preloader.lock",
+            )
+        )
+        self._lock_fd: Optional[int] = None
 
     @classmethod
-    def get_instance(cls, db_path: str = '', interval: int = 30) -> 'PricePreloader':
+    def get_instance(cls, db_manager: Any = None, interval: int = 30) -> 'PricePreloader':
         if cls._instance is None:
-            cls._instance = cls(db_path, interval)
+            cls._instance = cls(db_manager, interval)
+        else:
+            if db_manager is not None:
+                cls._instance._db_manager = db_manager
+            if interval:
+                cls._instance._interval = interval
         return cls._instance
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             logger.info("PricePreloader already running, skip.")
+            return
+        if not getattr(config, "ENABLE_PRICE_PRELOADER", True):
+            logger.info("PricePreloader disabled by config, skip.")
+            return
+        if not self._try_acquire_lock():
             return
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -477,21 +531,55 @@ class PricePreloader:
 
     def stop(self) -> None:
         self._stop_event.set()
+        self._release_lock()
         logger.info("PricePreloader stopping...")
+
+    def _try_acquire_lock(self) -> bool:
+        if fcntl is None:
+            logger.info("PricePreloader lock unavailable; running without inter-process guard.")
+            return True
+        lock_path = self._lock_file or "/tmp/kona_price_preloader.lock"
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        except Exception as exc:
+            logger.warning("PricePreloader lock open failed: %s", exc)
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            logger.info("PricePreloader lock held by another process, skip.")
+            return False
+        except Exception as exc:
+            os.close(fd)
+            logger.warning("PricePreloader lock acquire failed: %s", exc)
+            return False
+        self._lock_fd = fd
+        return True
+
+    def _release_lock(self) -> None:
+        if self._lock_fd is None:
+            return
+        try:
+            if fcntl is not None:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            os.close(self._lock_fd)
+        except Exception:
+            pass
+        self._lock_fd = None
 
     def _collect_codes(self) -> List[str]:
         """从数据库收集所有用户持有的唯一证券代码"""
-        import sqlite3
-        codes: List[str] = []
+        if self._db_manager is None:
+            return []
         try:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT code FROM portfolio")
-            codes = [row[0] for row in cursor.fetchall() if row[0]]
-            conn.close()
-        except Exception as e:
-            logger.error(f"PricePreloader failed to collect codes: {e}")
-        return codes
+            return self._db_manager.get_distinct_portfolio_codes()
+        except Exception as exc:
+            logger.error("PricePreloader failed to collect codes: %s", exc)
+            return []
 
     def _run(self) -> None:
         logger.info("PricePreloader thread started.")

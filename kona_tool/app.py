@@ -3,7 +3,7 @@
 
 对外约定：
 - gunicorn / wsgi 仍然可以用 `from app import app`
-- 单测仍然可以 `import app as app_module` 并 patch `app_module.batch_get_prices / WEB_DIST_DIR / take_snapshot ...`
+- 单测仍然可以 `import app as app_module` 并 patch `app_module.batch_get_prices / WEB_APP_DIST_DIR / WEB_ADMIN_DIST_DIR / take_snapshot ...`
 
 所以这里会保留一批“单测需要 patch 的全局符号”，同时把实际组装交给 `app_factory.py`。
 """
@@ -47,7 +47,8 @@ from core.trend import batch_get_asset_trends
 
 
 # 允许单测 patch：test_web_entry_api.py 会改这个路径来喂 index.html
-WEB_DIST_DIR = config.BASE_DIR / "static" / "web"
+WEB_APP_DIST_DIR = config.BASE_DIR / "static" / "web" / "app"
+WEB_ADMIN_DIST_DIR = config.BASE_DIR / "static" / "web" / "admin"
 
 
 def _issue_auth_tokens(user_id: str, username: str, device_id: str = "") -> dict:
@@ -59,7 +60,10 @@ _wiring = AppWiring(
     database_path=config.DATABASE_PATH,
     backup_csv_path=config.BACKUP_CSV_PATH,
     ratelimit_storage_url=config.RATELIMIT_STORAGE_URL,
-    web_dist_dir_getter=lambda: WEB_DIST_DIR,
+    request_runtime_storage_url=config.REQUEST_RUNTIME_STORAGE_URL,
+    request_runtime_storage_prefix=config.REQUEST_RUNTIME_STORAGE_PREFIX,
+    web_app_dist_dir_getter=lambda: WEB_APP_DIST_DIR,
+    web_admin_dist_dir_getter=lambda: WEB_ADMIN_DIST_DIR,
     app_version=config.APP_VERSION,
     price_health_token_getter=lambda: config.PRICE_HEALTH_TOKEN,
     time_getter=lambda: time.time(),
@@ -103,6 +107,7 @@ snapshot_runtime = _components["snapshot_runtime"]
 portfolio_runtime = _components["portfolio_runtime"]
 market_runtime = _components["market_runtime"]
 startup_runtime = _components["startup_runtime"]
+price_runtime = _components["price_runtime"]
 run_provider_test_report_job = _components.get("run_provider_test_report_job")
 
 
