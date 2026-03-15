@@ -8,6 +8,36 @@ class PortfolioItem {
   final double adjustment;
   final String curr;
   final String assetType;
+  final String? market;
+  final double? currentPrice;
+  final double? yclose;
+  final double? displayCostPrice;
+  final double? cost;
+  final double? rawCostTotal;
+  final double? value;
+  final double? totalPnl;
+  final double? totalPnlRate;
+  final double? dayPnl;
+  final double? dayPnlRate;
+  final double? dayPnlDisplay;
+  final double? dayPnlRateDisplay;
+  final double? dayPnlAggregate;
+  final double? dayPnlRateAggregate;
+  final bool? navUpdatePending;
+  final bool? dayPnlDisplayEnabled;
+  final bool? dayPnlAggregateEnabled;
+  final bool? marketOpen;
+  final bool? marketTradingDay;
+  final String? marketStatusReason;
+  final double? rateToCny;
+  final double? valueCny;
+  final double? costCny;
+  final double? totalPnlCny;
+  final double? dayPnlCny;
+  final double? dayPnlAggregateCny;
+  final double? quotePrice;
+  final double? quoteChange;
+  final double? quoteChangePct;
 
   PortfolioItem({
     this.id,
@@ -18,6 +48,36 @@ class PortfolioItem {
     this.adjustment = 0,
     this.curr = 'CNY',
     this.assetType = '',
+    this.market,
+    this.currentPrice,
+    this.yclose,
+    this.displayCostPrice,
+    this.cost,
+    this.rawCostTotal,
+    this.value,
+    this.totalPnl,
+    this.totalPnlRate,
+    this.dayPnl,
+    this.dayPnlRate,
+    this.dayPnlDisplay,
+    this.dayPnlRateDisplay,
+    this.dayPnlAggregate,
+    this.dayPnlRateAggregate,
+    this.navUpdatePending,
+    this.dayPnlDisplayEnabled,
+    this.dayPnlAggregateEnabled,
+    this.marketOpen,
+    this.marketTradingDay,
+    this.marketStatusReason,
+    this.rateToCny,
+    this.valueCny,
+    this.costCny,
+    this.totalPnlCny,
+    this.dayPnlCny,
+    this.dayPnlAggregateCny,
+    this.quotePrice,
+    this.quoteChange,
+    this.quoteChangePct,
   });
 
   factory PortfolioItem.fromJson(Map<String, dynamic> json) {
@@ -30,6 +90,36 @@ class PortfolioItem {
       adjustment: _parseDouble(json['adjustment']),
       curr: json['curr'] ?? 'CNY',
       assetType: json['asset_type'] ?? json['assetType'] ?? '',
+      market: _parseString(json['market'] ?? json['category']),
+      currentPrice: _parseDoubleOrNull(json['current_price']),
+      yclose: _parseDoubleOrNull(json['yclose']),
+      displayCostPrice: _parseDoubleOrNull(json['display_cost_price']),
+      cost: _parseDoubleOrNull(json['cost']),
+      rawCostTotal: _parseDoubleOrNull(json['raw_cost_total']),
+      value: _parseDoubleOrNull(json['value']),
+      totalPnl: _parseDoubleOrNull(json['total_pnl']),
+      totalPnlRate: _parseDoubleOrNull(json['total_pnl_rate']),
+      dayPnl: _parseDoubleOrNull(json['day_pnl']),
+      dayPnlRate: _parseDoubleOrNull(json['day_pnl_rate']),
+      dayPnlDisplay: _parseDoubleOrNull(json['day_pnl_display']),
+      dayPnlRateDisplay: _parseDoubleOrNull(json['day_pnl_rate_display']),
+      dayPnlAggregate: _parseDoubleOrNull(json['day_pnl_aggregate']),
+      dayPnlRateAggregate: _parseDoubleOrNull(json['day_pnl_rate_aggregate']),
+      navUpdatePending: _parseBoolOrNull(json['nav_update_pending']),
+      dayPnlDisplayEnabled: _parseBoolOrNull(json['day_pnl_display_enabled']),
+      dayPnlAggregateEnabled: _parseBoolOrNull(json['day_pnl_aggregate_enabled']),
+      marketOpen: _parseBoolOrNull(json['market_open']),
+      marketTradingDay: _parseBoolOrNull(json['market_trading_day']),
+      marketStatusReason: _parseString(json['market_status_reason']),
+      rateToCny: _parseDoubleOrNull(json['rate_to_cny']),
+      valueCny: _parseDoubleOrNull(json['value_cny']),
+      costCny: _parseDoubleOrNull(json['cost_cny']),
+      totalPnlCny: _parseDoubleOrNull(json['total_pnl_cny']),
+      dayPnlCny: _parseDoubleOrNull(json['day_pnl_cny']),
+      dayPnlAggregateCny: _parseDoubleOrNull(json['day_pnl_aggregate_cny']),
+      quotePrice: _parseDoubleOrNull(json['quote_price']),
+      quoteChange: _parseDoubleOrNull(json['quote_change']),
+      quoteChangePct: _parseDoubleOrNull(json['quote_change_pct']),
     );
   }
 
@@ -43,11 +133,48 @@ class PortfolioItem {
       'adjustment': adjustment,
       'curr': curr,
       'asset_type': assetType,
+      if (market != null) 'market': market,
+      if (currentPrice != null) 'current_price': currentPrice,
+      if (yclose != null) 'yclose': yclose,
+      if (displayCostPrice != null) 'display_cost_price': displayCostPrice,
+      if (cost != null) 'cost': cost,
+      if (rawCostTotal != null) 'raw_cost_total': rawCostTotal,
+      if (value != null) 'value': value,
+      if (totalPnl != null) 'total_pnl': totalPnl,
+      if (totalPnlRate != null) 'total_pnl_rate': totalPnlRate,
+      if (dayPnl != null) 'day_pnl': dayPnl,
+      if (dayPnlRate != null) 'day_pnl_rate': dayPnlRate,
+      if (dayPnlDisplay != null) 'day_pnl_display': dayPnlDisplay,
+      if (dayPnlRateDisplay != null) 'day_pnl_rate_display': dayPnlRateDisplay,
+      if (dayPnlAggregate != null) 'day_pnl_aggregate': dayPnlAggregate,
+      if (dayPnlRateAggregate != null)
+        'day_pnl_rate_aggregate': dayPnlRateAggregate,
+      if (navUpdatePending != null) 'nav_update_pending': navUpdatePending,
+      if (dayPnlDisplayEnabled != null)
+        'day_pnl_display_enabled': dayPnlDisplayEnabled,
+      if (dayPnlAggregateEnabled != null)
+        'day_pnl_aggregate_enabled': dayPnlAggregateEnabled,
+      if (marketOpen != null) 'market_open': marketOpen,
+      if (marketTradingDay != null) 'market_trading_day': marketTradingDay,
+      if (marketStatusReason != null)
+        'market_status_reason': marketStatusReason,
+      if (rateToCny != null) 'rate_to_cny': rateToCny,
+      if (valueCny != null) 'value_cny': valueCny,
+      if (costCny != null) 'cost_cny': costCny,
+      if (totalPnlCny != null) 'total_pnl_cny': totalPnlCny,
+      if (dayPnlCny != null) 'day_pnl_cny': dayPnlCny,
+      if (dayPnlAggregateCny != null)
+        'day_pnl_aggregate_cny': dayPnlAggregateCny,
+      if (quotePrice != null) 'quote_price': quotePrice,
+      if (quoteChange != null) 'quote_change': quoteChange,
+      if (quoteChangePct != null) 'quote_change_pct': quoteChangePct,
     };
   }
 
   /// 获取市场类型
   String get marketType {
+    final mkt = (market ?? '').trim().toLowerCase();
+    if (mkt.isNotEmpty) return mkt;
     if (assetType.isNotEmpty) return assetType;
     final lowerCode = code.toLowerCase();
     if (lowerCode.startsWith('hk')) return 'hk';
@@ -75,6 +202,31 @@ class PortfolioItem {
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0;
     return 0;
+  }
+
+  static double? _parseDoubleOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static bool? _parseBoolOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized.isEmpty) return null;
+      return normalized == '1' || normalized == 'true' || normalized == 'yes';
+    }
+    return null;
+  }
+
+  static String? _parseString(dynamic value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return null;
   }
 }
 

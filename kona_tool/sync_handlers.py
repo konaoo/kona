@@ -33,6 +33,7 @@ def create_sync_payload_handlers(
     rates_getter: Callable[[], Dict[str, Any]],
     market_status_refresh_getter: Callable[..., Dict[str, Any]],
     market_scope: list[str],
+    portfolio_metrics_builder: Callable[..., Any] | None = None,
 ):
     def _sync_rates_version(rates: Dict[str, Any]) -> str:
         try:
@@ -55,8 +56,22 @@ def create_sync_payload_handlers(
                 include.append(key)
         return include or list(SYNC_BOOTSTRAP_DOMAINS)
 
-    def _build_sync_domain_data(domain: str, user_id: str = None) -> Any:
+    def _parse_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        text = str(value or "").strip().lower()
+        return text in {"1", "true", "yes", "y", "on"}
+
+    def _build_sync_domain_data(
+        domain: str,
+        user_id: str = None,
+        *,
+        with_portfolio_metrics: bool = False,
+        now_utc: datetime | None = None,
+    ) -> Any:
         if domain == "portfolio":
+            if with_portfolio_metrics and portfolio_metrics_builder is not None:
+                return portfolio_metrics_builder(user_id=user_id, now_utc=now_utc)
             return db.get_portfolio(user_id=user_id)
         if domain == "cash_assets":
             return db.get_cash_assets(user_id=user_id)
@@ -82,6 +97,7 @@ def create_sync_payload_handlers(
         include = _normalize_sync_include(body.get("include"))
         client_versions_raw = body.get("client_versions")
         client_versions = client_versions_raw if isinstance(client_versions_raw, dict) else {}
+        include_portfolio_metrics = _parse_bool(body.get("portfolio_metrics"))
 
         user_id = getattr(g, "user_id", None)
         now_utc = datetime.now(timezone.utc)
@@ -101,7 +117,12 @@ def create_sync_payload_handlers(
             if domain == "rates":
                 data[domain] = rates
             else:
-                data[domain] = _build_sync_domain_data(domain, user_id=user_id)
+                data[domain] = _build_sync_domain_data(
+                    domain,
+                    user_id=user_id,
+                    with_portfolio_metrics=include_portfolio_metrics,
+                    now_utc=now_utc,
+                )
 
         market_payload = market_status_refresh_getter(now_utc=now_utc, force_refresh=True)
         markets = market_payload.get("markets", {})

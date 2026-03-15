@@ -503,22 +503,33 @@ class InvestPageState extends State<InvestPage> {
         preferred: appState.prices[item.code],
       );
       final hasValidPrice = priceInfo != null && priceInfo.price > 0;
+      final rate = appState.getCurrencyRate(item.curr);
+      final rateToCny =
+          (item.rateToCny != null && item.rateToCny! > 0) ? item.rateToCny! : rate;
       final price = hasValidPrice
           ? priceInfo.price
           : (item.price > 0 ? item.price : 0.0);
-      final rate = appState.getCurrencyRate(item.curr);
-      final mv = price * item.qty * rate;
-      final cost = item.price * item.qty * rate;
-      final adjustedCost = cost - item.adjustment * rate;
-      catHoldPnl += mv - cost + item.adjustment * rate;
-      catAdjustedCostAbs += adjustedCost.abs();
-
-      if (appState.isAssetDayPnlEnabled(item, priceInfo: priceInfo) &&
+      final valueNative = item.value ?? (price * item.qty);
+      final valueCny =
+          item.valueCny ?? (valueNative * rateToCny);
+      final costCny =
+          item.costCny ?? (item.price * item.qty * rateToCny);
+      final adjustedCost = costCny - item.adjustment * rateToCny;
+      final totalPnlCny = item.totalPnlCny ??
+          (valueCny - costCny + item.adjustment * rateToCny);
+      final dayPnlCny = item.dayPnlAggregateCny;
+      if (dayPnlCny != null && valueCny > 0) {
+        catDayPnl += dayPnlCny;
+        catDayBase += (valueCny - dayPnlCny);
+      } else if (appState.isAssetDayPnlEnabled(item, priceInfo: priceInfo) &&
           hasValidPrice) {
         catDayPnl += priceInfo.change * item.qty * rate;
         final yclose = priceInfo.yclose > 0 ? priceInfo.yclose : item.price;
         catDayBase += yclose * item.qty * rate;
       }
+
+      catHoldPnl += totalPnlCny;
+      catAdjustedCostAbs += adjustedCost.abs();
     }
 
     final catDayPnlRate = catDayBase > 0 ? (catDayPnl / catDayBase * 100) : 0.0;
@@ -623,6 +634,13 @@ class InvestPageState extends State<InvestPage> {
 
     // Sort by today's PnL descending
     filtered.sort((a, b) {
+      final pnlAFromBackend = a.dayPnlAggregateCny;
+      final pnlBFromBackend = b.dayPnlAggregateCny;
+      if (pnlAFromBackend != null || pnlBFromBackend != null) {
+        final pnlA = pnlAFromBackend ?? 0.0;
+        final pnlB = pnlBFromBackend ?? 0.0;
+        return pnlB.compareTo(pnlA);
+      }
       final priceInfoA = appState.resolvePriceInfoByCode(
         a.code,
         preferred: appState.prices[a.code],
@@ -693,36 +711,42 @@ class InvestPageState extends State<InvestPage> {
     final qty = (item.qty as num?)?.toDouble() ?? 0.0;
     final rawCostPrice = (item.price as num?)?.toDouble() ?? 0.0;
     final adjustment = (item.adjustment as num?)?.toDouble() ?? 0.0;
-    final displayCostPrice = qty.abs() > 1e-9
-        ? ((rawCostPrice * qty) - adjustment) / qty
-        : rawCostPrice;
+    final displayCostPrice = (item.displayCostPrice as num?)?.toDouble() ??
+        (qty.abs() > 1e-9 ? ((rawCostPrice * qty) - adjustment) / qty : rawCostPrice);
 
     final hasValidPrice = priceInfo != null && priceInfo.price > 0;
-    final currentPrice = hasValidPrice
-        ? priceInfo.price
-        : (rawCostPrice > 0 ? rawCostPrice : 0.0);
+    final backendCurrentPrice = (item.currentPrice as num?)?.toDouble() ?? 0.0;
+    final currentPrice = backendCurrentPrice > 0
+        ? backendCurrentPrice
+        : (hasValidPrice
+            ? priceInfo.price
+            : (rawCostPrice > 0 ? rawCostPrice : 0.0));
 
-    final mv = currentPrice * qty;
-    final costTotal = rawCostPrice * qty;
+    final mv = (item.value as num?)?.toDouble() ?? (currentPrice * qty);
+    final costTotal =
+        (item.cost as num?)?.toDouble() ?? (rawCostPrice * qty);
     final adjustedCostTotal = costTotal - adjustment;
-    final holdingPnl = mv - costTotal + adjustment;
-    final holdingPnlPct = adjustedCostTotal.abs() > 0
-        ? (holdingPnl / adjustedCostTotal.abs() * 100)
-        : 0.0;
+    final holdingPnl =
+        (item.totalPnl as num?)?.toDouble() ?? (mv - costTotal + adjustment);
+    final holdingPnlPct = (item.totalPnlRate as num?)?.toDouble() ??
+        (adjustedCostTotal.abs() > 0
+            ? (holdingPnl / adjustedCostTotal.abs() * 100)
+            : 0.0);
     final pnlColor = AppState.getPnlColor(holdingPnl);
 
-    final navUpdatePending = appState.isNavUpdatePendingAsset(item);
-    final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(
-      item,
-      priceInfo: priceInfo,
-    );
-    final dailyPnl = (dayPnlEnabled && hasValidPrice)
-        ? priceInfo.change * qty
-        : 0.0;
+    final navUpdatePending =
+        (item.navUpdatePending as bool?) ?? appState.isNavUpdatePendingAsset(item);
+    final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ??
+        appState.isAssetDayPnlDisplayEnabled(item, priceInfo: priceInfo);
+    final dailyPnl = (item.dayPnlDisplay as num?)?.toDouble() ??
+        (item.dayPnl as num?)?.toDouble() ??
+        ((dayPnlEnabled && hasValidPrice) ? priceInfo.change * qty : 0.0);
     final dailyBase = (dayPnlEnabled && hasValidPrice && priceInfo.yclose > 0)
         ? priceInfo.yclose * qty
         : 0.0;
-    final dailyPnlPct = dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0;
+    final dailyPnlPct = (item.dayPnlRateDisplay as num?)?.toDouble() ??
+        (item.dayPnlRate as num?)?.toDouble() ??
+        (dailyBase > 0 ? (dailyPnl / dailyBase * 100) : 0.0);
     final dailyColor = AppState.getPnlColor(dailyPnl);
 
     // Market type tag

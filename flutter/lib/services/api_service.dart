@@ -616,8 +616,14 @@ class ApiService {
   // ============================================================
 
   /// 获取投资组合
-  Future<List<dynamic>> getPortfolio() async {
-    return await _get(ApiConfig.portfolio) ?? [];
+  Future<List<dynamic>> getPortfolio({bool withMetrics = true}) async {
+    final endpoint = withMetrics
+        ? Uri(
+            path: ApiConfig.portfolio,
+            queryParameters: const {'with_metrics': '1'},
+          ).toString()
+        : ApiConfig.portfolio;
+    return await _get(endpoint) ?? [];
   }
 
   /// 搜索股票/基金
@@ -1116,8 +1122,9 @@ class ApiService {
   Future<Map<String, dynamic>> getSyncBootstrap({
     List<String>? include,
     Map<String, String>? clientVersions,
+    bool portfolioMetrics = true,
   }) async {
-    final response = await _post(ApiConfig.syncBootstrap, {
+    final payload = <String, dynamic>{
       'include':
           include ??
           const [
@@ -1130,7 +1137,15 @@ class ApiService {
             'rates',
           ],
       'client_versions': clientVersions ?? const {},
-    }, retryOnTransient: true);
+    };
+    if (portfolioMetrics) {
+      payload['portfolio_metrics'] = true;
+    }
+    final response = await _post(
+      ApiConfig.syncBootstrap,
+      payload,
+      retryOnTransient: true,
+    );
     return _toMap(response);
   }
 

@@ -353,17 +353,20 @@ class AppState extends ChangeNotifier {
   }
 
   bool isNavUpdatePendingAsset(PortfolioItem item) {
+    if (item.navUpdatePending != null) return item.navUpdatePending!;
     final code = item.code.trim().toLowerCase();
     return code.startsWith('f_') || code.startsWith('ft_');
   }
 
   bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (item.dayPnlDisplayEnabled != null) return item.dayPnlDisplayEnabled!;
     if (isNavUpdatePendingAsset(item)) return false;
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     return resolved != null && resolved.yclose > 0;
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (item.dayPnlAggregateEnabled != null) return item.dayPnlAggregateEnabled!;
     if (isNavUpdatePendingAsset(item)) return false;
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     if (resolved == null || resolved.yclose <= 0) return false;
@@ -424,6 +427,11 @@ class AppState extends ChangeNotifier {
   double get investTotalMV {
     double total = 0;
     for (var item in _portfolio) {
+      final valueCny = item.valueCny;
+      if (valueCny != null) {
+        total += valueCny;
+        continue;
+      }
       final priceInfo = resolvePriceInfo(item);
       final currentPrice = (priceInfo != null && priceInfo.price > 0)
           ? priceInfo.price
@@ -438,6 +446,11 @@ class AppState extends ChangeNotifier {
   double get investDayPnl {
     double total = 0;
     for (var item in _portfolio) {
+      final dayPnlCny = item.dayPnlAggregateCny;
+      if (dayPnlCny != null) {
+        total += dayPnlCny;
+        continue;
+      }
       final priceInfo = resolvePriceInfo(item);
       if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
       if (priceInfo != null) {
@@ -453,6 +466,13 @@ class AppState extends ChangeNotifier {
     double pnl = 0;
     double base = 0;
     for (var item in _portfolio) {
+      final dayPnlCny = item.dayPnlAggregateCny;
+      final valueCny = item.valueCny;
+      if (dayPnlCny != null && valueCny != null) {
+        pnl += dayPnlCny;
+        base += (valueCny - dayPnlCny);
+        continue;
+      }
       final priceInfo = resolvePriceInfo(item);
       if (!isAssetDayPnlEnabled(item, priceInfo: priceInfo)) continue;
       if (priceInfo != null) {
@@ -472,6 +492,11 @@ class AppState extends ChangeNotifier {
   double get investHoldingPnl {
     double total = 0;
     for (var item in _portfolio) {
+      final totalPnlCny = item.totalPnlCny;
+      if (totalPnlCny != null) {
+        total += totalPnlCny;
+        continue;
+      }
       final priceInfo = resolvePriceInfo(item);
       final currentPrice = (priceInfo != null && priceInfo.price > 0)
           ? priceInfo.price
@@ -488,6 +513,11 @@ class AppState extends ChangeNotifier {
   double get investHoldingPnlRate {
     double totalCostAbs = 0;
     for (var item in _portfolio) {
+      final costCny = item.costCny;
+      if (costCny != null) {
+        totalCostAbs += costCny.abs();
+        continue;
+      }
       final rate = _rateForCurrency(item.curr);
       totalCostAbs += (item.price * item.qty * rate).abs();
     }

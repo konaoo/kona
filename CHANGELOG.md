@@ -1,3 +1,56 @@
+## 2026-03-15-03
+
+### 这版一句话
+
+分析页收益日历修掉了底部溢出红字，日历格子文本会自动缩放适配。
+
+### 主要变化
+- [analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)：收益日历格子的日期/盈亏文本改成自适应缩放，避免不同屏幕尺寸出现溢出提示。
+
+### 影响范围
+- Flutter 分析页收益日历展示
+
+### 验收重点
+- 分析页收益日历不再出现红色 overflow 提示
+
+## 2026-03-15-02
+
+### 这版一句话
+
+Flutter 投资页开始优先吃后端口径字段：持仓与汇总展示不再依赖前端计算（旧后端仍可自动降级）。
+
+### 主要变化
+- [api_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/api_service.dart)：`/api/portfolio` 默认带 `with_metrics=1`，`/api/sync/bootstrap` 默认带 `portfolio_metrics=true`。
+- [portfolio.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/models/portfolio.dart)：持仓模型新增后端口径字段映射与缓存输出。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：投资总市值/当日盈亏/累计盈亏优先使用后端口径字段。
+- [invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart)：卡片与分类汇总优先展示后端口径字段，缺失时再降级走旧逻辑。
+
+### 影响范围
+- Flutter 投资页展示口径（前端计算权重下降）
+
+### 验收重点
+- 投资页与首页大数字优先使用后端口径字段
+- 后端不带口径字段时显示仍正常（自动降级）
+
+## 2026-03-15-01
+
+### 这版一句话
+
+后端补了“投资持仓口径字段”的可选输出：需要时一次性带回现价、市值、盈亏与日盈亏，前端后续可直接展示。
+
+### 主要变化
+- [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：`/api/portfolio?with_metrics=1` 时补齐现价、市值、累计/当日盈亏等口径字段，并附带 CNY 折算字段。
+- [sync_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/sync_handlers.py)：`/api/sync/bootstrap` 增加 `portfolio_metrics=true` 可选开关，开启时返回同口径字段（默认不变）。
+- [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py)：注入组合口径构建器与市场状态/行情依赖，供上面两处调用。
+
+### 影响范围
+- 后端接口（新增可选字段，不改变默认返回结构）
+
+### 验收重点
+- `GET /api/portfolio` 不带参数仍只返回基础字段
+- `GET /api/portfolio?with_metrics=1` 能拿到口径字段
+- `POST /api/sync/bootstrap` 带 `portfolio_metrics=true` 时 `portfolio` 域包含口径字段
+
 ## 2026-03-14-16
 
 ### 这版一句话

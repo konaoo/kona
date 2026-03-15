@@ -955,14 +955,31 @@ class _AnalysisPageState extends State<AnalysisPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: _S.calDate.copyWith(
-            fontSize: label.contains('-') ? 11 : 13,
-            color: isSelected ? (AppTheme.isLight ? Colors.black : Colors.white) : AppTheme.textPrimary,
-          )),
+          SizedBox(
+            height: 14,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: _S.calDate.copyWith(
+                  fontSize: label.contains('-') ? 11 : 13,
+                  color: isSelected
+                      ? (AppTheme.isLight ? Colors.black : Colors.white)
+                      : AppTheme.textPrimary,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(
-            hasData ? _formatCalendarPnl(pnl, appState) : '--',
-            style: _S.calPnl.copyWith(color: color),
+          SizedBox(
+            height: 10,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                hasData ? _formatCalendarPnl(pnl, appState) : '--',
+                style: _S.calPnl.copyWith(color: color),
+              ),
+            ),
           ),
         ],
       ),

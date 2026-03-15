@@ -473,7 +473,7 @@ class AppRefreshState {
         _api.getCashAssets(),
         _api.getOtherAssets(),
         _api.getLiabilities(),
-        _api.getPortfolio(),
+        _api.getPortfolio(withMetrics: true),
         _api.getHistory(),
         _api.getAnalysisOverview(period: 'all'),
       ]);
@@ -558,7 +558,7 @@ class AppRefreshState {
 
   Future<void> refreshPortfolio({required AppRefreshBindings bindings}) async {
     try {
-      final data = await _api.getPortfolio();
+      final data = await _api.getPortfolio(withMetrics: true);
       bindings.replacePortfolio(
         (data).map((e) => PortfolioItem.fromJson(e)).toList(),
       );
@@ -780,6 +780,7 @@ class AppRefreshState {
         clientVersions: force
             ? const <String, String>{}
             : Map<String, String>.from(syncVersions),
+        portfolioMetrics: true,
       );
       bindings.syncState.applyQuotePolicy(
         response['quote_policy'],
