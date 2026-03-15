@@ -17,6 +17,8 @@ void main() {
     Map<String, bool>? tradingDayStatus,
     bool usExtendedActive = false,
     String usSession = 'regular',
+    Map<String, double>? dayPnlAggregateCny,
+    Map<String, double>? valueCny,
   }) async {
     SharedPreferences.setMockInitialValues({
       'cache_portfolio': jsonEncode({
@@ -28,6 +30,10 @@ void main() {
             'price': 10,
             'curr': 'CNY',
             'adjustment': 0,
+            if (dayPnlAggregateCny?['sh600000'] != null)
+              'day_pnl_aggregate_cny': dayPnlAggregateCny!['sh600000'],
+            if (valueCny?['sh600000'] != null)
+              'value_cny': valueCny!['sh600000'],
           },
           {
             'code': 'hk00700',
@@ -36,6 +42,10 @@ void main() {
             'price': 20,
             'curr': 'HKD',
             'adjustment': 0,
+            if (dayPnlAggregateCny?['hk00700'] != null)
+              'day_pnl_aggregate_cny': dayPnlAggregateCny!['hk00700'],
+            if (valueCny?['hk00700'] != null)
+              'value_cny': valueCny!['hk00700'],
           },
           {
             'code': 'gb_aapl',
@@ -44,6 +54,10 @@ void main() {
             'price': 30,
             'curr': 'USD',
             'adjustment': 0,
+            if (dayPnlAggregateCny?['gb_aapl'] != null)
+              'day_pnl_aggregate_cny': dayPnlAggregateCny!['gb_aapl'],
+            if (valueCny?['gb_aapl'] != null)
+              'value_cny': valueCny!['gb_aapl'],
           },
           {
             'code': 'f_161725',
@@ -52,6 +66,10 @@ void main() {
             'price': 40,
             'curr': 'CNY',
             'adjustment': 0,
+            if (dayPnlAggregateCny?['f_161725'] != null)
+              'day_pnl_aggregate_cny': dayPnlAggregateCny!['f_161725'],
+            if (valueCny?['f_161725'] != null)
+              'value_cny': valueCny!['f_161725'],
           },
         ],
       }),
@@ -114,6 +132,14 @@ void main() {
     final state = await _buildStateWithCache(
       openStatus: const {'a': false, 'hk': true, 'us': true, 'fund': false},
       changeAmt: 1,
+      dayPnlAggregateCny: const {
+        'hk00700': 186,
+        'gb_aapl': 2175,
+      },
+      valueCny: const {
+        'hk00700': 20000,
+        'gb_aapl': 30000,
+      },
     );
     // hk: 1 * 200 * 0.93 = 186
     // us: 1 * 300 * 7.25 = 2175
@@ -127,6 +153,8 @@ void main() {
       changeAmt: 1,
       usExtendedActive: true,
       usSession: 'pre',
+      dayPnlAggregateCny: const {'gb_aapl': 2175},
+      valueCny: const {'gb_aapl': 30000},
     );
 
     // us: 1 * 300 * 7.25 = 2175
@@ -156,6 +184,8 @@ void main() {
         'fund': false,
       },
       changeAmt: 1,
+      dayPnlAggregateCny: const {'hk00700': 186},
+      valueCny: const {'hk00700': 20000},
     );
 
     // hk: 1 * 200 * 0.93 = 186
