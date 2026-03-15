@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
+import '../models/portfolio.dart';
 import '../providers/app_state.dart';
 import '../services/portfolio_metrics_service.dart';
 import '../widgets/invest_trade_dialog.dart';
@@ -93,6 +94,46 @@ class _S {
     fontSize: 10,
     fontWeight: FontWeight.w500,
     height: 1.0,
+  );
+  static final cardNameCompact = GoogleFonts.dmSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w700,
+  );
+  static final cardQty = GoogleFonts.jetBrainsMono(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+  );
+  static final cardPriceSym = GoogleFonts.jetBrainsMono(
+    fontSize: 11,
+    fontWeight: FontWeight.w700,
+  );
+  static final cardPriceVal = GoogleFonts.jetBrainsMono(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+  );
+  static final cardBadge = GoogleFonts.jetBrainsMono(
+    fontSize: 10,
+    fontWeight: FontWeight.w700,
+  );
+  static final cardMiniLabel = GoogleFonts.dmSans(
+    fontSize: 10,
+    fontWeight: FontWeight.w500,
+  );
+  static final cardMiniValue = GoogleFonts.jetBrainsMono(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w600,
+  );
+  static final cardMiniSubValue = GoogleFonts.jetBrainsMono(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w500,
+  );
+  static final cardPositionLabel = GoogleFonts.dmSans(
+    fontSize: 10,
+    fontWeight: FontWeight.w500,
+  );
+  static final cardPositionValue = GoogleFonts.jetBrainsMono(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w600,
   );
 }
 
@@ -239,6 +280,89 @@ class InvestPageState extends State<InvestPage> {
     if (value == null) return '--';
     return _fmtPct(value);
   }
+
+  double? _readPositionPct(dynamic item) {
+    if (item == null) return null;
+    if (item is PortfolioItem) return item.positionPct;
+    if (item is Map) {
+      const keys = [
+        'position_pct',
+        'positionPct',
+        'pct',
+        'holding_pct',
+        'holdingPct',
+        'portfolio_pct',
+        'portfolioPct',
+      ];
+      for (final key in keys) {
+        final raw = item[key];
+        if (raw is num) return raw.toDouble();
+        if (raw is String) {
+          final parsed = double.tryParse(raw);
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+    return null;
+  }
+
+  String _formatPositionPctLabel(double? value) {
+    if (value == null) return '--';
+    return '${value.toStringAsFixed(2)}%';
+  }
+
+  Widget _buildMetricCell({
+    required String label,
+    required String value,
+    required Color valueColor,
+    TextStyle? valueStyle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: _S.cardMiniLabel.copyWith(color: AppTheme.textMuted),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: (valueStyle ?? _S.cardMiniValue).copyWith(color: valueColor),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRateBadge({
+    required String label,
+    required Color color,
+    required bool muted,
+  }) {
+    if (label.isEmpty) return const SizedBox.shrink();
+    final bg = muted
+        ? (AppTheme.isLight
+            ? const Color(0x08222C40)
+            : const Color(0x14FFFFFF))
+        : color.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18);
+    final fg = muted ? AppTheme.textMuted : color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: _S.cardBadge.copyWith(color: fg),
+      ),
+    );
+  }
+
+
 
   // ─── Build ───────────────────────────────────────
   @override
@@ -723,9 +847,6 @@ class InvestPageState extends State<InvestPage> {
     final mv = (item.value as num?)?.toDouble();
     final holdingPnl = (item.totalPnl as num?)?.toDouble();
     final holdingPnlPct = (item.totalPnlRate as num?)?.toDouble();
-    final pnlColor = holdingPnl == null
-        ? AppTheme.textMuted
-        : AppState.getPnlColor(holdingPnl);
 
     final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
     final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
@@ -735,26 +856,72 @@ class InvestPageState extends State<InvestPage> {
     final dailyPnlPct = (item.dayPnlRateDisplay as num?)?.toDouble() ??
         (item.dayPnlRate as num?)?.toDouble() ??
         (item.dayPnlRateAggregate as num?)?.toDouble();
-    final dailyColor = dailyPnl == null
-        ? AppTheme.textMuted
-        : AppState.getPnlColor(dailyPnl);
 
     // Market type tag
     final marketType = (item.marketType as String? ?? 'a').toLowerCase();
     final tagColors = _tagColors[marketType] ?? _tagColors['a']!;
     final tagLabel = _tagLabels[marketType] ?? 'A股';
 
-    // Progress bar calculation
-    final hasDiff = currentPrice > 0 && displayCostPrice > 0;
-    final priceDiffPct = hasDiff
-        ? ((currentPrice - displayCostPrice) / displayCostPrice * 100)
-        : null;
-    final isProfit = priceDiffPct == null ? true : priceDiffPct >= 0;
-
     // Currency symbol
     final sym = item.currencySymbol as String? ?? '¥';
     final isFund = _isFundAsset(item);
     final qtyUnit = isFund ? '份' : '股';
+    final name = (item.name as String? ?? '').trim();
+    final code = (item.code as String? ?? '').trim();
+    final displayName = name.isNotEmpty ? name : _formatDisplayCode(code);
+
+    final positionPct = _readPositionPct(item);
+    final positionPctLabel = _formatPositionPctLabel(positionPct);
+    final pctBase = positionPct ?? 0.0;
+    final positionPctRatio =
+        (pctBase.clamp(0.0, 100.0) / 100.0).toDouble();
+
+    final mvLabel = mv == null
+        ? '--'
+        : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}';
+    final currentPriceLabel = navUpdatePending
+        ? '待净值更新'
+        : (currentPrice > 0
+            ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
+            : '--');
+    final costPriceLabel = displayCostPrice == 0
+        ? '--'
+        : '$sym${_formatDisplayPrice(displayCostPrice, item: item)}';
+
+    final dailyValueColor = navUpdatePending || !dayPnlEnabled || dailyPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(dailyPnl);
+    final holdingValueColor = holdingPnl == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(holdingPnl);
+
+    final dayPnlValue = navUpdatePending
+        ? '待净值更新'
+        : (dayPnlEnabled ? _fmtPnlNullable(dailyPnl, sym) : '--');
+    final totalPnlValue = _fmtPnlNullable(holdingPnl, sym);
+    final totalPnlRateValue = _fmtPctNullable(holdingPnlPct);
+
+    final badgeLabel = navUpdatePending
+        ? '待净值更新'
+        : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--');
+    final badgeColor = navUpdatePending
+        ? AppTheme.textMuted
+        : (dailyPnl == null ? AppTheme.textMuted : AppState.getPnlColor(dailyPnl));
+    final badgeBg = navUpdatePending
+        ? (AppTheme.isLight
+            ? const Color(0x08222C40)
+            : const Color(0x14FFFFFF))
+        : badgeColor.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18);
+
+    final accentColor = dailyPnl == null
+        ? AppTheme.border
+        : (dailyPnl >= 0 ? AppTheme.danger : AppTheme.success);
+
+    String maskMoney(String value) {
+      if (!appState.amountHidden) return value;
+      if (value == '--' || value == '待净值更新') return value;
+      return '****';
+    }
 
     return GestureDetector(
       onTap: () => showInvestTradeSheet(
@@ -765,204 +932,343 @@ class InvestPageState extends State<InvestPage> {
         presentation: InvestTradeDialogPresentation.centered,
       ),
       child: Container(
-        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppTheme.border),
-          color: AppTheme.surface2,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppTheme.cardGradient,
+          ),
+          boxShadow: AppTheme.cardShadow,
         ),
-        child: Column(
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
           children: [
-            // ── Head row: name/tag/code | mktval/holding ──
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Left
-                Expanded(
-                  child: Column(
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 2,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      accentColor.withValues(alpha: 0.85),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Header ──
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.name.length > 20
-                            ? '${item.name.substring(0, 20)}...'
-                            : item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _S.cardName.copyWith(
-                          color: AppTheme.heroValueColor,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _S.cardNameCompact.copyWith(
+                                      color: AppTheme.heroValueColor,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'x ${_formatDisplayQty(qty)} $qtyUnit',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _S.cardHoldNum.copyWith(
+                                    color: AppTheme.textMuted,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(4),
+                                    color: tagColors.$2,
+                                  ),
+                                  child: Text(
+                                    tagLabel,
+                                    style:
+                                        _S.cardTag.copyWith(color: tagColors.$1),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    maskMoney(mvLabel),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _S.cardHoldNum.copyWith(
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(4),
-                              color: tagColors.$2,
-                            ),
-                            child: Text(
-                              tagLabel,
-                              style: _S.cardTag.copyWith(color: tagColors.$1),
+                          Text(
+                            '今日盈亏',
+                            style: _S.cardMiniLabel.copyWith(
+                              color: AppTheme.textMuted,
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(height: 2),
                           Text(
-                            _formatDisplayCode(item.code),
-                            style: _S.cardCode.copyWith(
+                            maskMoney(dayPnlValue),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: (dayPnlValue == '待净值更新'
+                                    ? _S.cardPnlPending
+                                    : _S.cardMiniValue)
+                                .copyWith(color: dailyValueColor),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Price + Badge ──
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Builder(
+                                builder: (context) {
+                                  if (navUpdatePending || currentPrice <= 0) {
+                                    return Text(
+                                      currentPriceLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _S.cardPriceVal.copyWith(
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    );
+                                  }
+                                  if (appState.amountHidden) {
+                                    return Text(
+                                      '****',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _S.cardPriceVal.copyWith(
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    );
+                                  }
+                                  return RichText(
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    text: TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: sym,
+                                          style: _S.cardPriceSym.copyWith(
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                        const TextSpan(text: ' '),
+                                        TextSpan(
+                                          text: _formatDisplayPrice(
+                                            currentPrice,
+                                            item: item,
+                                          ),
+                                          style: _S.cardPriceVal.copyWith(
+                                            color: AppTheme.textPrimary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: badgeBg,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                badgeLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _S.cardBadge.copyWith(color: badgeColor),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '成本价',
+                            style: _S.cardMiniLabel.copyWith(
                               color: AppTheme.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            maskMoney(costPriceLabel),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _S.cardHoldNum.copyWith(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
                             ),
                           ),
                         ],
                       ),
                     ],
                   ),
-                ),
-                // Right
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      appState.amountHidden
-                          ? '****'
-                          : (mv == null
-                              ? '--'
-                              : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}'),
-                      style: _S.cardMktVal.copyWith(
-                        color: AppTheme.isLight
-                            ? AppTheme.textPrimary
-                            : const Color(0xFFF0F4FF),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 3,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppTheme.textMuted.withValues(alpha: 0.5),
+
+                  const SizedBox(height: 8),
+                  // ── Divider ──
+                  Container(height: 1, color: AppTheme.dividerColor),
+
+                  const SizedBox(height: 10),
+
+                  // ── 盈亏 + 仓位 ──
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '累计盈亏',
+                              style: _S.cardMiniLabel.copyWith(
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    maskMoney(totalPnlValue),
+                                    style: _S.cardMiniValue.copyWith(
+                                      color: holdingValueColor,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              _buildRateBadge(
+                                label: appState.amountHidden
+                                    ? ''
+                                    : _fmtPctNullable(holdingPnlPct),
+                                color: holdingValueColor,
+                                muted: holdingPnlPct == null,
+                              ),
+                            ],
                           ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_formatDisplayQty(qty)} $qtyUnit',
-                          style: _S.cardHoldNum.copyWith(
-                            color: AppTheme.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // ── Progress bar (Center-anchored at Cost Price) ──
-            Column(
-              children: [
-                Builder(
-                  builder: (context) {
-                    // Maximum change rate for 50% width is 30% (0.3)
-                    const double maxRate = 0.3;
-                    final double costPrice = displayCostPrice;
-                    final double livePrice =
-                        currentPrice > 0 ? currentPrice : costPrice;
-
-                    // Use the refined high-performance animated progress bar
-                    return PnlProgressBar(
-                      costPrice: costPrice,
-                      currentPrice: livePrice,
-                      maxRate: maxRate,
-                    );
-                  },
-                ),
-                const SizedBox(height: 6),
-                // Labels
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '成本 $sym${_formatDisplayPrice(displayCostPrice, item: item)}',
-                      style: _S.cardProgressLabel.copyWith(
-                        color: AppTheme.textMuted,
                       ),
-                    ),
-                    RichText(
-                      text: TextSpan(
+                      const SizedBox(width: 8),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TextSpan(
-                            text:
-                                '现价 $sym${_formatDisplayPrice(currentPrice, item: item)} ',
-                            style: _S.cardProgressLabel.copyWith(
+                          Text(
+                            '仓位占比',
+                            style: _S.cardPositionLabel.copyWith(
                               color: AppTheme.textMuted,
                             ),
                           ),
-                          TextSpan(
-                            text: priceDiffPct == null
-                                ? '--'
-                                : '${isProfit ? '↑' : '↓'}${priceDiffPct.abs().toStringAsFixed(2)}%',
-                            style: _S.cardProgressLabel.copyWith(
-                              color: isProfit
-                                  ? AppTheme.danger
-                                  : AppTheme.success,
-                            ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 50,
+                                child: Container(
+                                  height: 2,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.isLight
+                                        ? const Color(0x0A222C40)
+                                        : const Color(0x14FFFFFF),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                  child: FractionallySizedBox(
+                                    alignment: Alignment.centerLeft,
+                                    widthFactor: positionPctRatio,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accent.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                positionPctLabel,
+                                style: _S.cardPositionValue.copyWith(
+                                  color: AppTheme.accent,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // ── PnL boxes: day | cumulative ──
-            Row(
-              children: [
-                Expanded(
-                  child: _pnlBox(
-                    label: '当日盈亏',
-                    value: navUpdatePending
-                        ? '待净值更新'
-                        : (dayPnlEnabled
-                            ? _fmtPnlNullable(dailyPnl, sym)
-                            : '--'),
-                    pct: navUpdatePending
-                        ? ''
-                        : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--'),
-                    color: navUpdatePending
-                        ? AppTheme.textMuted
-                        : (dayPnlEnabled ? dailyColor : AppTheme.textMuted),
-                    hidden: appState.amountHidden,
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _pnlBox(
-                    label: '累计盈亏',
-                    value: _fmtPnlNullable(holdingPnl, sym),
-                    pct: _fmtPctNullable(holdingPnlPct),
-                    color: holdingPnl == null ? AppTheme.textMuted : pnlColor,
-                    hidden: appState.amountHidden,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
