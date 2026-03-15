@@ -10,6 +10,7 @@ from typing import Callable, Dict, Iterable, List, Tuple
 from flask import g, jsonify, request
 
 from core.market_calendar import market_from_asset
+from core.price import is_exchange_fund_code
 
 
 def _to_float(value, default: float = 0.0) -> float:
@@ -58,7 +59,9 @@ def build_portfolio_items_with_metrics(
         if market not in {"a", "hk", "us", "fund"}:
             market = market_from_asset(item)
 
-        status = market_statuses.get(market, {}) if isinstance(market_statuses, dict) else {}
+        is_exchange_fund = is_exchange_fund_code(code)
+        status_market = "a" if is_exchange_fund else market
+        status = market_statuses.get(status_market, {}) if isinstance(market_statuses, dict) else {}
         market_open = bool(status.get("open"))
         market_trading_day = bool(status.get("trading_day"))
         market_status_reason = str(status.get("reason") or "")
@@ -72,7 +75,7 @@ def build_portfolio_items_with_metrics(
         quoted_current_price = _first_positive([quote_price, quote_yclose])
         current_price = _first_positive([quoted_current_price, raw_cost_price])
 
-        nav_update_pending = code.lower().startswith(("f_", "ft_"))
+        nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund
         quote_ready = quote_price > 0
         quote_pending = (not nav_update_pending) and (not quote_ready)
 

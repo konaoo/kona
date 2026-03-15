@@ -226,6 +226,15 @@ def _exchange_fund_candidates(code: str) -> List[str]:
     return []
 
 
+def is_exchange_fund_code(code: str) -> bool:
+    """
+    判断是否为“场内 ETF 的 f_ 代码”。
+
+    仅针对 f_ 纯数字且落在场内 ETF 号段的代码返回 True。
+    """
+    return bool(_exchange_fund_candidates(code))
+
+
 def _map_fund_code_to_exchange_if_tradable(code: str) -> str:
     candidates = _exchange_fund_candidates(code)
     if not candidates:

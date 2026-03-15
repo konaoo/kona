@@ -2332,3 +2332,21 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 ### 验收重点
 - `position_pct` 字段存在且为百分比数值
 - `python3 -m pytest kona_tool/tests/test_portfolio_metrics_contract.py` 通过
+## 2026-03-15-14
+
+### 这版一句话
+
+场内 ETF 的 `f_` 代码走 A 股实时行情，且不再显示“待净值更新”。
+
+### 主要变化
+- [kona_tool/core/price.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/price.py)：新增公开 helper 判断场内 ETF 的 `f_` 代码。
+- [kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：场内 ETF 取 A 股市场状态与实时行情，关闭 `nav_update_pending`。
+- [kona_tool/tests/test_portfolio_metrics_contract.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_metrics_contract.py)：新增场内 ETF 口径合同测试。
+
+### 影响范围
+- `/api/portfolio?with_metrics=1` 的持仓口径（场内 ETF）
+- 日内盈亏展示与“待净值更新”状态
+
+### 验收重点
+- `f_511360` 不再显示“待净值更新”
+- 日内盈亏可用且 `market_trading_day` 来自 A 股

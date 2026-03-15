@@ -148,6 +148,45 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         ):
             self.assertIn(key, item)
 
+    def test_exchange_fund_uses_a_market_status_and_realtime_day_pnl(self):
+        _seed_user("u_etf", "etf_user")
+        _seed_portfolio(
+            "u_etf",
+            code="f_511360",
+            name="海富通中证短融ETF",
+            qty=100.0,
+            price=1.0,
+            curr="CNY",
+            asset_type="fund",
+        )
+        headers = _auth_headers("u_etf", "etf_user")
+
+        with patch(
+            "app.batch_get_prices",
+            return_value={"f_511360": (1.02, 1.0, 0.02, 2.0)},
+        ), patch(
+            "app.get_market_statuses",
+            return_value={
+                "a": {"open": True, "trading_day": True, "reason": "a_test"},
+                "fund": {
+                    "open": False,
+                    "trading_day": False,
+                    "reason": "fund_test",
+                },
+            },
+        ):
+            resp = self.client.get("/api/portfolio?with_metrics=1", headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data)
+        item = data[0]
+        self.assertEqual(item.get("market"), "fund")
+        self.assertFalse(item.get("nav_update_pending"))
+        self.assertTrue(item.get("day_pnl_display_enabled"))
+        self.assertTrue(item.get("market_trading_day"))
+        self.assertTrue(item.get("market_open"))
+
 
 if __name__ == "__main__":
     unittest.main()
