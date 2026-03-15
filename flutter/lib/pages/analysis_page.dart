@@ -70,7 +70,12 @@ class _S {
 
 /// 分析页面 - 盈亏分析
 class AnalysisPage extends StatefulWidget {
-  const AnalysisPage({super.key, this.overviewLoader, this.calendarLoader});
+  const AnalysisPage({
+    super.key,
+    this.overviewLoader,
+    this.calendarLoader,
+    this.rankLoader,
+  });
 
   final Future<Map<String, dynamic>> Function(String period)? overviewLoader;
   final Future<Map<String, dynamic>> Function({
@@ -79,6 +84,11 @@ class AnalysisPage extends StatefulWidget {
     int? month,
   })?
   calendarLoader;
+  final Future<Map<String, dynamic>> Function({
+    String rankType,
+    String market,
+  })?
+  rankLoader;
 
   @override
   State<AnalysisPage> createState() => _AnalysisPageState();
@@ -293,7 +303,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (_rankLoading && !force) return;
     setState(() => _rankLoading = true);
     try {
-      final data = await _api.getAnalysisRank(rankType: 'all', market: 'all');
+      final data = widget.rankLoader != null
+          ? await widget.rankLoader!(rankType: 'all', market: 'all')
+          : await _api.getAnalysisRank(rankType: 'all', market: 'all');
       if (!mounted) return;
       setState(() {
         _rankData = data;
@@ -1151,7 +1163,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AnalysisRankAllPage(rankType: _rankType),
+                    builder: (context) => AnalysisRankAllPage(
+                      rankType: _rankType,
+                      rankLoader: widget.rankLoader,
+                    ),
                   ),
                 ),
                 child: Row(
@@ -1432,7 +1447,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
 class AnalysisRankAllPage extends StatefulWidget {
   final String rankType; // profit / loss
-  const AnalysisRankAllPage({super.key, required this.rankType});
+  final Future<Map<String, dynamic>> Function({
+    String rankType,
+    String market,
+  })?
+  rankLoader;
+  const AnalysisRankAllPage({
+    super.key,
+    required this.rankType,
+    this.rankLoader,
+  });
 
   @override
   State<AnalysisRankAllPage> createState() => _AnalysisRankAllPageState();
@@ -1461,7 +1485,9 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
     if (_loading && !force) return;
     setState(() => _loading = true);
     try {
-      final data = await _api.getAnalysisRank(rankType: 'all', market: 'all');
+      final data = widget.rankLoader != null
+          ? await widget.rankLoader!(rankType: 'all', market: 'all')
+          : await _api.getAnalysisRank(rankType: 'all', market: 'all');
       if (!mounted) return;
       final items = _parseRankItems(data);
       setState(() {

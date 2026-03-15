@@ -168,7 +168,7 @@ void main() {
   );
 
   test(
-    'AppState negative cost uses abs denominator and non-negative MV fallback',
+    'AppState negative cost fallback keeps pnl rate at 0 without metrics',
     () async {
       final api = _FakeApiService();
       final state = _NoRefreshAppState(api: api);
@@ -193,7 +193,7 @@ void main() {
       expect(modifyResult.ok, isTrue);
 
       expect(state.investTotalMV, 0);
-      expect(state.investHoldingPnlRate, closeTo(100.0, 1e-9));
+      expect(state.investHoldingPnlRate, 0);
     },
   );
 }

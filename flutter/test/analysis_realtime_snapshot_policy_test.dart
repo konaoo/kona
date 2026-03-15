@@ -46,6 +46,9 @@ void main() {
           body: AnalysisPage(
             overviewLoader: _overviewLoader,
             calendarLoader: calendarLoader,
+            rankLoader: ({String rankType = 'all', String market = 'all'}) async {
+              return {'gain': [], 'loss': []};
+            },
           ),
         ),
       ),
@@ -87,7 +90,7 @@ void main() {
     };
   }
 
-  testWidgets('顶部大卡只在当日走实时，本年走概览快照', (tester) async {
+  testWidgets('顶部大卡只展示概览口径', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
       _buildPage(
@@ -103,8 +106,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('当日盈亏'), findsOneWidget);
-    expect(find.text('¥88'), findsOneWidget);
-    expect(find.text('+1.23%'), findsOneWidget);
+    expect(find.text('¥999'), findsOneWidget);
+    expect(find.text('+9.99%'), findsOneWidget);
 
     await tester.tap(find.text('本年'));
     await tester.pumpAndSettle();
@@ -114,7 +117,7 @@ void main() {
     expect(find.text('+3.33%'), findsOneWidget);
   });
 
-  testWidgets('当前月今天那格允许用实时值覆盖快照', (tester) async {
+  testWidgets('当前月今天那格展示快照口径', (tester) async {
     final now = DateTime.now();
     final todayLabel = '${now.month}-${now.day}';
     await tester.pumpWidget(
@@ -134,8 +137,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥88'), findsOneWidget);
-    expect(find.text('88'), findsOneWidget);
+    expect(find.text('¥999'), findsOneWidget);
+    expect(find.text('41'), findsWidgets);
   });
 
   testWidgets('非当前月今天那格保持快照，不会被实时值覆盖', (tester) async {
@@ -173,7 +176,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥88'), findsOneWidget);
+    expect(find.text('¥999'), findsOneWidget);
     expect(find.text('41'), findsWidgets);
     expect(find.text('本月盈亏：'), findsOneWidget);
     expect(find.text('88'), findsNothing);

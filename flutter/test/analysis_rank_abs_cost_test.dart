@@ -87,6 +87,24 @@ Future<Map<String, dynamic>> _calendarLoader({
   };
 }
 
+Future<Map<String, dynamic>> _rankLoader({
+  String rankType = 'all',
+  String market = 'all',
+}) async {
+  return {
+    'gain': [
+      {
+        'code': 'gb_tsla',
+        'name': 'Tesla',
+        'pnl': 200,
+        'pnl_rate': 100.0,
+        'curr': 'USD',
+      },
+    ],
+    'loss': [],
+  };
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -126,6 +144,7 @@ void main() {
             body: AnalysisPage(
               overviewLoader: _overviewLoader,
               calendarLoader: _calendarLoader,
+              rankLoader: _rankLoader,
             ),
           ),
         ),

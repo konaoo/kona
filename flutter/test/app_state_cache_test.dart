@@ -18,6 +18,8 @@ void main() {
             'price': 10,
             'curr': 'CNY',
             'adjustment': 0,
+            'value_cny': 11,
+            'cost_cny': 10,
           },
         ],
       }),
