@@ -1,3 +1,20 @@
+## 2026-03-15-12
+
+### 这版一句话
+
+Web 构建入口补齐：`app/admin` 入口文件恢复进仓库，避免 CI 构建找不到入口。
+
+### 主要变化
+- [.gitignore](/Users/kona/Desktop/kaka/kona_repo/.gitignore)：不再忽略 `web/app` 与 `web/admin` 源入口目录。
+- [web/app/index.html](/Users/kona/Desktop/kaka/kona_repo/web/app/index.html)：业务端构建入口文件恢复跟踪。
+- [web/admin/index.html](/Users/kona/Desktop/kaka/kona_repo/web/admin/index.html)：管理端构建入口文件恢复跟踪。
+
+### 影响范围
+- Web 构建入口与 CI 构建流程
+
+### 验收重点
+- `npm run build` 不再报 `Could not resolve entry module "app/index.html"`
+
 ## 2026-03-15-11
 
 ### 这版一句话
