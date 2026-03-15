@@ -168,6 +168,12 @@ ADMIN_READ_CACHE_TTL_SECONDS = int(os.getenv("ADMIN_READ_CACHE_TTL_SECONDS", "12
 
 # 行情预取间隔（秒），设为小于 CACHE_TTL 以确保缓存永远不过期
 PRELOAD_INTERVAL_SECONDS = int(os.getenv("PRELOAD_INTERVAL_SECONDS", "30"))
+# 行情预取开关与锁文件（避免多 worker 重复启动）
+ENABLE_PRICE_PRELOADER = os.getenv("ENABLE_PRICE_PRELOADER", "true").lower() == "true"
+PRICE_PRELOADER_LOCK_FILE = os.getenv(
+    "PRICE_PRELOADER_LOCK_FILE",
+    "/tmp/kona_price_preloader.lock",
+)
 
 # 汇率配置
 DEFAULT_FOREX_RATES = {

@@ -7,6 +7,7 @@ import logging
 import re
 import threading
 import os
+import sqlite3
 from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
@@ -17,6 +18,11 @@ from .source_health import source_health
 from .utils import monitored_http_get
 from .utils import safe_float
 from .policy_runtime import is_policy_enabled
+
+try:
+    import fcntl
+except Exception:  # pragma: no cover
+    fcntl = None
 
 logger = logging.getLogger(__name__)
 
@@ -457,6 +463,14 @@ class PricePreloader:
         self._interval = interval
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._lock_file = str(
+            getattr(
+                config,
+                "PRICE_PRELOADER_LOCK_FILE",
+                "/tmp/kona_price_preloader.lock",
+            )
+        )
+        self._lock_fd: Optional[int] = None
 
     @classmethod
     def get_instance(cls, db_path: str = '', interval: int = 30) -> 'PricePreloader':
@@ -468,6 +482,11 @@ class PricePreloader:
         if self._thread and self._thread.is_alive():
             logger.info("PricePreloader already running, skip.")
             return
+        if not getattr(config, "ENABLE_PRICE_PRELOADER", True):
+            logger.info("PricePreloader disabled by config, skip.")
+            return
+        if not self._try_acquire_lock():
+            return
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -477,20 +496,77 @@ class PricePreloader:
 
     def stop(self) -> None:
         self._stop_event.set()
+        self._release_lock()
         logger.info("PricePreloader stopping...")
+
+    def _try_acquire_lock(self) -> bool:
+        if fcntl is None:
+            logger.info("PricePreloader lock unavailable; running without inter-process guard.")
+            return True
+        lock_path = self._lock_file or "/tmp/kona_price_preloader.lock"
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        except Exception as exc:
+            logger.warning("PricePreloader lock open failed: %s", exc)
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            logger.info("PricePreloader lock held by another process, skip.")
+            return False
+        except Exception as exc:
+            os.close(fd)
+            logger.warning("PricePreloader lock acquire failed: %s", exc)
+            return False
+        self._lock_fd = fd
+        return True
+
+    def _release_lock(self) -> None:
+        if self._lock_fd is None:
+            return
+        try:
+            if fcntl is not None:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            os.close(self._lock_fd)
+        except Exception:
+            pass
+        self._lock_fd = None
+
+    def _open_readonly_connection(self) -> Optional[sqlite3.Connection]:
+        db_path = str(self._db_path or "").strip()
+        if not db_path:
+            return None
+        timeout = float(getattr(config, "SQLITE_TIMEOUT_SECONDS", 1.5))
+        busy_timeout = int(getattr(config, "SQLITE_BUSY_TIMEOUT_MS", 1500))
+        journal_mode = str(getattr(config, "SQLITE_JOURNAL_MODE", "WAL")).upper()
+        synchronous = str(getattr(config, "SQLITE_SYNCHRONOUS", "NORMAL")).upper()
+        uri = f"file:{db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=timeout, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout={busy_timeout}")
+        conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        conn.execute(f"PRAGMA synchronous={synchronous}")
+        return conn
 
     def _collect_codes(self) -> List[str]:
         """从数据库收集所有用户持有的唯一证券代码"""
-        import sqlite3
         codes: List[str] = []
         try:
-            conn = sqlite3.connect(self._db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT code FROM portfolio")
-            codes = [row[0] for row in cursor.fetchall() if row[0]]
-            conn.close()
-        except Exception as e:
-            logger.error(f"PricePreloader failed to collect codes: {e}")
+            conn = self._open_readonly_connection()
+            if conn is None:
+                return codes
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT DISTINCT code FROM portfolio")
+                codes = [row[0] for row in cursor.fetchall() if row[0]]
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.error("PricePreloader failed to collect codes: %s", exc)
         return codes
 
     def _run(self) -> None:

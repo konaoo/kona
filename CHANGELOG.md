@@ -1986,3 +1986,20 @@ Flutter 先对 `AppState` 下了第一刀：UI 偏好和生物识别 / 锁屏不
 ### 验收重点
 - 指定用户设置 `build_start_at` 后，趋势图起点是否按该日期截断
 - 未设置 `build_start_at` 的用户，历史趋势是否保持原样
+## 2026-03-15-01
+
+### 这版一句话
+
+行情预取加了进程级锁与开关，避免 gunicorn 多 worker 重复启动预取线程。
+
+### 主要变化
+- [config.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/config.py) 增加 `ENABLE_PRICE_PRELOADER / PRICE_PRELOADER_LOCK_FILE`，允许显式开关与锁文件配置。
+- [price.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/price.py) 预取启动前加进程锁，拿不到锁就跳过；预取数据库读取改成只读连接并沿用 SQLite 超时/PRAGMA 配置。
+
+### 影响范围
+- 后端行情预取线程（单实例化）
+- SQLite 预取读取方式（只读连接）
+
+### 验收重点
+- gunicorn 多 worker 启动后只应有一个预取线程在跑（看日志或 `lsof`）
+- 行情缓存仍能持续刷新，接口响应不降级
