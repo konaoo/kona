@@ -139,6 +139,22 @@ def build_portfolio_items_with_metrics(
             }
         )
 
+    total_value_cny = sum(
+        float(row.get("value_cny") or 0.0) for row in enriched
+    )
+    if total_value_cny > 0:
+        for row in enriched:
+            value_cny = row.get("value_cny")
+            if value_cny is None:
+                row["position_pct"] = None
+            else:
+                row["position_pct"] = round(
+                    float(value_cny) / total_value_cny * 100, 6
+                )
+    else:
+        for row in enriched:
+            row["position_pct"] = None
+
     return enriched
 
 

@@ -2315,3 +2315,20 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 
 ### 验收重点
 - `python3 -m unittest tests.test_contracts_analysis_snapshot_admin -v` 通过
+## 2026-03-15-13
+
+### 这版一句话
+
+持仓口径补齐仓位占比：后端返回 `position_pct`，用于前端只展示。
+
+### 主要变化
+- [kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：持仓指标口径新增 `position_pct` 计算与返回。
+- [kona_tool/tests/test_portfolio_metrics_contract.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_metrics_contract.py)：合同测试增加 `position_pct` 断言。
+
+### 影响范围
+- `/api/portfolio?with_metrics=1` 返回字段
+- `/api/sync/bootstrap` 的 `portfolio` 数据口径
+
+### 验收重点
+- `position_pct` 字段存在且为百分比数值
+- `python3 -m pytest kona_tool/tests/test_portfolio_metrics_contract.py` 通过
