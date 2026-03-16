@@ -60,7 +60,8 @@ void main() {
       ),
     ]);
 
-    expect(find.text('成本 ¥8.000'), findsOneWidget);
+    expect(find.text('成本价'), findsOneWidget);
+    expect(find.text('¥8.000'), findsOneWidget);
   });
 
   testWidgets('InvestPage keeps negative diluted cost visible', (tester) async {
@@ -77,6 +78,7 @@ void main() {
       ),
     ]);
 
-    expect(find.text('成本 ¥-3.333'), findsOneWidget);
+    expect(find.text('成本价'), findsOneWidget);
+    expect(find.text('¥-3.333'), findsOneWidget);
   });
 }

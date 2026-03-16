@@ -15,6 +15,7 @@ class PortfolioItem {
   final double? cost;
   final double? rawCostTotal;
   final double? value;
+  final double? positionPct;
   final double? totalPnl;
   final double? totalPnlRate;
   final double? dayPnl;
@@ -55,6 +56,7 @@ class PortfolioItem {
     this.cost,
     this.rawCostTotal,
     this.value,
+    this.positionPct,
     this.totalPnl,
     this.totalPnlRate,
     this.dayPnl,
@@ -97,6 +99,15 @@ class PortfolioItem {
       cost: _parseDoubleOrNull(json['cost']),
       rawCostTotal: _parseDoubleOrNull(json['raw_cost_total']),
       value: _parseDoubleOrNull(json['value']),
+      positionPct: _parseDoubleOrNull(
+        json['position_pct'] ??
+            json['positionPct'] ??
+            json['pct'] ??
+            json['holding_pct'] ??
+            json['holdingPct'] ??
+            json['portfolio_pct'] ??
+            json['portfolioPct'],
+      ),
       totalPnl: _parseDoubleOrNull(json['total_pnl']),
       totalPnlRate: _parseDoubleOrNull(json['total_pnl_rate']),
       dayPnl: _parseDoubleOrNull(json['day_pnl']),
@@ -140,6 +151,7 @@ class PortfolioItem {
       if (cost != null) 'cost': cost,
       if (rawCostTotal != null) 'raw_cost_total': rawCostTotal,
       if (value != null) 'value': value,
+      if (positionPct != null) 'position_pct': positionPct,
       if (totalPnl != null) 'total_pnl': totalPnl,
       if (totalPnlRate != null) 'total_pnl_rate': totalPnlRate,
       if (dayPnl != null) 'day_pnl': dayPnl,
