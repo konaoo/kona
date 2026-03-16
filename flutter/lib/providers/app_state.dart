@@ -11,6 +11,7 @@ import '../models/asset.dart';
 import '../models/asset_action_result.dart';
 import 'app_assets_state.dart';
 import 'app_auth_state.dart';
+import 'app_home_totals_state.dart';
 import 'app_market_state.dart';
 import 'app_overview_state.dart';
 import 'app_portfolio_view_state.dart';
@@ -39,6 +40,7 @@ class AppState extends ChangeNotifier {
   final ApiService _api;
   final AppAssetsState _assetsState;
   final AppAuthState _authState;
+  late final AppHomeTotalsState _homeTotalsState;
   final AppMarketState _marketState;
   final AppOverviewState _overviewState;
   final AppRefreshState _refreshState;
@@ -106,6 +108,11 @@ class AppState extends ChangeNotifier {
       preferencesState: _preferencesState,
       syncState: _syncState,
     );
+    _homeTotalsState = AppHomeTotalsState(
+      assetsState: _assetsState,
+      marketState: _marketState,
+      portfolioViewState: _portfolioViewState,
+    );
     _sessionState = AppSessionState(
       api: api,
       secureStorage: secureStorage,
@@ -126,6 +133,7 @@ class AppState extends ChangeNotifier {
     };
     _assetsState.addListener(_relayChildStateChange);
     _authState.addListener(_relayChildStateChange);
+    _homeTotalsState.addListener(_relayChildStateChange);
     _marketState.addListener(_relayChildStateChange);
     _overviewState.addListener(_relayChildStateChange);
     _portfolioViewState.addListener(_relayChildStateChange);
@@ -144,6 +152,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _assetsState.removeListener(_relayChildStateChange);
     _authState.removeListener(_relayChildStateChange);
+    _homeTotalsState.removeListener(_relayChildStateChange);
     _marketState.removeListener(_relayChildStateChange);
     _overviewState.removeListener(_relayChildStateChange);
     _portfolioViewState.removeListener(_relayChildStateChange);
@@ -152,6 +161,7 @@ class AppState extends ChangeNotifier {
     _securityState.removeListener(_relayChildStateChange);
     _assetsState.dispose();
     _authState.dispose();
+    _homeTotalsState.dispose();
     _marketState.dispose();
     _overviewState.dispose();
     _portfolioViewState.dispose();
@@ -175,12 +185,6 @@ class AppState extends ChangeNotifier {
   }
 
   // 3) 资产与持仓状态
-  double _totalAsset = 0;
-  double _totalCash = 0;
-  double _totalInvest = 0;
-  double _totalOther = 0;
-  double _totalLiability = 0;
-
   bool _portfolioLoaded = false;
   AppAsyncFlowResult? _lastHydrateResult;
   AppAsyncFlowResult? _lastRefreshResult;
@@ -213,11 +217,11 @@ class AppState extends ChangeNotifier {
   AuthLogoutMode get logoutMode => _securityState.logoutMode;
   bool get isAppLocked => _securityState.isAppLocked;
 
-  double get totalAsset => _totalAsset;
-  double get totalCash => _totalCash;
-  double get totalInvest => _totalInvest;
-  double get totalOther => _totalOther;
-  double get totalLiability => _totalLiability;
+  double get totalAsset => _homeTotalsState.totalAsset;
+  double get totalCash => _homeTotalsState.totalCash;
+  double get totalInvest => _homeTotalsState.totalInvest;
+  double get totalOther => _homeTotalsState.totalOther;
+  double get totalLiability => _homeTotalsState.totalLiability;
 
   List<PortfolioItem> get portfolio => _assetsState.portfolio;
   Map<String, PriceInfo> get prices => _portfolioViewState.prices;
@@ -660,25 +664,8 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  double _assetAmountToCny(Asset item, {bool useAbs = false}) {
-    final amount = useAbs ? item.amount.abs() : item.amount;
-    return convertToCny(amount, _normalizeAssetCurrency(item.curr));
-  }
-
-  double _sumAssetListToCny(List<Asset> items, {bool useAbs = false}) {
-    double total = 0;
-    for (final item in items) {
-      total += _assetAmountToCny(item, useAbs: useAbs);
-    }
-    return total;
-  }
-
   void _recalculateHomeTotals() {
-    _totalCash = _sumAssetListToCny(_cashAssets);
-    _totalOther = _sumAssetListToCny(_otherAssets);
-    _totalLiability = _sumAssetListToCny(_liabilities, useAbs: true);
-    _totalInvest = investTotalMV;
-    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    _homeTotalsState.recalculateHomeTotals(notify: false);
     _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
   }
 
@@ -754,10 +741,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _recalculateAssetTotals() {
-    _totalCash = _sumAssetListToCny(_cashAssets);
-    _totalOther = _sumAssetListToCny(_otherAssets);
-    _totalLiability = _sumAssetListToCny(_liabilities, useAbs: true);
-    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    _homeTotalsState.recalculateAssetTotals(notify: false);
     notifyListeners();
   }
 
@@ -955,8 +939,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _recalculatePortfolioTotals() {
-    _totalInvest = investTotalMV;
-    _totalAsset = _totalCash + _totalInvest + _totalOther - _totalLiability;
+    _homeTotalsState.recalculatePortfolioTotals(notify: false);
     notifyListeners();
   }
 
@@ -1251,8 +1234,8 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(portfolioSnapshot);
       return const AssetActionResult.failure('买入失败，请稍后重试');
     }
-    _totalCash = _sumAssetListToCny(_cashAssets);
-    _recalculatePortfolioTotals();
+    _recalculateHomeTotals();
+    notifyListeners();
 
     final result = await _api.buyPortfolioAssetWithCash(
       code,
@@ -1362,8 +1345,8 @@ class AppState extends ChangeNotifier {
       _restorePortfolioSnapshot(portfolioSnapshot);
       return const AssetActionResult.failure('卖出失败，请稍后重试');
     }
-    _totalCash = _sumAssetListToCny(_cashAssets);
-    _recalculatePortfolioTotals();
+    _recalculateHomeTotals();
+    notifyListeners();
 
     final result = await _api.sellPortfolioAssetToCash(
       code,

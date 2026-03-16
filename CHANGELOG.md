@@ -1,3 +1,23 @@
+## 2026-03-16-08
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把首页总额、资产汇总和人民币折算口径从总控里拆到独立首页总额状态层。
+
+### 主要变化
+- [app_home_totals_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_home_totals_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把首页总额、现金/投资/其他/负债小计、资产人民币折算和总额重算规则从 `AppState` 拆成独立首页总额状态层，`AppState` 继续保留对外接口不变。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：补充 Flutter 状态拆分地图，明确首页总额状态的新落点。
+- [app_state_cache_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_cache_test.dart) / [app_refresh_state_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_refresh_state_test.dart)：继续用现有缓存恢复和首页总额回归测试兜住这次拆分。
+
+### 影响范围
+- Flutter 首页总资产和四类资产小计
+- Flutter 冷启动缓存恢复后的首页总额
+- Flutter 交易或资产编辑后的首页总额重算
+
+### 验收重点
+- 首页总资产、现金、投资、其他、负债继续保持原口径
+- 冷启动缓存恢复后首页数字不变
+
 ## 2026-03-16-07
 
 ### 这版一句话

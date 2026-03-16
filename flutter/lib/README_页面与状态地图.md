@@ -90,6 +90,7 @@ flutter/lib/
 
 - [app_auth_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_auth_state.dart)
 - [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)
+- [app_home_totals_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_home_totals_state.dart)
 - [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
 - [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
 - [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart)
@@ -149,6 +150,15 @@ flutter/lib/
 - 乐观增删改
 
 这些现在已经收口到 [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)，`AppState` 在这块主要保留交易接口调用、金额换算、总额重算和刷新编排。
+
+首页总额 / 资产汇总口径这一层这次也继续往前收了一层：
+
+- 首页总资产
+- 现金 / 投资 / 其他 / 负债小计
+- 资产列表折算成人民币
+- 投资总额并入首页总额的重算规则
+
+这些现在已经收口到 [app_home_totals_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_home_totals_state.dart)，`AppState` 在这块主要保留刷新入口和交易后的调用时机，不再自己保存一组首页总额字段。
 
 概览 / 历史这一步也继续往前收了一层：
 
