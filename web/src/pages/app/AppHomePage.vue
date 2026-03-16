@@ -5,11 +5,13 @@
  */
 
 import { computed, onMounted, onBeforeUnmount, ref, reactive, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
-import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
+import { buildTrendSparklinePath } from '@/shared/assetTrend'
 import { useKonaStore } from '@/stores/composables'
+import { useHomeStore } from '@/stores/home'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
 import {
@@ -24,21 +26,27 @@ import AppShell from '../../layouts/AppShell.vue'
 
 // Types
 type AssetType = 'cash' | 'other' | 'liability'
-type SimpleAsset = { id: number; icon?: string; name: string; amount: number; curr?: string }
 type ChartPeriod = '1m' | '3m' | '6m' | '1y' | 'all'
-type SnapshotPoint = { date: string; total_asset: number; day_pnl?: number }
 
 // Stores & Composables
 const store = useKonaStore()
+const homeStore = useHomeStore()
 const router = useRouter()
 const { maskValue } = usePrivacyMode()
 const marketStore = useMarketStore()
+const {
+  cashAssets,
+  otherAssets,
+  liabilities,
+  marketIndices,
+  historyPoints,
+  chartLoading,
+  chartError,
+  trendMap,
+  rowTrendSignature
+} = storeToRefs(homeStore)
 
 // State
-const isLoading = ref(true)
-const cashAssets = ref<SimpleAsset[]>([])
-const otherAssets = ref<SimpleAsset[]>([])
-const liabilities = ref<SimpleAsset[]>([])
 const modalVisible = ref(false)
 const isFormModalVisible = ref(false)
 const isDeleteConfirmVisible = ref(false)
@@ -52,13 +60,7 @@ const chartHoverIndex = ref<number | null>(null)
 const chartSwitchAnimating = ref(false)
 const selectedTab = ref('all')
 const holdingsView = ref<'card' | 'row'>('card')
-const marketIndices = ref<any[]>([])
 const activeSegment = ref<AssetType | null>(null)
-const historyPoints = ref<SnapshotPoint[]>([])
-const chartLoading = ref(false)
-const chartError = ref('')
-const trendMap = ref<Record<string, TrendItem>>({})
-const marketIndicesCacheKey = 'kaka:web:market-indices'
 const chartContainer = ref<HTMLElement | null>(null)
 
 const chartPeriodOptions: Array<{ label: string; value: ChartPeriod }> = [
@@ -94,7 +96,6 @@ function defaultAssetIcon(type: AssetType): string {
   return '💳'
 }
 
-let staticRefreshTimer: number | null = null
 let chartSwitchTimer: number | null = null
 
 // Computed
@@ -419,8 +420,7 @@ function openInvestTradeModal(item: any, mode: 'buy' | 'sell' | 'adjust' = 'buy'
 
 async function handleTradeSuccess() {
   try {
-    await store.refreshStaticOnly()
-    void store.refreshQuotesOnly()
+    await homeStore.refreshHomeReadState()
   } catch (e) {
     console.error('Failed to reload home invest data', e)
   }
@@ -607,9 +607,9 @@ watch(chartPeriod, () => {
 })
 
 watch(
-  () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
+  rowTrendSignature,
   () => {
-    void loadAssetTrends()
+    void homeStore.loadAssetTrends()
   }
 )
 
@@ -643,90 +643,6 @@ const getQtyFontSize = (val: string | number) => {
 }
 
 // Methods
-async function loadLists() {
-  try {
-    const [cashRes, otherRes, liabilityRes] = await Promise.all([
-      api.get<SimpleAsset[]>('/api/cash_assets'),
-      api.get<SimpleAsset[]>('/api/other_assets'),
-      api.get<SimpleAsset[]>('/api/liabilities')
-    ])
-    cashAssets.value = cashRes || []
-    otherAssets.value = otherRes || []
-    liabilities.value = liabilityRes || []
-  } catch (e) {
-    console.error('Failed to load asset lists:', e)
-  }
-}
-
-async function loadMarketIndices() {
-  try {
-    const res = await api.get<any[]>('/api/market/indices')
-    marketIndices.value = Array.isArray(res) ? res : []
-    try {
-      localStorage.setItem(marketIndicesCacheKey, JSON.stringify(marketIndices.value))
-    } catch {}
-  } catch (e) {
-    console.error('Failed to load market indices:', e)
-  }
-}
-
-async function loadHistory() {
-  chartLoading.value = true
-  chartError.value = ''
-  try {
-    const res = await api.get<SnapshotPoint[]>('/api/history?days=5000')
-    historyPoints.value = Array.isArray(res)
-      ? res.map(item => ({
-          date: String(item?.date || ''),
-          total_asset: toNumber(item?.total_asset, 0),
-          day_pnl: toNumber(item?.day_pnl, 0)
-        }))
-      : []
-  } catch (e) {
-    chartError.value = e instanceof Error ? e.message : '历史快照加载失败'
-    historyPoints.value = []
-    console.error('Failed to load history:', e)
-  } finally {
-    chartLoading.value = false
-  }
-}
-
-async function loadAssetTrends() {
-  const items = (rows.value || [])
-    .filter((row: any) => row?.code)
-    .map((row: any) => ({
-      code: String(row.code || ''),
-      name: String(row.name || ''),
-      market: String(row.category || row.market || '')
-    }))
-
-  if (!items.length) {
-    trendMap.value = {}
-    return
-  }
-
-  try {
-    const payload = await api.post<{ items?: Record<string, TrendItem> }>('/api/asset/trends', {
-      items,
-      points: 20
-    })
-    trendMap.value = payload?.items || {}
-  } catch (e) {
-    console.error('Failed to load asset trends:', e)
-    trendMap.value = {}
-  }
-}
-
-async function refreshAll() {
-  try {
-    await Promise.all([store.refreshStaticOnly(), loadLists(), loadHistory()])
-    await loadAssetTrends()
-    void Promise.all([store.refreshQuotesOnly(), loadMarketIndices()])
-  } catch (e) {
-    console.error('Failed to refresh:', e)
-  }
-}
-
 function getCurrencySymbol(curr?: string) {
   if (curr === 'USD') return '$'
   if (curr === 'HKD') return 'HK$'
@@ -782,7 +698,7 @@ async function submitModal() {
 
   await api.post(route, payload)
   closeFormModal()
-  await loadLists()
+  await homeStore.loadAssetLists()
 }
 
 async function removeAsset(type: AssetType, id: number) {
@@ -792,7 +708,7 @@ async function removeAsset(type: AssetType, id: number) {
     liability: '/api/liabilities/delete'
   } as const
   await api.post(map[type], { id })
-  await loadLists()
+  await homeStore.loadAssetLists()
 }
 
 function openDeleteConfirm() {
@@ -821,33 +737,12 @@ function handleGlobalClick() {
 // Lifecycle
 onMounted(async () => {
   document.addEventListener('click', handleGlobalClick)
-  isLoading.value = true
-  try {
-    try {
-      const cached = localStorage.getItem(marketIndicesCacheKey)
-      if (cached) {
-        const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length) {
-          marketIndices.value = parsed
-        }
-      }
-    } catch {}
-    void store.bootstrap()
-    await Promise.all([store.refreshStaticOnly(), loadLists(), loadHistory()])
-    await loadAssetTrends()
-    void loadMarketIndices()
-    void store.refreshQuotesOnly()
-    store.startAutoRefresh()
-    staticRefreshTimer = window.setInterval(() => refreshAll(), 60000)
-  } finally {
-    isLoading.value = false
-  }
+  await homeStore.initializePage()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleGlobalClick)
-  store.stopAutoRefresh()
-  if (staticRefreshTimer) clearInterval(staticRefreshTimer)
+  homeStore.disposePage()
   if (chartSwitchTimer) window.clearTimeout(chartSwitchTimer)
 })
 </script>

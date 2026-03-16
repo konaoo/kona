@@ -23,6 +23,7 @@ Web 端现在可以理解成三层：
 - 状态统一入口：[stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
 - 刷新协调层：[stores/refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 - 会话协调层：[stores/sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
+- 首页读状态层：[stores/home.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/home.ts)
 - 分析页状态层：[stores/analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts)
 
 一句话：
@@ -83,7 +84,7 @@ web/src/
 
 - [AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)
   - 首页总资产大图现在走真实 `daily_snapshots`
-  - 持仓卡片的小趋势线也已经接上真实历史数据
+  - 首页的资产列表、市场卡片、历史快照和趋势线加载，已经下沉到 `home store`
 - [AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)
   - 投资页持仓卡片和首页共用同一套趋势线口径
   - 不再本地生成假 sparkline
@@ -173,11 +174,12 @@ web/src/
 - [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts)
 - [refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 - [sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
+- [home.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/home.ts)
 - [analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts)
 
 一句大白话：
 
-`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新链路走 refreshCoordinator，会话恢复和路由初始化走 sessionCoordinator，分析页自己的缓存和加载编排走 analysis store。`
+`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新链路走 refreshCoordinator，会话恢复和路由初始化走 sessionCoordinator，首页自己的读侧状态走 home store，分析页自己的缓存和加载编排走 analysis store。`
 
 ---
 

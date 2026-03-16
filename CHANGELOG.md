@@ -1,3 +1,23 @@
+## 2026-03-16-18
+
+### 这版一句话
+
+继续拆 Web 首页状态：把首页的资产列表、市场卡片、历史快照、趋势线和刷新编排从页面里拆到独立 home store。
+
+### 主要变化
+- [home.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/home.ts) / [AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)：把首页读侧状态、市场卡片缓存恢复、历史快照加载、趋势线加载和首页刷新编排，从页面脚本拆到独立 home store，页面主要保留展示计算、筛选和弹窗交互。
+- [homeStore.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/homeStore.test.ts) / [stores/index.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/index.ts)：补首页 store 回归测试和导出，确保首页初始化、静态刷新、行情刷新和自动刷新入口继续能走通。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/web/src/README_页面与状态地图.md)：更新 Web 状态地图，明确首页读侧状态现在不再由页面自己扛。
+
+### 影响范围
+- Web 首页首次加载
+- Web 首页的资产列表、市场卡片和历史快照刷新
+- Web 首页持仓卡片趋势线的加载与刷新
+
+### 验收重点
+- 首页继续能正常显示现金、其他、负债、市场卡片和资产趋势图
+- 首页进入后仍会自动刷新行情，投资交易成功后首页数据继续能同步更新
+
 ## 2026-03-16-17
 
 ### 这版一句话

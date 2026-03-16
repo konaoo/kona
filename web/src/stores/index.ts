@@ -11,6 +11,7 @@ export { useSyncStore } from './sync'
 export { useRefreshCoordinatorStore } from './refreshCoordinator'
 export { useSessionCoordinatorStore } from './sessionCoordinator'
 export { useAnalysisStore } from './analysis'
+export { useHomeStore } from './home'
 
 // 导出类型
 export type * from './types'
