@@ -1,3 +1,18 @@
+## 2026-03-16-03
+
+### 这版一句话
+
+GitHub Actions 升级到支持 Node 24 的 action 版本，去掉 Node 20 弃用预警。
+
+### 主要变化
+- [deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：`actions/checkout` 升级到 `v5`，`actions/setup-python` 升级到 `v6`，`actions/setup-node` 升级到 `v5`。
+
+### 影响范围
+- GitHub Actions 门禁与部署工作流
+
+### 验收重点
+- 后续 `Deploy to Production` 不再出现 `actions/checkout@v4`、`actions/setup-python@v5` 的 Node 20 弃用提醒
+
 ## 2026-03-16-02
 
 ### 这版一句话
