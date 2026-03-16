@@ -1,3 +1,23 @@
+## 2026-03-16-12
+
+### 这版一句话
+
+把 GitHub Actions 的生产部署链路补稳，重点处理服务器端 `git fetch` 偶发挂住的问题。
+
+### 主要变化
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：给服务器端 `git fetch --depth=1 origin main` 增加 `45` 秒超时、5 次重试、失败日志输出和卡死进程清理，不再无限挂在 `SSH and deploy`。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：部署时显式记录 `target sha / current sha / fetched sha`，并在成功后优先 `reset --hard` 到本次工作流的目标提交，不再只靠远端分支名隐式推进。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：当远端拉取仍失败时，额外打印 `git remote`、分支状态、`ls-remote` 和 GitHub 连通性诊断，后面查发布卡点不用再靠猜。
+
+### 影响范围
+- GitHub Actions 生产部署链路
+- 服务器端代码拉取和发布稳定性
+- 发布失败时的日志可读性
+
+### 验收重点
+- `Deploy to Production` 不再因为服务器端 `git fetch` 长时间挂住而卡死
+- 部署失败时，日志里能直接看出是拉代码失败、网络问题还是目标提交没拉到
+
 ## 2026-03-16-11
 
 ### 这版一句话
