@@ -1,3 +1,23 @@
+## 2026-03-16-07
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把价格缓存、投资展示、分类筛选、金额格式化从总控里拆到独立投资展示状态层。
+
+### 主要变化
+- [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把价格缓存、价格回退、分类筛选、投资汇总、盈亏展示和金额格式化从 `AppState` 拆成独立投资展示状态层，`AppState` 继续保留对外接口不变。
+- [app_state_smoke_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_smoke_test.dart)：补充分类筛选回归，保证页面仍然按 `AppState` 原接口调用，不需要跟着改。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：补充 Flutter 状态拆分地图，明确投资展示状态的新落点。
+
+### 影响范围
+- Flutter 投资页的价格展示、分类筛选、金额格式化
+- Flutter 首页 / 投资页依赖的投资汇总读取
+- Flutter 行情缓存与价格回退解析
+
+### 验收重点
+- 投资页分类切换、价格显示、盈亏显示保持原行为
+- `AppState` 对外接口不变，页面和测试不需要跟着改调用方式
+
 ## 2026-03-16-06
 
 ### 这版一句话

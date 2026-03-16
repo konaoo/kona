@@ -147,6 +147,42 @@ void main() {
     );
   });
 
+  test(
+    'AppState setCategory filters portfolio without changing public API',
+    () async {
+      final api = _FakeApiService();
+      final state = _NoRefreshAppState(api: api);
+
+      final cnResult = await state.addInvestment(
+        code: 'sh600000',
+        name: '浦发银行',
+        price: 10,
+        qty: 1,
+        curr: 'CNY',
+        assetType: 'a',
+        awaitRefresh: false,
+      );
+      final usResult = await state.addInvestment(
+        code: 'gb_tsla',
+        name: 'Tesla',
+        price: 20,
+        qty: 2,
+        curr: 'USD',
+        assetType: 'us',
+        awaitRefresh: false,
+      );
+
+      expect(cnResult.ok, isTrue);
+      expect(usResult.ok, isTrue);
+      expect(state.filteredPortfolio.length, 2);
+
+      state.setCategory('us');
+
+      expect(state.currentCategory, 'us');
+      expect(state.filteredPortfolio.map((item) => item.code), ['gb_tsla']);
+    },
+  );
+
   test('AppState applyOverviewMilestones overrides month/year by收益口径', () {
     final state = AppState();
     state.applyOverviewMilestones({

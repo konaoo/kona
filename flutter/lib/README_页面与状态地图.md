@@ -92,6 +92,7 @@ flutter/lib/
 - [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)
 - [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
 - [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
+- [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart)
 - [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)
 - [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)
 - [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart)
@@ -176,6 +177,17 @@ flutter/lib/
 - 登出与本地凭证清理
 
 这些现在已经收口到 [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)，`AppState` 在这块主要保留对外兼容入口和与其他子状态的总装配。
+
+投资展示 / 行情解析这一层这次也继续往前收了一层：
+
+- 价格缓存与价格快照
+- 价格回退解析
+- 分类筛选
+- 投资汇总
+- 单只当日盈亏显示规则
+- 金额 / 盈亏格式化
+
+这些现在已经收口到 [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart)，`AppState` 在这块主要保留首页总额重算、刷新编排和交易入口，不再自己兼管投资展示细节。
 
 所以 Flutter 端后续如果要继续工程化，第一关注点一定也是这里。
 

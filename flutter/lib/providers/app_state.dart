@@ -5,7 +5,6 @@ import '../services/api_service.dart';
 import '../services/async_flow_logger.dart';
 import '../services/biometric_service.dart';
 import '../services/cache_service.dart';
-import '../services/portfolio_metrics_service.dart';
 import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
@@ -14,6 +13,7 @@ import 'app_assets_state.dart';
 import 'app_auth_state.dart';
 import 'app_market_state.dart';
 import 'app_overview_state.dart';
+import 'app_portfolio_view_state.dart';
 import 'app_preferences_state.dart';
 import 'app_refresh_state.dart';
 import 'app_security_state.dart';
@@ -43,6 +43,7 @@ class AppState extends ChangeNotifier {
   final AppOverviewState _overviewState;
   final AppRefreshState _refreshState;
   final AppSyncState _syncState;
+  late final AppPortfolioViewState _portfolioViewState;
   late final AppSessionState _sessionState;
   final AppTradeState _tradeState;
   final AppPreferencesState _preferencesState;
@@ -98,6 +99,13 @@ class AppState extends ChangeNotifier {
          biometric: biometric,
        ),
        _tradeState = AppTradeState(api: api) {
+    _portfolioViewState = AppPortfolioViewState(
+      api: api,
+      assetsState: _assetsState,
+      marketState: _marketState,
+      preferencesState: _preferencesState,
+      syncState: _syncState,
+    );
     _sessionState = AppSessionState(
       api: api,
       secureStorage: secureStorage,
@@ -120,6 +128,7 @@ class AppState extends ChangeNotifier {
     _authState.addListener(_relayChildStateChange);
     _marketState.addListener(_relayChildStateChange);
     _overviewState.addListener(_relayChildStateChange);
+    _portfolioViewState.addListener(_relayChildStateChange);
     _syncState.addListener(_relayChildStateChange);
     _preferencesState.addListener(_relayChildStateChange);
     _securityState.addListener(_relayChildStateChange);
@@ -137,6 +146,7 @@ class AppState extends ChangeNotifier {
     _authState.removeListener(_relayChildStateChange);
     _marketState.removeListener(_relayChildStateChange);
     _overviewState.removeListener(_relayChildStateChange);
+    _portfolioViewState.removeListener(_relayChildStateChange);
     _syncState.removeListener(_relayChildStateChange);
     _preferencesState.removeListener(_relayChildStateChange);
     _securityState.removeListener(_relayChildStateChange);
@@ -144,6 +154,7 @@ class AppState extends ChangeNotifier {
     _authState.dispose();
     _marketState.dispose();
     _overviewState.dispose();
+    _portfolioViewState.dispose();
     _syncState.dispose();
     _preferencesState.dispose();
     _securityState.dispose();
@@ -170,9 +181,6 @@ class AppState extends ChangeNotifier {
   double _totalOther = 0;
   double _totalLiability = 0;
 
-  Map<String, PriceInfo> _prices = {};
-  Map<String, PriceInfo> _priceSnapshots = {};
-  String _currentCategory = 'all';
   bool _portfolioLoaded = false;
   AppAsyncFlowResult? _lastHydrateResult;
   AppAsyncFlowResult? _lastRefreshResult;
@@ -212,8 +220,8 @@ class AppState extends ChangeNotifier {
   double get totalLiability => _totalLiability;
 
   List<PortfolioItem> get portfolio => _assetsState.portfolio;
-  Map<String, PriceInfo> get prices => _prices;
-  String get currentCategory => _currentCategory;
+  Map<String, PriceInfo> get prices => _portfolioViewState.prices;
+  String get currentCategory => _portfolioViewState.currentCategory;
   bool get portfolioLoaded => _portfolioLoaded;
   AppAsyncFlowResult? get lastHydrateResult => _lastHydrateResult;
   AppAsyncFlowResult? get lastRefreshResult => _lastRefreshResult;
@@ -268,15 +276,8 @@ class AppState extends ChangeNotifier {
     _assetsState.replaceLiabilities(value, notify: false);
   }
 
-  int get quoteRefreshIntervalSeconds {
-    if (_marketState.hasAnyMarketOpen) {
-      return _syncState.quoteIntervalOpenSec;
-    }
-    if (_hasActiveUsExtendedSession()) {
-      return _syncState.quoteIntervalUsExtendedSec;
-    }
-    return _syncState.quoteIntervalClosedSec;
-  }
+  int get quoteRefreshIntervalSeconds =>
+      _portfolioViewState.quoteRefreshIntervalSeconds;
 
   double _rateForCurrency(String curr) {
     return _marketState.rateForCurrency(curr);
@@ -288,10 +289,6 @@ class AppState extends ChangeNotifier {
     return amount * _rateForCurrency(curr);
   }
 
-  String _normalizeMarketKey(String? market) {
-    return _marketState.normalizeMarketKey(market);
-  }
-
   bool isMarketOpen(String? market) {
     return _marketState.isMarketOpen(market);
   }
@@ -301,165 +298,79 @@ class AppState extends ChangeNotifier {
   }
 
   bool isAssetMarketOpen(PortfolioItem item) {
-    return isMarketOpen(item.marketType);
+    return _portfolioViewState.isAssetMarketOpen(item);
   }
 
   bool isAssetTradingDay(PortfolioItem item) {
-    return isMarketTradingDay(item.marketType);
-  }
-
-  bool _isUsExtendedSessionActive(PortfolioItem item, PriceInfo? priceInfo) {
-    if (priceInfo == null) return false;
-    if (_normalizeMarketKey(item.marketType) != 'us') return false;
-    if (priceInfo.price <= 0 || priceInfo.yclose <= 0) return false;
-    if (priceInfo.extendedActive) return true;
-    final session = priceInfo.effectiveSession.trim().toLowerCase();
-    return session == 'pre' || session == 'post';
-  }
-
-  bool _hasActiveUsExtendedSession() {
-    for (final item in _portfolio) {
-      if (_normalizeMarketKey(item.marketType) != 'us') continue;
-      if (_isUsExtendedSessionActive(item, resolvePriceInfo(item))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  bool _isValidPriceInfo(PriceInfo? info) {
-    return info != null && info.price > 0;
-  }
-
-  PriceInfo? _resolvePriceInfoByCode(
-    String code, {
-    PriceInfo? preferred,
-    Map<String, PriceInfo>? runtimeFallback,
-  }) {
-    if (_isValidPriceInfo(preferred)) return preferred;
-    final live = _prices[code];
-    if (_isValidPriceInfo(live)) return live;
-    final runtime = runtimeFallback?[code];
-    if (_isValidPriceInfo(runtime)) return runtime;
-    final snapshot = _priceSnapshots[code];
-    if (_isValidPriceInfo(snapshot)) return snapshot;
-    return null;
+    return _portfolioViewState.isAssetTradingDay(item);
   }
 
   PriceInfo? resolvePriceInfoByCode(String code, {PriceInfo? preferred}) {
-    return _resolvePriceInfoByCode(code, preferred: preferred);
+    return _portfolioViewState.resolvePriceInfoByCode(
+      code,
+      preferred: preferred,
+    );
   }
 
   PriceInfo? resolvePriceInfo(PortfolioItem item, {PriceInfo? preferred}) {
-    return _resolvePriceInfoByCode(item.code, preferred: preferred);
+    return _portfolioViewState.resolvePriceInfo(item, preferred: preferred);
   }
 
   bool isNavUpdatePendingAsset(PortfolioItem item) {
-    if (item.navUpdatePending != null) return item.navUpdatePending!;
-    final code = item.code.trim().toLowerCase();
-    return code.startsWith('f_') || code.startsWith('ft_');
+    return _portfolioViewState.isNavUpdatePendingAsset(item);
   }
 
   bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
-    if (item.dayPnlDisplayEnabled != null) {
-      return item.dayPnlDisplayEnabled!;
-    }
-    if (isNavUpdatePendingAsset(item)) {
-      return false;
-    }
-    final resolved = resolvePriceInfo(item, preferred: priceInfo);
-    return resolved != null && resolved.yclose > 0;
+    return _portfolioViewState.isAssetDayPnlDisplayEnabled(
+      item,
+      priceInfo: priceInfo,
+    );
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
-    if (item.dayPnlAggregateEnabled != null) {
-      return item.dayPnlAggregateEnabled!;
-    }
-    if (isNavUpdatePendingAsset(item)) {
-      return false;
-    }
-    final resolved = resolvePriceInfo(item, preferred: priceInfo);
-    if (resolved == null || resolved.yclose <= 0) {
-      return false;
-    }
-    if (isAssetTradingDay(item)) {
-      return true;
-    }
-    return _isUsExtendedSessionActive(item, resolved);
+    return _portfolioViewState.isAssetDayPnlEnabled(item, priceInfo: priceInfo);
   }
 
   /// 投资币种归一：优先按代码识别市场，无法识别时再回退到传入币种。
   String normalizeInvestmentCurrency({required String code, String? curr}) {
-    final raw = code.trim();
-    final lower = raw.toLowerCase();
-    if (raw.isEmpty) {
-      final fallback = curr?.trim().toUpperCase();
-      return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
-    }
-    if (lower.startsWith('sh900')) return 'USD';
-    if (lower.startsWith('sz200')) return 'HKD';
-    if (lower.startsWith('gb_') || lower.startsWith('ft_')) return 'USD';
-    if (lower.endsWith('.hk') || lower.startsWith('hk')) return 'HKD';
-    if (lower.startsWith('sh') ||
-        lower.startsWith('sz') ||
-        lower.startsWith('bj') ||
-        lower.startsWith('f_')) {
-      return 'CNY';
-    }
-    if (RegExp(r'^[a-z]+(\.[a-z]+)?$').hasMatch(lower)) return 'USD';
-    if (RegExp(r'^\d+$').hasMatch(raw)) return 'CNY';
-    final fallback = curr?.trim().toUpperCase();
-    return (fallback == null || fallback.isEmpty) ? 'CNY' : fallback;
+    return _portfolioViewState.normalizeInvestmentCurrency(
+      code: code,
+      curr: curr,
+    );
   }
 
   Future<double?> fetchLatestPriceForCode(String code) async {
-    final raw = code.trim();
-    if (raw.isEmpty) return null;
-    final apiCode = raw.startsWith('gb_') ? raw.substring(3) : raw;
-    try {
-      final prices = await _api.getPricesBatch(<String>[apiCode]);
-      final payload = prices[apiCode];
-      if (payload is! Map<String, dynamic>) return null;
-      final info = PriceInfo.fromJson(payload);
-      if (info.price > 0) return info.price;
-      if (info.yclose > 0) return info.yclose;
-      return null;
-    } catch (_) {
-      return null;
-    }
+    return _portfolioViewState.fetchLatestPriceForCode(code);
   }
 
   /// 过滤后的投资组合
   List<PortfolioItem> get filteredPortfolio {
-    if (_currentCategory == 'all') return _portfolio;
-    return _portfolio
-        .where((item) => item.marketType == _currentCategory)
-        .toList();
+    return _portfolioViewState.filteredPortfolio;
   }
 
   /// 投资总市值
   double get investTotalMV {
-    return PortfolioMetricsService.calcInvestTotalMV(_portfolio);
+    return _portfolioViewState.investTotalMV;
   }
 
   /// 投资今日盈亏
   double get investDayPnl {
-    return PortfolioMetricsService.calcInvestDayPnl(_portfolio);
+    return _portfolioViewState.investDayPnl;
   }
 
   /// 投资今日盈亏率
   double get investDayPnlRate {
-    return PortfolioMetricsService.calcInvestDayPnlRate(_portfolio);
+    return _portfolioViewState.investDayPnlRate;
   }
 
   /// 投资持仓盈亏
   double get investHoldingPnl {
-    return PortfolioMetricsService.calcInvestHoldingPnl(_portfolio);
+    return _portfolioViewState.investHoldingPnl;
   }
 
   /// 投资持仓盈亏率
   double get investHoldingPnlRate {
-    return PortfolioMetricsService.calcInvestHoldingPnlRate(_portfolio);
+    return _portfolioViewState.investHoldingPnlRate;
   }
 
   // ============================================================
@@ -468,8 +379,9 @@ class AppState extends ChangeNotifier {
 
   AppSessionBindings get _sessionBindings => AppSessionBindings(
     notifyListeners: notifyListeners,
-    clearPrices: () => _prices = <String, PriceInfo>{},
-    clearPriceSnapshots: () => _priceSnapshots = <String, PriceInfo>{},
+    clearPrices: () => _portfolioViewState.clearPrices(notify: false),
+    clearPriceSnapshots: () =>
+        _portfolioViewState.clearPriceSnapshots(notify: false),
     setPortfolioLoaded: (value) => _portfolioLoaded = value,
     hydrateFromCache: hydrateFromCache,
     refreshAll: refreshAll,
@@ -488,10 +400,12 @@ class AppState extends ChangeNotifier {
     replaceOtherAssets: (value) => _otherAssets = value,
     liabilities: () => _liabilities,
     replaceLiabilities: (value) => _liabilities = value,
-    prices: () => _prices,
-    replacePrices: (value) => _prices = value,
-    priceSnapshots: () => _priceSnapshots,
-    replacePriceSnapshots: (value) => _priceSnapshots = value,
+    prices: () => _portfolioViewState.prices,
+    replacePrices: (value) =>
+        _portfolioViewState.replacePrices(value, notify: false),
+    priceSnapshots: () => _portfolioViewState.priceSnapshots,
+    replacePriceSnapshots: (value) =>
+        _portfolioViewState.replacePriceSnapshots(value, notify: false),
     portfolioLoaded: () => _portfolioLoaded,
     setPortfolioLoaded: (value) => _portfolioLoaded = value,
     exchangeRates: () => exchangeRates,
@@ -502,7 +416,7 @@ class AppState extends ChangeNotifier {
     applySyncMarketStatus: _applySyncMarketStatus,
     serializeMarketStatusForCache: _marketState.serializeMarketStatusForCache,
     loadMarketStatusWithBudget: _loadMarketStatusWithBudget,
-    resolvePriceInfoByCode: _resolvePriceInfoByCode,
+    resolvePriceInfoByCode: _portfolioViewState.resolvePriceInfoByCode,
     notifyListeners: notifyListeners,
   );
 
@@ -720,22 +634,17 @@ class AppState extends ChangeNotifier {
 
   /// Convert a CNY-denominated amount to the global display currency
   double convertDisplayAmount(double cnyAmount) {
-    if (displayCurrency == 'CNY') return cnyAmount;
-    final rate = _rateForCurrency(displayCurrency);
-    if (rate <= 0) return cnyAmount;
-    return cnyAmount / rate;
+    return _portfolioViewState.convertDisplayAmount(cnyAmount);
   }
 
   /// 格式化金额（支持隐藏）
   String formatAmount(double value, {String prefix = '¥'}) {
-    if (amountHidden) return '****';
-    return '$prefix${value.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
+    return _portfolioViewState.formatAmount(value, prefix: prefix);
   }
 
   /// 设置分类
   void setCategory(String category) {
-    _currentCategory = category;
-    notifyListeners();
+    _portfolioViewState.setCategory(category);
   }
 
   /// 更新汇率
@@ -1655,44 +1564,22 @@ class AppState extends ChangeNotifier {
 
   /// 获取盈亏颜色
   static Color getPnlColor(double value) {
-    if (value > 0) return const Color(0xFFEF4444); // 红色（盈利）
-    if (value < 0) return const Color(0xFF10B981); // 绿色（亏损）
-    return const Color(0xFF94A3B8); // 灰色
+    return AppPortfolioViewState.getPnlColor(value);
   }
 
   /// 格式化盈亏
   String formatPnl(double value) {
-    if (amountHidden) return '****';
-    final sign = value >= 0 ? '+' : '';
-    return '$sign${value.toStringAsFixed(2)}';
+    return _portfolioViewState.formatPnl(value);
   }
 
   /// 格式化盈亏（整数）
   String formatPnlInt(double value) {
-    if (amountHidden) return '****';
-    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
-    final absVal = value.abs();
-    final text = absVal
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    return '$sign$text';
+    return _portfolioViewState.formatPnlInt(value);
   }
 
   /// 格式化盈亏（整数 + 币种）
   String formatPnlIntWithCurrency(double value, String symbol) {
-    if (amountHidden) return '****';
-    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
-    final absVal = value.abs();
-    final text = absVal
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    return '$sign$symbol$text';
+    return _portfolioViewState.formatPnlIntWithCurrency(value, symbol);
   }
 
   /// 格式化金额（紧凑：万/亿）
@@ -1701,21 +1588,11 @@ class AppState extends ChangeNotifier {
     String prefix = '',
     int decimals = 1,
   }) {
-    if (amountHidden) return '****';
-    final absVal = value.abs();
-    if (absVal >= 100000000) {
-      return '$prefix${(absVal / 100000000).toStringAsFixed(decimals)}亿';
-    }
-    if (absVal >= 10000) {
-      return '$prefix${(absVal / 10000).toStringAsFixed(decimals)}万';
-    }
-    final text = absVal
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    return '$prefix$text';
+    return _portfolioViewState.formatCompactAmount(
+      value,
+      prefix: prefix,
+      decimals: decimals,
+    );
   }
 
   /// 格式化盈亏（紧凑：万/亿 + 币种）
@@ -1724,47 +1601,20 @@ class AppState extends ChangeNotifier {
     String symbol, {
     int decimals = 1,
   }) {
-    if (amountHidden) return '****';
-    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
-    final absVal = value.abs();
-    if (absVal >= 100000000) {
-      return '$sign$symbol${(absVal / 100000000).toStringAsFixed(decimals)}亿';
-    }
-    if (absVal >= 10000) {
-      return '$sign$symbol${(absVal / 10000).toStringAsFixed(decimals)}万';
-    }
-    final text = absVal
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    return '$sign$symbol$text';
+    return _portfolioViewState.formatCompactPnlWithCurrency(
+      value,
+      symbol,
+      decimals: decimals,
+    );
   }
 
   /// 格式化盈亏（人民币，紧凑：万/亿，整数）
   String formatCompactPnlCny(double value) {
-    if (amountHidden) return '****';
-    final sign = value > 0 ? '+' : (value < 0 ? '-' : '');
-    final absVal = value.abs();
-    if (absVal >= 100000000) {
-      return '$sign¥${(absVal / 100000000).toStringAsFixed(0)}亿';
-    }
-    if (absVal >= 10000) {
-      return '$sign¥${(absVal / 10000).toStringAsFixed(0)}万';
-    }
-    final text = absVal
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
-    return '$sign¥$text';
+    return _portfolioViewState.formatCompactPnlCny(value);
   }
 
   /// 格式化百分比
   String formatPct(double value) {
-    final sign = value >= 0 ? '+' : '';
-    return '$sign${value.toStringAsFixed(2)}%';
+    return _portfolioViewState.formatPct(value);
   }
 }
