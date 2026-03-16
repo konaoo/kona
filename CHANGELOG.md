@@ -1,3 +1,23 @@
+## 2026-03-16-13
+
+### 这版一句话
+
+清理 GitHub Actions 里的 Node 20 弃用提醒，把还能升级的官方 action 全部升到 Node 24 版本。
+
+### 主要变化
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：把 `actions/setup-java` 从 `v4` 升到 `v5`，改用 Node 24 运行时。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：把 `dorny/paths-filter` 从 `v3` 升到 `v4`，改用 Node 24 运行时。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：把 `actions/upload-artifact`、`actions/download-artifact` 从 `v4` 升到 `v6`，清掉产物上传下载链路里的 Node 20 提醒。
+
+### 影响范围
+- GitHub Actions 前端门禁
+- GitHub Actions 生产部署链路
+- 工作流运行时兼容性
+
+### 验收重点
+- `Deploy to Production` 继续能完整通过
+- 这次工作流里不再出现 `setup-java`、`paths-filter`、`upload-artifact`、`download-artifact` 的 Node 20 弃用提醒
+
 ## 2026-03-16-12
 
 ### 这版一句话
