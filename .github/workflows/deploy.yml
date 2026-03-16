@@ -144,17 +144,6 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Package Web artifact
-        run: tar -C web/dist -czf web-dist.tar.gz .
-
-      - name: Upload Web artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: web-dist
-          path: web-dist.tar.gz
-          if-no-files-found: error
-          retention-days: 3
-
   deploy:
     name: Deploy to Production
     needs: [ backend-gate, frontend-gate ]
@@ -166,11 +155,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Download Web artifact
-        uses: actions/download-artifact@v6
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
         with:
-          name: web-dist
-          path: .
+          node-version: 20
+
+      - name: Build Web artifact for deploy
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          tar -C dist -czf ../web-dist.tar.gz .
 
       - name: Upload Web artifact to server (with retries)
         env:

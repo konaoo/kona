@@ -1,3 +1,23 @@
+## 2026-03-16-14
+
+### 这版一句话
+
+把部署链路里的 artifact 上传下载也去掉，彻底清掉最后一条 Node 20 提醒。
+
+### 主要变化
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：删除前端门禁里的 `Package Web artifact / Upload Web artifact`，不再走 GitHub artifact 中转。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：`Deploy to Production` 改成自己 `checkout`、安装 Web 依赖、重新构建 `web/dist`，再直接打包上传服务器。
+- [.github/workflows/deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：这样可以彻底移除 `actions/download-artifact` 的 Node 20 运行时提醒，代价是部署阶段会比之前慢一点。
+
+### 影响范围
+- GitHub Actions 部署阶段
+- Web 构建产物的生成方式
+- 工作流整体耗时
+
+### 验收重点
+- `Deploy to Production` 继续能完整通过
+- 工作流 annotation 里不再出现 Node 20 弃用提醒
+
 ## 2026-03-16-13
 
 ### 这版一句话
