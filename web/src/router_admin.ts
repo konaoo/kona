@@ -25,7 +25,7 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const store = useKonaStore()
-  void store.bootstrap()
+  await store.bootstrap()
 
   if (to.path === '/admin/login' && store.isAuthenticated.value && store.isAdmin.value) {
     return '/admin/overview'

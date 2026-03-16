@@ -3,21 +3,21 @@
  */
 
 import type { MarketCode } from '@/types'
+import {
+  GENERATED_AUTH_BOOTSTRAP_TIMEOUT_MS,
+  GENERATED_QUOTE_POLICY_DEFAULT,
+  GENERATED_SYNC_BOOTSTRAP_DOMAINS,
+  GENERATED_SYNC_BOOTSTRAP_QUOTE_INCLUDE,
+  GENERATED_WEB_CACHE_TTL_MS,
+  type GeneratedSyncDomain,
+} from './generated_sync_contract'
 
 export type { MarketCode }
 
 /** 同步域名 */
-export const ALL_SYNC_DOMAINS = [
-  'portfolio',
-  'cash_assets',
-  'other_assets',
-  'liabilities',
-  'history',
-  'overview_all',
-  'rates',
-] as const
+export const ALL_SYNC_DOMAINS = GENERATED_SYNC_BOOTSTRAP_DOMAINS
 
-export type SyncDomain = typeof ALL_SYNC_DOMAINS[number]
+export type SyncDomain = GeneratedSyncDomain
 
 /** 用户类型 */
 export type User = {
@@ -184,9 +184,9 @@ export const MARKET_CODES: MarketCode[] = ['a', 'hk', 'us', 'fund']
 
 /** 默认行情策略 */
 export const DEFAULT_QUOTE_POLICY: QuotePolicy = {
-  interval_open_sec: 5,
-  interval_closed_sec: 120,
-  interval_us_extended_sec: 10,
+  interval_open_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_open_sec,
+  interval_closed_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_closed_sec,
+  interval_us_extended_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_us_extended_sec,
 }
 
 /** 存储键常量 */
@@ -197,15 +197,15 @@ export const STORAGE_KEYS = {
 
 /** TTL 常量 */
 export const CACHE_TTL = {
-  STATIC: 5 * 60_000,      // 5 分钟
-  QUOTES: 60_000,          // 1 分钟
+  STATIC: GENERATED_WEB_CACHE_TTL_MS.STATIC,
+  QUOTES: GENERATED_WEB_CACHE_TTL_MS.QUOTES,
 } as const
 
 /** Bootstrap 超时 */
-export const AUTH_BOOTSTRAP_TIMEOUT_MS = 2500
+export const AUTH_BOOTSTRAP_TIMEOUT_MS = GENERATED_AUTH_BOOTSTRAP_TIMEOUT_MS
 
 /** Bootstrap 包含配置 */
 export const SYNC_BOOTSTRAP = {
   STATIC_INCLUDE: [...ALL_SYNC_DOMAINS] as SyncDomain[],
-  QUOTE_INCLUDE: ['portfolio', 'rates'] as SyncDomain[],
+  QUOTE_INCLUDE: [...GENERATED_SYNC_BOOTSTRAP_QUOTE_INCLUDE] as SyncDomain[],
 } as const

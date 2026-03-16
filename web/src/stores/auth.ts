@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
+import { finishAsyncFlow, startAsyncFlow, type AsyncFlowResult } from '@/shared/asyncFlow'
 import {
   clearAuth,
   persistAuth,
@@ -14,6 +15,7 @@ import {
   readStoredUser,
 } from '@/shared/auth'
 import type { User } from './types'
+import { AUTH_BOOTSTRAP_TIMEOUT_MS } from './types'
 
 export const useAuthStore = defineStore('auth', () => {
   // ───────────────────────────────────────────────────────────────
@@ -26,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(readRefreshToken() || '')
   const user = ref<User | null>(readStoredUser<User>() || null)
   const authError = ref('')
+  const lastBootstrapResult = ref<AsyncFlowResult | null>(null)
 
   // ───────────────────────────────────────────────────────────────
   // Computed
@@ -51,17 +54,24 @@ export const useAuthStore = defineStore('auth', () => {
    * Bootstrap - 初始化认证状态
    */
   async function bootstrap() {
-    if (bootstrapped.value) return
+    const flow = startAsyncFlow('web.auth.bootstrap')
+    if (bootstrapped.value) {
+      lastBootstrapResult.value = finishAsyncFlow(flow, 'skip:bootstrapped')
+      return lastBootstrapResult.value
+    }
     bootstrapped.value = true
 
-    if (!token.value || !refreshToken.value) return
+    if (!token.value || !refreshToken.value) {
+      lastBootstrapResult.value = finishAsyncFlow(flow, 'skip:no-token')
+      return lastBootstrapResult.value
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
           () => reject(new Error('AUTH_BOOTSTRAP_TIMEOUT')),
-          2500
+          AUTH_BOOTSTRAP_TIMEOUT_MS
         )
       })
 
@@ -74,11 +84,15 @@ export const useAuthStore = defineStore('auth', () => {
 
       user.value = me
       persistUser(me)
+      lastBootstrapResult.value = finishAsyncFlow(flow, 'profile-loaded')
+      return lastBootstrapResult.value
     } catch (error) {
       if (timeoutId) clearTimeout(timeoutId)
       if (shouldClearAuthOnBootstrapError(error)) {
         clearAuthState()
       }
+      lastBootstrapResult.value = finishAsyncFlow(flow, 'failed', error)
+      return lastBootstrapResult.value
     }
   }
 
@@ -174,6 +188,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken,
     user,
     authError,
+    lastBootstrapResult,
 
     // Computed
     isAuthenticated,

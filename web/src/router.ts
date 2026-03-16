@@ -31,7 +31,7 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const store = useKonaStore()
-  void store.bootstrap()
+  await store.bootstrap()
 
   if ((to.path === '/app/login' || to.path === '/app/register') && store.isAuthenticated.value) {
     return '/app/home'

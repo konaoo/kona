@@ -238,6 +238,13 @@ kona_tool/
 - `web_entry_handlers.py`
 - `web_entry_routes.py`
 - `admin_routes.py`
+- `admin_routes_dashboard.py`
+- `admin_routes_users.py`
+- `admin_routes_user_write.py`
+- `admin_routes_config_ops.py`
+- `admin_routes_data.py`
+- `admin_routes_apis.py`
+- `admin_routes_invites.py`
 - `config.py`
 - `wsgi.py`
 - `runtime_bootstrap.py`

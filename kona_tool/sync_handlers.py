@@ -10,21 +10,7 @@ from typing import Any, Callable, Dict
 
 from flask import g, request
 
-SYNC_BOOTSTRAP_DOMAINS = (
-    "portfolio",
-    "cash_assets",
-    "other_assets",
-    "liabilities",
-    "history",
-    "overview_all",
-    "rates",
-)
-
-QUOTE_POLICY_DEFAULT = {
-    "interval_open_sec": 5,
-    "interval_closed_sec": 120,
-    "interval_us_extended_sec": 10,
-}
+from sync_contract import QUOTE_POLICY_DEFAULT, SYNC_BOOTSTRAP_DOMAINS
 
 
 def create_sync_payload_handlers(

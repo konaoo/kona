@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/async_flow_logger.dart';
 import '../services/biometric_service.dart';
 import '../services/cache_service.dart';
 import '../services/portfolio_metrics_service.dart';
@@ -18,6 +19,7 @@ import 'app_refresh_state.dart';
 import 'app_security_state.dart';
 import 'app_sync_state.dart';
 import 'app_trade_state.dart';
+import 'generated_sync_contract.dart';
 export 'app_security_state.dart' show AuthLogoutMode;
 export 'app_auth_state.dart' show SessionBootState;
 
@@ -39,16 +41,6 @@ class AppState extends ChangeNotifier {
   static const Duration _syncVersionTtl = Duration(days: 365);
   static const Duration _userProfileTtl = Duration(days: 30);
   static const String _userProfileDomain = 'user_profile';
-  static const List<String> _syncBootstrapDomains = <String>[
-    'portfolio',
-    'cash_assets',
-    'other_assets',
-    'liabilities',
-    'history',
-    'overview_all',
-    'rates',
-  ];
-
   final ApiService _api;
   final SecureStorageService _secureStorage;
   final AppAssetsState _assetsState;
@@ -108,7 +100,7 @@ class AppState extends ChangeNotifier {
          ratesDataTtl: _ratesDataTtl,
          syncVersionTtl: _syncVersionTtl,
          priceRefreshMinInterval: _priceRefreshMinInterval,
-         syncBootstrapDomains: _syncBootstrapDomains,
+         syncBootstrapDomains: generatedSyncBootstrapDomains,
        ),
        _syncState = AppSyncState(cache: cache),
        _tradeState = AppTradeState(api: api),
@@ -182,6 +174,10 @@ class AppState extends ChangeNotifier {
   Map<String, PriceInfo> _priceSnapshots = {};
   String _currentCategory = 'all';
   bool _portfolioLoaded = false;
+  AppAsyncFlowResult? _lastHydrateResult;
+  AppAsyncFlowResult? _lastRefreshResult;
+  AppAsyncFlowResult? _lastSessionRestoreResult;
+  AppAsyncFlowResult? _lastSessionValidationResult;
 
   // 4) 汇率、市场与行情状态
   // 5) 历史概览与同步状态
@@ -219,6 +215,11 @@ class AppState extends ChangeNotifier {
   Map<String, PriceInfo> get prices => _prices;
   String get currentCategory => _currentCategory;
   bool get portfolioLoaded => _portfolioLoaded;
+  AppAsyncFlowResult? get lastHydrateResult => _lastHydrateResult;
+  AppAsyncFlowResult? get lastRefreshResult => _lastRefreshResult;
+  AppAsyncFlowResult? get lastSessionRestoreResult => _lastSessionRestoreResult;
+  AppAsyncFlowResult? get lastSessionValidationResult =>
+      _lastSessionValidationResult;
 
   List<Asset> get cashAssets => _assetsState.cashAssets;
   List<Asset> get otherAssets => _assetsState.otherAssets;
@@ -485,7 +486,20 @@ class AppState extends ChangeNotifier {
   );
 
   Future<void> hydrateFromCache() async {
-    await _refreshState.hydrateFromCache(bindings: _refreshBindings);
+    final flow = startAppAsyncFlow('flutter.hydrateFromCache');
+    try {
+      await _refreshState.hydrateFromCache(bindings: _refreshBindings);
+      _lastHydrateResult = finishAppAsyncFlow(
+        flow,
+        stage: 'cache-restored',
+      );
+    } catch (error) {
+      _lastHydrateResult = finishAppAsyncFlow(
+        flow,
+        stage: 'failed',
+        error: error,
+      );
+    }
   }
 
   // ============================================================
@@ -894,7 +908,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _restoreSession() async {
-    if (_authState.isSessionChecking) return;
+    final flow = startAppAsyncFlow('flutter.restoreSession');
+    if (_authState.isSessionChecking) {
+      _lastSessionRestoreResult = finishAppAsyncFlow(
+        flow,
+        stage: 'skip:checking',
+      );
+      return;
+    }
     _authState.syncLocalState(isSessionChecking: true, notify: false);
 
     String? token;
@@ -960,6 +981,10 @@ class AppState extends ChangeNotifier {
       _api.clearToken();
       _securityState.lockApp(notify: false);
       notifyListeners();
+      _lastSessionRestoreResult = finishAppAsyncFlow(
+        flow,
+        stage: 'biometric-locked',
+      );
       return;
     }
 
@@ -970,6 +995,10 @@ class AppState extends ChangeNotifier {
         notify: false,
       );
       notifyListeners();
+      _lastSessionRestoreResult = finishAppAsyncFlow(
+        flow,
+        stage: 'skip:no-refresh-token',
+      );
       return;
     }
 
@@ -984,6 +1013,10 @@ class AppState extends ChangeNotifier {
           unawaited(hydrateFromCache());
           unawaited(refreshAll());
           unawaited(_validateSessionInBackground());
+          _lastSessionRestoreResult = finishAppAsyncFlow(
+            flow,
+            stage: 'refresh-restored',
+          );
           return;
         }
       } catch (e) {
@@ -991,6 +1024,10 @@ class AppState extends ChangeNotifier {
       }
       await _clearSessionAndUnauthenticated();
       _authState.syncLocalState(isSessionChecking: false, notify: false);
+      _lastSessionRestoreResult = finishAppAsyncFlow(
+        flow,
+        stage: 'refresh-failed',
+      );
       return;
     }
 
@@ -1014,9 +1051,14 @@ class AppState extends ChangeNotifier {
     unawaited(hydrateFromCache());
     unawaited(refreshAll());
     unawaited(_validateSessionInBackground());
+    _lastSessionRestoreResult = finishAppAsyncFlow(
+      flow,
+      stage: 'token-restored',
+    );
   }
 
   Future<void> _validateSessionInBackground() async {
+    final flow = startAppAsyncFlow('flutter.validateSessionInBackground');
     Map<String, dynamic>? profile = _profileLoaderOverride != null
         ? await _profileLoaderOverride()
         : await _api.getProfile();
@@ -1031,10 +1073,20 @@ class AppState extends ChangeNotifier {
               ? refreshed['user'] as Map<String, dynamic>
               : await _api.getProfile();
         }
-      } catch (_) {}
+      } catch (error) {
+        _lastSessionValidationResult = finishAppAsyncFlow(
+          flow,
+          stage: 'refresh-failed',
+          error: error,
+        );
+      }
     }
     if (profile == null) {
       await _clearSessionAndUnauthenticated();
+      _lastSessionValidationResult = finishAppAsyncFlow(
+        flow,
+        stage: 'profile-missing',
+      );
       return;
     }
 
@@ -1050,6 +1102,10 @@ class AppState extends ChangeNotifier {
       notify: false,
     );
     notifyListeners();
+    _lastSessionValidationResult = finishAppAsyncFlow(
+      flow,
+      stage: 'profile-restored',
+    );
   }
 
   Future<void> _clearSessionAndUnauthenticated() async {
@@ -1200,7 +1256,20 @@ class AppState extends ChangeNotifier {
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll({bool force = false}) async {
-    await _refreshState.refreshAll(bindings: _refreshBindings, force: force);
+    final flow = startAppAsyncFlow('flutter.refreshAll');
+    try {
+      await _refreshState.refreshAll(bindings: _refreshBindings, force: force);
+      _lastRefreshResult = finishAppAsyncFlow(
+        flow,
+        stage: force ? 'force-finished' : 'finished',
+      );
+    } catch (error) {
+      _lastRefreshResult = finishAppAsyncFlow(
+        flow,
+        stage: 'failed',
+        error: error,
+      );
+    }
   }
 
   // ============================================================

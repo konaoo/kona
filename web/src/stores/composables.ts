@@ -3,7 +3,8 @@
  * 提供类似原 useKonaStore 的接口，便于迁移
  */
 
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { finishAsyncFlow, startAsyncFlow, type AsyncFlowResult } from '@/shared/asyncFlow'
 import { useAuthStore } from './auth'
 import { usePortfolioStore } from './portfolio'
 import { useQuoteStore } from './quote'
@@ -47,6 +48,7 @@ export function useKonaStore() {
   const quoteStore = useQuoteStore()
   const marketStore = useMarketStore()
   const syncStore = useSyncStore()
+  const lastRefreshResult = ref<AsyncFlowResult | null>(null)
 
   const currentUserId = String(authStore.userId || '').trim() || 'guest'
   if (hydratedCacheUserId !== currentUserId) {
@@ -123,10 +125,16 @@ export function useKonaStore() {
   // ───────────────────────────────────────────────────────────────
 
   const refreshAll = async () => {
+    const flow = startAsyncFlow('web.store.refreshAll')
     portfolioStore.loading = true
     try {
       await refreshStaticOnly()
       void refreshQuotesOnly()
+      lastRefreshResult.value = finishAsyncFlow(flow, 'static-finished')
+      return lastRefreshResult.value
+    } catch (error) {
+      lastRefreshResult.value = finishAsyncFlow(flow, 'failed', error)
+      throw error
     } finally {
       portfolioStore.loading = false
     }
@@ -138,36 +146,46 @@ export function useKonaStore() {
   }
 
   const refreshStaticOnly = async () => {
+    const flow = startAsyncFlow('web.store.refreshStaticOnly')
     try {
-      await syncStore.loadBootstrap('portfolio' as any)
+      await syncStore.loadBootstrap(['portfolio', 'rates'])
       if (!portfolioStore.portfolio.length) {
         await portfolioStore.loadPortfolio()
       }
       if (!Object.keys(marketStore.rates || {}).length) {
         await marketStore.loadRates()
       }
-    } catch {
+      syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
+      lastRefreshResult.value = finishAsyncFlow(flow, 'bootstrap-hit')
+      return lastRefreshResult.value
+    } catch (error) {
       await Promise.all([
         portfolioStore.loadPortfolio(),
         marketStore.loadMarketStatus(),
         marketStore.loadRates(),
       ])
+      syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
+      lastRefreshResult.value = finishAsyncFlow(flow, 'fallback-load', error)
+      return lastRefreshResult.value
     }
-    syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
   }
 
   const refreshQuotesOnly = async () => {
+    const flow = startAsyncFlow('web.store.refreshQuotesOnly')
     try {
-      const changed = await syncStore.loadBootstrap('portfolio' as any)
+      const changed = await syncStore.loadBootstrap(['portfolio'])
       if (!portfolioStore.portfolio.length && !changed.has('portfolio')) {
         await portfolioStore.loadPortfolio()
       }
-    } catch {
+    } catch (error) {
       await marketStore.loadMarketStatus()
+      lastRefreshResult.value = finishAsyncFlow(flow, 'market-status-fallback', error)
     }
 
     await loadQuotesProgressive()
     syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'full')
+    lastRefreshResult.value = finishAsyncFlow(flow, 'quotes-finished')
+    return lastRefreshResult.value
   }
 
   const startAutoRefresh = () => {
@@ -219,6 +237,8 @@ export function useKonaStore() {
     // Computed（向后兼容）
     isAuthenticated,
     isAdmin,
+    lastRefreshResult,
+    lastBootstrapResult: authStore.lastBootstrapResult,
 
     // Auth Actions
     bootstrap,

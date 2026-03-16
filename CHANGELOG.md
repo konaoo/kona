@@ -1,3 +1,28 @@
+## 2026-03-16-02
+
+### 这版一句话
+
+后台路由按职责拆分，sync 协议改成后端单一源并接入生成校验，关键异步链路补上结构化结果，降低后续维护和排障成本。
+
+### 主要变化
+- [admin_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes.py) 与 [admin_routes_dashboard.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_dashboard.py) / [admin_routes_users.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_users.py) / [admin_routes_user_write.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_user_write.py) / [admin_routes_config_ops.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_config_ops.py) / [admin_routes_data.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_data.py) / [admin_routes_apis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_apis.py) / [admin_routes_invites.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_invites.py)：把后台读写、配置、数据修复、巡检、邀请码链路从超大单文件里拆开，`admin_routes.py` 只保留共享 helper 和蓝图注册。
+- [sync_contract.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/sync_contract.py) / [generate_sync_contracts.py](/Users/kona/Desktop/kaka/kona_repo/scripts/generate_sync_contracts.py) / [generated_sync_contract.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/generated_sync_contract.ts) / [generated_sync_contract.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/generated_sync_contract.dart)：sync 协议改成后端单一源，Web 和 Flutter 常量从生成文件读取，不再三端各写一份。
+- [check_sync_contract_generated.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/ci/check_sync_contract_generated.sh) / [deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml)：把 sync 生成校验接进 `Repo Guard`，提交时如果忘了更新生成文件会直接失败。
+- [auth.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/auth.ts) / [composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts) / [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) / [asyncFlow.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/asyncFlow.ts) / [async_flow_logger.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/async_flow_logger.dart)：登录恢复、缓存恢复、refresh 主链路补结构化结果和日志，减少静默失败。
+- [router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts) / [router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)：路由守卫改为等待 bootstrap 完成再判定登录态，避免先跳再补状态。
+- [composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)：修掉 sync bootstrap 传字符串伪装数组的问题，避免某些场景误回落成默认全量域。
+
+### 影响范围
+- 后台路由结构、后台巡检与数据修复接口
+- Web / Flutter 的 sync 协议读取方式
+- Web / Flutter 登录恢复、缓存恢复、全量刷新链路
+- GitHub Actions 的仓库门禁
+
+### 验收重点
+- `python3 -m unittest kona_tool.tests.test_sync_bootstrap_api kona_tool.tests.test_admin_api_foundation kona_tool.tests.test_admin_api_policies kona_tool.tests.test_admin_invites kona_tool.tests.test_data_rebind -v` 通过
+- `npm run test`、`npm run build`、`flutter test` 通过
+- `bash scripts/ci/check_repo_hygiene.sh` 与 `bash scripts/ci/check_sync_contract_generated.sh` 通过
+
 ## 2026-03-16-01
 
 ### 这版一句话

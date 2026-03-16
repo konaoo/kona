@@ -5,6 +5,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
+import { finishAsyncFlow, startAsyncFlow, type AsyncFlowResult } from '@/shared/asyncFlow'
 import { toNumber } from '@/shared/format'
 import type {
   SyncDomain,
@@ -29,6 +30,7 @@ export const useSyncStore = defineStore('sync', () => {
 
   const syncVersions = ref<Partial<Record<SyncDomain, string>>>({})
   const loading = ref(false)
+  const lastBootstrapResult = ref<AsyncFlowResult | null>(null)
 
   // 请求去重
   const bootstrapInflight = new Map<string, Promise<Set<SyncDomain>>>()
@@ -257,6 +259,7 @@ export const useSyncStore = defineStore('sync', () => {
    * LoadBootstrap - 加载 bootstrap 数据
    */
   async function loadBootstrap(include: SyncDomain[] = SYNC_BOOTSTRAP.QUOTE_INCLUDE): Promise<Set<SyncDomain>> {
+    const flow = startAsyncFlow('web.sync.loadBootstrap')
     const portfolioStore = usePortfolioStore()
     const marketStore = useMarketStore()
     const quoteStore = useQuoteStore()
@@ -270,60 +273,68 @@ export const useSyncStore = defineStore('sync', () => {
 
     const request = (async () => {
       loading.value = true
+      try {
+        const clientVersions = include.reduce<Partial<Record<SyncDomain, string>>>((acc, domain) => {
+          acc[domain] = syncVersions.value[domain] || ''
+          return acc
+        }, {})
 
-      const clientVersions = include.reduce<Partial<Record<SyncDomain, string>>>((acc, domain) => {
-        acc[domain] = syncVersions.value[domain] || ''
-        return acc
-      }, {})
+        const payload = await api.post<BootstrapPayload>(
+          '/api/sync/bootstrap',
+          {
+            include,
+            client_versions: clientVersions,
+            portfolio_metrics: true,
+          },
+          true
+        )
 
-      const payload = await api.post<BootstrapPayload>(
-        '/api/sync/bootstrap',
-        {
-          include,
-          client_versions: clientVersions,
-          portfolio_metrics: true,
-        },
-        true
-      )
+        // 应用版本
+        applyBootstrapVersions(payload.versions)
 
-      loading.value = false
+        // 应用市场状态
+        marketStore.applyMarketStatuses(payload.market_statuses, payload.market_status)
 
-      // 应用版本
-      applyBootstrapVersions(payload.versions)
+        // 应用行情策略
+        quoteStore.applyQuotePolicy(payload.quote_policy)
 
-      // 应用市场状态
-      marketStore.applyMarketStatuses(payload.market_statuses, payload.market_status)
+        // 解析变更的域
+        const changed = new Set(
+          (payload.changed || [])
+            .map((x) => String(x))
+            .filter((x): x is SyncDomain => isSyncDomain(x))
+        )
 
-      // 应用行情策略
-      quoteStore.applyQuotePolicy(payload.quote_policy)
+        // 应用数据
+        const data = payload.data || {}
 
-      // 解析变更的域
-      const changed = new Set(
-        (payload.changed || [])
-          .map((x) => String(x))
-          .filter((x): x is SyncDomain => isSyncDomain(x))
-      )
-
-      // 应用数据
-      const data = payload.data || {}
-
-      if (Object.prototype.hasOwnProperty.call(data, 'portfolio')) {
-        const portfolio = data.portfolio
-        portfolioStore.portfolio = Array.isArray(portfolio) ? portfolio : []
-      }
-
-      if (Object.prototype.hasOwnProperty.call(data, 'rates')) {
-        const rates = data.rates as Record<string, unknown>
-        const nextRates: Record<string, number> = {}
-        if (rates && typeof rates === 'object') {
-          for (const [k, v] of Object.entries(rates)) {
-            nextRates[k] = toNumber(v, 1)
-          }
+        if (Object.prototype.hasOwnProperty.call(data, 'portfolio')) {
+          const portfolio = data.portfolio
+          portfolioStore.portfolio = Array.isArray(portfolio) ? portfolio : []
         }
-        marketStore.rates = nextRates
-      }
 
-      return changed
+        if (Object.prototype.hasOwnProperty.call(data, 'rates')) {
+          const rates = data.rates as Record<string, unknown>
+          const nextRates: Record<string, number> = {}
+          if (rates && typeof rates === 'object') {
+            for (const [k, v] of Object.entries(rates)) {
+              nextRates[k] = toNumber(v, 1)
+            }
+          }
+          marketStore.rates = nextRates
+        }
+
+        lastBootstrapResult.value = finishAsyncFlow(
+          flow,
+          changed.size ? `changed:${[...changed].join(',')}` : 'no-change'
+        )
+        return changed
+      } catch (error) {
+        lastBootstrapResult.value = finishAsyncFlow(flow, 'failed', error)
+        throw error
+      } finally {
+        loading.value = false
+      }
     })()
 
     bootstrapInflight.set(includeKey, request)
@@ -382,6 +393,7 @@ export const useSyncStore = defineStore('sync', () => {
     // State
     syncVersions,
     loading,
+    lastBootstrapResult,
 
     // Actions
     loadBootstrap,

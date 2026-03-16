@@ -28,6 +28,9 @@ jobs:
       - name: Repo hygiene guard
         run: bash scripts/ci/check_repo_hygiene.sh
 
+      - name: Sync contract guard
+        run: bash scripts/ci/check_sync_contract_generated.sh
+
       - name: CHANGELOG guard
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
