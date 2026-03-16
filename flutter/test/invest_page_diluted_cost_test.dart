@@ -27,7 +27,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  Future<void> _pumpInvestPage(
+  Future<void> pumpInvestPage(
     WidgetTester tester,
     List<PortfolioItem> items,
   ) async {
@@ -47,7 +47,7 @@ void main() {
   testWidgets('InvestPage shows diluted cost after realized profit', (
     tester,
   ) async {
-    await _pumpInvestPage(tester, <PortfolioItem>[
+    await pumpInvestPage(tester, <PortfolioItem>[
       PortfolioItem(
         code: 'sh600000',
         name: '浦发银行',
@@ -65,7 +65,7 @@ void main() {
   });
 
   testWidgets('InvestPage keeps negative diluted cost visible', (tester) async {
-    await _pumpInvestPage(tester, <PortfolioItem>[
+    await pumpInvestPage(tester, <PortfolioItem>[
       PortfolioItem(
         code: 'sh600001',
         name: '测试负成本',

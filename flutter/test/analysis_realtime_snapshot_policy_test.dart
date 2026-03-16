@@ -22,7 +22,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<Map<String, dynamic>> _overviewLoader(String _) async {
+  Future<Map<String, dynamic>> overviewLoader(String _) async {
     return {
       'day': {'pnl': 999.0, 'pnl_rate': 9.99},
       'month': {'pnl': 222.0, 'pnl_rate': 2.22},
@@ -31,7 +31,7 @@ void main() {
     };
   }
 
-  Widget _buildPage({
+  Widget buildPage({
     required Future<Map<String, dynamic>> Function({
       required String timeType,
       int? year,
@@ -44,18 +44,19 @@ void main() {
       child: MaterialApp(
         home: Scaffold(
           body: AnalysisPage(
-            overviewLoader: _overviewLoader,
+            overviewLoader: overviewLoader,
             calendarLoader: calendarLoader,
-            rankLoader: ({String rankType = 'all', String market = 'all'}) async {
-              return {'gain': [], 'loss': []};
-            },
+            rankLoader:
+                ({String rankType = 'all', String market = 'all'}) async {
+                  return {'gain': [], 'loss': []};
+                },
           ),
         ),
       ),
     );
   }
 
-  Map<String, dynamic> _buildCalendarPayload({
+  Map<String, dynamic> buildCalendarPayload({
     required String timeType,
     required int year,
     int? month,
@@ -74,14 +75,19 @@ void main() {
       'period': {
         'time_type': timeType,
         'year': year,
-        if (month != null) 'month': month,
+        ...?switch (month) {
+          final value? => {'month': value},
+          null => null,
+        },
       },
       'selectable': {
         'day': {
           'years': dayYears ?? [year],
           'months_by_year':
               monthsByYear ??
-              <String, dynamic>{'$year': [if (month != null) month else 1]},
+              <String, dynamic>{
+                '$year': [if (month != null) month else 1],
+              },
         },
         'month': {
           'years': monthYears ?? [year],
@@ -93,9 +99,9 @@ void main() {
   testWidgets('顶部大卡只展示概览口径', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
-      _buildPage(
+      buildPage(
         calendarLoader: ({required timeType, year, month}) async =>
-            _buildCalendarPayload(
+            buildCalendarPayload(
               timeType: timeType,
               year: year ?? now.year,
               month: month ?? now.month,
@@ -121,9 +127,9 @@ void main() {
     final now = DateTime.now();
     final todayLabel = '${now.month}-${now.day}';
     await tester.pumpWidget(
-      _buildPage(
+      buildPage(
         calendarLoader: ({required timeType, year, month}) async =>
-            _buildCalendarPayload(
+            buildCalendarPayload(
               timeType: 'day',
               year: now.year,
               month: now.month,
@@ -155,9 +161,9 @@ void main() {
         ? lastDayOfPreviousMonth
         : now.day;
     await tester.pumpWidget(
-      _buildPage(
+      buildPage(
         calendarLoader: ({required timeType, year, month}) async =>
-            _buildCalendarPayload(
+            buildCalendarPayload(
               timeType: 'day',
               year: previousMonth.year,
               month: previousMonth.month,
@@ -185,10 +191,10 @@ void main() {
   testWidgets('切换日历视图不影响顶部大卡当前周期', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
-      _buildPage(
+      buildPage(
         calendarLoader: ({required timeType, year, month}) async {
           if (timeType == 'month') {
-            return _buildCalendarPayload(
+            return buildCalendarPayload(
               timeType: 'month',
               year: year ?? now.year,
               items: const [
@@ -198,7 +204,7 @@ void main() {
               totalRate: 0.1,
             );
           }
-          return _buildCalendarPayload(
+          return buildCalendarPayload(
             timeType: 'day',
             year: year ?? now.year,
             month: month ?? now.month,
@@ -224,9 +230,9 @@ void main() {
   testWidgets('日历底部汇总优先使用接口 total_pnl，使用后端周期累计口径', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
-      _buildPage(
+      buildPage(
         calendarLoader: ({required timeType, year, month}) async =>
-            _buildCalendarPayload(
+            buildCalendarPayload(
               timeType: 'day',
               year: now.year,
               month: now.month,

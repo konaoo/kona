@@ -100,33 +100,41 @@ class _ProfilePageState extends State<ProfilePage> {
           showClose: false,
           showDivider: true,
           primaryText: '保存二维码',
-          onPrimary: imageUrl.isEmpty ? null : () async {
-            final scaffoldMessenger = ScaffoldMessenger.of(context);
-            try {
-              final response = await http.get(Uri.parse(imageUrl)).timeout(const Duration(seconds: 15));
-              if (response.statusCode == 200) {
-                // 先保存到本地临时文件，再保存到相册，增加兼容性
-                final tempDir = await getTemporaryDirectory();
-                final tempFile = File('${tempDir.path}/kaka_qr_${DateTime.now().millisecondsSinceEpoch}.png');
-                await tempFile.writeAsBytes(response.bodyBytes);
-                
-                await Gal.putImage(tempFile.path);
-                
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('二维码已保存至相册')),
-                );
-              } else {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('下载失败: HTTP ${response.statusCode}')),
-                );
-              }
-            } catch (e) {
-              debugPrint('保存图片失败: $e');
-              scaffoldMessenger.showSnackBar(
-                SnackBar(content: Text('保存失败: $e')),
-              );
-            }
-          },
+          onPrimary: imageUrl.isEmpty
+              ? null
+              : () async {
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                  try {
+                    final response = await http
+                        .get(Uri.parse(imageUrl))
+                        .timeout(const Duration(seconds: 15));
+                    if (response.statusCode == 200) {
+                      // 先保存到本地临时文件，再保存到相册，增加兼容性
+                      final tempDir = await getTemporaryDirectory();
+                      final tempFile = File(
+                        '${tempDir.path}/kaka_qr_${DateTime.now().millisecondsSinceEpoch}.png',
+                      );
+                      await tempFile.writeAsBytes(response.bodyBytes);
+
+                      await Gal.putImage(tempFile.path);
+
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text('二维码已保存至相册')),
+                      );
+                    } else {
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(
+                          content: Text('下载失败: HTTP ${response.statusCode}'),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    debugPrint('保存图片失败: $e');
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text('保存失败: $e')),
+                    );
+                  }
+                },
           body: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -191,11 +199,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               width: 92,
                               height: 92,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                Icons.qr_code_2,
-                                size: 80,
-                                color: Colors.black,
-                              ),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(
+                                    Icons.qr_code_2,
+                                    size: 80,
+                                    color: Colors.black,
+                                  ),
                             ),
                           )
                         : const Icon(
@@ -233,9 +242,9 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('获取运营配置失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('获取运营配置失败: $e')));
     }
   }
 
@@ -630,9 +639,7 @@ class _ProfilePageState extends State<ProfilePage> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0x2E5B8DEF),
-        ),
+        border: Border.all(color: const Color(0x2E5B8DEF)),
         boxShadow: [
           if (appState.isLightTheme)
             const BoxShadow(
@@ -659,35 +666,35 @@ class _ProfilePageState extends State<ProfilePage> {
                   flex: 1,
                   fit: FlexFit.loose,
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: appState.isLightTheme
-                            ? const Color(0xFF1F2A3D)
-                            : const Color(0xFFE6EBF7),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: appState.isLightTheme
+                              ? const Color(0xFF1F2A3D)
+                              : const Color(0xFFE6EBF7),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '已在咔咔记录 $days天',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        letterSpacing: 0.01,
-                        color: appState.isLightTheme
-                            ? const Color(0xFF55617B)
-                            : const Color(0xB5FFFFFF),
+                      const SizedBox(height: 5),
+                      Text(
+                        '已在咔咔记录 $days天',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: 0.01,
+                          color: appState.isLightTheme
+                              ? const Color(0xFF55617B)
+                              : const Color(0xB5FFFFFF),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               ],
             ),
           ),
@@ -751,9 +758,11 @@ class _ProfilePageState extends State<ProfilePage> {
             trailing: Switch(
               value: isLight,
               onChanged: (_) => appState.toggleTheme(),
-              activeColor: Colors.white,
+              activeThumbColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
-              inactiveThumbColor: isLight ? Colors.white : const Color(0xFFD8DEEB),
+              inactiveThumbColor: isLight
+                  ? Colors.white
+                  : const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
                   ? const Color(0xFFDFE4ED)
                   : const Color(0x29FFFFFF),
@@ -782,9 +791,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   ).showSnackBar(const SnackBar(content: Text('当前设备不可用生物识别')));
                 }
               },
-              activeColor: Colors.white,
+              activeThumbColor: Colors.white,
               activeTrackColor: const Color(0xFF5B8DEF),
-              inactiveThumbColor: isLight ? Colors.white : const Color(0xFFD8DEEB),
+              inactiveThumbColor: isLight
+                  ? Colors.white
+                  : const Color(0xFFD8DEEB),
               inactiveTrackColor: isLight
                   ? const Color(0xFFDFE4ED)
                   : const Color(0x29FFFFFF),
@@ -871,8 +882,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
-              if (trailing != null) trailing,
-              if (trailing == null) ...[
+              if (trailing case final trailingWidget?)
+                trailingWidget
+              else ...[
                 if (trailingValue != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 6),

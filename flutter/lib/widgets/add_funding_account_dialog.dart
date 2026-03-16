@@ -20,7 +20,7 @@ Future<int?> showAddFundingAccountDialog({
     barrierLabel: '添加资金账户',
     barrierColor: const Color(0xA6000000),
     transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (_, __, ___) {
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
       return AddAssetDialog(
         hostContext: hostContext ?? context,
         fixedAssetType: forceAssetTypeCash ? 'cash' : null,
@@ -30,7 +30,7 @@ Future<int?> showAddFundingAccountDialog({
         returnCreatedAssetId: true,
       );
     },
-    transitionBuilder: (_, animation, __, child) {
+    transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(
         parent: animation,
         curve: Curves.easeOutBack,

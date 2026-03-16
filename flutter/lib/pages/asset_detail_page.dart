@@ -20,30 +20,44 @@ class AssetDetailPage extends StatelessWidget {
   static Color get _text => AppTheme.textPrimary;
   static Color get _textMuted => AppTheme.textMuted;
   static Color get _nameText => AppTheme.heroValueColor;
-  static Color get _amountText => AppTheme.isLight ? const Color(0xFF3D4E6A) : const Color(0xFFBCC4D3);
+  static Color get _amountText =>
+      AppTheme.isLight ? const Color(0xFF3D4E6A) : const Color(0xFFBCC4D3);
   static Color get _amountZero => AppTheme.textDim;
   static Color get _gold => AppTheme.gold;
   static Color get _iconColor => AppTheme.accent;
 
   // Cached TextStyles – re-created each build for theme-awareness
   static TextStyle get _titleStyle => GoogleFonts.dmSans(
-    fontSize: 16, fontWeight: FontWeight.w600, color: _text,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: _text,
   );
-  static TextStyle get _countStyle => GoogleFonts.dmSans(fontSize: 11, color: _textMuted);
+  static TextStyle get _countStyle =>
+      GoogleFonts.dmSans(fontSize: 11, color: _textMuted);
   static TextStyle get _emptyTitle => GoogleFonts.dmSans(
-    fontSize: 16, fontWeight: FontWeight.w600, color: _text,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: _text,
   );
-  static TextStyle get _emptySub => GoogleFonts.dmSans(fontSize: 12, color: _textMuted);
+  static TextStyle get _emptySub =>
+      GoogleFonts.dmSans(fontSize: 12, color: _textMuted);
   static TextStyle get _nameStyle => GoogleFonts.dmSans(
-    fontSize: 15, fontWeight: FontWeight.w700, color: _nameText,
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    color: _nameText,
   );
   static final _amountSymbol = GoogleFonts.jetBrainsMono(
-    fontSize: 12, fontWeight: FontWeight.w500,
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
   );
   static final _amountValue = GoogleFonts.jetBrainsMono(
-    fontSize: 13, fontWeight: FontWeight.w500,
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
   );
-  static final _amountUnit = GoogleFonts.dmSans(fontSize: 9, fontWeight: FontWeight.w500);
+  static final _amountUnit = GoogleFonts.dmSans(
+    fontSize: 9,
+    fontWeight: FontWeight.w500,
+  );
 
   String _getTitle() {
     switch (assetType) {
@@ -167,9 +181,7 @@ class AssetDetailPage extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Center(
-              child: Text(_getTitle(), style: _titleStyle),
-            ),
+            child: Center(child: Text(_getTitle(), style: _titleStyle)),
           ),
           SizedBox(
             width: 66,
@@ -210,7 +222,9 @@ class AssetDetailPage extends StatelessWidget {
     final amount = _displayAmount(asset);
     final amountValueColor = amount.isZero ? _amountZero : _amountText;
     final amountSymbolColor = amount.isZero ? _amountZero : _gold;
-    final amountUnitColor = amount.isZero ? const Color(0xFF838A9A) : const Color(0xFF8A92A3);
+    final amountUnitColor = amount.isZero
+        ? const Color(0xFF838A9A)
+        : const Color(0xFF8A92A3);
 
     return Material(
       color: Colors.transparent,
@@ -298,9 +312,7 @@ class AssetDetailPage extends StatelessWidget {
                           const SizedBox(width: 5),
                           Text(
                             amount.unit,
-                            style: _amountUnit.copyWith(
-                              color: amountUnitColor,
-                            ),
+                            style: _amountUnit.copyWith(color: amountUnitColor),
                           ),
                         ],
                       ),
@@ -344,7 +356,7 @@ class AssetDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 监听全局状态变化（特别是主题切换）
-    final appState = context.watch<AppState>();
+    context.watch<AppState>();
 
     return Scaffold(
       backgroundColor: _bg,

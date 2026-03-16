@@ -14,7 +14,7 @@ void main() {
   test('web write falls back when secure storage write throws', () async {
     final service = SecureStorageService(
       isWebOverride: true,
-      secureWriteOverride: (_, __) async {
+      secureWriteOverride: (key, value) async {
         throw Exception('secure write failed');
       },
       secureReadOverride: (_) async {

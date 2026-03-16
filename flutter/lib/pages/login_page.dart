@@ -41,25 +41,80 @@ class _C {
 class _S {
   _S._();
   // DM Sans
-  static final brandName = GoogleFonts.dmSans(fontSize: 22, fontWeight: FontWeight.w700, color: _C.text, letterSpacing: -0.3);
-  static final brandSub = GoogleFonts.dmSans(fontSize: 11, color: _C.textDim, letterSpacing: 1.1);
-  static final tabActive = GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w600, color: _C.text);
-  static final tabInactive = GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white.withValues(alpha: 0.4));
-  static final fieldLabel = GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.w500, color: _C.textSub, letterSpacing: 0.3);
+  static final brandName = GoogleFonts.dmSans(
+    fontSize: 22,
+    fontWeight: FontWeight.w700,
+    color: _C.text,
+    letterSpacing: -0.3,
+  );
+  static final brandSub = GoogleFonts.dmSans(
+    fontSize: 11,
+    color: _C.textDim,
+    letterSpacing: 1.1,
+  );
+  static final tabActive = GoogleFonts.dmSans(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: _C.text,
+  );
+  static final tabInactive = GoogleFonts.dmSans(
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    color: Colors.white.withValues(alpha: 0.4),
+  );
+  static final fieldLabel = GoogleFonts.dmSans(
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    color: _C.textSub,
+    letterSpacing: 0.3,
+  );
   static final fieldError = GoogleFonts.dmSans(fontSize: 10, color: _C.up);
-  static final rememberTxt = GoogleFonts.dmSans(fontSize: 12, color: _C.textDim);
-  static final btn = GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white);
-  static final strengthLabel = GoogleFonts.dmSans(fontSize: 10, color: _C.textDim);
-  static final badgeTxt = GoogleFonts.dmSans(fontSize: 11, color: _C.gold, height: 1.5);
-  static final legalBase = GoogleFonts.dmSans(fontSize: 11, color: _C.textDim, height: 1.6);
+  static final rememberTxt = GoogleFonts.dmSans(
+    fontSize: 12,
+    color: _C.textDim,
+  );
+  static final btn = GoogleFonts.dmSans(
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    color: Colors.white,
+  );
+  static final strengthLabel = GoogleFonts.dmSans(
+    fontSize: 10,
+    color: _C.textDim,
+  );
+  static final badgeTxt = GoogleFonts.dmSans(
+    fontSize: 11,
+    color: _C.gold,
+    height: 1.5,
+  );
+  static final legalBase = GoogleFonts.dmSans(
+    fontSize: 11,
+    color: _C.textDim,
+    height: 1.6,
+  );
   static final inputText = GoogleFonts.dmSans(fontSize: 14, color: _C.text);
   static final inputHint = GoogleFonts.dmSans(fontSize: 13, color: _C.textDim);
   static final snackTxt = GoogleFonts.dmSans(color: Colors.white);
-  static final dialogDesc = GoogleFonts.dmSans(fontSize: 12, color: _C.textDim, height: 1.6);
-  static final saveBtn = GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500, color: _C.textSub);
+  static final dialogDesc = GoogleFonts.dmSans(
+    fontSize: 12,
+    color: _C.textDim,
+    height: 1.6,
+  );
+  static final saveBtn = GoogleFonts.dmSans(
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    color: _C.textSub,
+  );
   // JetBrains Mono
-  static final monoInput = GoogleFonts.jetBrainsMono(fontSize: 14, color: _C.text);
-  static final monoUpper = GoogleFonts.jetBrainsMono(fontSize: 15, color: _C.text, letterSpacing: 1.5);
+  static final monoInput = GoogleFonts.jetBrainsMono(
+    fontSize: 14,
+    color: _C.text,
+  );
+  static final monoUpper = GoogleFonts.jetBrainsMono(
+    fontSize: 15,
+    color: _C.text,
+    letterSpacing: 1.5,
+  );
 }
 
 // ───────────────────────────────────────────
@@ -167,37 +222,37 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       parent: _entranceCtrl,
       curve: const Interval(0.0, 0.7, curve: Curves.ease),
     );
-    _brandSlide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.0, 0.7, curve: Curves.ease),
-    ));
+    _brandSlide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.0, 0.7, curve: Curves.ease),
+          ),
+        );
 
     _cardFade = CurvedAnimation(
       parent: _entranceCtrl,
       curve: const Interval(0.13, 0.83, curve: Curves.ease),
     );
-    _cardSlide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.13, 0.83, curve: Curves.ease),
-    ));
+    _cardSlide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.13, 0.83, curve: Curves.ease),
+          ),
+        );
 
     _footerFade = CurvedAnimation(
       parent: _entranceCtrl,
       curve: const Interval(0.33, 1.0, curve: Curves.ease),
     );
-    _footerSlide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.33, 1.0, curve: Curves.ease),
-    ));
+    _footerSlide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.33, 1.0, curve: Curves.ease),
+          ),
+        );
 
     _entranceCtrl.forward();
 
@@ -329,9 +384,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     setState(() => _loginBtnState = 'loading');
 
     final success = await context.read<AppState>().login(
-          username: acc,
-          password: pw,
-        );
+      username: acc,
+      password: pw,
+    );
 
     if (!mounted) return;
 
@@ -392,10 +447,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     setState(() => _regBtnState = 'loading');
 
     final success = await context.read<AppState>().register(
-          username: acc,
-          password: pw,
-          inviteCode: inv,
-        );
+      username: acc,
+      password: pw,
+      inviteCode: inv,
+    );
 
     if (!mounted) return;
 
@@ -468,15 +523,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           child: CustomPaint(painter: _LogoMPainter()),
         ),
         const SizedBox(height: 14),
-        Text(
-          '咔咔记账',
-          style: _S.brandName,
-        ),
+        Text('咔咔记账', style: _S.brandName),
         const SizedBox(height: 4),
-        Text(
-          '一站式管理全市场资产',
-          style: _S.brandSub,
-        ),
+        Text('一站式管理全市场资产', style: _S.brandSub),
       ],
     );
   }
@@ -491,18 +540,27 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       ),
       child: Row(
         children: [
-          _buildTab('登录', isActive: _currentTab == 'login',
-              onTap: () => _switchTab('login')),
+          _buildTab(
+            '登录',
+            isActive: _currentTab == 'login',
+            onTap: () => _switchTab('login'),
+          ),
           const SizedBox(width: 2),
-          _buildTab('注册', isActive: _currentTab == 'register',
-              onTap: () => _switchTab('register')),
+          _buildTab(
+            '注册',
+            isActive: _currentTab == 'register',
+            onTap: () => _switchTab('register'),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTab(String label,
-      {required bool isActive, required VoidCallback onTap}) {
+  Widget _buildTab(
+    String label, {
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -550,15 +608,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               Container(
                 width: 4,
                 height: 4,
-                decoration:
-                    const BoxDecoration(color: _C.blue, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: _C.blue,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 4),
             ],
-            Text(
-              label,
-              style: _S.fieldLabel,
-            ),
+            Text(label, style: _S.fieldLabel),
           ],
         ),
         const SizedBox(height: 6),
@@ -566,10 +623,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         if (err != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Text(
-              err,
-              style: _S.fieldError,
-            ),
+            child: Text(err, style: _S.fieldError),
           ),
       ],
     );
@@ -642,10 +696,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       : null,
                 ),
                 const SizedBox(width: 7),
-                Text(
-                  '记住用户名',
-                  style: _S.rememberTxt,
-                ),
+                Text('记住用户名', style: _S.rememberTxt),
               ],
             ),
           ),
@@ -654,18 +705,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('功能开发中',
-                      style: _S.snackTxt),
+                  content: Text('功能开发中', style: _S.snackTxt),
                   duration: const Duration(seconds: 2),
                   backgroundColor: _C.card2,
                   behavior: SnackBarBehavior.floating,
                 ),
               );
             },
-            child: Text(
-              '忘记密码？',
-              style: _S.rememberTxt,
-            ),
+            child: Text('忘记密码？', style: _S.rememberTxt),
           ),
         ],
       ),
@@ -698,8 +745,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: (isSuccess ? const Color(0xFF2ECC8A) : _C.blue)
-                  .withValues(alpha: 0.35),
+              color: (isSuccess ? const Color(0xFF2ECC8A) : _C.blue).withValues(
+                alpha: 0.35,
+              ),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -715,10 +763,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     strokeWidth: 2,
                   ),
                 )
-              : Text(
-                  isSuccess ? successLabel : label,
-                  style: _S.btn,
-                ),
+              : Text(isSuccess ? successLabel : label, style: _S.btn),
         ),
       ),
     );
@@ -760,10 +805,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             }),
           ),
           const SizedBox(height: 3),
-          Text(
-            label,
-            style: _S.strengthLabel,
-          ),
+          Text(label, style: _S.strengthLabel),
         ],
       ),
     );
@@ -1064,7 +1106,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     constraints: const BoxConstraints(maxWidth: 380),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 24),
+                        horizontal: 20,
+                        vertical: 24,
+                      ),
                       child: Column(
                         children: [
                           // 品牌区
@@ -1090,29 +1134,34 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       border: Border.all(color: _C.border),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.4),
+                                          color: Colors.black.withValues(
+                                            alpha: 0.4,
+                                          ),
                                           blurRadius: 60,
                                           offset: const Offset(0, 24),
                                         ),
                                       ],
                                     ),
                                     padding: const EdgeInsets.fromLTRB(
-                                        24, 28, 24, 24),
+                                      24,
+                                      28,
+                                      24,
+                                      24,
+                                    ),
                                     child: Column(
                                       children: [
                                         _buildTabSwitcher(),
                                         const SizedBox(height: 24),
                                         AnimatedSwitcher(
                                           duration: const Duration(
-                                              milliseconds: 220),
+                                            milliseconds: 220,
+                                          ),
                                           transitionBuilder: (child, anim) {
                                             return FadeTransition(
                                               opacity: anim,
                                               child: SlideTransition(
                                                 position: Tween<Offset>(
-                                                  begin:
-                                                      const Offset(0, 0.02),
+                                                  begin: const Offset(0, 0.02),
                                                   end: Offset.zero,
                                                 ).animate(anim),
                                                 child: child,
@@ -1121,15 +1170,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                           },
                                           child: _currentTab == 'login'
                                               ? KeyedSubtree(
-                                                  key: const ValueKey(
-                                                      'login'),
+                                                  key: const ValueKey('login'),
                                                   child: _buildLoginPanel(),
                                                 )
                                               : KeyedSubtree(
                                                   key: const ValueKey(
-                                                      'register'),
-                                                  child:
-                                                      _buildRegisterPanel(),
+                                                    'register',
+                                                  ),
+                                                  child: _buildRegisterPanel(),
                                                 ),
                                         ),
                                       ],
@@ -1146,8 +1194,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                         gradient: LinearGradient(
                                           colors: [
                                             Colors.transparent,
-                                            Colors.white
-                                                .withValues(alpha: 0.08),
+                                            Colors.white.withValues(
+                                              alpha: 0.08,
+                                            ),
                                             Colors.transparent,
                                           ],
                                         ),
@@ -1252,8 +1301,8 @@ class _InputWrapState extends State<_InputWrap> {
           color: widget.hasError
               ? _C.borderErr
               : _focused
-                  ? _C.borderFocus
-                  : Colors.white.withValues(alpha: 0.12),
+              ? _C.borderFocus
+              : Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
         boxShadow: widget.hasError
@@ -1265,14 +1314,14 @@ class _InputWrapState extends State<_InputWrap> {
                 ),
               ]
             : _focused
-                ? [
-                    BoxShadow(
-                      color: _C.blue.withValues(alpha: 0.08),
-                      blurRadius: 0,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                : [],
+            ? [
+                BoxShadow(
+                  color: _C.blue.withValues(alpha: 0.08),
+                  blurRadius: 0,
+                  spreadRadius: 3,
+                ),
+              ]
+            : [],
       ),
       child: Row(
         children: [
@@ -1301,8 +1350,7 @@ class _InputWrapState extends State<_InputWrap> {
                   if (upper != v) {
                     widget.controller.value = TextEditingValue(
                       text: upper,
-                      selection:
-                          TextSelection.collapsed(offset: upper.length),
+                      selection: TextSelection.collapsed(offset: upper.length),
                     );
                   }
                 }
@@ -1364,8 +1412,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
   bool _loading = true;
   bool _saving = false;
 
-  static const String _defaultText =
-      '扫描下方微信二维码，添加好友后发送「咔咔记账邀请码」即可获取，仅限内测用户。';
+  static const String _defaultText = '扫描下方微信二维码，添加好友后发送「咔咔记账邀请码」即可获取，仅限内测用户。';
 
   @override
   void initState() {
@@ -1379,8 +1426,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _imageUrl =
-          payload?['invite_acquire_image_url']?.toString().trim() ?? '';
+      _imageUrl = payload?['invite_acquire_image_url']?.toString().trim() ?? '';
       final serverText =
           payload?['invite_acquire_text']?.toString().trim() ?? '';
       if (serverText.isNotEmpty) _text = serverText;
@@ -1396,16 +1442,18 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
         // Write to temp file then save to gallery
         final tempDir = await Directory.systemTemp.createTemp('kaka_invite');
         final file = File(
-            '${tempDir.path}/kaka_invite_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          '${tempDir.path}/kaka_invite_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
         await file.writeAsBytes(response.bodyBytes);
         await Gal.putImage(file.path);
         // Clean up temp file
-        try { await tempDir.delete(recursive: true); } catch (_) {}
+        try {
+          await tempDir.delete(recursive: true);
+        } catch (_) {}
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已保存到相册',
-                style: _S.snackTxt),
+            content: Text('已保存到相册', style: _S.snackTxt),
             duration: const Duration(seconds: 2),
             backgroundColor: _C.down,
             behavior: SnackBarBehavior.floating,
@@ -1416,8 +1464,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('保存失败',
-              style: _S.snackTxt),
+          content: Text('保存失败', style: _S.snackTxt),
           duration: const Duration(seconds: 2),
           backgroundColor: _C.up,
           behavior: SnackBarBehavior.floating,
@@ -1487,15 +1534,16 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
                       ),
                     )
                   : _imageUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            _imageUrl,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => _buildQrPlaceholder(),
-                          ),
-                        )
-                      : _buildQrPlaceholder(),
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        _imageUrl,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildQrPlaceholder(),
+                      ),
+                    )
+                  : _buildQrPlaceholder(),
             ),
             const SizedBox(height: 14),
             // 保存按钮
@@ -1521,13 +1569,13 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
                               strokeWidth: 1.5,
                             ),
                           )
-                        : const Icon(Icons.download_outlined,
-                            size: 14, color: _C.textSub),
+                        : const Icon(
+                            Icons.download_outlined,
+                            size: 14,
+                            color: _C.textSub,
+                          ),
                     const SizedBox(width: 6),
-                    Text(
-                      _saving ? '保存中...' : '保存图片',
-                      style: _S.saveBtn,
-                    ),
+                    Text(_saving ? '保存中...' : '保存图片', style: _S.saveBtn),
                   ],
                 ),
               ),
@@ -1547,7 +1595,10 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
           const SizedBox(height: 8),
           Text(
             '二维码加载失败',
-            style: GoogleFonts.dmSans(fontSize: 12, color: Colors.grey[400]),  // placeholder, no cache needed
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              color: Colors.grey[400],
+            ), // placeholder, no cache needed
           ),
         ],
       ),

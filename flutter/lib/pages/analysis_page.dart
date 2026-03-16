@@ -29,42 +29,58 @@ class _S {
   _S._();
   // Overview
   static final label = GoogleFonts.dmSans(
-    fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.01,
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.01,
   );
   static final value = GoogleFonts.jetBrainsMono(
-    fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -0.02,
+    fontSize: 28,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.02,
   );
   static final pnlRate = GoogleFonts.dmSans(
-    fontSize: 12, fontWeight: FontWeight.w700,
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
   );
   // Calendar
   static final calDate = GoogleFonts.jetBrainsMono(
-    fontSize: 13, fontWeight: FontWeight.w600,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
   );
   static final calPnl = GoogleFonts.jetBrainsMono(
-    fontSize: 9, fontWeight: FontWeight.w700,
+    fontSize: 9,
+    fontWeight: FontWeight.w700,
   );
   static final calSumLabel = GoogleFonts.dmSans(
-    fontSize: 11, fontWeight: FontWeight.w500,
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
   );
   static final calSumVal = GoogleFonts.jetBrainsMono(
-    fontSize: 18, fontWeight: FontWeight.w700,
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
   );
   // Rankings
   static final rankName = GoogleFonts.dmSans(
-    fontSize: 14, fontWeight: FontWeight.w600, height: 1.2,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
   );
   static final rankCode = GoogleFonts.jetBrainsMono(
-    fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.02,
+    fontSize: 10,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.02,
   );
   static final rankVal = GoogleFonts.jetBrainsMono(
-    fontSize: 15, fontWeight: FontWeight.w700,
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
   );
   static final rankPct = GoogleFonts.dmSans(
-    fontSize: 11, fontWeight: FontWeight.w600,
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
   );
   static final tabText = GoogleFonts.dmSans(
-    fontSize: 13, fontWeight: FontWeight.w600,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
   );
 }
 
@@ -84,10 +100,7 @@ class AnalysisPage extends StatefulWidget {
     int? month,
   })?
   calendarLoader;
-  final Future<Map<String, dynamic>> Function({
-    String rankType,
-    String market,
-  })?
+  final Future<Map<String, dynamic>> Function({String rankType, String market})?
   rankLoader;
 
   @override
@@ -581,10 +594,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final rateText = appState.amountHidden
         ? '--'
         : (hasRate
-            ? '${rateValue >= 0 ? '+' : ''}${rateValue.toStringAsFixed(2)}%'
-            : '--');
+              ? '${rateValue >= 0 ? '+' : ''}${rateValue.toStringAsFixed(2)}%'
+              : '--');
     final rateIcon = hasRate
-        ? (rateValue >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded)
+        ? (rateValue >= 0
+              ? Icons.trending_up_rounded
+              : Icons.trending_down_rounded)
         : Icons.remove_rounded;
 
     String title;
@@ -611,7 +626,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Text(
             title,
-            style: _S.label.copyWith(color: const Color(0xFF9AA3B7), fontSize: 13),
+            style: _S.label.copyWith(
+              color: const Color(0xFF9AA3B7),
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 12),
           FittedBox(
@@ -694,10 +712,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: blue.withOpacity(0.3),
+                      color: blue.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
-                    )
+                    ),
                   ]
                 : null,
           ),
@@ -804,14 +822,26 @@ class _AnalysisPageState extends State<AnalysisPage> {
           height: 28,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
-              _buildHeaderToggle('日', _calendarTimeType == 'day', () => _onCalendarTypeChanged('day')),
-              _buildHeaderToggle('月', _calendarTimeType == 'month', () => _onCalendarTypeChanged('month')),
-              _buildHeaderToggle('年', _calendarTimeType == 'year', () => _onCalendarTypeChanged('year')),
+              _buildHeaderToggle(
+                '日',
+                _calendarTimeType == 'day',
+                () => _onCalendarTypeChanged('day'),
+              ),
+              _buildHeaderToggle(
+                '月',
+                _calendarTimeType == 'month',
+                () => _onCalendarTypeChanged('month'),
+              ),
+              _buildHeaderToggle(
+                '年',
+                _calendarTimeType == 'year',
+                () => _onCalendarTypeChanged('year'),
+              ),
             ],
           ),
         ),
@@ -830,7 +860,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppTheme.isLight ? AppTheme.surface3 : const Color(0xFF16181F),
+            color: AppTheme.isLight
+                ? AppTheme.surface3
+                : const Color(0xFF16181F),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: AppTheme.border),
           ),
@@ -841,7 +873,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 _calendarPeriodButtonText(),
                 style: _S.label.copyWith(
                   fontSize: 13,
-                  color: _calendarPeriodPickerEnabled ? AppTheme.textPrimary : AppTheme.textMuted,
+                  color: _calendarPeriodPickerEnabled
+                      ? AppTheme.textPrimary
+                      : AppTheme.textMuted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -849,7 +883,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 16,
-                color: _calendarPeriodPickerEnabled ? AppTheme.textSecondary : AppTheme.textMuted,
+                color: _calendarPeriodPickerEnabled
+                    ? AppTheme.textSecondary
+                    : AppTheme.textMuted,
               ),
             ],
           ),
@@ -878,12 +914,24 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (_calendarTimeType == 'day') {
       selectableYears = _selectableDayYears;
       selectableMonthsByYear = _selectableMonthsByYear;
-      initialYear = _selectedDayYear ?? (selectableYears.isNotEmpty ? selectableYears.last : DateTime.now().year);
-      initialMonth = _selectedDayMonth ?? (selectableMonthsByYear[initialYear]?.isNotEmpty == true ? selectableMonthsByYear[initialYear]!.last : DateTime.now().month);
+      initialYear =
+          _selectedDayYear ??
+          (selectableYears.isNotEmpty
+              ? selectableYears.last
+              : DateTime.now().year);
+      initialMonth =
+          _selectedDayMonth ??
+          (selectableMonthsByYear[initialYear]?.isNotEmpty == true
+              ? selectableMonthsByYear[initialYear]!.last
+              : DateTime.now().month);
     } else {
       selectableYears = _selectableMonthYears;
       selectableMonthsByYear = const {};
-      initialYear = _selectedMonthYear ?? (selectableYears.isNotEmpty ? selectableYears.last : DateTime.now().year);
+      initialYear =
+          _selectedMonthYear ??
+          (selectableYears.isNotEmpty
+              ? selectableYears.last
+              : DateTime.now().year);
       initialMonth = null; // month mode: no month wheel
     }
 
@@ -915,7 +963,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -968,7 +1016,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     Overlay.of(context).insert(_datePickerOverlay!);
   }
 
-  Widget _buildCalendarGrid(List<Map<String, dynamic>> calendarGrid, AppState appState) {
+  Widget _buildCalendarGrid(
+    List<Map<String, dynamic>> calendarGrid,
+    AppState appState,
+  ) {
     int crossAxisCount = 7;
     double aspectRatio = 0.85;
 
@@ -993,8 +1044,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
       itemBuilder: (context, index) {
         final item = calendarGrid[index];
         final pnl = item['pnl'] as double?;
-        final isSelected = _calendarTimeType == 'day' 
-            ? item['day'] == DateTime.now().day && (_selectedDayYear == null || _selectedDayYear == DateTime.now().year) && (_selectedDayMonth == null || _selectedDayMonth == DateTime.now().month)
+        final isSelected = _calendarTimeType == 'day'
+            ? item['day'] == DateTime.now().day &&
+                  (_selectedDayYear == null ||
+                      _selectedDayYear == DateTime.now().year) &&
+                  (_selectedDayMonth == null ||
+                      _selectedDayMonth == DateTime.now().month)
             : false;
 
         return _buildCalendarItem(item['date'], pnl, isSelected, appState);
@@ -1002,16 +1057,27 @@ class _AnalysisPageState extends State<AnalysisPage> {
     );
   }
 
-  Widget _buildCalendarItem(String label, double? pnl, bool isSelected, AppState appState) {
+  Widget _buildCalendarItem(
+    String label,
+    double? pnl,
+    bool isSelected,
+    AppState appState,
+  ) {
     final hasData = pnl != null;
-    final color = pnl == null ? AppTheme.textMuted : (pnl >= 0 ? AppTheme.danger : AppTheme.success);
-    
+    final color = pnl == null
+        ? AppTheme.textMuted
+        : (pnl >= 0 ? AppTheme.danger : AppTheme.success);
+
     return Container(
       decoration: BoxDecoration(
-        color: isSelected ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.surface2.withValues(alpha: 0.3),
+        color: isSelected
+            ? AppTheme.accent.withValues(alpha: 0.15)
+            : AppTheme.surface2.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isSelected ? AppTheme.accent : Colors.white.withValues(alpha: 0.05),
+          color: isSelected
+              ? AppTheme.accent
+              : Colors.white.withValues(alpha: 0.05),
           width: isSelected ? 1.5 : 1,
         ),
       ),
@@ -1094,7 +1160,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
         children: [
           Row(
             children: [
-              Text('$pnlLabel：', style: _S.calSumLabel.copyWith(color: AppTheme.textSecondary, fontSize: 13)),
+              Text(
+                '$pnlLabel：',
+                style: _S.calSumLabel.copyWith(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
               Text(
                 pnlValue,
                 style: _S.calSumVal.copyWith(
@@ -1107,7 +1179,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ),
           Row(
             children: [
-              Text('盈亏率：', style: _S.calSumLabel.copyWith(color: AppTheme.textSecondary, fontSize: 13)),
+              Text(
+                '盈亏率：',
+                style: _S.calSumLabel.copyWith(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
               Text(
                 pnlRate,
                 style: _S.calSumVal.copyWith(
@@ -1171,7 +1249,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 ),
                 child: Row(
                   children: [
-                    Text('查看全部', style: _S.label.copyWith(color: AppTheme.accent, fontSize: 11)),
+                    Text(
+                      '查看全部',
+                      style: _S.label.copyWith(
+                        color: AppTheme.accent,
+                        fontSize: 11,
+                      ),
+                    ),
                     Icon(Icons.chevron_right, size: 14, color: AppTheme.accent),
                   ],
                 ),
@@ -1181,9 +1265,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
           const SizedBox(height: 14),
           Row(
             children: [
-              _buildRankTab('盈利榜', _rankType == 'profit', () => setState(() => _rankType = 'profit')),
+              _buildRankTab(
+                '盈利榜',
+                _rankType == 'profit',
+                () => setState(() => _rankType = 'profit'),
+              ),
               const SizedBox(width: 8),
-              _buildRankTab('亏损榜', _rankType == 'loss', () => setState(() => _rankType = 'loss')),
+              _buildRankTab(
+                '亏损榜',
+                _rankType == 'loss',
+                () => setState(() => _rankType = 'loss'),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1201,9 +1293,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.accent.withValues(alpha: 0.1) : Colors.transparent,
+          color: isSelected
+              ? AppTheme.accent.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: isSelected ? AppTheme.accent.withValues(alpha: 0.3) : Colors.transparent),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.accent.withValues(alpha: 0.3)
+                : Colors.transparent,
+          ),
         ),
         child: Text(
           text,
@@ -1222,7 +1320,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Text('加载中...', style: _S.label.copyWith(color: AppTheme.textMuted)),
+          child: Text(
+            '加载中...',
+            style: _S.label.copyWith(color: AppTheme.textMuted),
+          ),
         ),
       );
     }
@@ -1230,7 +1331,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Text('暂无数据', style: _S.label.copyWith(color: AppTheme.textMuted)),
+          child: Text(
+            '暂无数据',
+            style: _S.label.copyWith(color: AppTheme.textMuted),
+          ),
         ),
       );
     }
@@ -1269,9 +1373,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: _S.rankName.copyWith(color: AppTheme.textPrimary)),
+                Text(
+                  item.name,
+                  style: _S.rankName.copyWith(color: AppTheme.textPrimary),
+                ),
                 const SizedBox(height: 2),
-                Text(_formatDisplayCode(item.code), style: _S.rankCode.copyWith(color: AppTheme.textMuted)),
+                Text(
+                  _formatDisplayCode(item.code),
+                  style: _S.rankCode.copyWith(color: AppTheme.textMuted),
+                ),
               ],
             ),
           ),
@@ -1284,8 +1394,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                (item.pnlRate >= 0 ? '+' : '') + item.pnlRate.toStringAsFixed(2) + '%',
-                style: _S.rankPct.copyWith(color: pnlColor.withValues(alpha: 0.8)),
+                '${item.pnlRate >= 0 ? '+' : ''}${item.pnlRate.toStringAsFixed(2)}%',
+                style: _S.rankPct.copyWith(
+                  color: pnlColor.withValues(alpha: 0.8),
+                ),
               ),
             ],
           ),
@@ -1299,7 +1411,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     final raw = _rankData[key];
     if (raw is! List) return [];
     return raw.map((item) {
-      final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+      final map = item is Map
+          ? Map<String, dynamic>.from(item)
+          : <String, dynamic>{};
       final code = (map['code'] ?? '').toString();
       final name = (map['name'] ?? '').toString();
       final pnl = (map['pnl'] as num?)?.toDouble() ?? 0.0;
@@ -1364,8 +1478,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   String _formatCalendarPnl(double pnl, AppState appState) {
     if (appState.amountHidden) return '***';
     final absPnl = pnl.abs();
-    if (absPnl >= 100000) return (pnl / 10000).toStringAsFixed(1) + 'w';
-    if (absPnl >= 10000) return (pnl / 10000).toStringAsFixed(2) + 'w';
+    if (absPnl >= 100000) return '${(pnl / 10000).toStringAsFixed(1)}w';
+    if (absPnl >= 10000) return '${(pnl / 10000).toStringAsFixed(2)}w';
     return pnl.toStringAsFixed(0);
   }
 
@@ -1379,10 +1493,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (appState.amountHidden) return '--%';
 
     // Try to get the rate directly from the backend response keys
-    final apiRate = _calendarData['total_rate'] ?? _calendarData['pnl_rate'] ?? _calendarData['rate'];
+    final apiRate =
+        _calendarData['total_rate'] ??
+        _calendarData['pnl_rate'] ??
+        _calendarData['rate'];
     if (apiRate != null) {
       final rate = (apiRate as num).toDouble();
-      return (rate > 0 ? '+' : '') + rate.toStringAsFixed(2) + '%';
+      return '${rate > 0 ? '+' : ''}${rate.toStringAsFixed(2)}%';
     }
     return '--%';
   }
@@ -1392,8 +1509,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final List<Color> g = rank == 1
           ? [const Color(0xFFFFD700), const Color(0xFFFFA500)]
           : (rank == 2
-              ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
-              : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
+                ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
+                : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
       return Container(
         width: 24,
         height: 24,
@@ -1447,10 +1564,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
 class AnalysisRankAllPage extends StatefulWidget {
   final String rankType; // profit / loss
-  final Future<Map<String, dynamic>> Function({
-    String rankType,
-    String market,
-  })?
+  final Future<Map<String, dynamic>> Function({String rankType, String market})?
   rankLoader;
   const AnalysisRankAllPage({
     super.key,
@@ -1517,7 +1631,9 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
     final raw = data[key];
     if (raw is! List) return [];
     return raw.map((item) {
-      final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+      final map = item is Map
+          ? Map<String, dynamic>.from(item)
+          : <String, dynamic>{};
       final code = (map['code'] ?? '').toString();
       final name = (map['name'] ?? '').toString();
       final pnl = (map['pnl'] as num?)?.toDouble() ?? 0.0;
@@ -1551,27 +1667,37 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: _loading
           ? Center(
-              child: Text('加载中...', style: _S.label.copyWith(color: AppTheme.textMuted)),
+              child: Text(
+                '加载中...',
+                style: _S.label.copyWith(color: AppTheme.textMuted),
+              ),
             )
           : _items.isEmpty
-              ? Center(
-                  child: Text('暂无数据', style: _S.label.copyWith(color: AppTheme.textMuted)),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _items.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final item = _items[index];
-                    return _buildRankCard(item, index + 1);
-                  },
-                ),
+          ? Center(
+              child: Text(
+                '暂无数据',
+                style: _S.label.copyWith(color: AppTheme.textMuted),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _items.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = _items[index];
+                return _buildRankCard(item, index + 1);
+              },
+            ),
     );
   }
 
@@ -1598,9 +1724,15 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: _S.rankName.copyWith(color: AppTheme.textPrimary)),
+                Text(
+                  item.name,
+                  style: _S.rankName.copyWith(color: AppTheme.textPrimary),
+                ),
                 const SizedBox(height: 2),
-                Text(_formatDisplayCode(item.code), style: _S.rankCode.copyWith(color: AppTheme.textMuted)),
+                Text(
+                  _formatDisplayCode(item.code),
+                  style: _S.rankCode.copyWith(color: AppTheme.textMuted),
+                ),
               ],
             ),
           ),
@@ -1613,8 +1745,10 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                (item.pnlRate >= 0 ? '+' : '') + item.pnlRate.toStringAsFixed(2) + '%',
-                style: _S.rankPct.copyWith(color: pnlColor.withValues(alpha: 0.8)),
+                '${item.pnlRate >= 0 ? '+' : ''}${item.pnlRate.toStringAsFixed(2)}%',
+                style: _S.rankPct.copyWith(
+                  color: pnlColor.withValues(alpha: 0.8),
+                ),
               ),
             ],
           ),
@@ -1635,8 +1769,8 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
       final List<Color> g = rank == 1
           ? [const Color(0xFFFFD700), const Color(0xFFFFA500)]
           : (rank == 2
-              ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
-              : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
+                ? [const Color(0xFFE2E8F0), const Color(0xFF94A3B8)]
+                : [const Color(0xFFCE8E59), const Color(0xFF8B4513)]);
       return Container(
         width: 24,
         height: 24,

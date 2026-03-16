@@ -9,7 +9,7 @@ class ProfileCustomDialog extends StatelessWidget {
   final String? ghostText;
   final VoidCallback? onGhost;
   final String? primaryText;
-   final VoidCallback? onPrimary;
+  final VoidCallback? onPrimary;
   final bool fullWidth;
   final bool showClose;
   final bool showDivider;
@@ -109,7 +109,7 @@ class ProfileCustomDialog extends StatelessWidget {
                 child: Divider(
                   height: 1,
                   thickness: 1,
-                  color: AppTheme.borderSubtle.withOpacity(0.08),
+                  color: AppTheme.borderSubtle.withValues(alpha: 0.08),
                 ),
               ),
 

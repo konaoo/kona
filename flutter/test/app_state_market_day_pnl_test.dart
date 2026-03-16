@@ -11,7 +11,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<AppState> _buildStateWithCache({
+  Future<AppState> buildStateWithCache({
     required Map<String, bool> openStatus,
     required double changeAmt,
     Map<String, bool>? tradingDayStatus,
@@ -44,8 +44,7 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['hk00700'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['hk00700'],
-            if (valueCny?['hk00700'] != null)
-              'value_cny': valueCny!['hk00700'],
+            if (valueCny?['hk00700'] != null) 'value_cny': valueCny!['hk00700'],
           },
           {
             'code': 'gb_aapl',
@@ -56,8 +55,7 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['gb_aapl'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['gb_aapl'],
-            if (valueCny?['gb_aapl'] != null)
-              'value_cny': valueCny!['gb_aapl'],
+            if (valueCny?['gb_aapl'] != null) 'value_cny': valueCny!['gb_aapl'],
           },
           {
             'code': 'f_161725',
@@ -120,7 +118,7 @@ void main() {
   }
 
   test('全部市场休市时 investDayPnl 应为 0', () async {
-    final state = await _buildStateWithCache(
+    final state = await buildStateWithCache(
       openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
       changeAmt: 1,
     );
@@ -129,17 +127,11 @@ void main() {
   });
 
   test('A/Fund 休市且 HK/US 开市时，仅 HK+US 计入汇总', () async {
-    final state = await _buildStateWithCache(
+    final state = await buildStateWithCache(
       openStatus: const {'a': false, 'hk': true, 'us': true, 'fund': false},
       changeAmt: 1,
-      dayPnlAggregateCny: const {
-        'hk00700': 186,
-        'gb_aapl': 2175,
-      },
-      valueCny: const {
-        'hk00700': 20000,
-        'gb_aapl': 30000,
-      },
+      dayPnlAggregateCny: const {'hk00700': 186, 'gb_aapl': 2175},
+      valueCny: const {'hk00700': 20000, 'gb_aapl': 30000},
     );
     // hk: 1 * 200 * 0.93 = 186
     // us: 1 * 300 * 7.25 = 2175
@@ -148,7 +140,7 @@ void main() {
   });
 
   test('全休市但 US 扩展时段活跃时，仅 US 计入汇总', () async {
-    final state = await _buildStateWithCache(
+    final state = await buildStateWithCache(
       openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
       changeAmt: 1,
       usExtendedActive: true,
@@ -163,7 +155,7 @@ void main() {
   });
 
   test('休市市场单只仍允许显示冻结当日盈亏（但不计入汇总）', () async {
-    final state = await _buildStateWithCache(
+    final state = await buildStateWithCache(
       openStatus: const {'a': false, 'hk': true, 'us': true, 'fund': false},
       changeAmt: 1,
     );
@@ -175,7 +167,7 @@ void main() {
   });
 
   test('交易日午休/盘后（open=false, trading_day=true）仍计入当日汇总', () async {
-    final state = await _buildStateWithCache(
+    final state = await buildStateWithCache(
       openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
       tradingDayStatus: const {
         'a': false,

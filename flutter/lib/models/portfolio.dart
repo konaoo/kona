@@ -118,7 +118,9 @@ class PortfolioItem {
       dayPnlRateAggregate: _parseDoubleOrNull(json['day_pnl_rate_aggregate']),
       navUpdatePending: _parseBoolOrNull(json['nav_update_pending']),
       dayPnlDisplayEnabled: _parseBoolOrNull(json['day_pnl_display_enabled']),
-      dayPnlAggregateEnabled: _parseBoolOrNull(json['day_pnl_aggregate_enabled']),
+      dayPnlAggregateEnabled: _parseBoolOrNull(
+        json['day_pnl_aggregate_enabled'],
+      ),
       marketOpen: _parseBoolOrNull(json['market_open']),
       marketTradingDay: _parseBoolOrNull(json['market_trading_day']),
       marketStatusReason: _parseString(json['market_status_reason']),
@@ -191,8 +193,9 @@ class PortfolioItem {
     final lowerCode = code.toLowerCase();
     if (lowerCode.startsWith('hk')) return 'hk';
     if (lowerCode.startsWith('gb_') || lowerCode.startsWith('us')) return 'us';
-    if (lowerCode.startsWith('f_') || lowerCode.startsWith('ft_'))
+    if (lowerCode.startsWith('f_') || lowerCode.startsWith('ft_')) {
       return 'fund';
+    }
     return 'a';
   }
 

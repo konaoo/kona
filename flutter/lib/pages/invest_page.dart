@@ -62,46 +62,21 @@ class _S {
     fontWeight: FontWeight.w500,
   );
   // Card
-  static final cardName = GoogleFonts.dmSans(
-    fontSize: 16,
-    fontWeight: FontWeight.w600,
-  );
   static final cardTag = GoogleFonts.dmSans(
     fontSize: 10,
     fontWeight: FontWeight.w600,
     letterSpacing: 0.03,
   );
-  static final cardCode = GoogleFonts.jetBrainsMono(fontSize: 11);
-  static final cardMktVal = GoogleFonts.jetBrainsMono(
-    fontSize: 15,
-    fontWeight: FontWeight.w600,
-  );
   static final cardHoldNum = GoogleFonts.jetBrainsMono(fontSize: 11);
-  static final cardProgressLabel = GoogleFonts.jetBrainsMono(fontSize: 9);
-  static final cardPnlLabel = GoogleFonts.dmSans(fontSize: 10);
-  static final cardPnlVal = GoogleFonts.jetBrainsMono(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-    height: 1.0,
-  );
   static final cardPnlPending = GoogleFonts.dmSans(
     fontSize: 12,
     fontWeight: FontWeight.w600,
     letterSpacing: 0.01,
     height: 1.0,
   );
-  static final cardPnlPct = GoogleFonts.dmSans(
-    fontSize: 10,
-    fontWeight: FontWeight.w500,
-    height: 1.0,
-  );
   static final cardNameCompact = GoogleFonts.dmSans(
     fontSize: 14,
     fontWeight: FontWeight.w700,
-  );
-  static final cardQty = GoogleFonts.jetBrainsMono(
-    fontSize: 11,
-    fontWeight: FontWeight.w600,
   );
   static final cardPriceSym = GoogleFonts.jetBrainsMono(
     fontSize: 11,
@@ -122,10 +97,6 @@ class _S {
   static final cardMiniValue = GoogleFonts.jetBrainsMono(
     fontSize: 12.5,
     fontWeight: FontWeight.w600,
-  );
-  static final cardMiniSubValue = GoogleFonts.jetBrainsMono(
-    fontSize: 12.5,
-    fontWeight: FontWeight.w500,
   );
   static final cardPositionLabel = GoogleFonts.dmSans(
     fontSize: 10,
@@ -311,30 +282,6 @@ class InvestPageState extends State<InvestPage> {
     return '${value.toStringAsFixed(2)}%';
   }
 
-  Widget _buildMetricCell({
-    required String label,
-    required String value,
-    required Color valueColor,
-    TextStyle? valueStyle,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: _S.cardMiniLabel.copyWith(color: AppTheme.textMuted),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: (valueStyle ?? _S.cardMiniValue).copyWith(color: valueColor),
-        ),
-      ],
-    );
-  }
-
   Widget _buildRateBadge({
     required String label,
     required Color color,
@@ -342,9 +289,7 @@ class InvestPageState extends State<InvestPage> {
   }) {
     if (label.isEmpty) return const SizedBox.shrink();
     final bg = muted
-        ? (AppTheme.isLight
-            ? const Color(0x08222C40)
-            : const Color(0x14FFFFFF))
+        ? (AppTheme.isLight ? const Color(0x08222C40) : const Color(0x14FFFFFF))
         : color.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18);
     final fg = muted ? AppTheme.textMuted : color;
     return Container(
@@ -361,8 +306,6 @@ class InvestPageState extends State<InvestPage> {
       ),
     );
   }
-
-
 
   // ─── Build ───────────────────────────────────────
   @override
@@ -480,11 +423,11 @@ class InvestPageState extends State<InvestPage> {
                               appState.amountHidden
                                   ? '****'
                                   : (totalValueCny == null
-                                      ? '--'
-                                      : appState.formatAmount(
-                                          totalValueCny,
-                                          prefix: '',
-                                        )),
+                                        ? '--'
+                                        : appState.formatAmount(
+                                            totalValueCny,
+                                            prefix: '',
+                                          )),
                               style: _S.heroAmount.copyWith(
                                 color: AppTheme.heroValueColor,
                               ),
@@ -525,16 +468,16 @@ class InvestPageState extends State<InvestPage> {
                       appState.amountHidden
                           ? '****'
                           : (dayPnlCny == null
-                              ? '--'
-                              : appState.formatPnlInt(dayPnlCny)),
+                                ? '--'
+                                : appState.formatPnlInt(dayPnlCny)),
                       style: _S.heroDayVal.copyWith(color: dayColor),
                     ),
                     Text(
                       appState.amountHidden
                           ? ''
                           : (dayPnlRate == null
-                              ? '--'
-                              : appState.formatPct(dayPnlRate)),
+                                ? '--'
+                                : appState.formatPct(dayPnlRate)),
                       style: _S.heroDayPct.copyWith(color: dayColor),
                     ),
                   ],
@@ -555,9 +498,7 @@ class InvestPageState extends State<InvestPage> {
               children: [
                 _statItem(
                   '持仓盈亏',
-                  holdPnlCny == null
-                      ? '--'
-                      : appState.formatPnlInt(holdPnlCny),
+                  holdPnlCny == null ? '--' : appState.formatPnlInt(holdPnlCny),
                   holdColor,
                   true,
                 ),
@@ -569,9 +510,7 @@ class InvestPageState extends State<InvestPage> {
                 ),
                 _statItem(
                   '累计盈亏',
-                  holdPnlCny == null
-                      ? '--'
-                      : appState.formatPnlInt(holdPnlCny),
+                  holdPnlCny == null ? '--' : appState.formatPnlInt(holdPnlCny),
                   holdColor,
                   true,
                 ),
@@ -727,12 +666,17 @@ class InvestPageState extends State<InvestPage> {
                         appState.amountHidden
                             ? '****'
                             : (catDayPnl == null
-                                ? '--'
-                                : appState.formatPnlIntWithCurrency(catDayPnl, '¥')),
+                                  ? '--'
+                                  : appState.formatPnlIntWithCurrency(
+                                      catDayPnl,
+                                      '¥',
+                                    )),
                         style: _S.sumVal.copyWith(color: dayColor),
                       ),
                       Text(
-                        appState.amountHidden ? '' : _fmtPctNullable(catDayPnlRate),
+                        appState.amountHidden
+                            ? ''
+                            : _fmtPctNullable(catDayPnlRate),
                         style: _S.sumPct.copyWith(
                           color: dayColor.withValues(alpha: 0.85),
                         ),
@@ -763,15 +707,17 @@ class InvestPageState extends State<InvestPage> {
                         appState.amountHidden
                             ? '****'
                             : (catHoldPnl == null
-                                ? '--'
-                                : appState.formatPnlIntWithCurrency(
-                                    catHoldPnl,
-                                    '¥',
-                                  )),
+                                  ? '--'
+                                  : appState.formatPnlIntWithCurrency(
+                                      catHoldPnl,
+                                      '¥',
+                                    )),
                         style: _S.sumVal.copyWith(color: holdColor),
                       ),
                       Text(
-                        appState.amountHidden ? '' : _fmtPctNullable(catHoldPnlRate),
+                        appState.amountHidden
+                            ? ''
+                            : _fmtPctNullable(catHoldPnlRate),
                         style: _S.sumPct.copyWith(
                           color: holdColor.withValues(alpha: 0.85),
                         ),
@@ -825,9 +771,7 @@ class InvestPageState extends State<InvestPage> {
       children: filtered.map((item) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: RepaintBoundary(
-            child: _buildStockCard(item, appState),
-          ),
+          child: RepaintBoundary(child: _buildStockCard(item, appState)),
         );
       }).toList(),
     );
@@ -841,8 +785,9 @@ class InvestPageState extends State<InvestPage> {
         (item.displayCostPrice as num?)?.toDouble() ?? rawCostPrice;
 
     final backendCurrentPrice = (item.currentPrice as num?)?.toDouble() ?? 0.0;
-    final currentPrice =
-        backendCurrentPrice > 0 ? backendCurrentPrice : rawCostPrice;
+    final currentPrice = backendCurrentPrice > 0
+        ? backendCurrentPrice
+        : rawCostPrice;
 
     final mv = (item.value as num?)?.toDouble();
     final holdingPnl = (item.totalPnl as num?)?.toDouble();
@@ -850,10 +795,12 @@ class InvestPageState extends State<InvestPage> {
 
     final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
     final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
-    final dailyPnl = (item.dayPnlDisplay as num?)?.toDouble() ??
+    final dailyPnl =
+        (item.dayPnlDisplay as num?)?.toDouble() ??
         (item.dayPnl as num?)?.toDouble() ??
         (item.dayPnlAggregate as num?)?.toDouble();
-    final dailyPnlPct = (item.dayPnlRateDisplay as num?)?.toDouble() ??
+    final dailyPnlPct =
+        (item.dayPnlRateDisplay as num?)?.toDouble() ??
         (item.dayPnlRate as num?)?.toDouble() ??
         (item.dayPnlRateAggregate as num?)?.toDouble();
 
@@ -873,8 +820,7 @@ class InvestPageState extends State<InvestPage> {
     final positionPct = _readPositionPct(item);
     final positionPctLabel = _formatPositionPctLabel(positionPct);
     final pctBase = positionPct ?? 0.0;
-    final positionPctRatio =
-        (pctBase.clamp(0.0, 100.0) / 100.0).toDouble();
+    final positionPctRatio = (pctBase.clamp(0.0, 100.0) / 100.0).toDouble();
 
     final mvLabel = mv == null
         ? '--'
@@ -882,13 +828,14 @@ class InvestPageState extends State<InvestPage> {
     final currentPriceLabel = navUpdatePending
         ? '待净值更新'
         : (currentPrice > 0
-            ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
-            : '--');
+              ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
+              : '--');
     final costPriceLabel = displayCostPrice == 0
         ? '--'
         : '$sym${_formatDisplayPrice(displayCostPrice, item: item)}';
 
-    final dailyValueColor = navUpdatePending || !dayPnlEnabled || dailyPnl == null
+    final dailyValueColor =
+        navUpdatePending || !dayPnlEnabled || dailyPnl == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dailyPnl);
     final holdingValueColor = holdingPnl == null
@@ -899,18 +846,16 @@ class InvestPageState extends State<InvestPage> {
         ? '+0'
         : (dayPnlEnabled ? _fmtPnlNullable(dailyPnl, sym) : '--');
     final totalPnlValue = _fmtPnlNullable(holdingPnl, sym);
-    final totalPnlRateValue = _fmtPctNullable(holdingPnlPct);
-
     final badgeLabel = navUpdatePending
         ? '+0%'
         : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--');
     final badgeColor = navUpdatePending
         ? AppTheme.textMuted
-        : (dailyPnl == null ? AppTheme.textMuted : AppState.getPnlColor(dailyPnl));
+        : (dailyPnl == null
+              ? AppTheme.textMuted
+              : AppState.getPnlColor(dailyPnl));
     final badgeBg = navUpdatePending
-        ? (AppTheme.isLight
-            ? const Color(0x08222C40)
-            : const Color(0x14FFFFFF))
+        ? (AppTheme.isLight ? const Color(0x08222C40) : const Color(0x14FFFFFF))
         : badgeColor.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18);
 
     final accentColor = dailyPnl == null
@@ -1016,8 +961,9 @@ class InvestPageState extends State<InvestPage> {
                                   ),
                                   child: Text(
                                     tagLabel,
-                                    style:
-                                        _S.cardTag.copyWith(color: tagColors.$1),
+                                    style: _S.cardTag.copyWith(
+                                      color: tagColors.$1,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -1051,10 +997,11 @@ class InvestPageState extends State<InvestPage> {
                             maskMoney(dayPnlValue),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: (dayPnlValue == '待净值更新'
-                                    ? _S.cardPnlPending
-                                    : _S.cardMiniValue)
-                                .copyWith(color: dailyValueColor),
+                            style:
+                                (dayPnlValue == '待净值更新'
+                                        ? _S.cardPnlPending
+                                        : _S.cardMiniValue)
+                                    .copyWith(color: dailyValueColor),
                           ),
                         ],
                       ),
@@ -1185,32 +1132,32 @@ class InvestPageState extends State<InvestPage> {
                                 color: AppTheme.textMuted,
                               ),
                             ),
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    maskMoney(totalPnlValue),
-                                    style: _S.cardMiniValue.copyWith(
-                                      color: holdingValueColor,
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      maskMoney(totalPnlValue),
+                                      style: _S.cardMiniValue.copyWith(
+                                        color: holdingValueColor,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 4),
-                              _buildRateBadge(
-                                label: appState.amountHidden
-                                    ? ''
-                                    : _fmtPctNullable(holdingPnlPct),
-                                color: holdingValueColor,
-                                muted: holdingPnlPct == null,
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 4),
+                                _buildRateBadge(
+                                  label: appState.amountHidden
+                                      ? ''
+                                      : _fmtPctNullable(holdingPnlPct),
+                                  color: holdingValueColor,
+                                  muted: holdingPnlPct == null,
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -1269,71 +1216,6 @@ class InvestPageState extends State<InvestPage> {
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _pnlBox({
-    required String label,
-    required String value,
-    required String pct,
-    required Color color,
-    required bool hidden,
-  }) {
-    final isPending = value == '待净值更新' && pct.isEmpty;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppTheme.isLight
-              ? const Color(0x08222C40)
-              : const Color(0x1AFFFFFF),
-        ),
-        color: AppTheme.isLight ? const Color(0x05222C40) : AppTheme.surface2,
-      ),
-      child: SizedBox(
-        height: 54,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: _S.cardPnlLabel.copyWith(color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: isPending
-                  ? Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        hidden ? '****' : value,
-                        style: _S.cardPnlPending.copyWith(color: color),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.left,
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          hidden ? '****' : value,
-                          style: _S.cardPnlVal.copyWith(color: color),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          hidden ? '' : pct,
-                          style: _S.cardPnlPct.copyWith(color: color),
-                        ),
-                      ],
-                    ),
             ),
           ],
         ),
@@ -1405,7 +1287,7 @@ class _PnlProgressBarState extends State<PnlProgressBar>
       height: 3,
       child: AnimatedBuilder(
         animation: _anim,
-        builder: (_, __) => CustomPaint(
+        builder: (_, child) => CustomPaint(
           size: Size.infinite,
           painter: _PnlBarPainter(
             fillRatio: fillRatio * _anim.value,

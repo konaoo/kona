@@ -35,7 +35,6 @@ class _RetrySearchAppState extends AppState {
 class _SaveStateAppState extends AppState {
   _SaveStateAppState({
     required this.result,
-    this.searchDelay = Duration.zero,
     List<dynamic>? searchResults,
     Map<String, double?>? latestPriceByCode,
   }) : _searchResults =
@@ -53,7 +52,6 @@ class _SaveStateAppState extends AppState {
        super(tokenLoader: () async => null);
 
   final AssetActionResult result;
-  final Duration searchDelay;
   final List<dynamic> _searchResults;
   final Map<String, double?> _latestPriceByCode;
 
@@ -73,9 +71,6 @@ class _SaveStateAppState extends AppState {
   @override
   Future<List<dynamic>> searchStocks(String query) async {
     searchCalls += 1;
-    if (searchDelay > Duration.zero) {
-      await Future<void>.delayed(searchDelay);
-    }
     return _searchResults;
   }
 
@@ -187,14 +182,14 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  Finder _k(String key) => find.byKey(Key(key));
+  Finder keyFinder(String key) => find.byKey(Key(key));
 
-  Future<void> _ensureLargeViewport(WidgetTester tester) async {
+  Future<void> ensureLargeViewport(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
   }
 
-  Future<void> _login(AppState appState, String userId) async {
+  Future<void> login(AppState appState, String userId) async {
     await appState.setLoggedIn(
       token: 'token',
       refreshToken: 'refresh',
@@ -203,14 +198,14 @@ void main() {
     );
   }
 
-  Future<void> _pumpDialog(
+  Future<void> pumpDialog(
     WidgetTester tester,
     AppState appState, {
     required String mode,
     PortfolioItem? item,
   }) async {
-    await _ensureLargeViewport(tester);
-    await _login(appState, 'uid-$mode');
+    await ensureLargeViewport(tester);
+    await login(appState, 'uid-$mode');
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
@@ -224,11 +219,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> _openAndPickTesla(WidgetTester tester) async {
-    await tester.tap(_k('invest_search_field'));
+  Future<void> openAndPickTesla(WidgetTester tester) async {
+    await tester.tap(keyFinder('invest_search_field'));
     await tester.pumpAndSettle();
-    await tester.enterText(_k('invest_search_field'), 'tsla');
-    await tester.tap(_k('invest_search_button'));
+    await tester.enterText(keyFinder('invest_search_field'), 'tsla');
+    await tester.tap(keyFinder('invest_search_button'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tesla').first);
     await tester.pumpAndSettle();
@@ -238,12 +233,12 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await _pumpDialog(tester, appState, mode: 'add');
+    await pumpDialog(tester, appState, mode: 'add');
 
-    expect(_k('invest_sheet_root'), findsOneWidget);
-    expect(_k('invest_sheet_handle'), findsOneWidget);
-    expect(_k('invest_cancel_button'), findsOneWidget);
-    expect(_k('invest_submit_button'), findsOneWidget);
+    expect(keyFinder('invest_sheet_root'), findsOneWidget);
+    expect(keyFinder('invest_sheet_handle'), findsOneWidget);
+    expect(keyFinder('invest_cancel_button'), findsOneWidget);
+    expect(keyFinder('invest_submit_button'), findsOneWidget);
   });
 
   testWidgets('showInvestTradeSheet opens modal sheet', (
@@ -252,8 +247,8 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await _ensureLargeViewport(tester);
-    await _login(appState, 'uid-sheet-open');
+    await ensureLargeViewport(tester);
+    await login(appState, 'uid-sheet-open');
 
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
@@ -283,27 +278,27 @@ void main() {
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(_k('invest_sheet_root'), findsOneWidget);
+    expect(keyFinder('invest_sheet_root'), findsOneWidget);
   });
 
   testWidgets('search overlay opens on focus and supports retry', (
     WidgetTester tester,
   ) async {
     final appState = _RetrySearchAppState();
-    await _pumpDialog(tester, appState, mode: 'add');
+    await pumpDialog(tester, appState, mode: 'add');
 
-    await tester.tap(_k('invest_search_field'));
+    await tester.tap(keyFinder('invest_search_field'));
     await tester.pumpAndSettle();
     expect(appState.searchCalls, 0);
     expect(find.text('Tesla'), findsNothing);
 
-    await tester.enterText(_k('invest_search_field'), 'tsla');
-    await tester.tap(_k('invest_search_button'));
+    await tester.enterText(keyFinder('invest_search_field'), 'tsla');
+    await tester.tap(keyFinder('invest_search_button'));
     await tester.pumpAndSettle();
     expect(appState.searchCalls, 1);
     expect(find.text('搜索失败，请稍后重试'), findsOneWidget);
 
-    await tester.tap(_k('invest_search_button'));
+    await tester.tap(keyFinder('invest_search_button'));
     await tester.pumpAndSettle();
     expect(appState.searchCalls, 2);
     expect(find.text('Tesla'), findsWidgets);
@@ -315,16 +310,19 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await _pumpDialog(tester, appState, mode: 'add');
+    await pumpDialog(tester, appState, mode: 'add');
 
-    await _openAndPickTesla(tester);
+    await openAndPickTesla(tester);
     expect(find.byKey(const ValueKey<String>('selected-pill')), findsOneWidget);
 
-    await tester.enterText(_k('invest_price_field'), '100');
-    await tester.enterText(_k('invest_qty_field'), '2');
+    await tester.enterText(keyFinder('invest_price_field'), '100');
+    await tester.enterText(keyFinder('invest_qty_field'), '2');
     await tester.pumpAndSettle();
     expect(
-      tester.widget<TextField>(_k('invest_amount_field')).controller?.text,
+      tester
+          .widget<TextField>(keyFinder('invest_amount_field'))
+          .controller
+          ?.text,
       '200',
     );
 
@@ -336,17 +334,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_k('invest_search_field'), findsOneWidget);
+    expect(keyFinder('invest_search_field'), findsOneWidget);
     expect(
-      tester.widget<TextField>(_k('invest_price_field')).controller?.text,
+      tester
+          .widget<TextField>(keyFinder('invest_price_field'))
+          .controller
+          ?.text,
       '',
     );
     expect(
-      tester.widget<TextField>(_k('invest_qty_field')).controller?.text,
+      tester.widget<TextField>(keyFinder('invest_qty_field')).controller?.text,
       '',
     );
     expect(
-      tester.widget<TextField>(_k('invest_amount_field')).controller?.text,
+      tester
+          .widget<TextField>(keyFinder('invest_amount_field'))
+          .controller
+          ?.text,
       '',
     );
   });
@@ -357,15 +361,15 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await _pumpDialog(tester, appState, mode: 'add');
-    await _openAndPickTesla(tester);
+    await pumpDialog(tester, appState, mode: 'add');
+    await openAndPickTesla(tester);
 
-    await tester.enterText(_k('invest_price_field'), '10');
-    await tester.enterText(_k('invest_amount_field'), '29');
+    await tester.enterText(keyFinder('invest_price_field'), '10');
+    await tester.enterText(keyFinder('invest_amount_field'), '29');
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<TextField>(_k('invest_qty_field')).controller?.text,
+      tester.widget<TextField>(keyFinder('invest_qty_field')).controller?.text,
       '2',
     );
   });
@@ -376,14 +380,14 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.success(),
     );
-    await _pumpDialog(tester, appState, mode: 'add');
-    await _openAndPickTesla(tester);
+    await pumpDialog(tester, appState, mode: 'add');
+    await openAndPickTesla(tester);
 
-    await tester.enterText(_k('invest_price_field'), '100');
-    await tester.enterText(_k('invest_qty_field'), '2');
+    await tester.enterText(keyFinder('invest_price_field'), '100');
+    await tester.enterText(keyFinder('invest_qty_field'), '2');
     await tester.pumpAndSettle();
 
-    await tester.tap(_k('invest_submit_button'));
+    await tester.tap(keyFinder('invest_submit_button'));
     await tester.pumpAndSettle();
 
     expect(appState.buyWithCashCalls, 1);
@@ -400,14 +404,14 @@ void main() {
     final appState = _SaveStateAppState(
       result: const AssetActionResult.failure('后端失败'),
     );
-    await _pumpDialog(tester, appState, mode: 'add');
-    await _openAndPickTesla(tester);
+    await pumpDialog(tester, appState, mode: 'add');
+    await openAndPickTesla(tester);
 
-    await tester.enterText(_k('invest_price_field'), '100');
-    await tester.enterText(_k('invest_qty_field'), '2');
+    await tester.enterText(keyFinder('invest_price_field'), '100');
+    await tester.enterText(keyFinder('invest_qty_field'), '2');
     await tester.pumpAndSettle();
 
-    await tester.tap(_k('invest_submit_button'));
+    await tester.tap(keyFinder('invest_submit_button'));
     await tester.pumpAndSettle();
 
     expect(find.byType(InvestTradeDialog), findsOneWidget);
@@ -431,7 +435,7 @@ void main() {
       curr: 'USD',
       assetType: 'us',
     );
-    await _pumpDialog(tester, appState, mode: 'trade', item: item);
+    await pumpDialog(tester, appState, mode: 'trade', item: item);
 
     await tester.tap(find.text('调整'));
     await tester.pumpAndSettle();
@@ -441,10 +445,10 @@ void main() {
     await tester.tap(find.text('成本价').last);
     await tester.pumpAndSettle();
 
-    await tester.enterText(_k('invest_adjust_amount_field'), '8.5');
+    await tester.enterText(keyFinder('invest_adjust_amount_field'), '8.5');
     await tester.pumpAndSettle();
 
-    await tester.tap(_k('invest_submit_button'));
+    await tester.tap(keyFinder('invest_submit_button'));
     await tester.pumpAndSettle();
 
     expect(appState.modifyCalls, 1);
@@ -466,9 +470,9 @@ void main() {
         ],
       );
 
-      await _pumpDialog(tester, appState, mode: 'add');
-      await tester.enterText(_k('invest_search_field'), 'tsla');
-      await tester.tap(_k('invest_search_button'));
+      await pumpDialog(tester, appState, mode: 'add');
+      await tester.enterText(keyFinder('invest_search_field'), 'tsla');
+      await tester.tap(keyFinder('invest_search_button'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Tesla').first);
       await tester.pumpAndSettle();
@@ -496,13 +500,13 @@ void main() {
       curr: 'USD',
       assetType: 'us',
     );
-    await _pumpDialog(tester, appState, mode: 'trade', item: item);
+    await pumpDialog(tester, appState, mode: 'trade', item: item);
 
     await tester.tap(find.text('卖出'));
     await tester.pumpAndSettle();
 
     expect(find.text('未找到 USD 资金账户'), findsNothing);
-    await tester.tap(_k('invest_cash_trigger'));
+    await tester.tap(keyFinder('invest_cash_trigger'));
     await tester.pumpAndSettle();
     expect(find.text('添加账户'), findsOneWidget);
 
@@ -545,20 +549,20 @@ void main() {
       latestPriceByCode: <String, double?>{'f_110017': 1.2345},
     );
 
-    await _pumpDialog(tester, appState, mode: 'add');
-    await tester.tap(_k('invest_search_field'));
-    await tester.enterText(_k('invest_search_field'), '110017');
-    await tester.tap(_k('invest_search_button'));
+    await pumpDialog(tester, appState, mode: 'add');
+    await tester.tap(keyFinder('invest_search_field'));
+    await tester.enterText(keyFinder('invest_search_field'), '110017');
+    await tester.tap(keyFinder('invest_search_button'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('易方达增强回报债券A').first);
     await tester.pumpAndSettle();
 
     expect(find.text('按金额'), findsOneWidget);
-    expect(_k('invest_qty_field'), findsNothing);
+    expect(keyFinder('invest_qty_field'), findsNothing);
 
-    await tester.enterText(_k('invest_amount_field'), '100');
+    await tester.enterText(keyFinder('invest_amount_field'), '100');
     await tester.pumpAndSettle();
-    await tester.tap(_k('invest_submit_button'));
+    await tester.tap(keyFinder('invest_submit_button'));
     await tester.pumpAndSettle();
 
     expect(appState.buyWithCashCalls, 1);
@@ -586,17 +590,17 @@ void main() {
       latestPriceByCode: <String, double?>{'f_110017': 100},
     );
 
-    await _pumpDialog(tester, appState, mode: 'add');
-    await tester.tap(_k('invest_search_field'));
-    await tester.enterText(_k('invest_search_field'), '110017');
-    await tester.tap(_k('invest_search_button'));
+    await pumpDialog(tester, appState, mode: 'add');
+    await tester.tap(keyFinder('invest_search_field'));
+    await tester.enterText(keyFinder('invest_search_field'), '110017');
+    await tester.tap(keyFinder('invest_search_button'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('易方达增强回报债券A').first);
     await tester.pumpAndSettle();
 
-    await tester.enterText(_k('invest_amount_field'), '0.001');
+    await tester.enterText(keyFinder('invest_amount_field'), '0.001');
     await tester.pumpAndSettle();
-    await tester.tap(_k('invest_submit_button'));
+    await tester.tap(keyFinder('invest_submit_button'));
     await tester.pumpAndSettle();
 
     expect(find.text('金额过小，按当前净值不足以买入最小份额（0.0001）'), findsOneWidget);
