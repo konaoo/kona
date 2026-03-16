@@ -1,3 +1,23 @@
+## 2026-03-16-09
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把现金 / 其他 / 负债的增删改编排从总控里拆到独立非投资资产写操作层。
+
+### 主要变化
+- [app_asset_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_asset_write_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把现金、其他、负债的新增 / 删除 / 编辑编排，以及乐观更新后的首页总额回滚，从 `AppState` 拆成独立非投资资产写操作层，`AppState` 继续保留对外接口不变。
+- [app_asset_write_state_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_asset_write_state_test.dart)：补充非投资资产写操作单测，覆盖“成功后首页总额更新”和“失败时回滚”。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：补充 Flutter 状态拆分地图，明确非投资资产写操作的新落点。
+
+### 影响范围
+- Flutter 现金 / 其他 / 负债资产编辑链路
+- Flutter 资产编辑后的首页总额重算
+- Flutter 非投资资产乐观更新回滚
+
+### 验收重点
+- 现金 / 其他 / 负债资产新增、删除、编辑保持原行为
+- 资产写操作失败时，列表和首页总额都能回滚
+
 ## 2026-03-16-08
 
 ### 这版一句话

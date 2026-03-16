@@ -9,6 +9,7 @@ import '../services/secure_storage_service.dart';
 import '../models/portfolio.dart';
 import '../models/asset.dart';
 import '../models/asset_action_result.dart';
+import 'app_asset_write_state.dart';
 import 'app_assets_state.dart';
 import 'app_auth_state.dart';
 import 'app_home_totals_state.dart';
@@ -38,6 +39,7 @@ class AppState extends ChangeNotifier {
   static const Duration _userProfileTtl = Duration(days: 30);
   static const String _userProfileDomain = 'user_profile';
   final ApiService _api;
+  late final AppAssetWriteState _assetWriteState;
   final AppAssetsState _assetsState;
   final AppAuthState _authState;
   late final AppHomeTotalsState _homeTotalsState;
@@ -112,6 +114,11 @@ class AppState extends ChangeNotifier {
       assetsState: _assetsState,
       marketState: _marketState,
       portfolioViewState: _portfolioViewState,
+    );
+    _assetWriteState = AppAssetWriteState(
+      api: api,
+      assetsState: _assetsState,
+      homeTotalsState: _homeTotalsState,
     );
     _sessionState = AppSessionState(
       api: api,
@@ -389,6 +396,12 @@ class AppState extends ChangeNotifier {
     setPortfolioLoaded: (value) => _portfolioLoaded = value,
     hydrateFromCache: hydrateFromCache,
     refreshAll: refreshAll,
+  );
+
+  AppAssetWriteBindings get _assetWriteBindings => AppAssetWriteBindings(
+    notifyListeners: notifyListeners,
+    triggerHomeRefresh: (awaitRefresh) =>
+        _triggerHomeRefresh(awaitRefresh: awaitRefresh),
   );
 
   AppRefreshBindings get _refreshBindings => AppRefreshBindings(
@@ -737,52 +750,8 @@ class AppState extends ChangeNotifier {
 
   void _restoreAssetSnapshot(AssetSnapshot snapshot) {
     _assetsState.restoreAssetSnapshot(snapshot, notify: false);
-    _recalculateAssetTotals();
-  }
-
-  void _recalculateAssetTotals() {
     _homeTotalsState.recalculateAssetTotals(notify: false);
     notifyListeners();
-  }
-
-  bool _optimisticAddAsset({
-    required String type,
-    required String name,
-    required double amount,
-    String? curr,
-  }) {
-    return _assetsState.optimisticAddAsset(
-      type: type,
-      name: name,
-      amount: amount,
-      curr: curr,
-      notify: false,
-    );
-  }
-
-  bool _optimisticDeleteAsset({required String type, required int id}) {
-    return _assetsState.optimisticDeleteAsset(
-      type: type,
-      id: id,
-      notify: false,
-    );
-  }
-
-  bool _optimisticUpdateAsset({
-    required String type,
-    required int id,
-    required String name,
-    required double amount,
-    String? curr,
-  }) {
-    return _assetsState.optimisticUpdateAsset(
-      type: type,
-      id: id,
-      name: name,
-      amount: amount,
-      curr: curr,
-      notify: false,
-    );
   }
 
   /// 添加资产（现金/其他/负债）
@@ -793,33 +762,14 @@ class AppState extends ChangeNotifier {
     String? curr,
     bool awaitRefresh = true,
   }) async {
-    final snapshot = _captureAssetSnapshot();
-    final changed = _optimisticAddAsset(
+    return _assetWriteState.addAsset(
       type: type,
       name: name,
       amount: amount,
       curr: curr,
+      awaitRefresh: awaitRefresh,
+      bindings: _assetWriteBindings,
     );
-    if (!changed) return const AssetActionResult.failure('不支持的资产类型');
-    _recalculateAssetTotals();
-    final normalizedCurr = _normalizeAssetCurrency(curr);
-
-    final result = switch (type) {
-      'cash' => await _api.addCashAsset(name, amount, curr: normalizedCurr),
-      'other' => await _api.addOtherAsset(name, amount, curr: normalizedCurr),
-      'liability' => await _api.addLiability(
-        name,
-        amount,
-        curr: normalizedCurr,
-      ),
-      _ => const AssetActionResult.failure('不支持的资产类型'),
-    };
-    if (!result.ok) {
-      _restoreAssetSnapshot(snapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return const AssetActionResult.success();
   }
 
   /// 删除资产（现金/其他/负债）
@@ -828,35 +778,12 @@ class AppState extends ChangeNotifier {
     required int id,
     bool awaitRefresh = true,
   }) async {
-    if (id <= 0) {
-      return const AssetActionResult.failure('操作失败，请稍后重试');
-    }
-    final snapshot = _captureAssetSnapshot();
-    final changed = _optimisticDeleteAsset(type: type, id: id);
-    if (changed) {
-      _recalculateAssetTotals();
-    } else if (type != 'cash' && type != 'other' && type != 'liability') {
-      return const AssetActionResult.failure('不支持的资产类型');
-    }
-
-    AssetActionResult result;
-    if (type == 'cash') {
-      result = await _api.deleteCashAsset(id);
-    } else if (type == 'other') {
-      result = await _api.deleteOtherAsset(id);
-    } else if (type == 'liability') {
-      result = await _api.deleteLiability(id);
-    } else {
-      return const AssetActionResult.failure('不支持的资产类型');
-    }
-    if (!result.ok) {
-      if (changed) {
-        _restoreAssetSnapshot(snapshot);
-      }
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return const AssetActionResult.success();
+    return _assetWriteState.deleteAsset(
+      type: type,
+      id: id,
+      awaitRefresh: awaitRefresh,
+      bindings: _assetWriteBindings,
+    );
   }
 
   /// 更新资产（现金/其他/负债）
@@ -868,57 +795,15 @@ class AppState extends ChangeNotifier {
     String? curr,
     bool awaitRefresh = true,
   }) async {
-    if (id <= 0) {
-      return const AssetActionResult.failure('操作失败，请稍后重试');
-    }
-    final normalizedCurr = _normalizeAssetCurrency(curr);
-    final snapshot = _captureAssetSnapshot();
-    final changed = _optimisticUpdateAsset(
+    return _assetWriteState.updateAsset(
       type: type,
       id: id,
       name: name,
       amount: amount,
-      curr: normalizedCurr,
+      curr: curr,
+      awaitRefresh: awaitRefresh,
+      bindings: _assetWriteBindings,
     );
-    if (changed) {
-      _recalculateAssetTotals();
-    } else if (type != 'cash' && type != 'other' && type != 'liability') {
-      return const AssetActionResult.failure('不支持的资产类型');
-    }
-
-    AssetActionResult result;
-    if (type == 'cash') {
-      result = await _api.updateCashAsset(
-        id,
-        name,
-        amount,
-        curr: normalizedCurr,
-      );
-    } else if (type == 'other') {
-      result = await _api.updateOtherAsset(
-        id,
-        name,
-        amount,
-        curr: normalizedCurr,
-      );
-    } else if (type == 'liability') {
-      result = await _api.updateLiability(
-        id,
-        name,
-        amount,
-        curr: normalizedCurr,
-      );
-    } else {
-      return const AssetActionResult.failure('不支持的资产类型');
-    }
-    if (!result.ok) {
-      if (changed) {
-        _restoreAssetSnapshot(snapshot);
-      }
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return const AssetActionResult.success();
   }
 
   // ============================================================
