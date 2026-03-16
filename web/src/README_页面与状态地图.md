@@ -23,6 +23,7 @@ Web 端现在可以理解成三层：
 - 状态统一入口：[stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
 - 刷新协调层：[stores/refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 - 会话协调层：[stores/sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
+- 分析页状态层：[stores/analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts)
 
 一句话：
 
@@ -172,10 +173,11 @@ web/src/
 - [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts)
 - [refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 - [sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
+- [analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts)
 
 一句大白话：
 
-`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新链路走 refreshCoordinator，会话恢复和路由初始化走 sessionCoordinator。`
+`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新链路走 refreshCoordinator，会话恢复和路由初始化走 sessionCoordinator，分析页自己的缓存和加载编排走 analysis store。`
 
 ---
 

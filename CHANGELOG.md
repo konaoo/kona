@@ -1,3 +1,22 @@
+## 2026-03-16-17
+
+### 这版一句话
+
+继续拆 Web 页面状态：把分析页的缓存、周期选择和数据加载编排从页面里拆到独立 analysis store。
+
+### 主要变化
+- [analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts) / [AppAnalysisPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAnalysisPage.vue)：把盈亏概览、收益日历、排行榜的缓存恢复、接口加载、周期选择和刷新编排，从页面脚本拆到独立 analysis store，页面主要保留展示格式化和少量 UI 状态。
+- [stores/index.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/index.ts) / [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/web/src/README_页面与状态地图.md)：补导出和状态地图，明确分析页现在不再自己扛整套数据状态。
+
+### 影响范围
+- Web 分析页的首次加载
+- Web 分析页的本地缓存恢复
+- Web 分析页的日 / 月 / 年周期切换
+
+### 验收重点
+- 分析页继续能正常显示盈亏概览、收益日历和排行榜
+- 切换日 / 月 / 年周期后，选择器和列表仍按原来口径更新
+
 ## 2026-03-16-16
 
 ### 这版一句话
