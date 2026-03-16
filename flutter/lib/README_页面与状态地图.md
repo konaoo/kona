@@ -95,6 +95,7 @@ flutter/lib/
 - [app_investment_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_investment_write_state.dart)
 - [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
 - [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
+- [app_refresh_coordinator_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_coordinator_state.dart)
 - [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart)
 - [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)
 - [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)
@@ -143,6 +144,15 @@ flutter/lib/
 - 汇率刷新
 
 这些现在已经收口到 [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)，`AppState` 在这块主要保留原来的入口名和对子状态的组装，不再继续自己兼管整条刷新细节。
+
+刷新胶水这一层这次也继续往前收了一层：
+
+- `portfolioLoaded`
+- `lastHydrateResult / lastRefreshResult`
+- `AppRefreshBindings` 组装
+- `hydrateFromCache / refreshAll / refreshByVersion / refreshHomeData` 的外层入口
+
+这些现在已经收口到 [app_refresh_coordinator_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_coordinator_state.dart)，`AppState` 在这块主要保留公开入口兼容，不再自己兼管刷新状态记录和 bindings 拼装。
 
 资产 / 持仓这一步也继续往前收了一层：
 

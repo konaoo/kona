@@ -18,6 +18,7 @@ import 'app_market_state.dart';
 import 'app_overview_state.dart';
 import 'app_portfolio_view_state.dart';
 import 'app_preferences_state.dart';
+import 'app_refresh_coordinator_state.dart';
 import 'app_refresh_state.dart';
 import 'app_security_state.dart';
 import 'app_session_state.dart';
@@ -47,6 +48,7 @@ class AppState extends ChangeNotifier {
   late final AppHomeTotalsState _homeTotalsState;
   final AppMarketState _marketState;
   final AppOverviewState _overviewState;
+  late final AppRefreshCoordinatorState _refreshCoordinatorState;
   final AppRefreshState _refreshState;
   final AppSyncState _syncState;
   late final AppPortfolioViewState _portfolioViewState;
@@ -128,6 +130,36 @@ class AppState extends ChangeNotifier {
       homeTotalsState: _homeTotalsState,
       tradeState: _tradeState,
     );
+    _refreshCoordinatorState = AppRefreshCoordinatorState(
+      refreshState: _refreshState,
+      syncState: _syncState,
+      username: () => username,
+      userId: () => userId,
+      portfolio: () => _portfolio,
+      replacePortfolio: (value) => _portfolio = value,
+      cashAssets: () => _cashAssets,
+      replaceCashAssets: (value) => _cashAssets = value,
+      otherAssets: () => _otherAssets,
+      replaceOtherAssets: (value) => _otherAssets = value,
+      liabilities: () => _liabilities,
+      replaceLiabilities: (value) => _liabilities = value,
+      prices: () => _portfolioViewState.prices,
+      replacePrices: (value) =>
+          _portfolioViewState.replacePrices(value, notify: false),
+      priceSnapshots: () => _portfolioViewState.priceSnapshots,
+      replacePriceSnapshots: (value) =>
+          _portfolioViewState.replacePriceSnapshots(value, notify: false),
+      exchangeRates: () => exchangeRates,
+      recalculateHomeTotals: _recalculateHomeTotals,
+      calculateHistoryStats: _calculateHistoryStats,
+      applyOverviewMilestones: applyOverviewMilestones,
+      updateExchangeRates: updateExchangeRates,
+      applySyncMarketStatus: _applySyncMarketStatus,
+      serializeMarketStatusForCache: _marketState.serializeMarketStatusForCache,
+      loadMarketStatusWithBudget: _loadMarketStatusWithBudget,
+      resolvePriceInfoByCode: _portfolioViewState.resolvePriceInfoByCode,
+      notifyListeners: notifyListeners,
+    );
     _sessionState = AppSessionState(
       api: api,
       secureStorage: secureStorage,
@@ -200,9 +232,6 @@ class AppState extends ChangeNotifier {
   }
 
   // 3) 资产与持仓状态
-  bool _portfolioLoaded = false;
-  AppAsyncFlowResult? _lastHydrateResult;
-  AppAsyncFlowResult? _lastRefreshResult;
   AppAsyncFlowResult? _lastSessionRestoreResult;
   AppAsyncFlowResult? _lastSessionValidationResult;
 
@@ -241,9 +270,11 @@ class AppState extends ChangeNotifier {
   List<PortfolioItem> get portfolio => _assetsState.portfolio;
   Map<String, PriceInfo> get prices => _portfolioViewState.prices;
   String get currentCategory => _portfolioViewState.currentCategory;
-  bool get portfolioLoaded => _portfolioLoaded;
-  AppAsyncFlowResult? get lastHydrateResult => _lastHydrateResult;
-  AppAsyncFlowResult? get lastRefreshResult => _lastRefreshResult;
+  bool get portfolioLoaded => _refreshCoordinatorState.portfolioLoaded;
+  AppAsyncFlowResult? get lastHydrateResult =>
+      _refreshCoordinatorState.lastHydrateResult;
+  AppAsyncFlowResult? get lastRefreshResult =>
+      _refreshCoordinatorState.lastRefreshResult;
   AppAsyncFlowResult? get lastSessionRestoreResult => _lastSessionRestoreResult;
   AppAsyncFlowResult? get lastSessionValidationResult =>
       _lastSessionValidationResult;
@@ -273,7 +304,6 @@ class AppState extends ChangeNotifier {
   DateTime? get quoteDataUpdatedAt => _syncState.quoteDataUpdatedAt;
   bool get assetDataFromCache => _syncState.assetDataFromCache;
   bool get quoteDataFromCache => _syncState.quoteDataFromCache;
-  Map<String, String> get _syncVersions => _syncState.syncVersions;
 
   List<PortfolioItem> get _portfolio => _assetsState.portfolio;
   set _portfolio(List<PortfolioItem> value) {
@@ -401,7 +431,7 @@ class AppState extends ChangeNotifier {
     clearPrices: () => _portfolioViewState.clearPrices(notify: false),
     clearPriceSnapshots: () =>
         _portfolioViewState.clearPriceSnapshots(notify: false),
-    setPortfolioLoaded: (value) => _portfolioLoaded = value,
+    setPortfolioLoaded: _refreshCoordinatorState.setPortfolioLoaded,
     hydrateFromCache: hydrateFromCache,
     refreshAll: refreshAll,
   );
@@ -421,51 +451,8 @@ class AppState extends ChangeNotifier {
         rateForCurrency: _rateForCurrency,
       );
 
-  AppRefreshBindings get _refreshBindings => AppRefreshBindings(
-    username: () => username,
-    userId: () => userId,
-    syncState: _syncState,
-    syncVersions: () => _syncVersions,
-    portfolio: () => _portfolio,
-    replacePortfolio: (value) => _portfolio = value,
-    cashAssets: () => _cashAssets,
-    replaceCashAssets: (value) => _cashAssets = value,
-    otherAssets: () => _otherAssets,
-    replaceOtherAssets: (value) => _otherAssets = value,
-    liabilities: () => _liabilities,
-    replaceLiabilities: (value) => _liabilities = value,
-    prices: () => _portfolioViewState.prices,
-    replacePrices: (value) =>
-        _portfolioViewState.replacePrices(value, notify: false),
-    priceSnapshots: () => _portfolioViewState.priceSnapshots,
-    replacePriceSnapshots: (value) =>
-        _portfolioViewState.replacePriceSnapshots(value, notify: false),
-    portfolioLoaded: () => _portfolioLoaded,
-    setPortfolioLoaded: (value) => _portfolioLoaded = value,
-    exchangeRates: () => exchangeRates,
-    recalculateHomeTotals: _recalculateHomeTotals,
-    calculateHistoryStats: _calculateHistoryStats,
-    applyOverviewMilestones: applyOverviewMilestones,
-    updateExchangeRates: updateExchangeRates,
-    applySyncMarketStatus: _applySyncMarketStatus,
-    serializeMarketStatusForCache: _marketState.serializeMarketStatusForCache,
-    loadMarketStatusWithBudget: _loadMarketStatusWithBudget,
-    resolvePriceInfoByCode: _portfolioViewState.resolvePriceInfoByCode,
-    notifyListeners: notifyListeners,
-  );
-
   Future<void> hydrateFromCache() async {
-    final flow = startAppAsyncFlow('flutter.hydrateFromCache');
-    try {
-      await _refreshState.hydrateFromCache(bindings: _refreshBindings);
-      _lastHydrateResult = finishAppAsyncFlow(flow, stage: 'cache-restored');
-    } catch (error) {
-      _lastHydrateResult = finishAppAsyncFlow(
-        flow,
-        stage: 'failed',
-        error: error,
-      );
-    }
+    await _refreshCoordinatorState.hydrateFromCache();
   }
 
   // ============================================================
@@ -482,18 +469,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> savePortfolioToCache() async {
-    await _refreshState.savePortfolioToCache(bindings: _refreshBindings);
+    await _refreshCoordinatorState.savePortfolioToCache();
   }
 
   Future<void> saveHomeCache(
     List<dynamic> history, {
     Map<String, dynamic>? overview,
   }) async {
-    await _refreshState.saveHomeCache(
-      bindings: _refreshBindings,
-      history: history,
-      overview: overview,
-    );
+    await _refreshCoordinatorState.saveHomeCache(history, overview: overview);
   }
 
   // ============================================================
@@ -696,7 +679,6 @@ class AppState extends ChangeNotifier {
 
   void _recalculateHomeTotals() {
     _homeTotalsState.recalculateHomeTotals(notify: false);
-    _portfolioLoaded = _portfolio.isNotEmpty || _cashAssets.isNotEmpty;
   }
 
   // ============================================================
@@ -706,7 +688,7 @@ class AppState extends ChangeNotifier {
   /// 刷新首页数据（全量）
   /// 刷新首页数据
   Future<void> refreshHomeData() async {
-    await _refreshState.refreshHomeData(bindings: _refreshBindings);
+    await _refreshCoordinatorState.refreshHomeData();
   }
 
   /// 按版本增量刷新，失败时自动回退全量刷新。
@@ -714,8 +696,7 @@ class AppState extends ChangeNotifier {
     bool force = false,
     bool refreshQuotes = true,
   }) async {
-    await _refreshState.refreshByVersion(
-      bindings: _refreshBindings,
+    await _refreshCoordinatorState.refreshByVersion(
       force: force,
       refreshQuotes: refreshQuotes,
     );
@@ -727,34 +708,14 @@ class AppState extends ChangeNotifier {
     _overviewState.applyOverviewMilestones(overview, notify: false);
   }
 
-  Future<void> _refreshPortfolioPricesInBackground({bool force = false}) async {
-    await _refreshState.refreshPortfolioPricesInBackground(
-      bindings: _refreshBindings,
-      force: force,
-    );
-  }
-
   /// 仅刷新行情价格（用于定时更新今日盈亏/现价）
   Future<void> refreshPricesOnly() async {
-    await _refreshState.refreshPricesOnly(bindings: _refreshBindings);
+    await _refreshCoordinatorState.refreshPricesOnly();
   }
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll({bool force = false}) async {
-    final flow = startAppAsyncFlow('flutter.refreshAll');
-    try {
-      await _refreshState.refreshAll(bindings: _refreshBindings, force: force);
-      _lastRefreshResult = finishAppAsyncFlow(
-        flow,
-        stage: force ? 'force-finished' : 'finished',
-      );
-    } catch (error) {
-      _lastRefreshResult = finishAppAsyncFlow(
-        flow,
-        stage: 'failed',
-        error: error,
-      );
-    }
+    await _refreshCoordinatorState.refreshAll(force: force);
   }
 
   // ============================================================
@@ -985,12 +946,12 @@ class AppState extends ChangeNotifier {
 
   /// 刷新投资组合
   Future<void> refreshPortfolio() async {
-    await _refreshState.refreshPortfolio(bindings: _refreshBindings);
+    await _refreshCoordinatorState.refreshPortfolio();
   }
 
   /// 加载汇率
   Future<void> loadExchangeRates() async {
-    await _refreshState.loadExchangeRates(bindings: _refreshBindings);
+    await _refreshCoordinatorState.loadExchangeRates();
   }
 
   /// 获取盈亏颜色

@@ -1,3 +1,23 @@
+## 2026-03-16-11
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把刷新入口、结果状态和 bindings 胶水从总控里拆到独立刷新协调层。
+
+### 主要变化
+- [app_refresh_coordinator_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_coordinator_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把 `portfolioLoaded`、`lastHydrateResult`、`lastRefreshResult`、`AppRefreshBindings` 组装，以及 `hydrateFromCache / refreshHomeData / refreshByVersion / refreshAll / refreshPortfolio / loadExchangeRates` 的外层入口，从 `AppState` 拆成独立刷新协调层，`AppState` 继续保留公开接口不变。
+- [app_state_cache_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_cache_test.dart)：补充刷新恢复后的公开状态断言，确保缓存恢复不仅数据对，`lastHydrateResult` 也能对上。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：补充 Flutter 状态拆分地图，明确刷新协调层的新落点。
+
+### 影响范围
+- Flutter 冷启动缓存恢复
+- Flutter 首页刷新 / 增量刷新 / 全量刷新入口
+- Flutter 刷新状态记录与 `portfolioLoaded` 对外读取
+
+### 验收重点
+- `hydrateFromCache / refreshAll / refreshByVersion / refreshHomeData` 公开入口保持原行为
+- 缓存恢复后 `portfolioLoaded` 和 `lastHydrateResult` 继续可用
+
 ## 2026-03-16-10
 
 ### 这版一句话

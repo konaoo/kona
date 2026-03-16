@@ -67,6 +67,8 @@ void main() {
     await state.hydrateFromCache();
 
     expect(state.portfolioLoaded, true);
+    expect(state.lastHydrateResult?.ok, isTrue);
+    expect(state.lastHydrateResult?.stage, 'cache-restored');
     expect(state.portfolio.first.code, 'sh600000');
     expect(state.totalCash, 5);
     expect(state.totalOther, 2);
@@ -122,5 +124,6 @@ void main() {
     expect(state.totalOther, 70);
     expect(state.totalLiability, 35);
     expect(state.totalAsset, 123);
+    expect(state.lastHydrateResult?.ok, isTrue);
   });
 }
