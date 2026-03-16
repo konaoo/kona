@@ -47,6 +47,14 @@ def build_portfolio_items_with_metrics(
     market_statuses: Dict[str, Dict[str, float]],
     convert_amount: Callable[[float, str, str, Dict[str, float]], float],
 ) -> List[Dict]:
+    """
+    为实时持仓补齐统一指标口径。
+
+    约定：
+    - 实时投资页 / 首页优先认这里产出的 metrics 字段
+    - 历史分析页优先认 daily_snapshots / daily_snapshot_market_breakdowns
+    - 前端只允许在 metrics 缺失时做兼容性兜底，不再各自重算一套收益口径
+    """
     enriched: List[Dict] = []
     for item in items:
         code = str(item.get("code") or "").strip()

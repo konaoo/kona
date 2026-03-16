@@ -4,6 +4,31 @@ import '../models/portfolio.dart';
 class PortfolioMetricsService {
   const PortfolioMetricsService._();
 
+  static double? _metricWithRate(double? metric, double? rateToCny) {
+    if (metric == null) return null;
+    if (rateToCny != null && rateToCny > 0) {
+      return metric * rateToCny;
+    }
+    return metric;
+  }
+
+  static double? resolveValueCny(PortfolioItem item) {
+    return item.valueCny ?? _metricWithRate(item.value, item.rateToCny);
+  }
+
+  static double? resolveCostCny(PortfolioItem item) {
+    return item.costCny ?? _metricWithRate(item.cost, item.rateToCny);
+  }
+
+  static double? resolveDayPnlAggregateCny(PortfolioItem item) {
+    return item.dayPnlAggregateCny ??
+        _metricWithRate(item.dayPnlAggregate, item.rateToCny);
+  }
+
+  static double? resolveTotalPnlCny(PortfolioItem item) {
+    return item.totalPnlCny ?? _metricWithRate(item.totalPnl, item.rateToCny);
+  }
+
   static double sumMetricIgnoreNull(
     Iterable<PortfolioItem> items,
     double? Function(PortfolioItem item) pick,
@@ -49,15 +74,15 @@ class PortfolioMetricsService {
   }
 
   static double calcInvestTotalMV(Iterable<PortfolioItem> items) {
-    return sumMetricIgnoreNull(items, (item) => item.valueCny);
+    return sumMetricIgnoreNull(items, resolveValueCny);
   }
 
   static double calcInvestDayPnl(Iterable<PortfolioItem> items) {
-    return sumMetricIgnoreNull(items, (item) => item.dayPnlAggregateCny);
+    return sumMetricIgnoreNull(items, resolveDayPnlAggregateCny);
   }
 
   static double calcInvestHoldingPnl(Iterable<PortfolioItem> items) {
-    return sumMetricIgnoreNull(items, (item) => item.totalPnlCny);
+    return sumMetricIgnoreNull(items, resolveTotalPnlCny);
   }
 
   static double calcInvestDayPnlRate(Iterable<PortfolioItem> items) {
@@ -65,8 +90,8 @@ class PortfolioMetricsService {
     double base = 0;
     var hasMetrics = false;
     for (final item in items) {
-      final dayPnlCny = item.dayPnlAggregateCny;
-      final valueCny = item.valueCny;
+      final dayPnlCny = resolveDayPnlAggregateCny(item);
+      final valueCny = resolveValueCny(item);
       if (dayPnlCny != null && valueCny != null) {
         pnl += dayPnlCny;
         base += (valueCny - dayPnlCny);
@@ -81,7 +106,7 @@ class PortfolioMetricsService {
     double totalCostAbs = 0;
     var hasMetrics = false;
     for (final item in items) {
-      final costCny = item.costCny;
+      final costCny = resolveCostCny(item);
       if (costCny != null) {
         totalCostAbs += costCny.abs();
         hasMetrics = true;

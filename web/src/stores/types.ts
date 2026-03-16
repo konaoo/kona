@@ -9,7 +9,7 @@ import {
   GENERATED_SYNC_BOOTSTRAP_DOMAINS,
   GENERATED_SYNC_BOOTSTRAP_QUOTE_INCLUDE,
   GENERATED_WEB_CACHE_TTL_MS,
-  type GeneratedSyncDomain,
+  type GeneratedSyncDomain
 } from './generated_sync_contract'
 
 export type { MarketCode }
@@ -174,8 +174,12 @@ export type PositionRow = {
 /** 投资组合摘要 */
 export type PortfolioSummary = {
   totalValue: number
-  totalPnl: number
+  totalCostAbs: number
   todayPnl: number
+  dayRate: number
+  floatPnl: number
+  floatRate: number
+  totalPnl: number
   totalRate: number
 }
 
@@ -186,19 +190,19 @@ export const MARKET_CODES: MarketCode[] = ['a', 'hk', 'us', 'fund']
 export const DEFAULT_QUOTE_POLICY: QuotePolicy = {
   interval_open_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_open_sec,
   interval_closed_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_closed_sec,
-  interval_us_extended_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_us_extended_sec,
+  interval_us_extended_sec: GENERATED_QUOTE_POLICY_DEFAULT.interval_us_extended_sec
 }
 
 /** 存储键常量 */
 export const STORAGE_KEYS = {
   SYNC_VERSIONS: 'web_sync_versions_v1',
-  STORE_CACHE: 'web_store_cache_v1',
+  STORE_CACHE: 'web_store_cache_v1'
 } as const
 
 /** TTL 常量 */
 export const CACHE_TTL = {
   STATIC: GENERATED_WEB_CACHE_TTL_MS.STATIC,
-  QUOTES: GENERATED_WEB_CACHE_TTL_MS.QUOTES,
+  QUOTES: GENERATED_WEB_CACHE_TTL_MS.QUOTES
 } as const
 
 /** Bootstrap 超时 */
@@ -207,5 +211,5 @@ export const AUTH_BOOTSTRAP_TIMEOUT_MS = GENERATED_AUTH_BOOTSTRAP_TIMEOUT_MS
 /** Bootstrap 包含配置 */
 export const SYNC_BOOTSTRAP = {
   STATIC_INCLUDE: [...ALL_SYNC_DOMAINS] as SyncDomain[],
-  QUOTE_INCLUDE: [...GENERATED_SYNC_BOOTSTRAP_QUOTE_INCLUDE] as SyncDomain[],
+  QUOTE_INCLUDE: [...GENERATED_SYNC_BOOTSTRAP_QUOTE_INCLUDE] as SyncDomain[]
 } as const

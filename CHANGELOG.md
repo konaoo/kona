@@ -1,3 +1,25 @@
+## 2026-03-16-05
+
+### 这版一句话
+
+统一实时投资口径：Flutter / Web 的投资页和首页汇总统一先认后端持仓指标，历史区间继续认快照。
+
+### 主要变化
+- [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：明确 `/api/portfolio?with_metrics=1` 和 sync bootstrap 的持仓 metrics 是实时投资页唯一主口径。
+- [portfolio_metrics_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/portfolio_metrics_service.dart) / [portfolio_metrics_service_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/portfolio_metrics_service_test.dart)：Flutter 持仓汇总统一先吃后端 CNY 指标，缺失时只回退到同一行指标乘汇率，并补上对应测试。
+- [portfolioMetrics.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolioMetrics.ts) / [portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts) / [AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue) / [AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue) / [portfolioMetrics.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/portfolioMetrics.test.ts)：Web 的投资页、首页、市场拆分和持仓展示统一走一个汇总工具，不再在页面里各自再算一遍。
+- [资产收益计算逻辑.md](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md) / [价格源与快照盈亏口径说明.md](/Users/kona/Desktop/kaka/kona_repo/docs/价格源与快照盈亏口径说明.md)：文档明确“实时认持仓指标，历史认快照”。
+
+### 影响范围
+- Flutter 首页、投资页的投资汇总
+- Web 首页、投资页的投资汇总与市场拆分
+- 价格 / 收益 / 快照相关口径文档
+
+### 验收重点
+- Flutter / Web 投资页的总市值、今日盈亏、累计盈亏继续对齐
+- Web 首页和投资页的投资总计不再各自重算出不同结果
+- 分析页历史区间继续只受 `daily_snapshots` 影响
+
 ## 2026-03-16-04
 
 ### 这版一句话

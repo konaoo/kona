@@ -12,10 +12,15 @@ import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
 import { useKonaStore } from '@/stores/composables'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { useMarketStore } from '@/stores/market'
+import {
+  buildPortfolioSummary,
+  resolvePositionDayPnlCny,
+  resolvePositionTotalPnlCny,
+  resolvePositionValueCny
+} from '@/stores/portfolioMetrics'
 import { InvestTradeModal } from '@/components'
 import AssetLogo from '@/components/base/AssetLogo.vue'
 import AppShell from '../../layouts/AppShell.vue'
-
 
 // Types
 type AssetType = 'cash' | 'other' | 'liability'
@@ -46,7 +51,7 @@ const chartPeriod = ref<ChartPeriod>('1m')
 const chartHoverIndex = ref<number | null>(null)
 const chartSwitchAnimating = ref(false)
 const selectedTab = ref('all')
-const holdingsView = ref<'card'|'row'>('card')
+const holdingsView = ref<'card' | 'row'>('card')
 const marketIndices = ref<any[]>([])
 const activeSegment = ref<AssetType | null>(null)
 const historyPoints = ref<SnapshotPoint[]>([])
@@ -61,20 +66,26 @@ const chartPeriodOptions: Array<{ label: string; value: ChartPeriod }> = [
   { label: '近3月', value: '3m' },
   { label: '近6月', value: '6m' },
   { label: '近1年', value: '1y' },
-  { label: '全部', value: 'all' },
+  { label: '全部', value: 'all' }
 ]
 
 // Currency Switcher State
 const currencyOpen = ref(false)
-const currentCurrency = ref<'CNY'|'USD'|'HKD'>('CNY')
+const currentCurrency = ref<'CNY' | 'USD' | 'HKD'>('CNY')
 const assetCurrencyOpen = ref(false)
 
-const form = reactive<{ id: number | null; icon: string; name: string; amount: number; curr: string }>({
+const form = reactive<{
+  id: number | null
+  icon: string
+  name: string
+  amount: number
+  curr: string
+}>({
   id: null,
   icon: '🏦',
   name: '',
   amount: 0,
-  curr: 'CNY',
+  curr: 'CNY'
 })
 
 function defaultAssetIcon(type: AssetType): string {
@@ -105,52 +116,32 @@ function toCny(amount: unknown, curr?: string): number {
 
 // 投资资产总计
 const investTotal = computed(() => {
-  let mv = 0
-  let cost = 0
-  let dayPnl = 0
-  let floatPnl = 0
-  let totalPnl = 0
-
-  const rowsData = rows.value || []
-  for (const row of rowsData) {
-    if (!row || typeof row !== 'object') continue
-    try {
-      const rate = rateToCny(String(row.curr))
-      const rowValueCnyRaw = (row as any).valueCny ?? (row as any).value_cny
-      const rowCostCnyRaw = (row as any).costCny ?? (row as any).cost_cny
-      const rowDayPnlCnyRaw = (row as any).dayPnlAggregateCny ?? (row as any).day_pnl_aggregate_cny
-      const rowTotalPnlCnyRaw = (row as any).totalPnlCny ?? (row as any).total_pnl_cny
-      const mvCny = rowValueCnyRaw == null ? (Number(row.value) || 0) * rate : toNumber(rowValueCnyRaw)
-      const costCny = rowCostCnyRaw == null ? (Number(row.cost) || 0) * rate : toNumber(rowCostCnyRaw)
-      const dayPnlCny = rowDayPnlCnyRaw == null ? (Number(row.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw)
-      const totalPnlCny = rowTotalPnlCnyRaw == null ? (Number(row.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw)
-      mv += mvCny
-      cost += Math.abs(costCny)
-      dayPnl += dayPnlCny
-      floatPnl += (mvCny - costCny)
-      totalPnl += totalPnlCny
-    } catch (e) {
-      console.error('Error processing row:', e)
-    }
-  }
-
+  const summary = buildPortfolioSummary(rows.value || [])
   return {
-    mv,
-    cost,
-    dayPnl,
-    floatPnl,
-    totalPnl,
-    dayRate: mv > 0 && (mv - dayPnl) > 0 ? (dayPnl / (mv - dayPnl)) * 100 : 0,
-    floatRate: cost > 0 ? (floatPnl / cost) * 100 : 0,
-    totalRate: cost > 0 ? (totalPnl / cost) * 100 : 0,
+    mv: summary.totalValue,
+    cost: summary.totalCostAbs,
+    dayPnl: summary.todayPnl,
+    floatPnl: summary.floatPnl,
+    totalPnl: summary.totalPnl,
+    dayRate: summary.dayRate,
+    floatRate: summary.floatRate,
+    totalRate: summary.totalRate
   }
 })
 
 // 各类资产总计
-const cashTotal = computed(() => (cashAssets.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0))
-const otherTotal = computed(() => (otherAssets.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0))
-const liabilityTotal = computed(() => (liabilities.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0))
-const totalAssetsCny = computed(() => (investTotal.value?.mv || 0) + cashTotal.value + otherTotal.value - liabilityTotal.value)
+const cashTotal = computed(() =>
+  (cashAssets.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0)
+)
+const otherTotal = computed(() =>
+  (otherAssets.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0)
+)
+const liabilityTotal = computed(() =>
+  (liabilities.value || []).reduce((sum, item) => sum + toCny(item.amount, item.curr), 0)
+)
+const totalAssetsCny = computed(
+  () => (investTotal.value?.mv || 0) + cashTotal.value + otherTotal.value - liabilityTotal.value
+)
 
 // Modal Data Getters
 const currentTypeAssets = computed(() => {
@@ -179,7 +170,7 @@ const modalAddLabel = computed(() => {
 
 const allHistoryPoints = computed(() => {
   return [...historyPoints.value]
-    .filter((item) => item && item.date)
+    .filter(item => item && item.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
 })
 
@@ -192,7 +183,7 @@ const filteredHistoryPoints = computed(() => {
     '1m': 30,
     '3m': 90,
     '6m': 180,
-    '1y': 365,
+    '1y': 365
   }
 
   return sorted.slice(-limitMap[chartPeriod.value])
@@ -207,11 +198,11 @@ const chartRangeLabel = computed(() => {
 
 const chartSeries = computed(() => {
   return filteredHistoryPoints.value
-    .map((item) => ({
+    .map(item => ({
       date: String(item.date || ''),
-      value: toDisplay(toNumber(item.total_asset, 0)),
+      value: toDisplay(toNumber(item.total_asset, 0))
     }))
-    .filter((item) => item.date && Number.isFinite(item.value))
+    .filter(item => item.date && Number.isFinite(item.value))
 })
 
 const chartStrokeColor = computed(() => {
@@ -219,9 +210,7 @@ const chartStrokeColor = computed(() => {
   const first = series[0]
   const last = series[series.length - 1]
   if (first && last && series.length >= 2) {
-    return last.value >= first.value
-      ? '#f05a55'
-      : '#3ecf82'
+    return last.value >= first.value ? '#f05a55' : '#3ecf82'
   }
   return (investTotal.value?.dayPnl || 0) >= 0 ? '#f05a55' : '#3ecf82'
 })
@@ -244,8 +233,8 @@ const chartBuildPeriodActive = computed(() => {
   const baseDateText = buildStartAt
     ? buildStartAt.slice(0, 10)
     : registeredAt
-    ? registeredAt.slice(0, 10)
-    : String(first?.date || '').trim()
+      ? registeredAt.slice(0, 10)
+      : String(first?.date || '').trim()
   if (!baseDateText) return false
   const firstDate = new Date(`${baseDateText}T00:00:00`)
   if (Number.isNaN(firstDate.getTime())) return false
@@ -279,14 +268,15 @@ const chartGeometry = computed(() => {
       guideX: width,
       color: chartStrokeColor.value,
       points: [] as Array<{ x: number; y: number }>,
-      hasData: false,
+      hasData: false
     }
   }
 
   const firstValue = values[0]
-  const source = values.length === 1 && firstValue
-    ? [firstValue, { ...firstValue, date: `${firstValue.date}-end` }]
-    : values
+  const source =
+    values.length === 1 && firstValue
+      ? [firstValue, { ...firstValue, date: `${firstValue.date}-end` }]
+      : values
 
   if (source.length < 2) {
     return {
@@ -297,20 +287,18 @@ const chartGeometry = computed(() => {
       guideX: width,
       color: chartStrokeColor.value,
       points: [] as Array<{ x: number; y: number }>,
-      hasData: false,
+      hasData: false
     }
   }
 
-  const onlyValues = source.map((item) => item.value)
+  const onlyValues = source.map(item => item.value)
   const minVal = Math.min(...onlyValues)
   const maxVal = Math.max(...onlyValues)
   const range = Math.max(maxVal - minVal, 1)
   const points = source.map((item, index) => {
     const x = (width / (source.length - 1)) * index
     const ratio = (item.value - minVal) / range
-    const y = maxVal === minVal
-      ? (top + bottom) / 2
-      : bottom - ratio * (bottom - top)
+    const y = maxVal === minVal ? (top + bottom) / 2 : bottom - ratio * (bottom - top)
     return { x, y }
   })
 
@@ -328,7 +316,7 @@ const chartGeometry = computed(() => {
       guideX: width,
       color: chartStrokeColor.value,
       points: [] as Array<{ x: number; y: number }>,
-      hasData: false,
+      hasData: false
     }
   }
 
@@ -357,7 +345,7 @@ const chartGeometry = computed(() => {
     guideX: lastPoint.x,
     color: chartStrokeColor.value,
     points,
-    hasData: true,
+    hasData: true
   }
 })
 
@@ -370,7 +358,7 @@ const hoveredChartPoint = computed(() => {
   return {
     ...series,
     x: point.x,
-    y: point.y,
+    y: point.y
   }
 })
 
@@ -382,29 +370,32 @@ const chartTooltipStyle = computed(() => {
     return {
       left: `${Math.max(ratio * 100, 2)}%`,
       top: '-72px',
-      transform: 'translateX(0)',
+      transform: 'translateX(0)'
     }
   }
   if (ratio >= 0.86) {
     return {
       left: `${Math.min(ratio * 100, 98)}%`,
       top: '-72px',
-      transform: 'translateX(-100%)',
+      transform: 'translateX(-100%)'
     }
   }
   return {
     left: `${ratio * 100}%`,
     top: '-72px',
-    transform: 'translateX(-50%)',
+    transform: 'translateX(-50%)'
   }
 })
 
 // Segment Drawer Data
 const activeDrawerData = computed(() => {
   if (!activeSegment.value) return []
-  if (activeSegment.value === 'cash') return cashAssets.value.map(a => ({ ...a, type: 'cash' as const, code: undefined }))
-  if (activeSegment.value === 'other') return otherAssets.value.map(a => ({ ...a, type: 'other' as const, code: undefined }))
-  if (activeSegment.value === 'liability') return liabilities.value.map(a => ({ ...a, type: 'liability' as const, code: undefined }))
+  if (activeSegment.value === 'cash')
+    return cashAssets.value.map(a => ({ ...a, type: 'cash' as const, code: undefined }))
+  if (activeSegment.value === 'other')
+    return otherAssets.value.map(a => ({ ...a, type: 'other' as const, code: undefined }))
+  if (activeSegment.value === 'liability')
+    return liabilities.value.map(a => ({ ...a, type: 'liability' as const, code: undefined }))
   return []
 })
 
@@ -435,7 +426,6 @@ async function handleTradeSuccess() {
   }
 }
 
-
 // Current currency formatting config
 const currMeta = computed(() => {
   if (currentCurrency.value === 'USD') return { sym: '$ ', label: '美元' }
@@ -464,33 +454,33 @@ function formatCurrency(cnyValue: number, signed = false): string {
   const sym = currMeta.value.sym
   const sign = signed && cnyValue >= 0 ? '+' : signed && cnyValue < 0 ? '-' : ''
   const absVal = Math.abs(val)
-  
-  // For non-CNY, we might want 2 decimals if it's small, 
+
+  // For non-CNY, we might want 2 decimals if it's small,
   // but for the 1:1 look, round numbers are often used in headers.
   // However, for accuracy we should probably allow 2 decimals if needed.
-  const formatted = absVal >= 1000 ? Math.round(absVal).toLocaleString('zh-CN') : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-  
+  const formatted =
+    absVal >= 1000
+      ? Math.round(absVal).toLocaleString('zh-CN')
+      : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+
   return `${sign}${sym}${formatted}`
 }
 
 const filteredRows = computed(() => {
   const validRows = (rows.value || []).filter(row => row && typeof row === 'object')
-  const base = selectedTab.value === 'all'
-    ? validRows
-    : validRows.filter(row => (row?.category || row?.market) === selectedTab.value)
-  const totalMarketMv = investTotal.value?.mv || 1;
-  
+  const base =
+    selectedTab.value === 'all'
+      ? validRows
+      : validRows.filter(row => (row?.category || row?.market) === selectedTab.value)
+  const totalMarketMv = investTotal.value?.mv || 1
+
   return base.map((row: any) => {
     const qty = Number(row?.qty || 0)
     const displayCostPrice = Number(row?.displayCostPrice || 0)
     const currentPrice = Number(row?.currentPrice || 0)
-    
+
     const localMv = Number(row?.value) || 0
-    const rate = rateToCny(String(row?.curr || 'CNY'))
-    const rowMvCnyRaw = row?.valueCny ?? row?.value_cny
-    const rowDayPnlCnyRaw = row?.dayPnlAggregateCny ?? row?.day_pnl_aggregate_cny
-    const rowTotalPnlCnyRaw = row?.totalPnlCny ?? row?.total_pnl_cny
-    const cnyMv = rowMvCnyRaw == null ? (localMv * rate) : toNumber(rowMvCnyRaw)
+    const cnyMv = resolvePositionValueCny(row) ?? 0
     const pct = (cnyMv / totalMarketMv) * 100
 
     return {
@@ -505,15 +495,15 @@ const filteredRows = computed(() => {
       cost: Number(row?.cost) || 0,
       mv: localMv,
       mvCny: cnyMv,
-      dayPnl: rowDayPnlCnyRaw == null ? (Number(row?.dayPnlAggregate) || 0) * rate : toNumber(rowDayPnlCnyRaw),
-      totalPnl: rowTotalPnlCnyRaw == null ? (Number(row?.totalPnl) || 0) * rate : toNumber(rowTotalPnlCnyRaw),
+      dayPnl: resolvePositionDayPnlCny(row) ?? 0,
+      totalPnl: resolvePositionTotalPnlCny(row) ?? 0,
       quoteReady: Boolean(row?.quoteReady),
       quotePending: Boolean(row?.quotePending),
       navUpdatePending: Boolean(row?.navUpdatePending),
       category: String(row?.category || row?.market || ''),
       pct,
       spark: buildTrendSparklinePath(trendMap.value[String(row?.code || '')]?.points || []),
-      sparkReady: (trendMap.value[String(row?.code || '')]?.points || []).length >= 2,
+      sparkReady: (trendMap.value[String(row?.code || '')]?.points || []).length >= 2
     }
   })
 })
@@ -548,9 +538,9 @@ function masked(text: string): string {
 
 function formatValue(value: number, curr?: string): string {
   // If global currency is NOT CNY, we convert the item's value to the global display currency?
-  // User said "切换汇率需要根据实时汇率进行不同币种的计算". 
+  // User said "切换汇率需要根据实时汇率进行不同币种的计算".
   // Usually this means the WHOLE DASHBOARD should flip.
-  
+
   if (currentCurrency.value !== 'CNY') {
     // Convert to CNY first then to Display
     return formatCurrency(toCny(value, curr))
@@ -570,18 +560,20 @@ function formatHoldingCardValue(cnyValue: number): string {
 function formatAssetOriginalAmount(value: number, curr?: string): string {
   const symbol = getCurrencySymbol(curr)
   const absVal = Math.abs(toNumber(value, 0))
-  const formatted = absVal % 1 !== 0
-    ? absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-    : absVal.toLocaleString('zh-CN')
+  const formatted =
+    absVal % 1 !== 0
+      ? absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+      : absVal.toLocaleString('zh-CN')
   return `${symbol} ${formatted}`
 }
 
 function formatChartDisplayValue(value: number): string {
   const sym = currMeta.value.sym
   const absVal = Math.abs(toNumber(value, 0))
-  const formatted = absVal >= 1000
-    ? Math.round(absVal).toLocaleString('zh-CN')
-    : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  const formatted =
+    absVal >= 1000
+      ? Math.round(absVal).toLocaleString('zh-CN')
+      : absVal.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   return `${sym}${formatted}`
 }
 
@@ -616,7 +608,9 @@ watch(chartPeriod, () => {
 
 watch(
   () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
-  () => { void loadAssetTrends() },
+  () => {
+    void loadAssetTrends()
+  }
 )
 
 function formatLocal(v: any) {
@@ -631,13 +625,13 @@ function formatAssetPrice(value: unknown): string {
   if (absAmount >= 1000) {
     return absAmount.toLocaleString('zh-CN', {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: 2
     })
   }
 
   return absAmount.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: 4
   })
 }
 
@@ -654,7 +648,7 @@ async function loadLists() {
     const [cashRes, otherRes, liabilityRes] = await Promise.all([
       api.get<SimpleAsset[]>('/api/cash_assets'),
       api.get<SimpleAsset[]>('/api/other_assets'),
-      api.get<SimpleAsset[]>('/api/liabilities'),
+      api.get<SimpleAsset[]>('/api/liabilities')
     ])
     cashAssets.value = cashRes || []
     otherAssets.value = otherRes || []
@@ -682,10 +676,10 @@ async function loadHistory() {
   try {
     const res = await api.get<SnapshotPoint[]>('/api/history?days=5000')
     historyPoints.value = Array.isArray(res)
-      ? res.map((item) => ({
+      ? res.map(item => ({
           date: String(item?.date || ''),
           total_asset: toNumber(item?.total_asset, 0),
-          day_pnl: toNumber(item?.day_pnl, 0),
+          day_pnl: toNumber(item?.day_pnl, 0)
         }))
       : []
   } catch (e) {
@@ -703,7 +697,7 @@ async function loadAssetTrends() {
     .map((row: any) => ({
       code: String(row.code || ''),
       name: String(row.name || ''),
-      market: String(row.category || row.market || ''),
+      market: String(row.category || row.market || '')
     }))
 
   if (!items.length) {
@@ -714,7 +708,7 @@ async function loadAssetTrends() {
   try {
     const payload = await api.post<{ items?: Record<string, TrendItem> }>('/api/asset/trends', {
       items,
-      points: 20,
+      points: 20
     })
     trendMap.value = payload?.items || {}
   } catch (e) {
@@ -725,16 +719,9 @@ async function loadAssetTrends() {
 
 async function refreshAll() {
   try {
-    await Promise.all([
-      store.refreshStaticOnly(),
-      loadLists(),
-      loadHistory(),
-    ])
+    await Promise.all([store.refreshStaticOnly(), loadLists(), loadHistory()])
     await loadAssetTrends()
-    void Promise.all([
-      store.refreshQuotesOnly(),
-      loadMarketIndices(),
-    ])
+    void Promise.all([store.refreshQuotesOnly(), loadMarketIndices()])
   } catch (e) {
     console.error('Failed to refresh:', e)
   }
@@ -752,8 +739,6 @@ function getCurrencyLabel(curr?: string) {
   return '人民币'
 }
 
-
-
 function closeModal() {
   modalVisible.value = false
 }
@@ -764,8 +749,8 @@ function openFormModal(item?: any) {
   } else if (activeSegment.value) {
     modalType.value = activeSegment.value
   }
-  
-  modalMode.value = (item && item.id) ? 'edit' : 'add'
+
+  modalMode.value = item && item.id ? 'edit' : 'add'
   form.id = item?.id ?? null
   form.icon = item?.icon ?? defaultAssetIcon(modalType.value)
   form.name = item?.name ?? ''
@@ -781,11 +766,17 @@ function closeFormModal() {
 }
 
 async function submitModal() {
-  const payload = { id: form.id, icon: form.icon, name: form.name, amount: form.amount, curr: form.curr }
+  const payload = {
+    id: form.id,
+    icon: form.icon,
+    name: form.name,
+    amount: form.amount,
+    curr: form.curr
+  }
   const map = {
     cash: { add: '/api/cash_assets/add', update: '/api/cash_assets/update' },
     other: { add: '/api/other_assets/add', update: '/api/other_assets/update' },
-    liability: { add: '/api/liabilities/add', update: '/api/liabilities/update' },
+    liability: { add: '/api/liabilities/add', update: '/api/liabilities/update' }
   } as const
   const route = modalMode.value === 'add' ? map[modalType.value].add : map[modalType.value].update
 
@@ -798,7 +789,7 @@ async function removeAsset(type: AssetType, id: number) {
   const map = {
     cash: '/api/cash_assets/delete',
     other: '/api/other_assets/delete',
-    liability: '/api/liabilities/delete',
+    liability: '/api/liabilities/delete'
   } as const
   await api.post(map[type], { id })
   await loadLists()
@@ -842,11 +833,7 @@ onMounted(async () => {
       }
     } catch {}
     void store.bootstrap()
-    await Promise.all([
-      store.refreshStaticOnly(),
-      loadLists(),
-      loadHistory(),
-    ])
+    await Promise.all([store.refreshStaticOnly(), loadLists(), loadHistory()])
     await loadAssetTrends()
     void loadMarketIndices()
     void store.refreshQuotesOnly()
@@ -856,7 +843,6 @@ onMounted(async () => {
     isLoading.value = false
   }
 })
-
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleGlobalClick)
@@ -870,492 +856,1401 @@ onBeforeUnmount(() => {
   <AppShell title="我的资产">
     <!-- Content -->
 
-      <!-- Market Index Cards -->
-      <!-- Market Index Cards -->
-      <div class="market-strip">
-        <template v-if="marketIndices && marketIndices.length > 0">
-          <div v-for="idx in marketIndices" :key="idx.name" class="card" style="padding:14px 16px;background:var(--s1);border-radius:16px">
-            <div class="section-label" style="font-size:11px;margin-bottom:6px">{{ idx.name }}</div>
-            <div class="mono" :class="valueClass(idx.change)" style="font-size:16px;font-weight:600">
-              {{ idx.name === 'USD/CNY' ? idx.value.toFixed(4) : formatPct(idx.change_pct) }}
-            </div>
-            <div class="mono text-muted" style="font-size:10px;margin-top:3px">
-              {{ idx.name === 'USD/CNY' ? '实时汇率' : idx.value.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) }}
-            </div>
-          </div>
-        </template>
-        <template v-else>
-          <!-- Fallback skeletons -->
-          <div v-for="i in 6" :key="i" class="card" style="padding:12px 14px;opacity:0.6">
-            <div class="section-label" style="font-size:11px;margin-bottom:6px">加载中...</div>
-            <div class="mono text-muted" style="font-size:16px;font-weight:600">--%</div>
-            <div class="mono text-muted" style="font-size:10px;margin-top:3px">0.00</div>
-          </div>
-        </template>
-      </div>
-
-      <!-- Scenario 3 Asset Overview -->
-      <div class="c3-wrap">
-        <div class="c3-top">
-          <div class="c3-hero">
-            <div style="font-size:11px;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:8px">
-              总资产
-              <div @click.stop="currencyOpen = !currencyOpen" style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-soft);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;transition:all .14s;user-select:none;position:relative">
-                <span>{{ currentCurrency }}</span>
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)' }"><polyline points="6 9 12 15 18 9"/></svg>
-                
-                <!-- Currency Dropdown -->
-                <div v-if="currencyOpen" style="position:absolute;top:24px;left:0;background:var(--panel-elevated);border:1px solid var(--border-b);border-radius:10px;padding:4px;min-width:110px;z-index:100;box-shadow:var(--shadow-float);animation:modalIn .18s ease">
-                  <div class="ccy-option" :class="{ active: currentCurrency === 'CNY' }" @click.stop="currentCurrency = 'CNY'; currencyOpen = false">
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">CNY</span>
-                    <span style="font-size:9px;color:var(--muted)">人民币</span>
-                  </div>
-                  <div class="ccy-option" :class="{ active: currentCurrency === 'USD' }" @click.stop="currentCurrency = 'USD'; currencyOpen = false">
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">USD</span>
-                    <span style="font-size:9px;color:var(--muted)">美元</span>
-                  </div>
-                  <div class="ccy-option" :class="{ active: currentCurrency === 'HKD' }" @click.stop="currentCurrency = 'HKD'; currencyOpen = false">
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700">HKD</span>
-                    <span style="font-size:9px;color:var(--muted)">港币</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
-            <div class="c3-stats">
-              <span
-                class="badge"
-                :class="chartBuildPeriodActive ? 'neutral' : valueClass(chartHeadlineChange)"
-                style="font-size:12px;padding:4px 10px"
-              >
-                <template v-if="chartBuildPeriodActive">
-                  建账期，7天后统计资产趋势图
-                </template>
-                <template v-else>
-                  {{ chartHeadlineLabel }} {{ masked(formatSignedCny(chartHeadlineChange)) }}
-                </template>
-              </span>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center">
-            <div class="c1-period-tabs">
-              <button
-                v-for="item in chartPeriodOptions"
-                :key="item.value"
-                class="c1-pt"
-                :class="{ active: chartPeriod === item.value }"
-                @click="chartPeriod = item.value"
-              >
-                {{ item.label }}
-              </button>
-            </div>
-            <div class="home-chart-range">{{ chartRangeLabel }}</div>
-          </div>
-        </div>
-
-        <!-- Sparkline Trend Chart -->
+    <!-- Market Index Cards -->
+    <!-- Market Index Cards -->
+    <div class="market-strip">
+      <template v-if="marketIndices && marketIndices.length > 0">
         <div
-          ref="chartContainer"
-          class="c3-chart"
-          :class="{ 'chart-switching': chartSwitchAnimating }"
-          @mousemove="handleChartMouseMove"
-          @mouseleave="handleChartMouseLeave"
+          v-for="idx in marketIndices"
+          :key="idx.name"
+          class="card"
+          style="padding: 14px 16px; background: var(--s1); border-radius: 16px"
         >
-          <svg viewBox="0 0 1044 120" preserveAspectRatio="none" fill="none">
-            <defs>
-              <linearGradient id="c3grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="chartGeometry.color" stop-opacity=".18"/>
-                <stop offset="100%" :stop-color="chartGeometry.color" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <g class="home-chart-series">
-              <path v-if="chartGeometry.hasData" :d="chartGeometry.linePath" :stroke="chartGeometry.color" stroke-width="2.5" fill="none"/>
-              <path v-if="chartGeometry.hasData" :d="chartGeometry.areaPath" fill="url(#c3grad)"/>
-              <circle v-if="hoveredChartPoint" :cx="hoveredChartPoint.x" :cy="hoveredChartPoint.y" r="4.5" :fill="chartGeometry.color"/>
-              <line v-if="hoveredChartPoint" :x1="hoveredChartPoint.x" :y1="hoveredChartPoint.y" :x2="hoveredChartPoint.x" y2="120" :stroke="chartGeometry.color === '#f05a55' ? 'rgba(240,90,85,0.2)' : 'rgba(62,207,130,0.2)'" stroke-width="1.5" stroke-dasharray="4 3"/>
-            </g>
-          </svg>
+          <div class="section-label" style="font-size: 11px; margin-bottom: 6px">
+            {{ idx.name }}
+          </div>
           <div
-            v-if="hoveredChartPoint && chartGeometry.hasData && !chartLoading"
-            class="home-chart-tooltip"
-            :style="chartTooltipStyle"
+            class="mono"
+            :class="valueClass(idx.change)"
+            style="font-size: 16px; font-weight: 600"
           >
-            <div class="home-chart-tooltip-date">{{ formatChartDate(hoveredChartPoint.date) }}</div>
-            <div class="home-chart-tooltip-value">{{ masked(formatChartDisplayValue(hoveredChartPoint.value)) }}</div>
+            {{ idx.name === 'USD/CNY' ? idx.value.toFixed(4) : formatPct(idx.change_pct) }}
           </div>
-          <div v-if="chartGeometry.hasData && filteredHistoryPoints.length >= 2" class="home-chart-axis">
-            <span>{{ formatChartDate(filteredHistoryPoints[0]?.date || '') }}</span>
-            <span>{{ formatChartDate(filteredHistoryPoints[filteredHistoryPoints.length - 1]?.date || '') }}</span>
-          </div>
-          <div v-if="chartLoading" class="home-chart-empty">正在加载历史资产走势...</div>
-          <div v-else-if="chartError" class="home-chart-empty">{{ chartError }}</div>
-          <div v-else-if="!chartGeometry.hasData" class="home-chart-empty">继续使用几天后，这里会显示你的资产趋势</div>
-        </div>
-
-        <!-- Bottom Segments -->
-        <div class="c3-bottom">
-          <div class="c3-segment" @click="goToInvestPage">
-            <div class="c3-active-bar"></div>
-            <div class="c3-segment-label">投资资产</div>
-            <div class="c3-segment-val">{{ masked(formatCurrency(investTotal?.mv||0)) }}</div>
-            <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl||0)">今日 {{ formatPct(investTotal?.dayRate||0) }}</div>
-          </div>
-          <div class="c3-segment" :class="{ active: activeSegment === 'cash' }" @click="toggleSegment('cash')">
-            <div class="c3-active-bar" :style="{ background: activeSegment === 'cash' ? 'var(--blue)' : '' }"></div>
-            <div class="c3-segment-label">现金资产</div>
-            <div class="c3-segment-val">{{ masked(formatCurrency(cashTotal)) }}</div>
-            <div class="c3-segment-change text-muted">{{ cashAssets.length }}个账户</div>
-          </div>
-          <div class="c3-segment" :class="{ active: activeSegment === 'other' }" @click="toggleSegment('other')">
-            <div class="c3-active-bar" :style="{ background: activeSegment === 'other' ? 'var(--gold)' : '' }"></div>
-            <div class="c3-segment-label">其他资产</div>
-            <div class="c3-segment-val">{{ masked(formatCurrency(otherTotal)) }}</div>
-            <div class="c3-segment-change text-muted">{{ otherAssets.length }}条记录</div>
-          </div>
-          <div class="c3-segment" :class="{ active: activeSegment === 'liability' }" @click="toggleSegment('liability')">
-            <div class="c3-active-bar" :style="{ background: activeSegment === 'liability' ? 'var(--red)' : '' }"></div>
-            <div class="c3-segment-label">我的负债</div>
-            <div class="c3-segment-val" style="color:var(--red)">{{ masked(formatCurrency(-(liabilityTotal||0))) }}</div>
-            <div class="c3-segment-change text-red">{{ liabilities.length }}条负债</div>
+          <div class="mono text-muted" style="font-size: 10px; margin-top: 3px">
+            {{
+              idx.name === 'USD/CNY'
+                ? '实时汇率'
+                : idx.value.toLocaleString('zh-CN', { minimumFractionDigits: 2 })
+            }}
           </div>
         </div>
+      </template>
+      <template v-else>
+        <!-- Fallback skeletons -->
+        <div v-for="i in 6" :key="i" class="card" style="padding: 12px 14px; opacity: 0.6">
+          <div class="section-label" style="font-size: 11px; margin-bottom: 6px">加载中...</div>
+          <div class="mono text-muted" style="font-size: 16px; font-weight: 600">--%</div>
+          <div class="mono text-muted" style="font-size: 10px; margin-top: 3px">0.00</div>
+        </div>
+      </template>
+    </div>
 
-        <!-- Expandable Drawer -->
-        <div class="c3-drawer" :class="{ open: !!activeSegment }">
-          <div class="c3-drawer-inner">
-            <div v-for="item in activeDrawerData" :key="item.id" class="c5-detail-pill" @click="item.code ? openInvestTradeModal(item) : openFormModal(item)">
-              <div class="c5-pill-icon" style="background:none;border:none">
-                <span>{{ item.icon || defaultAssetIcon(item.type) }}</span>
-              </div>
-              <div>
-                <div class="c5-pill-name">{{ item.name }}</div>
-                <div class="c5-pill-amt" :style="{ color: item.type === 'liability' ? 'var(--red)' : 'var(--sub)' }">
-                  {{ masked(formatAssetOriginalAmount(item.amount, item.curr)) }}
+    <!-- Scenario 3 Asset Overview -->
+    <div class="c3-wrap">
+      <div class="c3-top">
+        <div class="c3-hero">
+          <div
+            style="
+              font-size: 11px;
+              color: var(--sub);
+              margin-bottom: 4px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            "
+          >
+            总资产
+            <div
+              @click.stop="currencyOpen = !currencyOpen"
+              style="
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                height: 20px;
+                padding: 0 8px;
+                border-radius: 6px;
+                border: 1px solid var(--border);
+                background: var(--surface-soft);
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 600;
+                color: var(--sub);
+                cursor: pointer;
+                transition: all 0.14s;
+                user-select: none;
+                position: relative;
+              "
+            >
+              <span>{{ currentCurrency }}</span>
+              <svg
+                width="8"
+                height="8"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                :style="{
+                  transition: 'transform .2s',
+                  transform: currencyOpen ? 'rotate(180deg)' : 'rotate(0)'
+                }"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+
+              <!-- Currency Dropdown -->
+              <div
+                v-if="currencyOpen"
+                style="
+                  position: absolute;
+                  top: 24px;
+                  left: 0;
+                  background: var(--panel-elevated);
+                  border: 1px solid var(--border-b);
+                  border-radius: 10px;
+                  padding: 4px;
+                  min-width: 110px;
+                  z-index: 100;
+                  box-shadow: var(--shadow-float);
+                  animation: modalIn 0.18s ease;
+                "
+              >
+                <div
+                  class="ccy-option"
+                  :class="{ active: currentCurrency === 'CNY' }"
+                  @click.stop="currentCurrency = 'CNY'; currencyOpen = false"
+                >
+                  <span
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 10px;
+                      font-weight: 700;
+                    "
+                    >CNY</span
+                  >
+                  <span style="font-size: 9px; color: var(--muted)">人民币</span>
+                </div>
+                <div
+                  class="ccy-option"
+                  :class="{ active: currentCurrency === 'USD' }"
+                  @click.stop="currentCurrency = 'USD'; currencyOpen = false"
+                >
+                  <span
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 10px;
+                      font-weight: 700;
+                    "
+                    >USD</span
+                  >
+                  <span style="font-size: 9px; color: var(--muted)">美元</span>
+                </div>
+                <div
+                  class="ccy-option"
+                  :class="{ active: currentCurrency === 'HKD' }"
+                  @click.stop="currentCurrency = 'HKD'; currencyOpen = false"
+                >
+                  <span
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 10px;
+                      font-weight: 700;
+                    "
+                    >HKD</span
+                  >
+                  <span style="font-size: 9px; color: var(--muted)">港币</span>
                 </div>
               </div>
             </div>
-            
-            <!-- Contextual Add Action in Drawer -->
-            <div v-if="activeSegment" class="c5-add-pill" @click="openFormModal()">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              添加{{ activeSegment === 'cash' ? '现金账户' : activeSegment === 'other' ? '其他资产' : '负债记录' }}
-            </div>
           </div>
+          <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
+          <div class="c3-stats">
+            <span
+              class="badge"
+              :class="chartBuildPeriodActive ? 'neutral' : valueClass(chartHeadlineChange)"
+              style="font-size: 12px; padding: 4px 10px"
+            >
+              <template v-if="chartBuildPeriodActive"> 建账期，7天后统计资产趋势图 </template>
+              <template v-else>
+                {{ chartHeadlineLabel }} {{ masked(formatSignedCny(chartHeadlineChange)) }}
+              </template>
+            </span>
+          </div>
+        </div>
+        <div
+          style="
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: center;
+          "
+        >
+          <div class="c1-period-tabs">
+            <button
+              v-for="item in chartPeriodOptions"
+              :key="item.value"
+              class="c1-pt"
+              :class="{ active: chartPeriod === item.value }"
+              @click="chartPeriod = item.value"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <div class="home-chart-range">{{ chartRangeLabel }}</div>
         </div>
       </div>
 
-        <!-- Holdings -->
-        <div style="margin-top: 16px">
-          <!-- Holdings header -->
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px">
-            <div>
-              <div class="section-label" style="margin:0 0 10px">持仓概览</div>
-              <div class="tabs" style="width:fit-content">
-                <button v-for="tab in ['all','hk','us','a','fund']" :key="tab" @click="selectedTab=tab" class="tab" :class="{active:selectedTab===tab}">{{ tab==='all'?'全部':tab==='hk'?'港股':tab==='us'?'美股':tab==='a'?'A股':'基金' }}</button>
-              </div>
+      <!-- Sparkline Trend Chart -->
+      <div
+        ref="chartContainer"
+        class="c3-chart"
+        :class="{ 'chart-switching': chartSwitchAnimating }"
+        @mousemove="handleChartMouseMove"
+        @mouseleave="handleChartMouseLeave"
+      >
+        <svg viewBox="0 0 1044 120" preserveAspectRatio="none" fill="none">
+          <defs>
+            <linearGradient id="c3grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" :stop-color="chartGeometry.color" stop-opacity=".18" />
+              <stop offset="100%" :stop-color="chartGeometry.color" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <g class="home-chart-series">
+            <path
+              v-if="chartGeometry.hasData"
+              :d="chartGeometry.linePath"
+              :stroke="chartGeometry.color"
+              stroke-width="2.5"
+              fill="none"
+            />
+            <path v-if="chartGeometry.hasData" :d="chartGeometry.areaPath" fill="url(#c3grad)" />
+            <circle
+              v-if="hoveredChartPoint"
+              :cx="hoveredChartPoint.x"
+              :cy="hoveredChartPoint.y"
+              r="4.5"
+              :fill="chartGeometry.color"
+            />
+            <line
+              v-if="hoveredChartPoint"
+              :x1="hoveredChartPoint.x"
+              :y1="hoveredChartPoint.y"
+              :x2="hoveredChartPoint.x"
+              y2="120"
+              :stroke="
+                chartGeometry.color === '#f05a55' ? 'rgba(240,90,85,0.2)' : 'rgba(62,207,130,0.2)'
+              "
+              stroke-width="1.5"
+              stroke-dasharray="4 3"
+            />
+          </g>
+        </svg>
+        <div
+          v-if="hoveredChartPoint && chartGeometry.hasData && !chartLoading"
+          class="home-chart-tooltip"
+          :style="chartTooltipStyle"
+        >
+          <div class="home-chart-tooltip-date">{{ formatChartDate(hoveredChartPoint.date) }}</div>
+          <div class="home-chart-tooltip-value">
+            {{ masked(formatChartDisplayValue(hoveredChartPoint.value)) }}
+          </div>
+        </div>
+        <div
+          v-if="chartGeometry.hasData && filteredHistoryPoints.length >= 2"
+          class="home-chart-axis"
+        >
+          <span>{{ formatChartDate(filteredHistoryPoints[0]?.date || '') }}</span>
+          <span>{{
+            formatChartDate(filteredHistoryPoints[filteredHistoryPoints.length - 1]?.date || '')
+          }}</span>
+        </div>
+        <div v-if="chartLoading" class="home-chart-empty">正在加载历史资产走势...</div>
+        <div v-else-if="chartError" class="home-chart-empty">{{ chartError }}</div>
+        <div v-else-if="!chartGeometry.hasData" class="home-chart-empty">
+          继续使用几天后，这里会显示你的资产趋势
+        </div>
+      </div>
+
+      <!-- Bottom Segments -->
+      <div class="c3-bottom">
+        <div class="c3-segment" @click="goToInvestPage">
+          <div class="c3-active-bar"></div>
+          <div class="c3-segment-label">投资资产</div>
+          <div class="c3-segment-val">{{ masked(formatCurrency(investTotal?.mv || 0)) }}</div>
+          <div class="c3-segment-change" :class="valueClass(investTotal?.dayPnl || 0)">
+            今日 {{ formatPct(investTotal?.dayRate || 0) }}
+          </div>
+        </div>
+        <div
+          class="c3-segment"
+          :class="{ active: activeSegment === 'cash' }"
+          @click="toggleSegment('cash')"
+        >
+          <div
+            class="c3-active-bar"
+            :style="{ background: activeSegment === 'cash' ? 'var(--blue)' : '' }"
+          ></div>
+          <div class="c3-segment-label">现金资产</div>
+          <div class="c3-segment-val">{{ masked(formatCurrency(cashTotal)) }}</div>
+          <div class="c3-segment-change text-muted">{{ cashAssets.length }}个账户</div>
+        </div>
+        <div
+          class="c3-segment"
+          :class="{ active: activeSegment === 'other' }"
+          @click="toggleSegment('other')"
+        >
+          <div
+            class="c3-active-bar"
+            :style="{ background: activeSegment === 'other' ? 'var(--gold)' : '' }"
+          ></div>
+          <div class="c3-segment-label">其他资产</div>
+          <div class="c3-segment-val">{{ masked(formatCurrency(otherTotal)) }}</div>
+          <div class="c3-segment-change text-muted">{{ otherAssets.length }}条记录</div>
+        </div>
+        <div
+          class="c3-segment"
+          :class="{ active: activeSegment === 'liability' }"
+          @click="toggleSegment('liability')"
+        >
+          <div
+            class="c3-active-bar"
+            :style="{ background: activeSegment === 'liability' ? 'var(--red)' : '' }"
+          ></div>
+          <div class="c3-segment-label">我的负债</div>
+          <div class="c3-segment-val" style="color: var(--red)">
+            {{ masked(formatCurrency(-(liabilityTotal || 0))) }}
+          </div>
+          <div class="c3-segment-change text-red">{{ liabilities.length }}条负债</div>
+        </div>
+      </div>
+
+      <!-- Expandable Drawer -->
+      <div class="c3-drawer" :class="{ open: !!activeSegment }">
+        <div class="c3-drawer-inner">
+          <div
+            v-for="item in activeDrawerData"
+            :key="item.id"
+            class="c5-detail-pill"
+            @click="item.code ? openInvestTradeModal(item) : openFormModal(item)"
+          >
+            <div class="c5-pill-icon" style="background: none; border: none">
+              <span>{{ item.icon || defaultAssetIcon(item.type) }}</span>
             </div>
-            <!-- View toggle -->
-            <div style="display:flex;gap:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:9px;padding:3px;flex-shrink:0;margin-top:2px">
-              <button @click="holdingsView='card'" title="卡片视图" :style="holdingsView==='card'?'background:var(--surface-strong);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9"/></svg>
-              </button>
-              <button @click="holdingsView='row'" title="列表视图" :style="holdingsView==='row'?'background:var(--surface-strong);color:var(--text)':'background:transparent;color:var(--muted)'" style="width:30px;height:26px;border-radius:6px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor"/><rect x="0" y="6.5" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".6"/><rect x="0" y="12" width="16" height="2.5" rx="1.2" fill="currentColor" opacity=".35"/></svg>
-              </button>
+            <div>
+              <div class="c5-pill-name">{{ item.name }}</div>
+              <div
+                class="c5-pill-amt"
+                :style="{ color: item.type === 'liability' ? 'var(--red)' : 'var(--sub)' }"
+              >
+                {{ masked(formatAssetOriginalAmount(item.amount, item.curr)) }}
+              </div>
             </div>
           </div>
 
-        <div v-if="!filteredRows || filteredRows.length === 0" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;background:var(--surface-faint);border:1px solid var(--border);border-radius:16px">
-          <div style="font-size:48px;margin-bottom:12px">📭</div>
-          <div class="text-muted fs13">暂无持仓数据</div>
+          <!-- Contextual Add Action in Drawer -->
+          <div v-if="activeSegment" class="c5-add-pill" @click="openFormModal()">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            添加{{
+              activeSegment === 'cash'
+                ? '现金账户'
+                : activeSegment === 'other'
+                  ? '其他资产'
+                  : '负债记录'
+            }}
+          </div>
         </div>
+      </div>
+    </div>
 
-        <div v-else>
-          <!-- Card View -->
-          <div v-if="holdingsView === 'card'" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:10px">
-            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`card-${idx}`" class="hcard" @click="row?.code && openInvestTradeModal(row)">
-              <div
-                class="hcard-accent-top"
-                :style="{ background: `linear-gradient(90deg, transparent, ${toNumber(row?.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'} 40%, transparent)` }"
-              ></div>
-              <div class="hcard-header-row">
-                <div class="h-icon-box">
-                  <AssetLogo 
-                    :name="row?.name" 
-                    :code="row?.code" 
-                    :logo-url="row?.logo_url" 
-                    :market="row?.market" 
-                    :asset-type="row?.asset_type"
-                  />
-                </div>
-                <div class="h-info-group">
-                  <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
-                  <div class="h-meta-row">
-                    <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
-                    <span class="h-qty"><span :style="{ fontSize: getQtyFontSize(formatLocal(row?.amount)) }">{{ formatLocal(row?.amount) }}</span>{{ row?.unit }}</span>
-                  </div>
-                </div>
-                <div class="h-mv-right">
-                  {{ masked(formatHoldingCardValue(Number(row?.mvCny) || 0)) }}
+    <!-- Holdings -->
+    <div style="margin-top: 16px">
+      <!-- Holdings header -->
+      <div
+        style="
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 14px;
+          gap: 12px;
+        "
+      >
+        <div>
+          <div class="section-label" style="margin: 0 0 10px">持仓概览</div>
+          <div class="tabs" style="width: fit-content">
+            <button
+              v-for="tab in ['all', 'hk', 'us', 'a', 'fund']"
+              :key="tab"
+              @click="selectedTab = tab"
+              class="tab"
+              :class="{ active: selectedTab === tab }"
+            >
+              {{
+                tab === 'all'
+                  ? '全部'
+                  : tab === 'hk'
+                    ? '港股'
+                    : tab === 'us'
+                      ? '美股'
+                      : tab === 'a'
+                        ? 'A股'
+                        : '基金'
+              }}
+            </button>
+          </div>
+        </div>
+        <!-- View toggle -->
+        <div
+          style="
+            display: flex;
+            gap: 4px;
+            background: var(--surface-soft);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 3px;
+            flex-shrink: 0;
+            margin-top: 2px;
+          "
+        >
+          <button
+            @click="holdingsView = 'card'"
+            title="卡片视图"
+            :style="
+              holdingsView === 'card'
+                ? 'background:var(--surface-strong);color:var(--text)'
+                : 'background:transparent;color:var(--muted)'
+            "
+            style="
+              width: 30px;
+              height: 26px;
+              border-radius: 6px;
+              border: none;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.15s;
+            "
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <rect x="0" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9" />
+              <rect x="9" y="0" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9" />
+              <rect x="0" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9" />
+              <rect x="9" y="9" width="7" height="7" rx="1.5" fill="currentColor" opacity=".9" />
+            </svg>
+          </button>
+          <button
+            @click="holdingsView = 'row'"
+            title="列表视图"
+            :style="
+              holdingsView === 'row'
+                ? 'background:var(--surface-strong);color:var(--text)'
+                : 'background:transparent;color:var(--muted)'
+            "
+            style="
+              width: 30px;
+              height: 26px;
+              border-radius: 6px;
+              border: none;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.15s;
+            "
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <rect x="0" y="1" width="16" height="2.5" rx="1.2" fill="currentColor" />
+              <rect
+                x="0"
+                y="6.5"
+                width="16"
+                height="2.5"
+                rx="1.2"
+                fill="currentColor"
+                opacity=".6"
+              />
+              <rect
+                x="0"
+                y="12"
+                width="16"
+                height="2.5"
+                rx="1.2"
+                fill="currentColor"
+                opacity=".35"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="!filteredRows || filteredRows.length === 0"
+        style="
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px;
+          background: var(--surface-faint);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+        "
+      >
+        <div style="font-size: 48px; margin-bottom: 12px">📭</div>
+        <div class="text-muted fs13">暂无持仓数据</div>
+      </div>
+
+      <div v-else>
+        <!-- Card View -->
+        <div
+          v-if="holdingsView === 'card'"
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+          "
+        >
+          <div
+            v-for="(row, idx) in filteredRows.slice(0, 8)"
+            :key="row?.code || `card-${idx}`"
+            class="hcard"
+            @click="row?.code && openInvestTradeModal(row)"
+          >
+            <div
+              class="hcard-accent-top"
+              :style="{
+                background: `linear-gradient(90deg, transparent, ${toNumber(row?.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'} 40%, transparent)`
+              }"
+            ></div>
+            <div class="hcard-header-row">
+              <div class="h-icon-box">
+                <AssetLogo
+                  :name="row?.name"
+                  :code="row?.code"
+                  :logo-url="row?.logo_url"
+                  :market="row?.market"
+                  :asset-type="row?.asset_type"
+                />
+              </div>
+              <div class="h-info-group">
+                <div class="h-name-row">{{ row?.name || '未知标的' }}</div>
+                <div class="h-meta-row">
+                  <span class="tag" :class="row?.category || row?.market">{{
+                    (row?.category || row?.market) === 'us'
+                      ? '美股'
+                      : (row?.category || row?.market) === 'hk'
+                        ? '港股'
+                        : (row?.category || row?.market) === 'a'
+                          ? 'A股'
+                          : '基金'
+                  }}</span>
+                  <span class="h-qty"
+                    ><span :style="{ fontSize: getQtyFontSize(formatLocal(row?.amount)) }">{{
+                      formatLocal(row?.amount)
+                    }}</span
+                    >{{ row?.unit }}</span
+                  >
                 </div>
               </div>
+              <div class="h-mv-right">
+                {{ masked(formatHoldingCardValue(Number(row?.mvCny) || 0)) }}
+              </div>
+            </div>
 
-              <div class="h-price-row">
-                <div class="h-price-main">
-                  <span class="h-price-val">{{ quoteLabel(row) }}</span>
+            <div class="h-price-row">
+              <div class="h-price-main">
+                <span class="h-price-val">{{ quoteLabel(row) }}</span>
+              </div>
+              <div
+                class="h-price-tag badge"
+                :class="valueClass(toNumber(row?.dayPnlRate))"
+                style="padding: 2px 6px; border-radius: 4px; font-size: 10px"
+              >
+                {{ dayPnlRateLabel(row) }}
+              </div>
+            </div>
+
+            <!-- Sparkline stub -->
+            <div style="height: 38px; margin-bottom: 10px; opacity: 0.85">
+              <svg
+                v-if="row?.sparkReady"
+                viewBox="0 0 120 40"
+                width="100%"
+                height="100%"
+                preserveAspectRatio="none"
+                fill="none"
+              >
+                <path
+                  :d="row?.spark"
+                  :stroke="toNumber(row?.dayPnl) >= 0 ? 'var(--red)' : 'var(--green)'"
+                  stroke-width="1.6"
+                  fill="none"
+                />
+              </svg>
+              <div v-else class="trend-empty">暂无趋势</div>
+            </div>
+            <div style="padding-top: 10px; border-top: 1px solid var(--surface-divider)">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
+                <div>
+                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">
+                    今日盈亏
+                  </div>
+                  <div
+                    :class="[toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn']"
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 12.5px;
+                      font-weight: 600;
+                    "
+                  >
+                    {{ masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
+                  </div>
                 </div>
-                <div class="h-price-tag badge" :class="valueClass(toNumber(row?.dayPnlRate))" style="padding: 2px 6px; border-radius: 4px; font-size: 10px;">
+                <div>
+                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">
+                    累计盈亏
+                  </div>
+                  <div
+                    :class="[toNumber(row?.totalPnl) >= 0 ? 'text-up' : 'text-dn']"
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 12.5px;
+                      font-weight: 600;
+                    "
+                  >
+                    {{ masked(formatCurrency(toNumber(row?.totalPnl), true)) }}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
+                  <div
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 12.5px;
+                      font-weight: 500;
+                      color: var(--sub);
+                    "
+                  >
+                    <span style="font-size: 10px; opacity: 0.6; margin-right: 2px">{{
+                      getCurrencySymbol(row?.curr)
+                    }}</span
+                    >{{ formatAssetPrice(toNumber(row?.costPrice)) }}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">
+                    累计盈亏率
+                  </div>
+                  <div
+                    :class="[toNumber(row?.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']"
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 12.5px;
+                      font-weight: 600;
+                    "
+                  >
+                    {{ formatPct(toNumber(row?.totalPnlRate)) }}
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top: 10px">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px">仓位</div>
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span
+                    style="color: var(--blue); font-size: 12.5px; font-weight: 600; min-width: 54px"
+                    >{{ formatPct(toNumber(row?.pct)).replace('%', '') }}%</span
+                  >
+                  <div
+                    style="
+                      flex: 1;
+                      height: 3px;
+                      background: var(--surface-track);
+                      border-radius: 2px;
+                      overflow: hidden;
+                    "
+                  >
+                    <div
+                      style="height: 100%; background: rgba(91, 141, 239, 0.7); border-radius: 2px"
+                      :style="{ width: `${Math.min(toNumber(row?.pct), 100)}%` }"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row View -->
+        <div v-else style="display: flex; flex-direction: column; gap: 6px">
+          <div
+            v-for="(row, idx) in filteredRows.slice(0, 8)"
+            :key="row?.code || `row-${idx}`"
+            class="hrow"
+            @click="row?.code && openInvestTradeModal(row)"
+          >
+            <div
+              style="
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                width: 320px;
+                flex-shrink: 0;
+              "
+            >
+              <div
+                class="h-icon"
+                style="width: 38px; height: 38px; flex-shrink: 0; border: none; background: none"
+              >
+                <AssetLogo
+                  :name="row?.name"
+                  :code="row?.code"
+                  :logo-url="row?.logo_url"
+                  :market="row?.market"
+                  :asset-type="row?.asset_type"
+                />
+              </div>
+              <div class="h-info-group h-info-group-row">
+                <div class="h-name-row h-name-row-wrap">{{ row?.name || '未知标的' }}</div>
+                <div class="h-meta-row">
+                  <span class="tag" :class="row?.category || row?.market">{{
+                    (row?.category || row?.market) === 'us'
+                      ? '美股'
+                      : (row?.category || row?.market) === 'hk'
+                        ? '港股'
+                        : (row?.category || row?.market) === 'a'
+                          ? 'A股'
+                          : '基金'
+                  }}</span>
+                </div>
+              </div>
+            </div>
+            <div
+              style="
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 12px;
+                flex: 1;
+                align-items: center;
+              "
+            >
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">持仓数量</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    color: var(--text);
+                  "
+                >
+                  {{ Number(row?.qty || 0).toLocaleString() }}
+                </div>
+              </div>
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">现价</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    color: var(--text);
+                  "
+                >
+                  {{ quoteLabel(row) }}
+                </div>
+              </div>
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">成本价</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 500;
+                    color: var(--muted);
+                  "
+                >
+                  {{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}
+                </div>
+              </div>
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">市值</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    color: var(--text);
+                  "
+                >
+                  {{ masked(formatHoldingCardValue(toNumber(row?.mvCny))) }}
+                </div>
+              </div>
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">今日盈亏</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                  "
+                  :class="valueClass(toNumber(row?.dayPnl))"
+                >
+                  {{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}
+                </div>
+                <div
+                  style="font-size: 11px; margin-top: 1px"
+                  :class="valueClass(toNumber(row?.dayPnlRate))"
+                >
                   {{ dayPnlRateLabel(row) }}
                 </div>
               </div>
-
-              <!-- Sparkline stub -->
-              <div style="height:38px;margin-bottom:10px;opacity:.85">
-                <svg v-if="row?.sparkReady" viewBox="0 0 120 40" width="100%" height="100%" preserveAspectRatio="none" fill="none">
-                  <path :d="row?.spark" :stroke="toNumber(row?.dayPnl)>=0?'var(--red)':'var(--green)'" stroke-width="1.6" fill="none"/>
-                </svg>
-                <div v-else class="trend-empty">暂无趋势</div>
-              </div>
-              <div style="padding-top:10px;border-top:1px solid var(--surface-divider)">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-                  <div>
-                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">今日盈亏</div>
-                    <div :class="[toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
-                      {{ masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏</div>
-                    <div :class="[toNumber(row?.totalPnl) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
-                      {{ masked(formatCurrency(toNumber(row?.totalPnl), true)) }}
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">成本价</div>
-                    <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--sub)">
-                      <span style="font-size:10px;opacity:0.6;margin-right:2px">{{ getCurrencySymbol(row?.curr) }}</span>{{ formatAssetPrice(toNumber(row?.costPrice)) }}
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">累计盈亏率</div>
-                    <div :class="[toNumber(row?.totalPnlRate) >= 0 ? 'text-up' : 'text-dn']" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 600">
-                      {{ formatPct(toNumber(row?.totalPnlRate)) }}
-                    </div>
-                  </div>
-                </div>
-                <div style="margin-top:10px">
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px">仓位</div>
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <span style="color:var(--blue); font-size: 12.5px; font-weight: 600; min-width:54px">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span>
-                    <div style="flex:1;height:3px;background:var(--surface-track);border-radius:2px;overflow:hidden">
-                      <div style="height:100%;background:rgba(91,141,239,0.7);border-radius:2px" :style="{ width: `${Math.min(toNumber(row?.pct), 100)}%` }"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Row View -->
-          <div v-else style="display:flex;flex-direction:column;gap:6px">
-            <div v-for="(row, idx) in filteredRows.slice(0, 8)" :key="row?.code||`row-${idx}`" class="hrow" @click="row?.code && openInvestTradeModal(row)">
-              <div style="display:flex;align-items:flex-start;gap:12px;width:320px;flex-shrink:0">
-                <div class="h-icon" style="width:38px;height:38px;flex-shrink:0;border:none;background:none">
-                  <AssetLogo 
-                    :name="row?.name" 
-                    :code="row?.code" 
-                    :logo-url="row?.logo_url" 
-                    :market="row?.market" 
-                    :asset-type="row?.asset_type"
-                  />
-                </div>
-                <div class="h-info-group h-info-group-row">
-                  <div class="h-name-row h-name-row-wrap">{{ row?.name || '未知标的' }}</div>
-                  <div class="h-meta-row">
-                        <span class="tag" :class="row?.category || row?.market">{{ (row?.category || row?.market)==='us'?'美股':(row?.category || row?.market)==='hk'?'港股':(row?.category || row?.market)==='a'?'A股':'基金' }}</span>
-                  </div>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:12px;flex:1;align-items:center">
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">持仓数量</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ Number(row?.qty||0).toLocaleString() }}</div>
-                </div>
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">现价</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">
-                    {{ quoteLabel(row) }}
-                  </div>
-                </div>
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">成本价</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--muted)">{{ masked(formatValue(toNumber(row?.costPrice), row?.curr as any)) }}</div>
-                </div>
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">市值</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--text)">{{ masked(formatHoldingCardValue(toNumber(row?.mvCny))) }}</div>
-                </div>
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">今日盈亏</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600" :class="valueClass(toNumber(row?.dayPnl))">{{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}</div>
-                  <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.dayPnlRate))">{{ dayPnlRateLabel(row) }}</div>
-                </div>
-                <div style="padding:0 12px;border-right:1px solid var(--surface-divider)">
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:3px">累计盈亏</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600" :class="valueClass(toNumber(row?.totalPnl))">{{ masked(formatValue(toNumber(row?.totalPnl), row?.curr as any)) }}</div>
-                  <div style="font-size:11px;margin-top:1px" :class="valueClass(toNumber(row?.totalPnlRate))">{{ formatPct(toNumber(row?.totalPnlRate)) }}</div>
-                </div>
-                <div style="padding:0 0 0 12px">
-                  <div style="font-size: 10px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between">仓位 <span style="color:var(--blue); font-size: 12.5px; font-weight: 600">{{ formatPct(toNumber(row?.pct)).replace('%','') }}%</span></div>
-                  <div style="height:4px;background:var(--surface-track);border-radius:3px;overflow:hidden">
-                    <div style="height:100%;background:linear-gradient(90deg,rgba(91,141,239,0.5),rgba(91,141,239,0.9));border-radius:3px" :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 资产详情列表 Modal -->
-      <div class="modal-overlay" :class="{ show: modalVisible && !isFormModalVisible }" @click.self="closeModal">
-        <div style="width:100%;max-width:440px;background:var(--s1);border:1px solid var(--border);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out);position:relative">
-          <button @click="closeModal" style="position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:9px;background:var(--surface-soft);border:none;color:var(--sub);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s">✕</button>
-          
-          <div style="font-size:18px;font-weight:700;margin-bottom:4px">{{ modalTitle }}</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:var(--text);margin-bottom:24px" :style="{ color: modalType === 'liability' ? 'var(--red)' : modalType === 'other' ? 'var(--gold)' : 'var(--green)' }">
-            {{ formatCny(currentTypeAssetsTotal) }}
-          </div>
-          
-          <div style="max-height:400px;overflow-y:auto;margin:0 -8px;padding:0 8px">
-            <div v-if="!currentTypeAssets.length" style="text-align:center;padding:40px;color:var(--muted);font-size:13px">暂无记录，点击下方添加</div>
-            <div v-else>
-              <div v-for="item in currentTypeAssets as any[]" :key="item.id" style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface-faint);border:1px solid var(--border);border-radius:14px;margin-bottom:10px">
-                <div style="width:52px;height:52px;border-radius:14px;background:rgba(91,141,239,0.1);border:1px solid rgba(91,141,239,0.18);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">{{ item.icon || '🏦' }}</div>
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">{{ item.name }}</div>
-                  <div style="display:flex;align-items:baseline;gap:5px">
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600" :style="{ color: modalType === 'liability' ? 'var(--red)' : item.curr === 'HKD' ? 'var(--gold)' : item.curr === 'USD' ? 'var(--blue)' : 'var(--text)' }">
-                      {{ getCurrencySymbol(item.curr) }} {{ Math.abs(item.amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) }}
-                    </span>
-                    <span style="font-size:11px;color:var(--muted)">{{ getCurrencyLabel(item.curr) }}</span>
-                  </div>
-                </div>
-                <!-- 操作按钮组 -->
-                <div style="display:flex;gap:6px">
-                   <button @click="openFormModal(item)" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface-soft);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);flex-shrink:0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                   <button @click="removeAsset(modalType, item.id as number)" style="width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:rgba(240,90,85,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--red);flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <button @click="openFormModal()" style="width:100%;height:46px;border-radius:12px;border:none;background:linear-gradient(135deg,rgba(91,141,239,0.15),rgba(74,123,224,0.05));border:1px solid rgba(91,141,239,0.25);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;margin-top:20px;cursor:pointer;transition:all .2s">
-            + {{ modalAddLabel }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 添加/编辑 资产详情的二层表单 Modal -->
-      <div class="modal-overlay" :class="{ show: isFormModalVisible }" @click.self="closeFormModal">
-        <div style="width:100%;max-width:380px;background:var(--s1);border:1px solid var(--border);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out);position:relative">
-          <button
-            v-if="modalMode === 'edit' && form.id"
-            @click="openDeleteConfirm"
-            style="position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:9px;border:1px solid rgba(240,90,85,0.22);background:rgba(240,90,85,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--red);transition:all .15s"
-            aria-label="删除资产"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-          </button>
-          <div style="font-size:18px;font-weight:700;margin-bottom:20px">{{ modalMode === 'add' ? modalAddLabel : '编辑资产' }}</div>
-          
-          <div style="margin-bottom:16px">
-            <div style="font-size:11px;font-weight:600;color:var(--sub);margin-bottom:8px">图标</div>
-            <div style="display:flex;gap:8px">
-              <div class="icon-pick" :class="{ active: form.icon === '🏦' }" @click="form.icon = '🏦'">🏦</div>
-              <div class="icon-pick" :class="{ active: form.icon === '💳' }" @click="form.icon = '💳'">💳</div>
-              <div class="icon-pick" :class="{ active: form.icon === '👛' }" @click="form.icon = '👛'">👛</div>
-              <div class="icon-pick" :class="{ active: form.icon === '💵' }" @click="form.icon = '💵'">💵</div>
-              <div class="icon-pick" :class="{ active: form.icon === '📦' }" @click="form.icon = '📦'">📦</div>
-            </div>
-          </div>
-          
-          <div class="form-group">
-            <label class="form-label">名称</label>
-            <input class="form-inp" v-model="form.name" placeholder="如：中国银行储蓄卡">
-          </div>
-          
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="form-group">
-              <label class="form-label">金额</label>
-              <input class="form-inp" type="number" v-model="form.amount" placeholder="0.00">
-            </div>
-            <div class="form-group">
-              <label class="form-label">货币</label>
-              <div style="position:relative">
-                <button
-                  type="button"
-                  class="form-inp"
-                  @click.stop="assetCurrencyOpen = !assetCurrencyOpen"
-                  style="display:flex;align-items:center;justify-content:space-between;text-align:left"
+              <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">累计盈亏</div>
+                <div
+                  style="
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                  "
+                  :class="valueClass(toNumber(row?.totalPnl))"
                 >
-                  <span>{{ form.curr }} {{ getCurrencyLabel(form.curr) }}</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" :style="{ transition: 'transform .2s', transform: assetCurrencyOpen ? 'rotate(180deg)' : 'rotate(0)' }">
-                    <polyline points="6 9 12 15 18 9"/>
+                  {{ masked(formatValue(toNumber(row?.totalPnl), row?.curr as any)) }}
+                </div>
+                <div
+                  style="font-size: 11px; margin-top: 1px"
+                  :class="valueClass(toNumber(row?.totalPnlRate))"
+                >
+                  {{ formatPct(toNumber(row?.totalPnlRate)) }}
+                </div>
+              </div>
+              <div style="padding: 0 0 0 12px">
+                <div
+                  style="
+                    font-size: 10px;
+                    color: var(--muted);
+                    margin-bottom: 4px;
+                    display: flex;
+                    justify-content: space-between;
+                  "
+                >
+                  仓位
+                  <span style="color: var(--blue); font-size: 12.5px; font-weight: 600"
+                    >{{ formatPct(toNumber(row?.pct)).replace('%', '') }}%</span
+                  >
+                </div>
+                <div
+                  style="
+                    height: 4px;
+                    background: var(--surface-track);
+                    border-radius: 3px;
+                    overflow: hidden;
+                  "
+                >
+                  <div
+                    style="
+                      height: 100%;
+                      background: linear-gradient(
+                        90deg,
+                        rgba(91, 141, 239, 0.5),
+                        rgba(91, 141, 239, 0.9)
+                      );
+                      border-radius: 3px;
+                    "
+                    :style="{ width: Math.min(toNumber(row?.pct), 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 资产详情列表 Modal -->
+    <div
+      class="modal-overlay"
+      :class="{ show: modalVisible && !isFormModalVisible }"
+      @click.self="closeModal"
+    >
+      <div
+        style="
+          width: 100%;
+          max-width: 440px;
+          background: var(--s1);
+          border: 1px solid var(--border);
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: var(--shadow-xl);
+          animation: modalIn 0.2s var(--easing-out);
+          position: relative;
+        "
+      >
+        <button
+          @click="closeModal"
+          style="
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            background: var(--surface-soft);
+            border: none;
+            color: var(--sub);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+          "
+        >
+          ✕
+        </button>
+
+        <div style="font-size: 18px; font-weight: 700; margin-bottom: 4px">{{ modalTitle }}</div>
+        <div
+          style="
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 24px;
+          "
+          :style="{
+            color:
+              modalType === 'liability'
+                ? 'var(--red)'
+                : modalType === 'other'
+                  ? 'var(--gold)'
+                  : 'var(--green)'
+          }"
+        >
+          {{ formatCny(currentTypeAssetsTotal) }}
+        </div>
+
+        <div style="max-height: 400px; overflow-y: auto; margin: 0 -8px; padding: 0 8px">
+          <div
+            v-if="!currentTypeAssets.length"
+            style="text-align: center; padding: 40px; color: var(--muted); font-size: 13px"
+          >
+            暂无记录，点击下方添加
+          </div>
+          <div v-else>
+            <div
+              v-for="item in currentTypeAssets as any[]"
+              :key="item.id"
+              style="
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                padding: 14px 16px;
+                background: var(--surface-faint);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                margin-bottom: 10px;
+              "
+            >
+              <div
+                style="
+                  width: 52px;
+                  height: 52px;
+                  border-radius: 14px;
+                  background: rgba(91, 141, 239, 0.1);
+                  border: 1px solid rgba(91, 141, 239, 0.18);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 22px;
+                  flex-shrink: 0;
+                "
+              >
+                {{ item.icon || '🏦' }}
+              </div>
+              <div style="flex: 1; min-width: 0">
+                <div
+                  style="font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px"
+                >
+                  {{ item.name }}
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 5px">
+                  <span
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 14px;
+                      font-weight: 600;
+                    "
+                    :style="{
+                      color:
+                        modalType === 'liability'
+                          ? 'var(--red)'
+                          : item.curr === 'HKD'
+                            ? 'var(--gold)'
+                            : item.curr === 'USD'
+                              ? 'var(--blue)'
+                              : 'var(--text)'
+                    }"
+                  >
+                    {{ getCurrencySymbol(item.curr) }}
+                    {{
+                      Math.abs(item.amount).toLocaleString('zh-CN', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2
+                      })
+                    }}
+                  </span>
+                  <span style="font-size: 11px; color: var(--muted)">{{
+                    getCurrencyLabel(item.curr)
+                  }}</span>
+                </div>
+              </div>
+              <!-- 操作按钮组 -->
+              <div style="display: flex; gap: 6px">
+                <button
+                  @click="openFormModal(item)"
+                  style="
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 9px;
+                    border: 1px solid var(--border);
+                    background: var(--surface-soft);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: var(--muted);
+                    flex-shrink: 0;
+                  "
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
                 </button>
-                <div v-if="assetCurrencyOpen" class="asset-currency-menu">
-                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'CNY' }" @click.stop="form.curr = 'CNY'; assetCurrencyOpen = false">
-                    <span class="asset-currency-code">CNY</span>
-                    <span class="asset-currency-name">人民币</span>
-                  </button>
-                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'USD' }" @click.stop="form.curr = 'USD'; assetCurrencyOpen = false">
-                    <span class="asset-currency-code">USD</span>
-                    <span class="asset-currency-name">美元</span>
-                  </button>
-                  <button type="button" class="asset-currency-option" :class="{ active: form.curr === 'HKD' }" @click.stop="form.curr = 'HKD'; assetCurrencyOpen = false">
-                    <span class="asset-currency-code">HKD</span>
-                    <span class="asset-currency-name">港币</span>
-                  </button>
-                </div>
+                <button
+                  @click="removeAsset(modalType, item.id as number)"
+                  style="
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 9px;
+                    border: 1px solid var(--border);
+                    background: rgba(240, 90, 85, 0.1);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    color: var(--red);
+                    flex-shrink: 0;
+                  "
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M3 6h18" />
+                    <path
+                      d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                    />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button @click="closeFormModal" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface-soft);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
-            <button @click="submitModal" :disabled="!form.name" style="flex:2;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#5b8def,#4a7be0);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(74,123,224,0.25)" :style="{ opacity: !form.name ? 0.5 : 1 }">保存</button>
-          </div>
         </div>
-      </div>
 
-      <div class="modal-overlay" :class="{ show: isDeleteConfirmVisible }" @click.self="closeDeleteConfirm">
-        <div style="width:100%;max-width:360px;background:var(--s1);border:1px solid rgba(240,90,85,0.18);border-radius:24px;padding:24px;box-shadow:var(--shadow-xl);animation:modalIn .2s var(--easing-out)">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-            <div style="width:40px;height:40px;border-radius:12px;background:rgba(240,90,85,0.12);border:1px solid rgba(240,90,85,0.18);display:flex;align-items:center;justify-content:center;color:var(--red);font-size:18px">🗑️</div>
-            <div>
-              <div style="font-size:18px;font-weight:700;color:var(--text)">确认删除</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:4px">删掉后就不会再出现在首页列表里。</div>
+        <button
+          @click="openFormModal()"
+          style="
+            width: 100%;
+            height: 46px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, rgba(91, 141, 239, 0.15), rgba(74, 123, 224, 0.05));
+            border: 1px solid rgba(91, 141, 239, 0.25);
+            color: var(--blue);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            margin-top: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+          "
+        >
+          + {{ modalAddLabel }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 添加/编辑 资产详情的二层表单 Modal -->
+    <div class="modal-overlay" :class="{ show: isFormModalVisible }" @click.self="closeFormModal">
+      <div
+        style="
+          width: 100%;
+          max-width: 380px;
+          background: var(--s1);
+          border: 1px solid var(--border);
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: var(--shadow-xl);
+          animation: modalIn 0.2s var(--easing-out);
+          position: relative;
+        "
+      >
+        <button
+          v-if="modalMode === 'edit' && form.id"
+          @click="openDeleteConfirm"
+          style="
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            border: 1px solid rgba(240, 90, 85, 0.22);
+            background: rgba(240, 90, 85, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--red);
+            transition: all 0.15s;
+          "
+          aria-label="删除资产"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M3 6h18" />
+            <path
+              d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+            />
+          </svg>
+        </button>
+        <div style="font-size: 18px; font-weight: 700; margin-bottom: 20px">
+          {{ modalMode === 'add' ? modalAddLabel : '编辑资产' }}
+        </div>
+
+        <div style="margin-bottom: 16px">
+          <div style="font-size: 11px; font-weight: 600; color: var(--sub); margin-bottom: 8px">
+            图标
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div
+              class="icon-pick"
+              :class="{ active: form.icon === '🏦' }"
+              @click="form.icon = '🏦'"
+            >
+              🏦
+            </div>
+            <div
+              class="icon-pick"
+              :class="{ active: form.icon === '💳' }"
+              @click="form.icon = '💳'"
+            >
+              💳
+            </div>
+            <div
+              class="icon-pick"
+              :class="{ active: form.icon === '👛' }"
+              @click="form.icon = '👛'"
+            >
+              👛
+            </div>
+            <div
+              class="icon-pick"
+              :class="{ active: form.icon === '💵' }"
+              @click="form.icon = '💵'"
+            >
+              💵
+            </div>
+            <div
+              class="icon-pick"
+              :class="{ active: form.icon === '📦' }"
+              @click="form.icon = '📦'"
+            >
+              📦
             </div>
           </div>
-          <div style="font-size:14px;color:var(--sub);line-height:1.6;margin-bottom:20px">
-            确定要删除“{{ form.name || '这条资产' }}”吗？这个动作不能撤回。
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">名称</label>
+          <input class="form-inp" v-model="form.name" placeholder="如：中国银行储蓄卡" />
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+          <div class="form-group">
+            <label class="form-label">金额</label>
+            <input class="form-inp" type="number" v-model="form.amount" placeholder="0.00" />
           </div>
-          <div style="display:flex;gap:8px">
-            <button @click="closeDeleteConfirm" style="flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface-soft);color:var(--sub);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">取消</button>
-            <button @click="removeAssetFromForm" style="flex:1;height:42px;border-radius:10px;border:none;background:linear-gradient(135deg,#f05a55,#d84d48);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(240,90,85,0.22)">确认删除</button>
+          <div class="form-group">
+            <label class="form-label">货币</label>
+            <div style="position: relative">
+              <button
+                type="button"
+                class="form-inp"
+                @click.stop="assetCurrencyOpen = !assetCurrencyOpen"
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  text-align: left;
+                "
+              >
+                <span>{{ form.curr }} {{ getCurrencyLabel(form.curr) }}</span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  :style="{
+                    transition: 'transform .2s',
+                    transform: assetCurrencyOpen ? 'rotate(180deg)' : 'rotate(0)'
+                  }"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              <div v-if="assetCurrencyOpen" class="asset-currency-menu">
+                <button
+                  type="button"
+                  class="asset-currency-option"
+                  :class="{ active: form.curr === 'CNY' }"
+                  @click.stop="form.curr = 'CNY'; assetCurrencyOpen = false"
+                >
+                  <span class="asset-currency-code">CNY</span>
+                  <span class="asset-currency-name">人民币</span>
+                </button>
+                <button
+                  type="button"
+                  class="asset-currency-option"
+                  :class="{ active: form.curr === 'USD' }"
+                  @click.stop="form.curr = 'USD'; assetCurrencyOpen = false"
+                >
+                  <span class="asset-currency-code">USD</span>
+                  <span class="asset-currency-name">美元</span>
+                </button>
+                <button
+                  type="button"
+                  class="asset-currency-option"
+                  :class="{ active: form.curr === 'HKD' }"
+                  @click.stop="form.curr = 'HKD'; assetCurrencyOpen = false"
+                >
+                  <span class="asset-currency-code">HKD</span>
+                  <span class="asset-currency-name">港币</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+        <div style="display: flex; gap: 8px; margin-top: 8px">
+          <button
+            @click="closeFormModal"
+            style="
+              flex: 1;
+              height: 42px;
+              border-radius: 10px;
+              border: 1px solid var(--border);
+              background: var(--surface-soft);
+              color: var(--sub);
+              font-family: 'DM Sans', sans-serif;
+              font-size: 14px;
+              font-weight: 700;
+              cursor: pointer;
+            "
+          >
+            取消
+          </button>
+          <button
+            @click="submitModal"
+            :disabled="!form.name"
+            style="
+              flex: 2;
+              height: 42px;
+              border-radius: 10px;
+              border: none;
+              background: linear-gradient(135deg, #5b8def, #4a7be0);
+              color: #fff;
+              font-family: 'DM Sans', sans-serif;
+              font-size: 14px;
+              font-weight: 700;
+              cursor: pointer;
+              box-shadow: 0 4px 14px rgba(74, 123, 224, 0.25);
+            "
+            :style="{ opacity: !form.name ? 0.5 : 1 }"
+          >
+            保存
+          </button>
+        </div>
       </div>
-      <InvestTradeModal
-        v-model:show="showTradeModal"
-        :asset="tradeModalAsset"
-        :mode="tradeModalMode"
-        @success="handleTradeSuccess"
-      />
-    </AppShell>
+    </div>
+
+    <div
+      class="modal-overlay"
+      :class="{ show: isDeleteConfirmVisible }"
+      @click.self="closeDeleteConfirm"
+    >
+      <div
+        style="
+          width: 100%;
+          max-width: 360px;
+          background: var(--s1);
+          border: 1px solid rgba(240, 90, 85, 0.18);
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: var(--shadow-xl);
+          animation: modalIn 0.2s var(--easing-out);
+        "
+      >
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px">
+          <div
+            style="
+              width: 40px;
+              height: 40px;
+              border-radius: 12px;
+              background: rgba(240, 90, 85, 0.12);
+              border: 1px solid rgba(240, 90, 85, 0.18);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: var(--red);
+              font-size: 18px;
+            "
+          >
+            🗑️
+          </div>
+          <div>
+            <div style="font-size: 18px; font-weight: 700; color: var(--text)">确认删除</div>
+            <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+              删掉后就不会再出现在首页列表里。
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 14px; color: var(--sub); line-height: 1.6; margin-bottom: 20px">
+          确定要删除“{{ form.name || '这条资产' }}”吗？这个动作不能撤回。
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button
+            @click="closeDeleteConfirm"
+            style="
+              flex: 1;
+              height: 42px;
+              border-radius: 10px;
+              border: 1px solid var(--border);
+              background: var(--surface-soft);
+              color: var(--sub);
+              font-family: 'DM Sans', sans-serif;
+              font-size: 14px;
+              font-weight: 700;
+              cursor: pointer;
+            "
+          >
+            取消
+          </button>
+          <button
+            @click="removeAssetFromForm"
+            style="
+              flex: 1;
+              height: 42px;
+              border-radius: 10px;
+              border: none;
+              background: linear-gradient(135deg, #f05a55, #d84d48);
+              color: #fff;
+              font-family: 'DM Sans', sans-serif;
+              font-size: 14px;
+              font-weight: 700;
+              cursor: pointer;
+              box-shadow: 0 4px 14px rgba(240, 90, 85, 0.22);
+            "
+          >
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+    <InvestTradeModal
+      v-model:show="showTradeModal"
+      :asset="tradeModalAsset"
+      :mode="tradeModalMode"
+      @success="handleTradeSuccess"
+    />
+  </AppShell>
 </template>
 
 <style>
@@ -1381,7 +2276,7 @@ onBeforeUnmount(() => {
   font-weight: 600 !important;
   color: var(--muted) !important;
   cursor: pointer !important;
-  transition: all .14s !important;
+  transition: all 0.14s !important;
   white-space: nowrap !important;
   line-height: 1 !important;
 }
@@ -1494,7 +2389,10 @@ onBeforeUnmount(() => {
   font-size: 11px;
   font-weight: 700;
 }
-.h-price-tag.dn { color: var(--green); background: rgba(62, 207, 130, 0.12); }
+.h-price-tag.dn {
+  color: var(--green);
+  background: rgba(62, 207, 130, 0.12);
+}
 
 .h-mv-right {
   margin-left: auto;
@@ -1533,7 +2431,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
   z-index: 4;
   backdrop-filter: blur(12px);
-  transition: left .14s ease, transform .14s ease, opacity .18s ease;
+  transition:
+    left 0.14s ease,
+    transform 0.14s ease,
+    opacity 0.18s ease;
 }
 
 .home-chart-tooltip-date {
@@ -1563,7 +2464,9 @@ onBeforeUnmount(() => {
 }
 
 .home-chart-series {
-  transition: opacity .18s ease, transform .18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
 .c3-chart.chart-switching .home-chart-series,
@@ -1591,7 +2494,7 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   box-shadow: var(--shadow-float);
   z-index: 120;
-  animation: modalIn .18s ease;
+  animation: modalIn 0.18s ease;
 }
 
 .asset-currency-option {
@@ -1605,7 +2508,7 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--sub);
   cursor: pointer;
-  transition: all .15s;
+  transition: all 0.15s;
   text-align: left;
 }
 
@@ -1615,7 +2518,7 @@ onBeforeUnmount(() => {
 }
 
 .asset-currency-option.active {
-  background: linear-gradient(135deg, rgba(91,141,239,0.22), rgba(74,123,224,0.12));
+  background: linear-gradient(135deg, rgba(91, 141, 239, 0.22), rgba(74, 123, 224, 0.12));
   color: var(--text);
 }
 
@@ -1673,7 +2576,7 @@ onBeforeUnmount(() => {
   .market-strip > .card {
     flex: 0 0 240px;
   }
-  
+
   /* 1. Top Section - Stack total assets and period tabs */
   .c3-top {
     flex-direction: column;
@@ -1722,7 +2625,8 @@ onBeforeUnmount(() => {
   .c3-segment:nth-child(2n) {
     border-right: none;
   }
-  .c3-segment:nth-child(3), .c3-segment:nth-child(4) {
+  .c3-segment:nth-child(3),
+  .c3-segment:nth-child(4) {
     border-bottom: none;
   }
   .c3-segment-val {
@@ -1734,7 +2638,8 @@ onBeforeUnmount(() => {
     flex-direction: column;
     padding: 16px 20px;
   }
-  .c5-detail-pill, .c5-add-pill {
+  .c5-detail-pill,
+  .c5-add-pill {
     width: 100%;
   }
 

@@ -6,12 +6,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
-import type {
-  MarketCode,
-  PortfolioItem,
-  PositionRow,
-  PortfolioSummary,
-} from './types'
+import { buildPortfolioSummary } from './portfolioMetrics'
+import type { MarketCode, PortfolioItem, PositionRow, PortfolioSummary } from './types'
 import { useMarketStore } from './market'
 
 export const usePortfolioStore = defineStore('portfolio', () => {
@@ -64,14 +60,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
 
     function normalizeMarketCode(raw: unknown): MarketCode | null {
-      const text = String(raw || '').trim().toLowerCase()
+      const text = String(raw || '')
+        .trim()
+        .toLowerCase()
       if (text === 'a' || text === 'hk' || text === 'us' || text === 'fund') {
         return text as MarketCode
       }
       return null
     }
 
-    return portfolio.value.map((item) => {
+    return portfolio.value.map(item => {
       const marketFromPayload = normalizeMarketCode((item as any).market)
       const market = marketFromPayload ?? inferMarket(item)
       const category = inferCategory(item)
@@ -94,7 +92,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const dayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
       const dayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
       const dayPnlRateAggregate = pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
-      const navUpdatePending = pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
+      const navUpdatePending =
+        pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
       const quotePrice = pickNumber(item, ['quote_price'])
       const quoteReady = pickBool(item, ['quote_ready']) ?? Boolean(quotePrice && quotePrice > 0)
       const quotePending = pickBool(item, ['quote_pending']) ?? false
@@ -103,7 +102,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const marketOpen = pickBool(item, ['market_open']) ?? open
       const marketTradingDayValue = pickBool(item, ['market_trading_day']) ?? marketTradingDay
       const marketStatusReason =
-        pickString(item, ['market_status_reason']) || (marketStatus?.reason || '')
+        pickString(item, ['market_status_reason']) || marketStatus?.reason || ''
 
       return {
         ...item,
@@ -145,7 +144,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         quoteReady,
         quotePending,
         dayPnlDisplayEnabled,
-        dayPnlAggregateEnabled,
+        dayPnlAggregateEnabled
       }
     })
   })
@@ -154,29 +153,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
    * Summary - 投资组合摘要
    */
   const summary = computed<PortfolioSummary>(() => {
-    const totalValue = rows.value.reduce((sum, row) => {
-      const valueCny = row.valueCny ?? (row.value * (row.rateToCny ?? 1))
-      return sum + valueCny
-    }, 0)
-    const totalPnl = rows.value.reduce((sum, row) => {
-      const pnlCny = row.totalPnlCny ?? (row.totalPnl * (row.rateToCny ?? 1))
-      return sum + pnlCny
-    }, 0)
-    const todayPnl = rows.value.reduce((sum, row) => {
-      const pnlCny = row.dayPnlAggregateCny ?? (row.dayPnlAggregate * (row.rateToCny ?? 1))
-      return sum + pnlCny
-    }, 0)
-    const totalCostAbs = rows.value.reduce((sum, row) => {
-      const costCny = row.costCny ?? (row.costPrice * row.qty * (row.rateToCny ?? 1))
-      return sum + Math.abs(costCny)
-    }, 0)
-
-    return {
-      totalValue,
-      totalPnl,
-      todayPnl,
-      totalRate: totalCostAbs > 0 ? (totalPnl / totalCostAbs) * 100 : 0,
-    }
+    return buildPortfolioSummary(rows.value)
   })
 
   /**
@@ -187,7 +164,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       a: [],
       hk: [],
       us: [],
-      fund: [],
+      fund: []
     }
 
     for (const row of rows.value) {
@@ -231,7 +208,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
    * IsNavUpdatePendingAsset - 是否是 NAV 待更新资产
    */
   function isNavUpdatePendingAsset(item: PortfolioItem): boolean {
-    const code = String(item.code || '').trim().toLowerCase()
+    const code = String(item.code || '')
+      .trim()
+      .toLowerCase()
     return code.startsWith('f_') || code.startsWith('ft_')
   }
 
@@ -313,6 +292,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     removePortfolioItem,
     addPortfolioItem,
     getPortfolioItem,
-    clearPortfolio,
+    clearPortfolio
   }
 })
