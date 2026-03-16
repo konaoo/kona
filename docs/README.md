@@ -78,6 +78,9 @@
 - [维护说明](/Users/kona/Desktop/kaka/kona_repo/docs/维护说明.md)
   作用：偏维护、巡检、排障
 
+- [请求追踪与排障手册](/Users/kona/Desktop/kaka/kona_repo/docs/请求追踪与排障手册.md)
+  作用：看怎么用 `request_id` 串 Web、Flutter、后端和 CI，快速定位接口问题
+
 - [部署说明](/Users/kona/Desktop/kaka/kona_repo/docs/部署说明.md)
   作用：怎么发版、怎么部署
 

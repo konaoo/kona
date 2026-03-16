@@ -9,6 +9,7 @@
 - [analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart) / [profile_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/profile_page.dart) / [profile_custom_dialog.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/widgets/profile_custom_dialog.dart)：把过时的 `withOpacity`、`activeColor` 和若干旧写法替换成当前 Flutter 版本推荐写法，减少升级时的兼容噪音。
 - [portfolio.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/models/portfolio.dart) / [home_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/home_page.dart) / [asset_detail_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/asset_detail_page.dart) / [add_funding_account_dialog.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/widgets/add_funding_account_dialog.dart)：清理无意义变量、未使用 import 和回调参数噪音，保证这些基础文件以后更适合继续维护。
 - [flutter/test](/Users/kona/Desktop/kaka/kona_repo/flutter/test) 下多份测试：统一清掉旧的命名噪音和未使用测试参数，保证测试代码本身也不再持续制造 analyze 噪音。
+- [请求追踪与排障手册.md](/Users/kona/Desktop/kaka/kona_repo/docs/请求追踪与排障手册.md) / [docs/README.md](/Users/kona/Desktop/kaka/kona_repo/docs/README.md) / [README.md](/Users/kona/Desktop/kaka/kona_repo/README.md)：补了一份能直接拿来排障的请求追踪手册，并把入口挂到仓库主 README 和 docs 导航，避免后面新增能力却没人知道怎么用。
 
 ### 影响范围
 - Flutter 客户端静态检查结果
