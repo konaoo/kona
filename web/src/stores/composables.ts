@@ -10,6 +10,7 @@ import { useQuoteStore } from './quote'
 import { useMarketStore } from './market'
 import { useSyncStore } from './sync'
 import { useRefreshCoordinatorStore } from './refreshCoordinator'
+import { useSessionCoordinatorStore } from './sessionCoordinator'
 
 /**
  * useKonaStore - 统一的数据访问接口
@@ -22,8 +23,7 @@ export function useKonaStore() {
   const marketStore = useMarketStore()
   const syncStore = useSyncStore()
   const refreshCoordinatorStore = useRefreshCoordinatorStore()
-
-  refreshCoordinatorStore.ensureHydrated()
+  const sessionCoordinatorStore = useSessionCoordinatorStore()
 
   // ───────────────────────────────────────────────────────────────
   // Computed - 向后兼容
@@ -55,11 +55,11 @@ export function useKonaStore() {
   // Auth Actions
   // ───────────────────────────────────────────────────────────────
 
-  const bootstrap = () => authStore.bootstrap()
-  const login = (username: string, password: string) => authStore.login(username, password)
+  const bootstrap = () => sessionCoordinatorStore.bootstrap()
+  const login = (username: string, password: string) => sessionCoordinatorStore.login(username, password)
   const register = (username: string, password: string, inviteCode: string) =>
-    authStore.register(username, password, inviteCode)
-  const logout = () => authStore.logout()
+    sessionCoordinatorStore.register(username, password, inviteCode)
+  const logout = () => sessionCoordinatorStore.logout()
 
   // ───────────────────────────────────────────────────────────────
   // Portfolio Actions

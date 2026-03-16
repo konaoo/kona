@@ -1,3 +1,23 @@
+## 2026-03-16-16
+
+### 这版一句话
+
+继续拆 Web 状态总入口：把登录恢复、认证入口和路由初始化判断收成独立会话协调层。
+
+### 主要变化
+- [sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts) / [composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)：把 `bootstrap / login / register / logout` 从统一入口里进一步下沉到独立会话协调层，`composables` 继续保留对外兼容接口不变。
+- [router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts) / [router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)：路由守卫不再通过 `useKonaStore()` 间接走认证恢复，改成直接走 `sessionCoordinator` 做登录恢复和权限判断。
+- [composablesSessionCoordinator.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/composablesSessionCoordinator.test.ts) / [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/web/src/README_页面与状态地图.md)：补回归测试和状态地图，明确 Web 初始化职责的新落点。
+
+### 影响范围
+- Web 登录页 / 注册页的认证入口
+- App 与 Admin 路由守卫的登录恢复
+- 首次进入页面时的会话恢复与缓存恢复顺序
+
+### 验收重点
+- 登录页、注册页、管理后台登录继续能正常进入目标页面
+- App / Admin 路由守卫继续按登录态和管理员权限正确跳转
+
 ## 2026-03-16-15
 
 ### 这版一句话

@@ -5,7 +5,7 @@ import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
 import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
 import AdminApisPage from './pages/admin/AdminApisPage.vue'
 import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
-import { useKonaStore } from './stores/composables'
+import { useSessionCoordinatorStore } from './stores/sessionCoordinator'
 
 const routes: RouteRecordRaw[] = [
   { path: '/admin', redirect: '/admin/overview' },
@@ -24,16 +24,20 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const store = useKonaStore()
-  await store.bootstrap()
+  const sessionCoordinatorStore = useSessionCoordinatorStore()
+  await sessionCoordinatorStore.bootstrap()
 
-  if (to.path === '/admin/login' && store.isAuthenticated.value && store.isAdmin.value) {
+  if (
+    to.path === '/admin/login' &&
+    sessionCoordinatorStore.isAuthenticated &&
+    sessionCoordinatorStore.isAdmin
+  ) {
     return '/admin/overview'
   }
-  if (to.meta.requiresAuth && !store.isAuthenticated.value) {
+  if (to.meta.requiresAuth && !sessionCoordinatorStore.isAuthenticated) {
     return '/admin/login'
   }
-  if (to.meta.requiresAdmin && !store.isAdmin.value) {
+  if (to.meta.requiresAdmin && !sessionCoordinatorStore.isAdmin) {
     window.location.assign('/app/home')
     return false
   }

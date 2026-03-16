@@ -7,7 +7,7 @@ import AppAnalysisPage from './pages/app/AppAnalysisPage.vue'
 import AppNewsPage from './pages/app/AppNewsPage.vue'
 import AppMePage from './pages/app/AppMePage.vue'
 import AppAssetDetailPage from './pages/app/AppAssetDetailPage.vue'
-import { useKonaStore } from './stores/composables'
+import { useSessionCoordinatorStore } from './stores/sessionCoordinator'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: LandingPage },
@@ -30,13 +30,16 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const store = useKonaStore()
-  await store.bootstrap()
+  const sessionCoordinatorStore = useSessionCoordinatorStore()
+  await sessionCoordinatorStore.bootstrap()
 
-  if ((to.path === '/app/login' || to.path === '/app/register') && store.isAuthenticated.value) {
+  if (
+    (to.path === '/app/login' || to.path === '/app/register') &&
+    sessionCoordinatorStore.isAuthenticated
+  ) {
     return '/app/home'
   }
-  if (to.meta.requiresAuth && !store.isAuthenticated.value) {
+  if (to.meta.requiresAuth && !sessionCoordinatorStore.isAuthenticated) {
     return '/app/login'
   }
   return true

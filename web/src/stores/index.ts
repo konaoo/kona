@@ -9,6 +9,7 @@ export { useQuoteStore } from './quote'
 export { useMarketStore } from './market'
 export { useSyncStore } from './sync'
 export { useRefreshCoordinatorStore } from './refreshCoordinator'
+export { useSessionCoordinatorStore } from './sessionCoordinator'
 
 // 导出类型
 export type * from './types'

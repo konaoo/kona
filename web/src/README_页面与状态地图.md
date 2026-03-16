@@ -22,6 +22,7 @@ Web 端现在可以理解成三层：
 - 管理端路由：[router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)
 - 状态统一入口：[stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
 - 刷新协调层：[stores/refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
+- 会话协调层：[stores/sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
 
 一句话：
 
@@ -145,14 +146,14 @@ web/src/
 
 进入页面前，路由会先做：
 
-- `store.bootstrap()`
+- `sessionCoordinatorStore.bootstrap()`
 
 然后判断：
 
 - 业务端是否已登录（未登录跳 `/app/login`）
 - 管理端是否已登录 + 是否管理员（未登录或无权限跳 `/admin/login`）
 
-所以路由文件不只是跳页面，它也是登录恢复和权限控制入口。
+所以路由文件不只是跳页面，它也是登录恢复和权限控制入口；这条链路现在单独走 `sessionCoordinator`，不再让路由守卫直接依赖 `composables`。
 
 ---
 
@@ -170,10 +171,11 @@ web/src/
 - [market.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/market.ts)
 - [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts)
 - [refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
+- [sessionCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sessionCoordinator.ts)
 
 一句大白话：
 
-`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新、缓存恢复、自动刷新恢复这些重逻辑已经下沉到 refreshCoordinator。`
+`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新链路走 refreshCoordinator，会话恢复和路由初始化走 sessionCoordinator。`
 
 ---
 
