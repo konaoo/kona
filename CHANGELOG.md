@@ -18,6 +18,9 @@
 - `Deploy to Production` 继续能完整通过
 - 这次工作流里不再出现 `setup-java`、`paths-filter`、`upload-artifact`、`download-artifact` 的 Node 20 弃用提醒
 
+### 补充说明
+- 这轮继续把前端门禁里的内置缓存先关掉，直接清掉最后剩下的 `actions/cache@v4` 提醒；代价是 CI 速度会比之前慢一点，但发布链路会更干净。
+
 ## 2026-03-16-12
 
 ### 这版一句话
