@@ -17,6 +17,8 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
 import admin_routes as admin_routes_module  # noqa: E402
+import admin_routes_apis  # noqa: E402
+import admin_routes_users  # noqa: E402
 
 
 def _seed_user(
@@ -259,8 +261,8 @@ class AdminContractTests(unittest.TestCase):
         _seed_user("u_admin", "admin_user", is_admin=1)
         headers = _auth_headers("u_admin", "admin_user")
         with patch.object(
-            admin_routes_module,
-            "_get_user_ops_metrics",
+            admin_routes_users.admin_dashboard,
+            "get_user_ops_metrics",
             return_value={
                 "user_total": 1,
                 "new_today": 0,
@@ -298,11 +300,11 @@ class AdminContractTests(unittest.TestCase):
         _seed_user("u_admin", "admin_user", is_admin=1)
         headers = _auth_headers("u_admin", "admin_user")
         with patch.object(
-            admin_routes_module.system_manager,
+            admin_routes_apis.system_manager,
             "check_api_status",
             return_value={"price": {"ok": True}},
         ), patch.object(
-            admin_routes_module.system_manager,
+            admin_routes_apis.system_manager,
             "get_version_info",
             return_value={"version": "test", "commit_hash": "abc", "last_update": "now"},
         ), patch.object(
@@ -310,11 +312,11 @@ class AdminContractTests(unittest.TestCase):
             "list_admin_api_policies",
             return_value=[],
         ), patch.object(
-            admin_routes_module,
+            admin_routes_apis.admin_monitoring,
             "get_price_runtime_metrics",
             return_value={"cache_hits": 1},
         ), patch.object(
-            admin_routes_module,
+            admin_routes_apis.admin_monitoring,
             "get_price_source_health",
             return_value={"sina_stock": {"ok": 1}},
         ):

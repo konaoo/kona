@@ -8,14 +8,19 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 import time
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 
+from core.admin import cache as admin_cache
+from core.admin import common as admin_common
+from core.admin import constants as admin_constants
+from core.admin import monitoring as admin_monitoring
+from core.admin.policies import batch_update_policies, list_policies, update_policy
 from core.auth import admin_required
+from core.policy_runtime import invalidate_policy_cache
+from core.system import system_manager
 
 
 def register_admin_api_routes(bp, db, admin_write_audit) -> None:
-    import admin_routes as admin_routes_module
-
     @bp.route("/apis/health", methods=["GET"])
     @admin_required
     def admin_apis_health():
@@ -32,15 +37,15 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
         finally:
             conn.close()
 
-        upstream = admin_routes_module.system_manager.check_api_status()
+        upstream = system_manager.check_api_status()
         upstream_ok = all(item.get("ok") for item in upstream.values()) if upstream else True
         policies = db.list_admin_api_policies(scope_type="all")
         for policy in policies:
             policy["enabled"] = bool(policy.get("enabled"))
             scope_key = str(policy.get("scope_key", ""))
-            policy["display_name"] = admin_routes_module.POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
-            policy["impact"] = admin_routes_module.POLICY_LABELS.get(scope_key, {}).get("impact", "")
-            policy["scope_type_label"] = admin_routes_module.POLICY_TYPE_LABELS.get(
+            policy["display_name"] = admin_constants.POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
+            policy["impact"] = admin_constants.POLICY_LABELS.get(scope_key, {}).get("impact", "")
+            policy["scope_type_label"] = admin_constants.POLICY_TYPE_LABELS.get(
                 str(policy.get("scope_type", "")),
                 str(policy.get("scope_type", "")),
             )
@@ -51,9 +56,9 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
             "db": {"ok": db_ok, "error": db_error},
             "upstream": upstream,
             "policies": policies,
-            "runtime": admin_routes_module.get_price_runtime_metrics(),
-            "sources": admin_routes_module.get_price_source_health(),
-            "version_info": admin_routes_module.system_manager.get_version_info(),
+            "runtime": admin_monitoring.get_price_runtime_metrics(),
+            "sources": admin_monitoring.get_price_source_health(),
+            "version_info": system_manager.get_version_info(),
         }
         return jsonify(payload)
 
@@ -61,12 +66,12 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
     @admin_required
     def admin_apis_policies():
         scope_type = request.args.get("scope_type", "all").strip().lower()
-        payload = admin_routes_module.list_policies(db, scope_type=scope_type)
+        payload = list_policies(db, scope_type=scope_type)
         for item in payload.get("items", []):
             scope_key = str(item.get("scope_key", ""))
-            item["display_name"] = admin_routes_module.POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
-            item["impact"] = admin_routes_module.POLICY_LABELS.get(scope_key, {}).get("impact", "")
-            item["scope_type_label"] = admin_routes_module.POLICY_TYPE_LABELS.get(
+            item["display_name"] = admin_constants.POLICY_LABELS.get(scope_key, {}).get("name", scope_key)
+            item["impact"] = admin_constants.POLICY_LABELS.get(scope_key, {}).get("impact", "")
+            item["scope_type_label"] = admin_constants.POLICY_TYPE_LABELS.get(
                 str(item.get("scope_type", "")),
                 str(item.get("scope_type", "")),
             )
@@ -76,54 +81,54 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.apis.policies.update", target_type="policy")
     @admin_required
     def admin_apis_policies_update():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         scope_key = str(data.get("scope_key", "")).strip()
         if not scope_key:
             return jsonify({"error": "Missing scope_key"}), 400
-        payload, code = admin_routes_module.update_policy(
+        payload, code = update_policy(
             db=db,
             scope_key=scope_key,
             payload=data,
-            updated_by=getattr(admin_routes_module.g, "user_id", "") or "",
+            updated_by=getattr(g, "user_id", "") or "",
         )
         if code == 200:
-            admin_routes_module.invalidate_policy_cache(scope_key)
+            invalidate_policy_cache(scope_key)
         return jsonify(payload), code
 
     @bp.route("/apis/policies/batch_update", methods=["POST"])
     @admin_write_audit(action="admin.apis.policies.batch_update", target_type="policy")
     @admin_required
     def admin_apis_policies_batch_update():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         items = data.get("items")
-        payload, code = admin_routes_module.batch_update_policies(
+        payload, code = batch_update_policies(
             db=db,
             items=items if isinstance(items, list) else [],
-            updated_by=getattr(admin_routes_module.g, "user_id", "") or "",
+            updated_by=getattr(g, "user_id", "") or "",
         )
         if code == 200:
-            admin_routes_module.invalidate_policy_cache()
+            invalidate_policy_cache()
         return jsonify(payload), code
 
     @bp.route("/apis/provider_test", methods=["POST"])
     @admin_required
     def admin_apis_provider_test():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         provider_key = str(data.get("provider_key", "")).strip().lower()
-        if provider_key not in admin_routes_module._API_TEST_PROVIDER_LABELS:
+        if provider_key not in admin_constants.API_TEST_PROVIDER_LABELS:
             return jsonify({"error": "Invalid provider_key"}), 400
 
         if provider_key == "forex_rate":
-            payload = admin_routes_module._run_forex_provider_test()
+            payload = admin_monitoring.run_forex_provider_test()
             return jsonify(payload)
 
-        payload = admin_routes_module._run_market_provider_test(provider_key)
+        payload = admin_monitoring.run_market_provider_test(provider_key)
         return jsonify(payload)
 
     @bp.route("/apis/provider_tests/latest", methods=["GET"])
     @admin_required
     def admin_apis_provider_tests_latest():
-        payload = admin_routes_module._get_latest_provider_test_report()
+        payload = admin_monitoring.get_latest_provider_test_report()
         if payload:
             return jsonify(payload)
         return jsonify(
@@ -137,22 +142,19 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
     @bp.route("/apis/provider_tests/run", methods=["POST"])
     @admin_required
     def admin_apis_provider_tests_run():
-        payload = admin_routes_module.run_provider_test_report_job()
+        payload = admin_monitoring.run_provider_test_report_job()
         return jsonify(payload)
 
     @bp.route("/apis/price_alerts", methods=["GET"])
     @admin_required
     def admin_apis_price_alerts():
-        force = admin_routes_module._admin_parse_force_arg()
+        force = admin_cache.admin_parse_force_arg()
         started = time.perf_counter()
         params = dict(request.args or {})
-        _, params_hash = admin_routes_module._admin_cache_key(
-            admin_routes_module.PRICE_ALERT_ROUTE_NAME,
-            params,
-        )
+        _, params_hash = admin_cache.admin_cache_key(admin_constants.PRICE_ALERT_ROUTE_NAME, params)
 
         if not force:
-            latest_report = admin_routes_module._get_latest_price_alert_report()
+            latest_report = admin_monitoring.get_latest_price_alert_report()
             if latest_report:
                 elapsed_ms = int((time.perf_counter() - started) * 1000)
                 payload = {
@@ -162,31 +164,31 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
                     "summary": dict(latest_report.get("summary") or {}),
                     "items": list(latest_report.get("items") or []),
                     "report_date": latest_report.get("report_date") or "",
-                    "history": admin_routes_module._list_price_alert_report_history(),
+                    "history": admin_monitoring.list_price_alert_report_history(),
                     "cache": {
                         "state": "snapshot",
                         "elapsed_ms": elapsed_ms,
                     },
                 }
-                admin_routes_module._admin_log_read(
-                    admin_routes_module.PRICE_ALERT_ROUTE_NAME,
+                admin_cache.log_admin_read(
+                    admin_constants.PRICE_ALERT_ROUTE_NAME,
                     "SNAPSHOT",
                     elapsed_ms,
                     params_hash,
                 )
                 return jsonify(payload)
 
-        payload, cache_state, params_hash, elapsed_ms = admin_routes_module._admin_cached_payload(
-            admin_routes_module.PRICE_ALERT_ROUTE_NAME,
+        payload, cache_state, params_hash, elapsed_ms = admin_cache.cached_payload(
+            admin_constants.PRICE_ALERT_ROUTE_NAME,
             params,
             force,
-            admin_routes_module._load_price_alerts_payload,
+            admin_monitoring.load_price_alerts_payload,
         )
         if cache_state in {"MISS", "BYPASS"}:
-            admin_routes_module._save_price_alert_report_snapshot(payload)
-        payload["history"] = admin_routes_module._list_price_alert_report_history()
-        admin_routes_module._admin_log_read(
-            admin_routes_module.PRICE_ALERT_ROUTE_NAME,
+            admin_monitoring.save_price_alert_report_snapshot(payload)
+        payload["history"] = admin_monitoring.list_price_alert_report_history()
+        admin_cache.log_admin_read(
+            admin_constants.PRICE_ALERT_ROUTE_NAME,
             cache_state,
             elapsed_ms,
             params_hash,
@@ -200,12 +202,12 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
     @bp.route("/apis/price_probe", methods=["POST"])
     @admin_required
     def admin_apis_price_probe():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         code = str(data.get("code", "")).strip()
         if not code:
             return jsonify({"error": "Missing code"}), 400
         try:
-            payload = admin_routes_module._build_price_probe_payload(code)
+            payload = admin_monitoring.build_price_probe_payload(code)
             return jsonify(payload)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -244,12 +246,12 @@ def register_admin_api_routes(bp, db, admin_write_audit) -> None:
                 conn.close()
 
         def _upstream_case():
-            return admin_routes_module.system_manager.check_api_status()
+            return system_manager.check_api_status()
 
         def _runtime_case():
             return {
-                "runtime": admin_routes_module.get_price_runtime_metrics(),
-                "sources": admin_routes_module.get_price_source_health(),
+                "runtime": admin_monitoring.get_price_runtime_metrics(),
+                "sources": admin_monitoring.get_price_source_health(),
             }
 
         run_case("health", _health_case)

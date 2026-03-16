@@ -69,6 +69,7 @@ kona_tool/
 - 基金逻辑
 - 股票逻辑
 - 分析相关逻辑
+- 管理后台共享服务
 
 ---
 
@@ -238,6 +239,18 @@ kona_tool/
 - `web_entry_handlers.py`
 - `web_entry_routes.py`
 - `admin_routes.py`
+
+这轮后台治理后，这部分又进一步明确成：
+
+- [admin_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes.py)
+  后台蓝图薄入口，只负责注册路由和兼容导出
+- [core/admin](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin)
+  后台共享服务层，承接常量、缓存、运营配置、概览 helper、巡检与价格告警
+
+也就是：
+
+- 后台路由还在 `kona_tool/` 根目录
+- 但后台共享逻辑不应该再继续回塞到 `admin_routes.py`
 - `admin_routes_dashboard.py`
 - `admin_routes_users.py`
 - `admin_routes_user_write.py`

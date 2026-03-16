@@ -23,9 +23,12 @@ from flask_limiter.util import get_remote_address
 import config
 
 try:
-    from admin_routes import create_admin_blueprint, run_provider_test_report_job
+    from admin_routes import create_admin_blueprint
 except ModuleNotFoundError:  # pragma: no cover
     create_admin_blueprint = None
+try:
+    from core.admin.monitoring import run_provider_test_report_job
+except ModuleNotFoundError:  # pragma: no cover
     run_provider_test_report_job = None
 
 from analysis_handlers import create_analysis_payload_handlers

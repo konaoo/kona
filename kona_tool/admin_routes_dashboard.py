@@ -8,17 +8,20 @@ from typing import Any, Dict, List
 
 from flask import jsonify, request
 
+from core.admin import cache as admin_cache
+from core.admin import common as admin_common
+from core.admin import constants as admin_constants
+from core.admin import dashboard as admin_dashboard
 from core.auth import admin_required
+from core.system import system_manager
 
 
 def register_admin_dashboard_routes(bp, db) -> None:
-    import admin_routes as admin_routes_module
-
     @bp.route("/overview", methods=["GET"])
     @admin_required
     def admin_overview():
         try:
-            force = admin_routes_module._admin_parse_force_arg()
+            force = admin_cache.admin_parse_force_arg()
         except ValueError:
             return jsonify({"error": "Invalid force"}), 400
 
@@ -26,18 +29,18 @@ def register_admin_dashboard_routes(bp, db) -> None:
             conn = db.get_connection()
             cursor = conn.cursor()
             try:
-                user_ops = admin_routes_module._get_user_ops_metrics(cursor)
-                retention_rows = admin_routes_module._get_user_retention_rows(cursor, days=60)
-                new_user_bars = admin_routes_module._build_mini_bars(retention_rows, "new_users")
-                active_user_bars = admin_routes_module._build_mini_bars(retention_rows, "active_users")
-                new_user_trend_text = admin_routes_module._build_trend_text(
+                user_ops = admin_dashboard.get_user_ops_metrics(cursor)
+                retention_rows = admin_dashboard.get_user_retention_rows(cursor, days=60)
+                new_user_bars = admin_dashboard.build_mini_bars(retention_rows, "new_users")
+                active_user_bars = admin_dashboard.build_mini_bars(retention_rows, "active_users")
+                new_user_trend_text = admin_dashboard.build_trend_text(
                     retention_rows,
                     "new_users",
                     unit="人",
                     empty_text="近7天新增走势",
                     single_text="仅有今日数据",
                 )
-                active_user_trend_text = admin_routes_module._build_trend_text(
+                active_user_trend_text = admin_dashboard.build_trend_text(
                     retention_rows,
                     "active_users",
                     unit="人",
@@ -52,7 +55,7 @@ def register_admin_dashboard_routes(bp, db) -> None:
                 latest_row = cursor.fetchone()
                 latest_snapshot_date = latest_row["latest_date"] if latest_row else None
 
-                recent_audits = admin_routes_module._recent_admin_audits(cursor, limit=20)
+                recent_audits = admin_dashboard.recent_admin_audits(cursor, limit=20)
 
                 return {
                     "dashboard": {
@@ -79,37 +82,37 @@ def register_admin_dashboard_routes(bp, db) -> None:
             finally:
                 conn.close()
 
-        payload, cache_state, params_hash, elapsed_ms = admin_routes_module._admin_cached_payload(
+        payload, cache_state, params_hash, elapsed_ms = admin_cache.cached_payload(
             route_name="admin_overview",
             params={"force": request.args.get("force", "")},
             force=force,
             loader=_load_overview_payload,
         )
-        admin_routes_module._admin_log_read("admin_overview", cache_state, elapsed_ms, params_hash)
+        admin_cache.log_admin_read("admin_overview", cache_state, elapsed_ms, params_hash)
         return jsonify(payload)
 
     @bp.route("/meta/dictionaries", methods=["GET"])
     @admin_required
     def admin_meta_dictionaries():
         policy_labels = {
-            key: value["name"] for key, value in admin_routes_module.POLICY_LABELS.items()
+            key: value["name"] for key, value in admin_constants.POLICY_LABELS.items()
         }
         policy_impacts = {
-            key: value["impact"] for key, value in admin_routes_module.POLICY_LABELS.items()
+            key: value["impact"] for key, value in admin_constants.POLICY_LABELS.items()
         }
         config_labels = {
             key: rule.get("display_name", key)
-            for key, rule in admin_routes_module.CONFIG_WHITELIST.items()
+            for key, rule in admin_constants.CONFIG_WHITELIST.items()
         }
         return jsonify(
             {
-                "status_labels": admin_routes_module.STATUS_LABELS,
-                "action_labels": admin_routes_module.ACTION_LABELS,
+                "status_labels": admin_constants.STATUS_LABELS,
+                "action_labels": admin_constants.ACTION_LABELS,
                 "policy_labels": policy_labels,
                 "policy_impacts": policy_impacts,
-                "policy_type_labels": admin_routes_module.POLICY_TYPE_LABELS,
-                "register_method_labels": admin_routes_module.REGISTER_METHOD_LABELS,
-                "error_labels": admin_routes_module.ERROR_LABELS,
+                "policy_type_labels": admin_constants.POLICY_TYPE_LABELS,
+                "register_method_labels": admin_constants.REGISTER_METHOD_LABELS,
+                "error_labels": admin_constants.ERROR_LABELS,
                 "config_labels": config_labels,
             }
         )
@@ -144,7 +147,7 @@ def register_admin_dashboard_routes(bp, db) -> None:
                 SELECT COUNT(1) AS c
                 FROM users u
                 WHERE LOWER(COALESCE(NULLIF(u.status, ''), 'active')) = 'disabled'
-                  AND {admin_routes_module._real_user_where('u')}
+                  AND {admin_common.real_user_where('u')}
                 """
             )
             disabled_users = int((cursor.fetchone() or {"c": 0})["c"] or 0)
@@ -153,7 +156,7 @@ def register_admin_dashboard_routes(bp, db) -> None:
 
         policies = db.list_admin_api_policies(scope_type="all")
         disabled_policies = [p for p in policies if not bool(p.get("enabled"))]
-        upstream = admin_routes_module.system_manager.check_api_status()
+        upstream = system_manager.check_api_status()
         degraded_upstream = [
             key for key, item in (upstream or {}).items() if not bool((item or {}).get("ok"))
         ]
@@ -170,7 +173,7 @@ def register_admin_dashboard_routes(bp, db) -> None:
                 }
             )
         if disabled_policies:
-            names = [admin_routes_module.POLICY_LABELS.get(p["scope_key"], {}).get("name", p["scope_key"]) for p in disabled_policies]
+            names = [admin_constants.POLICY_LABELS.get(p["scope_key"], {}).get("name", p["scope_key"]) for p in disabled_policies]
             todos.append(
                 {
                     "code": "policy_disabled",
@@ -181,7 +184,7 @@ def register_admin_dashboard_routes(bp, db) -> None:
                 }
             )
         if degraded_upstream:
-            names = [admin_routes_module.POLICY_LABELS.get(f"upstream.{k}", {}).get("name", k) for k in degraded_upstream]
+            names = [admin_constants.POLICY_LABELS.get(f"upstream.{k}", {}).get("name", k) for k in degraded_upstream]
             todos.append(
                 {
                     "code": "upstream_degraded",

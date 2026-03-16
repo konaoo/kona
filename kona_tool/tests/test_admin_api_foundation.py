@@ -17,7 +17,12 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
 import admin_routes  # noqa: E402
+import admin_routes_apis  # noqa: E402
+import admin_routes_dashboard  # noqa: E402
+import admin_routes_data  # noqa: E402
+import admin_routes_users  # noqa: E402
 from core.auth import hash_password  # noqa: E402
+from core.admin import monitoring as admin_monitoring  # noqa: E402
 
 
 def _seed_user(
@@ -237,9 +242,9 @@ class AdminApiFoundationTests(unittest.TestCase):
                 },
             },
         ]
-        with patch.object(admin_routes, "_get_user_ops_metrics", side_effect=metrics_side_effect) as mock_metrics, patch.object(
-            admin_routes, "_get_user_retention_rows", return_value=[]
-        ), patch.object(admin_routes, "_recent_admin_audits", return_value=[]):
+        with patch.object(admin_routes_dashboard.admin_dashboard, "get_user_ops_metrics", side_effect=metrics_side_effect) as mock_metrics, patch.object(
+            admin_routes_dashboard.admin_dashboard, "get_user_retention_rows", return_value=[]
+        ), patch.object(admin_routes_dashboard.admin_dashboard, "recent_admin_audits", return_value=[]):
             first = self.client.get("/api/admin/overview", headers=header)
             second = self.client.get("/api/admin/overview", headers=header)
             forced = self.client.get("/api/admin/overview?force=1", headers=header)
@@ -275,7 +280,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             ],
             "diagnosis": {"status": "ok", "summary": "主价与各源基本一致。"},
         }
-        with patch.object(admin_routes, "_build_price_probe_payload", return_value=fake_payload) as mock_probe:
+        with patch.object(admin_routes_apis.admin_monitoring, "build_price_probe_payload", return_value=fake_payload) as mock_probe:
             resp = self.client.post(
                 "/api/admin/apis/price_probe",
                 json={"code": "00700"},
@@ -293,11 +298,7 @@ class AdminApiFoundationTests(unittest.TestCase):
     def test_market_provider_test_keeps_fund_for_eastmoney_quote(self):
         # 这里要测的是“eastmoney_quote 会包含场外基金 case”，不是测上游网络稳定性。
         # 单测环境可能无 DNS/无外网，所以把基金取价入口 patch 掉，避免误触网导致不稳定。
-        with patch.object(
-            admin_routes,
-            "get_fund_eastmoney_f10",
-            return_value=(1.23, 1.22, 0.0, 0.0),
-        ):
+        with patch.object(admin_monitoring, "get_fund_eastmoney_f10", return_value=(1.23, 1.22, 0.0, 0.0)):
             payload = admin_routes._run_market_provider_test("eastmoney_quote")
         items = payload.get("items") or []
         codes = {str(item.get("code")) for item in items}
@@ -611,8 +612,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(bad_sort_dir.status_code, 400)
         self.assertEqual((bad_sort_dir.get_json() or {}).get("error"), "Invalid sort_dir")
 
-    @patch.object(admin_routes, "batch_get_prices", return_value={"gb_tsla": (240.5, 230.0, 0, 0)})
-    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.2, "HKD": 0.91, "CNY": 1.0})
+    @patch.object(admin_routes_users.admin_dashboard, "batch_get_prices", return_value={"gb_tsla": (240.5, 230.0, 0, 0)})
+    @patch.object(admin_routes_users.admin_dashboard, "get_forex_rates", return_value={"USD": 7.2, "HKD": 0.91, "CNY": 1.0})
     def test_admin_user_portfolio_endpoint_returns_holdings(self, _mock_rates, _mock_prices):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_target", "target_user", is_admin=0, status="active")
@@ -667,8 +668,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertIn("cached_at", payload.get("cache", {}))
         self.assertIn("expires_at", payload.get("cache", {}))
 
-    @patch.object(admin_routes, "batch_get_prices", return_value={"gb_neg": (0.0, 0.0, 0, 0)})
-    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.0, "CNY": 1.0})
+    @patch.object(admin_routes_users.admin_dashboard, "batch_get_prices", return_value={"gb_neg": (0.0, 0.0, 0, 0)})
+    @patch.object(admin_routes_users.admin_dashboard, "get_forex_rates", return_value={"USD": 7.0, "CNY": 1.0})
     def test_admin_user_portfolio_negative_cost_uses_abs_rate_denominator(self, _mock_rates, _mock_prices):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         _seed_user("u_target", "target_user", is_admin=0, status="active")
@@ -1025,7 +1026,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         row = self._latest_audit()
         self.assertEqual(row["action"], "admin.data.snapshot.cleanup_market_closed")
 
-    @patch.object(admin_routes, "take_snapshot", return_value=True)
+    @patch.object(admin_routes_data, "take_snapshot", return_value=True)
     def test_admin_snapshot_trigger_writes_audit(self, _mock_take_snapshot):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.post(
@@ -1041,7 +1042,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(row["result"], "success")
         self.assertEqual(row["status_code"], 200)
 
-    @patch.object(admin_routes.system_manager, "check_api_status", return_value={"price": {"ok": True}})
+    @patch.object(admin_routes_apis.system_manager, "check_api_status", return_value={"price": {"ok": True}})
     def test_admin_smoke_test_writes_audit(self, _mock_check):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.post(
@@ -1057,8 +1058,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(row["status_code"], 200)
 
     @patch.object(
-        admin_routes,
-        "_run_market_provider_test",
+        admin_routes_apis.admin_monitoring,
+        "run_market_provider_test",
         return_value={
             "provider_key": "sina_quote",
             "provider_label": "新浪行情",
@@ -1081,8 +1082,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual((body.get("items") or [{}])[0].get("code"), "hk00700")
 
     @patch.object(
-        admin_routes,
-        "_run_forex_provider_test",
+        admin_routes_apis.admin_monitoring,
+        "run_forex_provider_test",
         return_value={
             "provider_key": "forex_rate",
             "provider_label": "汇率",
@@ -1104,8 +1105,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual((body.get("items") or [{}])[0].get("name"), "USD/CNY")
 
     @patch.object(
-        admin_routes,
-        "_get_latest_provider_test_report",
+        admin_routes_apis.admin_monitoring,
+        "get_latest_provider_test_report",
         return_value={
             "report_slot": "2026-03-08T18",
             "tested_at_utc": "2026-03-08T10:00:00+00:00",
@@ -1133,7 +1134,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(((body.get("providers") or {}).get("sina_quote") or {}).get("status"), "degraded")
 
     @patch.object(
-        admin_routes,
+        admin_routes_apis.admin_monitoring,
         "run_provider_test_report_job",
         return_value={
             "tested_at_utc": "2026-03-08T10:00:00+00:00",
@@ -1163,8 +1164,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         _mock_run_job.assert_called_once()
 
     @patch.object(
-        admin_routes,
-        "_load_price_alerts_payload",
+        admin_routes_apis.admin_monitoring,
+        "load_price_alerts_payload",
         return_value={
             "tested_at_utc": "2026-03-06T08:00:00+00:00",
             "total_assets": 3,
@@ -1192,8 +1193,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         },
     )
     @patch.object(
-        admin_routes,
-        "_list_price_alert_report_history",
+        admin_routes_apis.admin_monitoring,
+        "list_price_alert_report_history",
         return_value=[
             {
                 "report_date": "2026-03-06",
@@ -1205,7 +1206,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             }
         ],
     )
-    @patch.object(admin_routes, "_save_price_alert_report_snapshot")
+    @patch.object(admin_routes_apis.admin_monitoring, "save_price_alert_report_snapshot")
     def test_admin_price_alerts_success(self, _mock_save, _mock_history, _mock_loader):
         _seed_user("u_admin", "admin_user", is_admin=1, status="active")
         resp = self.client.get(
@@ -1221,8 +1222,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         _mock_save.assert_called_once()
 
     @patch.object(
-        admin_routes,
-        "_list_price_alert_report_history",
+        admin_routes_apis.admin_monitoring,
+        "list_price_alert_report_history",
         return_value=[
             {
                 "report_date": "2026-03-07",
@@ -1235,8 +1236,8 @@ class AdminApiFoundationTests(unittest.TestCase):
         ],
     )
     @patch.object(
-        admin_routes,
-        "_get_latest_price_alert_report",
+        admin_routes_apis.admin_monitoring,
+        "get_latest_price_alert_report",
         return_value={
             "report_date": "2026-03-07",
             "tested_at_utc": "2026-03-07T08:00:00+00:00",
@@ -1247,7 +1248,7 @@ class AdminApiFoundationTests(unittest.TestCase):
             "items": [{"code": "f_968048", "alert_type": "price_mismatch"}],
         },
     )
-    @patch.object(admin_routes, "_load_price_alerts_payload")
+    @patch.object(admin_routes_apis.admin_monitoring, "load_price_alerts_payload")
     def test_admin_price_alerts_prefers_latest_snapshot_without_force(
         self,
         _mock_loader,
@@ -1282,7 +1283,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(admin_routes._to_tencent_quote_code("gb_tsla"), "usTSLA")
         self.assertEqual(admin_routes._to_tencent_quote_code("aapl"), "usAAPL")
 
-    @patch.object(admin_routes, "get_forex_rates", return_value={"USD": 7.12, "HKD": 0.91, "CNY": 1.0})
+    @patch.object(admin_monitoring, "get_forex_rates", return_value={"USD": 7.12, "HKD": 0.91, "CNY": 1.0})
     def test_forex_provider_returns_two_pairs_only(self, _mock_rates):
         payload = admin_routes._run_forex_provider_test()
         self.assertEqual(payload.get("provider_key"), "forex_rate")

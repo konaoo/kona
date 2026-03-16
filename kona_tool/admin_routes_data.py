@@ -8,9 +8,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+import config
 from flask import jsonify, request
 
+from core.admin import common as admin_common
 from core.auth import admin_required
+from core.snapshot import take_snapshot
 
 
 def _parse_cleanup_markets(data: Dict[str, Any]) -> List[str]:
@@ -31,8 +34,6 @@ def _parse_cleanup_markets(data: Dict[str, Any]) -> List[str]:
 
 
 def register_admin_data_routes(bp, db, admin_write_audit) -> None:
-    import admin_routes as admin_routes_module
-
     @bp.route("/data/snapshots", methods=["GET"])
     @admin_required
     def admin_data_snapshots():
@@ -91,7 +92,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.snapshot.trigger", target_type="snapshot")
     @admin_required
     def admin_data_snapshot_trigger():
-        success = admin_routes_module.take_snapshot()
+        success = take_snapshot()
         if success:
             return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
         return jsonify({"error": "Failed to take snapshot"}), 500
@@ -194,7 +195,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.snapshot.cleanup_weekend", target_type="snapshot")
     @admin_required
     def admin_data_snapshot_cleanup_weekend():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         user_id = str(data.get("user_id", "")).strip()
         start_date = str(data.get("start_date", "")).strip()
         end_date = str(data.get("end_date", "")).strip()
@@ -231,7 +232,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @bp.route("/data/snapshot/cleanup_weekend/preview", methods=["POST"])
     @admin_required
     def admin_data_snapshot_cleanup_weekend_preview():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         user_id = str(data.get("user_id", "")).strip()
         start_date = str(data.get("start_date", "")).strip()
         end_date = str(data.get("end_date", "")).strip()
@@ -262,7 +263,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @bp.route("/data/snapshot/cleanup_market_closed/preview", methods=["POST"])
     @admin_required
     def admin_data_snapshot_cleanup_market_closed_preview():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         user_id = str(data.get("user_id", "")).strip()
         start_date = str(data.get("start_date", "")).strip()
         end_date = str(data.get("end_date", "")).strip()
@@ -279,7 +280,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.snapshot.cleanup_market_closed", target_type="snapshot")
     @admin_required
     def admin_data_snapshot_cleanup_market_closed():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         user_id = str(data.get("user_id", "")).strip()
         start_date = str(data.get("start_date", "")).strip()
         end_date = str(data.get("end_date", "")).strip()
@@ -296,8 +297,8 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.backup", target_type="backup")
     @admin_required
     def admin_data_backup():
-        data = admin_routes_module._json_body()
-        backup_dir = str(data.get("backup_dir", "")).strip() or str(admin_routes_module.config.BASE_DIR / "archive" / "backups")
+        data = admin_common.json_body()
+        backup_dir = str(data.get("backup_dir", "")).strip() or str(config.BASE_DIR / "archive" / "backups")
         try:
             retention_days = int(data.get("retention_days", 14))
         except (TypeError, ValueError):
@@ -305,11 +306,11 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
         if retention_days < 1:
             return jsonify({"error": "retention_days must be >= 1"}), 400
 
-        script = admin_routes_module._load_script_module(
-            admin_routes_module.config.BASE_DIR / "scripts" / "backup_portfolio_db.py",
+        script = admin_common.load_script_module(
+            config.BASE_DIR / "scripts" / "backup_portfolio_db.py",
             "backup_portfolio_db",
         )
-        backup_file = script.create_backup(str(admin_routes_module.config.DATABASE_PATH), backup_dir)
+        backup_file = script.create_backup(str(config.DATABASE_PATH), backup_dir)
         deleted = script.prune_old_backups(backup_dir, retention_days)
 
         return jsonify(
@@ -326,9 +327,9 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @bp.route("/data/backup/latest", methods=["GET"])
     @admin_required
     def admin_data_backup_latest():
-        backup_dir = request.args.get("backup_dir", "").strip() or str(admin_routes_module.config.BASE_DIR / "archive" / "backups")
-        script = admin_routes_module._load_script_module(
-            admin_routes_module.config.BASE_DIR / "scripts" / "restore_portfolio_db.py",
+        backup_dir = request.args.get("backup_dir", "").strip() or str(config.BASE_DIR / "archive" / "backups")
+        script = admin_common.load_script_module(
+            config.BASE_DIR / "scripts" / "restore_portfolio_db.py",
             "restore_portfolio_db",
         )
         try:
@@ -353,18 +354,18 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.restore", target_type="backup")
     @admin_required
     def admin_data_restore():
-        data = admin_routes_module._json_body()
-        backup_dir = str(data.get("backup_dir", "")).strip() or str(admin_routes_module.config.BASE_DIR / "archive" / "backups")
+        data = admin_common.json_body()
+        backup_dir = str(data.get("backup_dir", "")).strip() or str(config.BASE_DIR / "archive" / "backups")
         backup_file = str(data.get("backup_file", "")).strip()
 
-        script = admin_routes_module._load_script_module(
-            admin_routes_module.config.BASE_DIR / "scripts" / "restore_portfolio_db.py",
+        script = admin_common.load_script_module(
+            config.BASE_DIR / "scripts" / "restore_portfolio_db.py",
             "restore_portfolio_db",
         )
         try:
             if not backup_file:
                 backup_file = script.find_latest_backup(backup_dir)
-            result = script.restore_backup(str(admin_routes_module.config.DATABASE_PATH), backup_file)
+            result = script.restore_backup(str(config.DATABASE_PATH), backup_file)
             return jsonify(result)
         except FileNotFoundError as exc:
             return jsonify({"error": str(exc)}), 404
@@ -384,7 +385,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.data.rebind.execute", target_type="user")
     @admin_required
     def admin_data_rebind_execute():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         target_user_id = str(data.get("target_user_id", "")).strip()
         if not target_user_id:
             return jsonify({"error": "Missing target_user_id"}), 400

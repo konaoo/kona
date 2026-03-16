@@ -11,17 +11,18 @@ from typing import Any, List
 
 from flask import g, jsonify, make_response, request
 
+from core.admin import cache as admin_cache
+from core.admin import common as admin_common
+from core.admin import constants as admin_constants
 from core.auth import admin_required
 
 
 def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
-    import admin_routes as admin_routes_module
-
     @bp.route("/invites/generate", methods=["POST"])
     @admin_write_audit(action="admin.invites.generate", target_type="invite")
     @admin_required
     def admin_invites_generate():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         try:
             count = int(data.get("count", 1000))
         except (TypeError, ValueError):
@@ -40,7 +41,7 @@ def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
             generated = []
             seen = set()
             while len(generated) < missing:
-                code = admin_routes_module._make_invite_code(10)
+                code = admin_common.make_invite_code(10)
                 if code in seen:
                     continue
                 seen.add(code)
@@ -75,11 +76,11 @@ def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
         random_order = request.args.get("random", "0") == "1"
 
         try:
-            force = admin_routes_module._admin_parse_force_arg()
+            force = admin_cache.admin_parse_force_arg()
         except ValueError:
             return jsonify({"error": "Invalid force"}), 400
 
-        payload, cache_state, params_hash, elapsed_ms = admin_routes_module._admin_cached_payload(
+        payload, cache_state, params_hash, elapsed_ms = admin_cache.cached_payload(
             route_name="admin_invites",
             params={
                 "status": status,
@@ -98,7 +99,7 @@ def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
                 ordered_random=random_order,
             ),
         )
-        admin_routes_module._admin_log_read("admin_invites", cache_state, elapsed_ms, params_hash)
+        admin_cache.log_admin_read("admin_invites", cache_state, elapsed_ms, params_hash)
         return jsonify(payload)
 
     @bp.route("/invites/stats", methods=["GET"])
@@ -142,7 +143,7 @@ def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
     @admin_write_audit(action="admin.invites.revoke", target_type="invite")
     @admin_required
     def admin_invites_revoke():
-        data = admin_routes_module._json_body()
+        data = admin_common.json_body()
         code = str(data.get("code", "")).strip().upper()
         if not code:
             return jsonify({"error": "Missing code"}), 400
@@ -177,7 +178,7 @@ def register_admin_invite_routes(bp, db, admin_write_audit) -> None:
                 [
                     item.get("code", ""),
                     item.get("batch_id", ""),
-                    admin_routes_module.STATUS_LABELS.get(
+                    admin_constants.STATUS_LABELS.get(
                         str(item.get("status", "")).lower(),
                         item.get("status", ""),
                     ),

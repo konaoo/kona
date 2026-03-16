@@ -6,16 +6,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List
-import time
 
 from flask import jsonify, request
 
+from core.admin import cache as admin_cache
+from core.admin import common as admin_common
+from core.admin import dashboard as admin_dashboard
 from core.auth import admin_required
 
 
 def register_admin_user_read_routes(bp, db) -> None:
-    import admin_routes as admin_routes_module
-
     @bp.route("/users", methods=["GET"])
     @admin_required
     def admin_users():
@@ -25,7 +25,7 @@ def register_admin_user_read_routes(bp, db) -> None:
         sort_dir = request.args.get("sort_dir", "desc").strip().lower()
         include_local_raw = request.args.get("include_local", "1")
         try:
-            include_local = admin_routes_module._coerce_bool(include_local_raw)
+            include_local = admin_common.coerce_bool(include_local_raw)
         except ValueError:
             return jsonify({"error": "Invalid include_local"}), 400
         sort_expr_map = {
@@ -140,12 +140,12 @@ def register_admin_user_read_routes(bp, db) -> None:
                     FROM users u
                     LEFT JOIN latest_snapshots ls
                       ON ls.uid = u.id AND ls.rn = 1
-                    WHERE {admin_routes_module._real_user_where("u")}
+                    WHERE {admin_common.real_user_where("u")}
                     {local_union_sql}
                 )
         """
         try:
-            force = admin_routes_module._admin_parse_force_arg()
+            force = admin_cache.admin_parse_force_arg()
         except ValueError:
             return jsonify({"error": "Invalid force"}), 400
 
@@ -193,8 +193,8 @@ def register_admin_user_read_routes(bp, db) -> None:
                     if total <= 0:
                         total = int(item.get("__total_count") or 0)
                     item.pop("__total_count", None)
-                    item["last_login_region"] = admin_routes_module._admin_region_display(item.get("last_login_region"))
-                    item["last_active_region"] = admin_routes_module._admin_region_display(
+                    item["last_login_region"] = admin_common.admin_region_display(item.get("last_login_region"))
+                    item["last_active_region"] = admin_common.admin_region_display(
                         item.get("last_active_region") or item.get("last_login_region")
                     )
                     users.append(item)
@@ -213,7 +213,7 @@ def register_admin_user_read_routes(bp, db) -> None:
             finally:
                 conn.close()
 
-        payload, cache_state, params_hash, elapsed_ms = admin_routes_module._admin_cached_payload(
+        payload, cache_state, params_hash, elapsed_ms = admin_cache.cached_payload(
             route_name="admin_users",
             params={
                 "q": q,
@@ -228,7 +228,7 @@ def register_admin_user_read_routes(bp, db) -> None:
             force=force,
             loader=_load_users_payload,
         )
-        admin_routes_module._admin_log_read("admin_users", cache_state, elapsed_ms, params_hash)
+        admin_cache.log_admin_read("admin_users", cache_state, elapsed_ms, params_hash)
         return jsonify(payload)
 
     @bp.route("/users/metrics", methods=["GET"])
@@ -237,7 +237,7 @@ def register_admin_user_read_routes(bp, db) -> None:
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
-            metrics = admin_routes_module._get_user_ops_metrics(cursor)
+            metrics = admin_dashboard.get_user_ops_metrics(cursor)
             metrics["as_of"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             return jsonify(metrics)
         finally:
@@ -253,7 +253,7 @@ def register_admin_user_read_routes(bp, db) -> None:
         cursor = conn.cursor()
         try:
             if uid == "__local__":
-                if admin_routes_module._has_local_anonymous_user(cursor):
+                if admin_common.has_local_anonymous_user(cursor):
                     return jsonify({
                         "id": "__local__",
                         "username": "local_user",
@@ -303,7 +303,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                     ) AS active_sessions,
                     1 AS can_manage
                 FROM users u
-                WHERE u.id = ? AND {admin_routes_module._real_user_where("u")}
+                WHERE u.id = ? AND {admin_common.real_user_where("u")}
                 LIMIT 1
                 """,
                 (uid,),
@@ -312,8 +312,8 @@ def register_admin_user_read_routes(bp, db) -> None:
             if not row:
                 return jsonify({"error": "User not found"}), 404
             item = dict(row)
-            item["last_login_region"] = admin_routes_module._admin_region_display(item.get("last_login_region"))
-            item["last_active_region"] = admin_routes_module._admin_region_display(
+            item["last_login_region"] = admin_common.admin_region_display(item.get("last_login_region"))
+            item["last_active_region"] = admin_common.admin_region_display(
                 item.get("last_active_region") or item.get("last_login_region")
             )
             return jsonify(item)
@@ -329,7 +329,7 @@ def register_admin_user_read_routes(bp, db) -> None:
         if uid == "__local__":
             return jsonify({"error": "Local anonymous user is read-only"}), 400
         try:
-            force = admin_routes_module._admin_parse_force_arg()
+            force = admin_cache.admin_parse_force_arg()
         except ValueError:
             return jsonify({"error": "Invalid force"}), 400
 
@@ -340,7 +340,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                 f"""
                 SELECT 1
                 FROM users u
-                WHERE u.id = ? AND {admin_routes_module._real_user_where("u")}
+                WHERE u.id = ? AND {admin_common.real_user_where("u")}
                 LIMIT 1
                 """,
                 (uid,),
@@ -350,19 +350,13 @@ def register_admin_user_read_routes(bp, db) -> None:
         finally:
             conn.close()
 
-        if not force and admin_routes_module.ADMIN_PORTFOLIO_CACHE_TTL_SECONDS > 0:
-            now_ts = time.time()
-            with admin_routes_module._ADMIN_PORTFOLIO_CACHE_LOCK:
-                cached = admin_routes_module._ADMIN_PORTFOLIO_CACHE.get(uid)
-                if cached and cached[0] > now_ts:
-                    return jsonify(dict(cached[1]))
-                if cached:
-                    admin_routes_module._ADMIN_PORTFOLIO_CACHE.pop(uid, None)
+        if not force:
+            cached = admin_cache.get_cached_portfolio(uid)
+            if cached is not None:
+                return jsonify(cached)
 
-        payload = admin_routes_module._build_admin_portfolio_payload(db, uid)
-        expires_at_ts = time.time() + admin_routes_module.ADMIN_PORTFOLIO_CACHE_TTL_SECONDS
-        with admin_routes_module._ADMIN_PORTFOLIO_CACHE_LOCK:
-            admin_routes_module._ADMIN_PORTFOLIO_CACHE[uid] = (expires_at_ts, dict(payload))
+        payload = admin_dashboard.build_admin_portfolio_payload(db, uid)
+        admin_cache.set_cached_portfolio(uid, payload)
         return jsonify(payload)
 
     @bp.route("/users/sessions/count", methods=["GET"])
@@ -376,7 +370,7 @@ def register_admin_user_read_routes(bp, db) -> None:
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
-            active_sessions = admin_routes_module._get_active_session_count(cursor, user_id)
+            active_sessions = admin_dashboard.get_active_session_count(cursor, user_id)
             return jsonify({"user_id": user_id, "active_sessions": active_sessions})
         finally:
             conn.close()

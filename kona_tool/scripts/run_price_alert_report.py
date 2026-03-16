@@ -14,10 +14,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import config
-from admin_routes import (
-    _load_price_alerts_payload,
-    _save_price_alert_report_snapshot,
-    create_admin_blueprint,
+from core.admin.monitoring import (
+    load_price_alerts_payload,
+    save_price_alert_report_snapshot,
+    set_admin_db,
 )
 from core.db import DatabaseManager
 
@@ -31,9 +31,9 @@ def _noop_admin_write_audit(*args, **kwargs):
 
 def main() -> int:
     db = DatabaseManager(str(config.DATABASE_PATH))
-    create_admin_blueprint(db, _noop_admin_write_audit)
-    payload = _load_price_alerts_payload()
-    _save_price_alert_report_snapshot(payload)
+    set_admin_db(db)
+    payload = load_price_alerts_payload()
+    save_price_alert_report_snapshot(payload)
     print(
         json.dumps(
             {

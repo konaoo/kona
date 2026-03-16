@@ -1,3 +1,24 @@
+## 2026-03-16-04
+
+### 这版一句话
+
+管理后台治理收口：共享 helper 和巡检逻辑下沉到 `core/admin`，`admin_routes.py` 变成薄入口，后台路由不再反向依赖超大总文件。
+
+### 主要变化
+- [admin_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes.py) / [admin_routes_dashboard.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_dashboard.py) / [admin_routes_users.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_users.py) / [admin_routes_user_write.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_user_write.py) / [admin_routes_config_ops.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_config_ops.py) / [admin_routes_data.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_data.py) / [admin_routes_apis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_apis.py) / [admin_routes_invites.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/admin_routes_invites.py)：后台路由改成直接依赖 `core/admin` 服务，`admin_routes.py` 只保留蓝图组装和兼容导出。
+- [constants.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/constants.py) / [cache.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/cache.py) / [common.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/common.py) / [runtime_config.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/runtime_config.py) / [dashboard.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/dashboard.py) / [monitoring.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/monitoring.py)：管理后台共享常量、读缓存、运营配置、概览统计、巡检与价格告警服务正式下沉到 `core/admin`。
+- [run_price_alert_report.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/scripts/run_price_alert_report.py)：价格告警日报脚本改成直接走 `core/admin/monitoring.py`，不再为了取服务逻辑去依赖后台路由入口。
+- [README_结构说明.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/README_结构说明.md) / [README_结构说明.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/README_结构说明.md) / [README_STRUCTURE.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/README_STRUCTURE.md)：补齐后台服务层的目录说明，明确“路由入口”和“后台共享服务层”的边界。
+
+### 影响范围
+- 后台路由依赖关系与后台共享服务结构
+- 后台巡检、provider test、价格告警、运营配置、用户统计相关代码落点
+- 后台测试与价格告警日报脚本
+
+### 验收重点
+- `python3 -m compileall -q kona_tool` 通过
+- `python3 -m unittest kona_tool.tests.test_admin_api_foundation kona_tool.tests.test_contracts_analysis_snapshot_admin kona_tool.tests.test_admin_invites kona_tool.tests.test_admin_api_policies kona_tool.tests.test_data_rebind kona_tool.tests.test_sync_bootstrap_api -v` 通过
+
 ## 2026-03-16-03
 
 ### 这版一句话

@@ -210,8 +210,25 @@ core/
 - 策略是否启用
 - 后台行为规则
 - 用户管理相关规则
+- 后台读缓存与运营配置
+- 后台概览 / 用户统计 helper
+- 后台巡检 / provider test / 价格告警服务
 
 这说明后台逻辑现在也已经深入到了 `core/`。
+
+这轮后台治理后，`core/admin/` 里又进一步明确成：
+
+- [README_结构说明.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/README_结构说明.md)
+- [constants.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/constants.py)
+- [cache.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/cache.py)
+- [runtime_config.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/runtime_config.py)
+- [dashboard.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/dashboard.py)
+- [monitoring.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/admin/monitoring.py)
+
+也就是：
+
+- 后台共享逻辑优先往 `core/admin/` 收
+- 路由文件只保留后台接口入口和少量参数解析
 
 ### 3.6 认证、系统与辅助模块
 
