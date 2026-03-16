@@ -1,6 +1,11 @@
 import { clearAuth, persistAuth, readAccessToken, readRefreshToken } from './auth'
+import {
+  buildRequestTraceHeaders,
+  getResponseRequestId,
+  newRequestId,
+} from './requestTrace'
 
-export type ApiError = Error & { status?: number; payload?: unknown }
+export type ApiError = Error & { status?: number; payload?: unknown; requestId?: string }
 let refreshInflight: Promise<boolean> | null = null
 
 async function parseJson(resp: Response): Promise<unknown> {
@@ -13,7 +18,7 @@ async function parseJson(resp: Response): Promise<unknown> {
   }
 }
 
-async function refreshTokenIfNeeded(): Promise<boolean> {
+async function refreshTokenIfNeeded(requestId: string): Promise<boolean> {
   if (refreshInflight) {
     return refreshInflight
   }
@@ -23,7 +28,10 @@ async function refreshTokenIfNeeded(): Promise<boolean> {
 
     const resp = await fetch('/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildRequestTraceHeaders(requestId),
+      },
       body: JSON.stringify({ refresh_token: refreshToken }),
     })
 
@@ -54,8 +62,10 @@ export async function apiRequest<T>(
   init: RequestInit = {},
   auth = true,
   retry = true,
+  requestId = newRequestId(),
 ): Promise<T> {
   const headers = new Headers(init.headers || {})
+  headers.set('X-Request-Id', requestId)
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json')
   }
@@ -67,10 +77,11 @@ export async function apiRequest<T>(
   }
 
   const resp = await fetch(path, { ...init, headers })
+  const responseRequestId = getResponseRequestId(resp, requestId)
   if (resp.status === 401 && auth && retry) {
-    const ok = await refreshTokenIfNeeded()
+    const ok = await refreshTokenIfNeeded(requestId)
     if (ok) {
-      return apiRequest<T>(path, init, auth, false)
+      return apiRequest<T>(path, init, auth, false, requestId)
     }
   }
 
@@ -81,20 +92,38 @@ export async function apiRequest<T>(
     ) as ApiError
     err.status = resp.status
     err.payload = payload
+    err.requestId = responseRequestId
     throw err
   }
   return payload as T
 }
 
+function withRequestId(body: unknown, requestId: string): unknown {
+  if (!body || Array.isArray(body) || typeof body !== 'object') return body
+  const payload = body as Record<string, unknown>
+  if (typeof payload.request_id === 'string' && payload.request_id.trim()) {
+    return body
+  }
+  return {
+    ...payload,
+    request_id: requestId,
+  }
+}
+
 export const api = {
   get: <T>(path: string, auth = true) => apiRequest<T>(path, { method: 'GET' }, auth),
-  post: <T>(path: string, body?: unknown, auth = true) =>
-    apiRequest<T>(
+  post: <T>(path: string, body?: unknown, auth = true) => {
+    const requestId = newRequestId()
+    return apiRequest<T>(
       path,
       {
         method: 'POST',
-        body: body ? JSON.stringify(body) : undefined,
+        headers: buildRequestTraceHeaders(requestId),
+        body: body ? JSON.stringify(withRequestId(body, requestId)) : undefined,
       },
       auth,
-    ),
+      true,
+      requestId,
+    )
+  },
 }

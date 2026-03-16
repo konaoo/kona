@@ -102,13 +102,18 @@ jobs:
         with:
           channel: stable
 
-      - name: Detect Android-impacting changes
-        id: apk_scope
+      - name: Detect frontend-impacting changes
+        id: frontend_scope
         uses: dorny/paths-filter@v4
         with:
           filters: |
             apk:
               - 'flutter/android/**'
+            web_smoke:
+              - 'web/**'
+              - 'kona_tool/**'
+              - 'scripts/ci/**'
+              - '.github/workflows/deploy.yml'
 
       - name: Flutter pub get
         working-directory: flutter
@@ -123,9 +128,17 @@ jobs:
         run: flutter test
 
       - name: Flutter build apk (debug smoke)
-        if: steps.apk_scope.outputs.apk == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.frontend_scope.outputs.apk == 'true' || github.event_name == 'workflow_dispatch'
         working-directory: flutter
         run: flutter build apk --debug
+
+      - name: Setup Python for Web smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: kona_tool/requirements.txt
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -143,6 +156,24 @@ jobs:
       - name: Build Web
         working-directory: web
         run: npm run build
+
+      - name: Install backend dependencies for Web smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r kona_tool/requirements.txt
+
+      - name: Install Playwright browser
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Web e2e smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        working-directory: web
+        env:
+          CI: true
+        run: npm run test:e2e
 
   deploy:
     name: Deploy to Production

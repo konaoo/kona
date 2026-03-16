@@ -12,7 +12,8 @@
     "preview": "VITE_BUILD_TARGET=app vite preview --outDir dist/app",
     "preview:admin": "VITE_BUILD_TARGET=admin vite preview --outDir dist/admin",
     "test": "vitest run --config vitest.config.ts",
-    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:e2e": "playwright test tests/e2e/smoke.spec.ts --config playwright.config.ts",
+    "test:e2e:all": "playwright test --config playwright.config.ts",
     "test:e2e:debug": "playwright test tests/debug --config playwright.config.ts",
     "lint": "eslint . --ext .vue,.ts,.tsx",
     "format": "prettier --write \"src/**/*.{vue,ts,tsx,css,scss}\""

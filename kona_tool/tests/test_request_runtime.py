@@ -151,6 +151,26 @@ class RequestRuntimeTests(unittest.TestCase):
         self.assertEqual(audit["result"], "failed")
         self.assertEqual(audit["error"], "boom")
 
+    def test_request_trace_sets_response_header_and_logs_api_summary(self):
+        self.runtime.register_hooks(self.app)
+
+        @self.app.route("/api/ping")
+        def _ping():
+            g.user_id = "u_trace"
+            return jsonify({"status": "ok"})
+
+        client = self.app.test_client()
+        resp = client.get("/api/ping", headers={"X-Request-Id": "trace-req-001"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("X-Request-Id"), "trace-req-001")
+        self.assertTrue(
+            any(
+                "REQUEST request_id=trace-req-001 method=GET path=/api/ping status=200" in message
+                for message in self.logger.info_messages
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

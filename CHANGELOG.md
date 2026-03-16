@@ -1,3 +1,25 @@
+## 2026-03-16-19
+
+### 这版一句话
+
+补齐跨端请求追踪和正式 Web 烟测，把“请求出了问题到底是哪一条链路坏了”这件事从靠猜变成可查。
+
+### 主要变化
+- [request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/request_runtime.py) / [test_request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_request_runtime.py)：后端为所有 API 请求统一生成或透传 `X-Request-Id`，并把 `request_id / method / path / status / duration_ms / user_id / ip` 写进请求摘要日志，认证审计日志也会带上同一个 request id。
+- [http.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/http.ts) / [requestTrace.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/requestTrace.ts) / [AppProfilePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppProfilePage.vue)：Web 端统一给请求补 `X-Request-Id`，POST JSON 会自动补 `request_id`，直接 `fetch` 的恢复数据入口也补上追踪头；请求失败时，错误对象会保留后端返回的 request id。
+- [api_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/api_service.dart) / [api_service_request_trace_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/api_service_request_trace_test.dart)：Flutter 的 `ApiService` 也统一带追踪头，写请求会自动补 `request_id`，后面查 App 端接口问题时能和后端日志对上。
+- [smoke.spec.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/e2e/smoke.spec.ts) / [playwright.config.ts](/Users/kona/Desktop/kaka/kona_repo/web/playwright.config.ts) / [seed_web_e2e_db.py](/Users/kona/Desktop/kaka/kona_repo/scripts/ci/seed_web_e2e_db.py) / [start_web_e2e_backend.sh](/Users/kona/Desktop/kaka/kona_repo/scripts/ci/start_web_e2e_backend.sh)：新增正式 Web smoke，自动起本地后端和前端，覆盖登录、首页、投资页、分析页主链路，并校验接口返回里确实带有 `X-Request-Id`。
+- [deploy.yml](/Users/kona/Desktop/kaka/kona_repo/.github/workflows/deploy.yml) / [web/tests/README.md](/Users/kona/Desktop/kaka/kona_repo/web/tests/README.md) / [package.json](/Users/kona/Desktop/kaka/kona_repo/web/package.json)：把 Web smoke 接进前端门禁，正式 `test:e2e` 改成长期保的 smoke，全部 Playwright 用 `test:e2e:all` 单独跑。
+
+### 影响范围
+- 后端 API 日志与认证审计日志
+- Web / Flutter 发起的接口请求头与写请求体
+- Web 正式页面验收和 GitHub Actions 前端门禁
+
+### 验收重点
+- 后端 API 响应头里继续带 `X-Request-Id`，日志里能按同一个 request id 串起来
+- Web smoke 继续能覆盖登录、首页、投资页、分析页主链路，并稳定通过
+
 ## 2026-03-16-18
 
 ### 这版一句话

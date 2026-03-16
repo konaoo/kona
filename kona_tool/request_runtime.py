@@ -13,6 +13,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections import defaultdict
 from functools import wraps
 from typing import Any, Callable, Dict
@@ -88,8 +89,31 @@ class RequestRuntime:
         self._init_shared_storage()
 
     def register_hooks(self, app: Flask) -> None:
+        app.before_request(self.attach_request_trace_context)
         app.before_request(self.enforce_api_group_policy)
         app.after_request(self.mark_user_recent_activity)
+        app.after_request(self.finalize_request_trace)
+
+    def _normalize_request_id(self, value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        safe = "".join(ch for ch in text if ch.isalnum() or ch in ("-", "_", ".", ":"))
+        return safe[:80]
+
+    def _new_request_id(self) -> str:
+        return f"req-{uuid.uuid4().hex[:20]}"
+
+    def current_request_id(self) -> str:
+        return str(getattr(g, "request_id", "") or "").strip()
+
+    def attach_request_trace_context(self):
+        incoming = self._normalize_request_id(
+            request.headers.get("X-Request-Id") or request.headers.get("X-Request-ID") or ""
+        )
+        g.request_id = incoming or self._new_request_id()
+        g.request_started_at = self.time_getter()
+        return None
 
     def _init_shared_storage(self) -> None:
         url = self.storage_url
@@ -198,7 +222,8 @@ class RequestRuntime:
         message = (
             f"SECURITY event={event} outcome={outcome} "
             f"ip={self.client_ip_getter()} username={self.mask_username(username)} reason={reason} "
-            f"path={request.path} ua={request.headers.get('User-Agent', '-')[:120]}"
+            f"path={request.path} request_id={self.current_request_id() or '-'} "
+            f"ua={request.headers.get('User-Agent', '-')[:120]}"
         )
         if level == "warning":
             self.logger.warning(message)
@@ -346,6 +371,29 @@ class RequestRuntime:
                 429,
             )
         return None
+
+    def finalize_request_trace(self, response):
+        request_id = self.current_request_id() or self._new_request_id()
+        response.headers["X-Request-Id"] = request_id
+
+        path = request.path or ""
+        if not path.startswith("/api/"):
+            return response
+
+        started_at = float(getattr(g, "request_started_at", self.time_getter()) or self.time_getter())
+        duration_ms = max(0, int(round((self.time_getter() - started_at) * 1000)))
+        user_id = str(getattr(g, "user_id", "") or "").strip() or "-"
+        self.logger.info(
+            "REQUEST request_id=%s method=%s path=%s status=%s duration_ms=%s user_id=%s ip=%s",
+            request_id,
+            request.method,
+            path,
+            int(getattr(response, "status_code", 0) or 0),
+            duration_ms,
+            user_id,
+            self.client_ip_getter(),
+        )
+        return response
 
     def mark_user_recent_activity(self, response):
         try:

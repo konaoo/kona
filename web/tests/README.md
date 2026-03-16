@@ -18,7 +18,9 @@ tests/
 - `npm run test`
   - 跑 `unit/` 里的 Vitest 单元测试
 - `npm run test:e2e`
-  - 跑 `e2e/` 里的 Playwright 页面验收
+  - 跑正式 Web 烟测，保登录和关键页面主链路
+- `npm run test:e2e:all`
+  - 跑 `e2e/` 里的全部 Playwright 页面验收
 - `npm run test:e2e:debug`
   - 跑 `debug/` 里的临时排障脚本
 

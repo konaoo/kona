@@ -43,12 +43,27 @@ class ApiService {
   }
 
   /// 获取请求头
-  Map<String, String> _getHeaders() {
+  Map<String, String> _buildHeaders({
+    String? requestId,
+    bool includeAuth = true,
+  }) {
     final headers = <String, String>{'Content-Type': 'application/json'};
-    if (_token != null) {
+    final traceId = (requestId ?? '').trim();
+    if (traceId.isNotEmpty) {
+      headers['X-Request-Id'] = traceId;
+    }
+    if (includeAuth && _token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
     return headers;
+  }
+
+  @visibleForTesting
+  Map<String, String> debugBuildHeaders({
+    String? requestId,
+    bool includeAuth = true,
+  }) {
+    return _buildHeaders(requestId: requestId, includeAuth: includeAuth);
   }
 
   Future<void> _clearAuthTokensFromStorage() async {
@@ -99,10 +114,14 @@ class ApiService {
       return false;
     }
     try {
+      final requestId = _newRequestId();
       final response = await _client
           .post(
             buildApiUri(ApiConfig.refresh),
-            headers: const {'Content-Type': 'application/json'},
+            headers: _buildHeaders(
+              requestId: requestId,
+              includeAuth: false,
+            ),
             body: jsonEncode({'refresh_token': refreshToken}),
           )
           .timeout(const Duration(seconds: ApiConfig.timeout));
@@ -260,10 +279,14 @@ class ApiService {
   Future<dynamic> _get(String endpoint) async {
     Object? lastError;
     var retriedAfterRefresh = false;
+    final requestId = _newRequestId();
     for (int attempt = 0; attempt < 3; attempt++) {
       try {
         final response = await _client
-            .get(buildApiUri(endpoint), headers: _getHeaders())
+            .get(
+              buildApiUri(endpoint),
+              headers: _buildHeaders(requestId: requestId),
+            )
             .timeout(const Duration(seconds: ApiConfig.timeout));
 
         if (response.statusCode == 200) {
@@ -310,13 +333,15 @@ class ApiService {
     Object? lastError;
     final maxAttempts = retryOnTransient ? max(2, transientMaxAttempts) : 1;
     var retriedAfterRefresh = false;
+    final requestId = _resolveRequestId(data);
+    final payload = _withRequestId(data, requestId);
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         final response = await _client
             .post(
               buildApiUri(endpoint),
-              headers: _getHeaders(),
-              body: jsonEncode(data),
+              headers: _buildHeaders(requestId: requestId),
+              body: jsonEncode(payload),
             )
             .timeout(const Duration(seconds: ApiConfig.timeout));
 
@@ -403,6 +428,22 @@ class ApiService {
     final ts = DateTime.now().microsecondsSinceEpoch;
     final rand = Random.secure().nextInt(0x7fffffff).toRadixString(16);
     return '$ts-$rand';
+  }
+
+  String _resolveRequestId(Map<String, dynamic> data) {
+    final raw = data['request_id']?.toString().trim() ?? '';
+    if (raw.isNotEmpty) return raw;
+    return _newRequestId();
+  }
+
+  Map<String, dynamic> _withRequestId(
+    Map<String, dynamic> data,
+    String requestId,
+  ) {
+    if ((data['request_id']?.toString().trim() ?? '').isNotEmpty) {
+      return data;
+    }
+    return <String, dynamic>{...data, 'request_id': requestId};
   }
 
   Map<String, dynamic> _toMap(dynamic value) {

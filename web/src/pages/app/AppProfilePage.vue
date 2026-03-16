@@ -83,6 +83,7 @@ import { useRouter } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
 import { toAvatarSrc } from '../../shared/avatar'
+import { newRequestId } from '../../shared/requestTrace'
 import { useKonaStore } from '../../stores/composables'
 import { useAuthStore } from '../../stores/auth'
 
@@ -169,7 +170,11 @@ async function restoreData(event: Event) {
   const formData = new FormData()
   formData.append('file', file)
   try {
-    const resp = await fetch('/api/settings/restore', { method: 'POST', body: formData })
+    const resp = await fetch('/api/settings/restore', {
+      method: 'POST',
+      headers: { 'X-Request-Id': newRequestId() },
+      body: formData,
+    })
     const payload = await resp.json()
     if (!resp.ok) throw new Error(String(payload.error || '恢复失败'))
     alert('数据恢复成功，页面将刷新。')
