@@ -1,3 +1,23 @@
+## 2026-03-16-15
+
+### 这版一句话
+
+继续拆 Web 状态总入口：把 `composables.ts` 里的刷新编排、缓存恢复和页面恢复副作用拆到独立刷新协调层。
+
+### 主要变化
+- [refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts) / [composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)：把 `refreshAll / refreshStaticOnly / refreshQuotesOnly / startAutoRefresh / stopAutoRefresh`、按用户缓存恢复，以及页面回到前台后的自动刷新恢复，从统一入口拆到独立 `refreshCoordinator`。
+- [composablesRefreshCoordinator.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/composablesRefreshCoordinator.test.ts)：补一条回归测试，确保页面继续从 `useKonaStore()` 拿刷新能力，外部调用方式不变。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/web/src/README_页面与状态地图.md)：补充 Web 状态地图，明确 `composables` 现在主要负责组合入口，刷新总控已经独立。
+
+### 影响范围
+- Web 登录后首次缓存恢复
+- Web 首页 / 投资页的静态刷新与行情刷新
+- Web 页面切回前台后的自动刷新恢复
+
+### 验收重点
+- `useKonaStore()` 对外公开的刷新方法保持不变
+- 首页、投资页继续能正常触发静态刷新、行情刷新和自动刷新
+
 ## 2026-03-16-14
 
 ### 这版一句话

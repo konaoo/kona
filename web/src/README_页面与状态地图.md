@@ -21,6 +21,7 @@ Web 端现在可以理解成三层：
 - 业务端路由：[router.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router.ts)
 - 管理端路由：[router_admin.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/router_admin.ts)
 - 状态统一入口：[stores/composables.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/composables.ts)
+- 刷新协调层：[stores/refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 
 一句话：
 
@@ -168,10 +169,11 @@ web/src/
 - [quote.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/quote.ts)
 - [market.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/market.ts)
 - [sync.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/sync.ts)
+- [refreshCoordinator.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/refreshCoordinator.ts)
 
 一句大白话：
 
-`页面现在统一问 composables 拿状态，composables 再去找各个专业 store。`
+`页面现在统一问 composables 拿状态，composables 只做组合入口；刷新、缓存恢复、自动刷新恢复这些重逻辑已经下沉到 refreshCoordinator。`
 
 ---
 
