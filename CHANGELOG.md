@@ -1,3 +1,23 @@
+## 2026-03-16-06
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把登录、会话恢复、资料同步、本地存储容错从总控里拆到独立会话编排层。
+
+### 主要变化
+- [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) / [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：把登录、会话恢复、资料同步、本地存储容错从 `AppState` 拆成独立会话编排层，`AppState` 继续保留对外接口不变。
+- [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：保留对外接口和其他子状态总装配，不再自己扛登录、注册、登出、资料同步、会话恢复的细逻辑。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md)：补充 Flutter 状态拆分地图，明确会话编排的新落点。
+
+### 影响范围
+- Flutter 登录、会话恢复、资料同步编排
+- Flutter 生物识别登录与登出清理链路
+- Flutter 本地会话恢复和后台会话校验
+
+### 验收重点
+- Flutter 登录恢复、登出、生物识别登录、资料页更新保持原行为
+- `AppState` 对外接口不变，页面和测试不需要跟着改调用方式
+
 ## 2026-03-16-05
 
 ### 这版一句话

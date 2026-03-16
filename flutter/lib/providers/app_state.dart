@@ -17,17 +17,12 @@ import 'app_overview_state.dart';
 import 'app_preferences_state.dart';
 import 'app_refresh_state.dart';
 import 'app_security_state.dart';
+import 'app_session_state.dart';
 import 'app_sync_state.dart';
 import 'app_trade_state.dart';
 import 'generated_sync_contract.dart';
 export 'app_security_state.dart' show AuthLogoutMode;
 export 'app_auth_state.dart' show SessionBootState;
-
-typedef LoginHandler =
-    Future<Map<String, dynamic>?> Function({
-      required String username,
-      required String password,
-    });
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
@@ -42,21 +37,16 @@ class AppState extends ChangeNotifier {
   static const Duration _userProfileTtl = Duration(days: 30);
   static const String _userProfileDomain = 'user_profile';
   final ApiService _api;
-  final SecureStorageService _secureStorage;
   final AppAssetsState _assetsState;
   final AppAuthState _authState;
   final AppMarketState _marketState;
   final AppOverviewState _overviewState;
   final AppRefreshState _refreshState;
   final AppSyncState _syncState;
+  late final AppSessionState _sessionState;
   final AppTradeState _tradeState;
   final AppPreferencesState _preferencesState;
   final AppSecurityState _securityState;
-  final LoginHandler? _loginHandlerOverride;
-  final Future<String?> Function()? _tokenLoaderOverride;
-  final Future<Map<String, dynamic>?> Function()? _profileLoaderOverride;
-  final Future<Map<String, dynamic>?> Function(String refreshToken)?
-  _refreshSessionOverride;
 
   AppState({
     ApiService? api,
@@ -88,7 +78,6 @@ class AppState extends ChangeNotifier {
     Future<Map<String, dynamic>?> Function()? profileLoader,
     Future<Map<String, dynamic>?> Function(String refreshToken)? refreshLoader,
   }) : _api = api,
-       _secureStorage = secureStorage,
        _assetsState = AppAssetsState(),
        _authState = AppAuthState(),
        _marketState = AppMarketState(),
@@ -103,16 +92,27 @@ class AppState extends ChangeNotifier {
          syncBootstrapDomains: generatedSyncBootstrapDomains,
        ),
        _syncState = AppSyncState(cache: cache),
-       _tradeState = AppTradeState(api: api),
        _preferencesState = AppPreferencesState(cache: cache),
        _securityState = AppSecurityState(
          secureStorage: secureStorage,
          biometric: biometric,
        ),
-       _loginHandlerOverride = loginHandler,
-       _tokenLoaderOverride = tokenLoader,
-       _profileLoaderOverride = profileLoader,
-       _refreshSessionOverride = refreshLoader {
+       _tradeState = AppTradeState(api: api) {
+    _sessionState = AppSessionState(
+      api: api,
+      secureStorage: secureStorage,
+      assetsState: _assetsState,
+      authState: _authState,
+      marketState: _marketState,
+      securityState: _securityState,
+      syncState: _syncState,
+      userProfileTtl: _userProfileTtl,
+      userProfileDomain: _userProfileDomain,
+      loginHandler: loginHandler,
+      tokenLoader: tokenLoader,
+      profileLoader: profileLoader,
+      refreshLoader: refreshLoader,
+    );
     _api.onAuthExpired = () {
       unawaited(_handleAuthExpired());
     };
@@ -361,18 +361,30 @@ class AppState extends ChangeNotifier {
   }
 
   bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
-    if (item.dayPnlDisplayEnabled != null) return item.dayPnlDisplayEnabled!;
-    if (isNavUpdatePendingAsset(item)) return false;
+    if (item.dayPnlDisplayEnabled != null) {
+      return item.dayPnlDisplayEnabled!;
+    }
+    if (isNavUpdatePendingAsset(item)) {
+      return false;
+    }
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     return resolved != null && resolved.yclose > 0;
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
-    if (item.dayPnlAggregateEnabled != null) return item.dayPnlAggregateEnabled!;
-    if (isNavUpdatePendingAsset(item)) return false;
+    if (item.dayPnlAggregateEnabled != null) {
+      return item.dayPnlAggregateEnabled!;
+    }
+    if (isNavUpdatePendingAsset(item)) {
+      return false;
+    }
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
-    if (resolved == null || resolved.yclose <= 0) return false;
-    if (isAssetTradingDay(item)) return true;
+    if (resolved == null || resolved.yclose <= 0) {
+      return false;
+    }
+    if (isAssetTradingDay(item)) {
+      return true;
+    }
     return _isUsExtendedSessionActive(item, resolved);
   }
 
@@ -454,6 +466,15 @@ class AppState extends ChangeNotifier {
   // 8) 缓存与同步基础
   // ============================================================
 
+  AppSessionBindings get _sessionBindings => AppSessionBindings(
+    notifyListeners: notifyListeners,
+    clearPrices: () => _prices = <String, PriceInfo>{},
+    clearPriceSnapshots: () => _priceSnapshots = <String, PriceInfo>{},
+    setPortfolioLoaded: (value) => _portfolioLoaded = value,
+    hydrateFromCache: hydrateFromCache,
+    refreshAll: refreshAll,
+  );
+
   AppRefreshBindings get _refreshBindings => AppRefreshBindings(
     username: () => username,
     userId: () => userId,
@@ -489,10 +510,7 @@ class AppState extends ChangeNotifier {
     final flow = startAppAsyncFlow('flutter.hydrateFromCache');
     try {
       await _refreshState.hydrateFromCache(bindings: _refreshBindings);
-      _lastHydrateResult = finishAppAsyncFlow(
-        flow,
-        stage: 'cache-restored',
-      );
+      _lastHydrateResult = finishAppAsyncFlow(flow, stage: 'cache-restored');
     } catch (error) {
       _lastHydrateResult = finishAppAsyncFlow(
         flow,
@@ -533,33 +551,6 @@ class AppState extends ChangeNotifier {
   // ============================================================
   // 10) 认证、资料与生物识别
   // ============================================================
-
-  Future<void> _applyAuthResult(Map<String, dynamic> result) async {
-    _authState.applyAuthResult(result, notify: false);
-    _api.setToken(token!);
-    _securityState.syncLocalState(
-      logoutMode: AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    notifyListeners();
-
-    try {
-      await _secureStorage.setToken(token!);
-      await _secureStorage.setRefreshToken(refreshToken!);
-      if (username != null && username!.isNotEmpty) {
-        await _secureStorage.setUsername(username!);
-      }
-      await _secureStorage.clearLogoutMode();
-      await _syncState.persistUserProfileCache(
-        authState: _authState,
-        staleAfter: _userProfileTtl,
-        userProfileDomain: _userProfileDomain,
-      );
-    } catch (e) {
-      debugPrint('登录态写入本地存储失败，已保留内存登录态: $e');
-    }
-  }
 
   void clearAuthError() {
     _authState.clearAuthError(notify: false);
@@ -602,74 +593,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<String?> _safeReadStorageString(
-    Future<String?> Function() reader,
-    String label,
-  ) async {
-    try {
-      return await reader();
-    } catch (e) {
-      debugPrint('读取$label失败: $e');
-      return null;
-    }
-  }
-
-  Future<bool> _safeReadStorageBool(
-    Future<bool> Function() reader,
-    String label,
-  ) async {
-    try {
-      return await reader();
-    } catch (e) {
-      debugPrint('读取$label失败: $e');
-      return false;
-    }
-  }
-
-  bool _isWebStorageRuntimeError(String lower) {
-    return lower.contains('null check operator used on a null value') ||
-        lower.contains('window.crypto') ||
-        lower.contains('secure storage') ||
-        lower.contains('fluttersecurestorage') ||
-        lower.contains('localstorage');
-  }
-
   Future<void> reloadBiometricPreference() async {
     await _securityState.reloadBiometricPreference();
-  }
-
-  String _mapAuthErrorMessage(Object error, {required bool isRegister}) {
-    if (error is ApiException) {
-      final raw = error.message.trim();
-      final lower = raw.toLowerCase();
-      if (isRegister) {
-        if (error.statusCode == 409 ||
-            lower.contains('username already exists')) {
-          return '注册失败，用户名重复';
-        }
-        if (lower.contains('invite code')) {
-          return '邀请码不正确或已被使用';
-        }
-      } else {
-        final invalidCreds = error.statusCode == 401;
-        if (invalidCreds) {
-          return '用户名/密码错误，请重试';
-        }
-      }
-      return raw.isNotEmpty ? raw : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
-    }
-    final raw = error.toString().trim();
-    if (raw.isNotEmpty) {
-      final normalized = raw.startsWith('Exception:')
-          ? raw.replaceFirst('Exception:', '').trim()
-          : raw;
-      final lower = normalized.toLowerCase();
-      if (_isWebStorageRuntimeError(lower)) {
-        return '浏览器存储环境异常，请刷新页面或切换 HTTPS 后重试';
-      }
-      return normalized;
-    }
-    return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
   }
 
   /// 用户名密码登录
@@ -677,23 +602,11 @@ class AppState extends ChangeNotifier {
     required String username,
     required String password,
   }) async {
-    _authState.clearAuthError(notify: false);
-    try {
-      final result = _loginHandlerOverride != null
-          ? await _loginHandlerOverride(username: username, password: password)
-          : await _api.login(username: username, password: password);
-      if (result == null) {
-        _authState.setAuthError('登录响应为空，请稍后重试');
-        return false;
-      }
-      await _applyAuthResult(result);
-      _authState.clearAuthError(notify: false);
-      return true;
-    } catch (e) {
-      _authState.setAuthError(_mapAuthErrorMessage(e, isRegister: false));
-      debugPrint('登录异常(${e.runtimeType}): $e');
-      return false;
-    }
+    return _sessionState.login(
+      username: username,
+      password: password,
+      bindings: _sessionBindings,
+    );
   }
 
   /// 邀请码注册
@@ -702,97 +615,47 @@ class AppState extends ChangeNotifier {
     required String password,
     required String inviteCode,
   }) async {
-    _authState.clearAuthError(notify: false);
-    try {
-      final result = await _api.register(
-        username: username,
-        password: password,
-        inviteCode: inviteCode,
-      );
-      if (result == null) {
-        _authState.setAuthError('注册失败，请稍后重试');
-        return false;
-      }
-      await _applyAuthResult(result);
-      _authState.clearAuthError(notify: false);
-      return true;
-    } catch (e) {
-      _authState.setAuthError(_mapAuthErrorMessage(e, isRegister: true));
-      debugPrint('注册异常: $e');
-      return false;
-    }
+    return _sessionState.register(
+      username: username,
+      password: password,
+      inviteCode: inviteCode,
+      bindings: _sessionBindings,
+    );
   }
 
   Future<bool> validateInviteCode(String inviteCode) async {
-    try {
-      return await _api.validateInviteCode(inviteCode);
-    } catch (e) {
-      return false;
-    }
+    return _sessionState.validateInviteCode(inviteCode);
   }
 
   Future<bool> changePassword({
     required String oldPassword,
     required String newPassword,
   }) async {
-    try {
-      await _api.changePassword(
-        oldPassword: oldPassword,
-        newPassword: newPassword,
-      );
-      await _securityState.disableBiometric();
-      return true;
-    } catch (e) {
-      debugPrint('修改密码失败: $e');
-      return false;
-    }
-  }
-
-  Future<bool> setBiometricEnabled(bool enabled) async {
-    return _securityState.setBiometricEnabled(enabled);
-  }
-
-  Future<bool> tryBiometricLogin() async {
-    return _securityState.tryBiometricLogin(
-      refreshToken: refreshToken,
-      refreshSession: (refreshToken) async {
-        return _refreshSessionOverride != null
-            ? _refreshSessionOverride(refreshToken)
-            : _api.refreshSession(refreshToken: refreshToken);
-      },
-      applyAuthResult: _applyAuthResult,
+    return _sessionState.changePassword(
+      oldPassword: oldPassword,
+      newPassword: newPassword,
     );
   }
 
+  Future<bool> setBiometricEnabled(bool enabled) async {
+    return _sessionState.setBiometricEnabled(enabled);
+  }
+
+  Future<bool> tryBiometricLogin() async {
+    return _sessionState.tryBiometricLogin(bindings: _sessionBindings);
+  }
+
   Future<bool> fetchProfile() async {
-    final profile = await _api.getProfile();
-    if (profile != null) {
-      _authState.applyProfile(profile, includeIdentity: false, notify: false);
-      await _syncState.persistUserProfileCache(
-        authState: _authState,
-        staleAfter: _userProfileTtl,
-        userProfileDomain: _userProfileDomain,
-      );
-      notifyListeners();
-      return true;
-    }
-    return false;
+    return _sessionState.fetchProfile(bindings: _sessionBindings);
   }
 
   /// 更新用户资料
   Future<bool> updateProfile({String? nickname, String? avatar}) async {
-    final result = await _api.updateProfile(nickname: nickname, avatar: avatar);
-    if (result != null) {
-      _authState.applyProfile(result, includeIdentity: false, notify: false);
-      await _syncState.persistUserProfileCache(
-        authState: _authState,
-        staleAfter: _userProfileTtl,
-        userProfileDomain: _userProfileDomain,
-      );
-      notifyListeners();
-      return true;
-    }
-    return false;
+    return _sessionState.updateProfile(
+      nickname: nickname,
+      avatar: avatar,
+      bindings: _sessionBindings,
+    );
   }
 
   /// 设置登录状态
@@ -806,9 +669,7 @@ class AppState extends ChangeNotifier {
     String? avatar,
     String? createdAtRaw,
   }) async {
-    _authState.syncLocalState(
-      isLoggedIn: true,
-      sessionBootState: SessionBootState.authenticated,
+    await _sessionState.setLoggedIn(
       token: token,
       refreshToken: refreshToken,
       username: username,
@@ -817,337 +678,35 @@ class AppState extends ChangeNotifier {
       nickname: nickname,
       avatar: avatar,
       createdAtRaw: createdAtRaw,
-      authErrorMessage: null,
-      notify: false,
+      bindings: _sessionBindings,
     );
-    _api.setToken(token);
-    _securityState.syncLocalState(
-      logoutMode: AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    await _secureStorage.setToken(token);
-    await _secureStorage.setRefreshToken(refreshToken);
-    await _secureStorage.setUsername(username);
-    await _secureStorage.clearLogoutMode();
-    await _syncState.persistUserProfileCache(
-      authState: _authState,
-      staleAfter: _userProfileTtl,
-      userProfileDomain: _userProfileDomain,
-    );
-    notifyListeners();
   }
 
   /// 退出登录
   void logout() {
-    final currentRefreshToken = refreshToken;
-    final currentUsername = username;
-    final currentUserId = userId;
-    final preserveBiometricSession =
-        biometricEnabled &&
-        currentRefreshToken != null &&
-        currentRefreshToken.isNotEmpty;
-    if (!preserveBiometricSession) {
-      unawaited(() async {
-        try {
-          await _api.logout(refreshToken: currentRefreshToken);
-        } catch (_) {
-          // 本地会话已清理，后端登出失败不阻断前端退出流程。
-        }
-      }());
-    }
-    debugPrint(
-      'Logout called. preserveBiometricSession=$preserveBiometricSession',
-    );
-    _securityState.syncLocalState(
-      logoutMode: preserveBiometricSession
-          ? AuthLogoutMode.biometricReady
-          : AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    _authState.syncLocalState(
-      isLoggedIn: false,
-      sessionBootState: SessionBootState.unauthenticated,
-      isSessionChecking: false,
-      token: null,
-      refreshToken: preserveBiometricSession ? currentRefreshToken : null,
-      username: preserveBiometricSession ? currentUsername : null,
-      userId: null,
-      userNumber: null,
-      nickname: null,
-      avatar: null,
-      createdAtRaw: null,
-      authErrorMessage: null,
-      notify: false,
-    );
-    _api.clearToken();
-    _assetsState.clearAll(notify: false);
-    _prices = {};
-    _priceSnapshots = {};
-    _syncState.clearSyncRuntime(notify: false);
-    _portfolioLoaded = false;
-    if (preserveBiometricSession) {
-      unawaited(() async {
-        await _secureStorage.clearToken();
-        await _secureStorage.setLogoutMode('biometric_ready');
-      }());
-    } else {
-      unawaited(() async {
-        await _secureStorage.clearAllAuth();
-        await _secureStorage.setLogoutMode('normal');
-        await _syncState.clearUserProfileCache(
-          authState: _authState,
-          userProfileDomain: _userProfileDomain,
-          usernameHint: currentUsername,
-          userIdHint: currentUserId,
-        );
-      }());
-    }
-    notifyListeners();
+    _sessionState.logout(bindings: _sessionBindings);
   }
 
   Future<void> _restoreSession() async {
-    final flow = startAppAsyncFlow('flutter.restoreSession');
-    if (_authState.isSessionChecking) {
-      _lastSessionRestoreResult = finishAppAsyncFlow(
-        flow,
-        stage: 'skip:checking',
-      );
-      return;
+    _lastSessionRestoreResult = await _sessionState.restoreSession(
+      bindings: _sessionBindings,
+    );
+    if (_lastSessionRestoreResult?.ok == true &&
+        (_lastSessionRestoreResult?.stage == 'refresh-restored' ||
+            _lastSessionRestoreResult?.stage == 'token-restored')) {
+      unawaited(_validateSessionInBackground());
     }
-    _authState.syncLocalState(isSessionChecking: true, notify: false);
-
-    String? token;
-    String? refreshToken;
-    String? username;
-    String? logoutModeRaw;
-    if (_tokenLoaderOverride != null) {
-      try {
-        token = await _tokenLoaderOverride();
-      } catch (e) {
-        debugPrint('读取 access token 失败: $e');
-      }
-    } else {
-      token = await _safeReadStorageString(
-        _secureStorage.getToken,
-        'access token',
-      );
-    }
-    refreshToken = await _safeReadStorageString(
-      _secureStorage.getRefreshToken,
-      'refresh token',
-    );
-    username = await _safeReadStorageString(
-      _secureStorage.getUsername,
-      'username',
-    );
-    final storedBiometricEnabled = await _safeReadStorageBool(
-      _secureStorage.isBiometricEnabled,
-      'biometric enabled',
-    );
-    logoutModeRaw = await _safeReadStorageString(
-      _secureStorage.getLogoutMode,
-      'logout mode',
-    );
-
-    final parsedLogoutMode = _securityState.parseLogoutMode(logoutModeRaw);
-    _securityState.syncLocalState(
-      biometricEnabled: storedBiometricEnabled,
-      logoutMode: parsedLogoutMode,
-      notify: false,
-    );
-
-    if (refreshToken != null && refreshToken.isNotEmpty) {
-      _authState.syncLocalState(
-        refreshToken: refreshToken,
-        username: username,
-        notify: false,
-      );
-      await _syncState.restoreUserProfileCache(
-        authState: _authState,
-        userProfileDomain: _userProfileDomain,
-        usernameHint: username,
-      );
-    }
-    if (logoutMode == AuthLogoutMode.biometricReady) {
-      _authState.syncLocalState(
-        isLoggedIn: false,
-        token: null,
-        sessionBootState: SessionBootState.unauthenticated,
-        isSessionChecking: false,
-        notify: false,
-      );
-      _api.clearToken();
-      _securityState.lockApp(notify: false);
-      notifyListeners();
-      _lastSessionRestoreResult = finishAppAsyncFlow(
-        flow,
-        stage: 'biometric-locked',
-      );
-      return;
-    }
-
-    if (refreshToken == null || refreshToken.isEmpty) {
-      _authState.syncLocalState(
-        sessionBootState: SessionBootState.unauthenticated,
-        isSessionChecking: false,
-        notify: false,
-      );
-      notifyListeners();
-      _lastSessionRestoreResult = finishAppAsyncFlow(
-        flow,
-        stage: 'skip:no-refresh-token',
-      );
-      return;
-    }
-
-    if (token == null || token.isEmpty) {
-      try {
-        final refreshed = _refreshSessionOverride != null
-            ? await _refreshSessionOverride(refreshToken)
-            : await _api.refreshSession(refreshToken: refreshToken);
-        if (refreshed != null) {
-          await _applyAuthResult(refreshed);
-          _authState.syncLocalState(isSessionChecking: false, notify: false);
-          unawaited(hydrateFromCache());
-          unawaited(refreshAll());
-          unawaited(_validateSessionInBackground());
-          _lastSessionRestoreResult = finishAppAsyncFlow(
-            flow,
-            stage: 'refresh-restored',
-          );
-          return;
-        }
-      } catch (e) {
-        debugPrint('启动静默 refresh 失败: $e');
-      }
-      await _clearSessionAndUnauthenticated();
-      _authState.syncLocalState(isSessionChecking: false, notify: false);
-      _lastSessionRestoreResult = finishAppAsyncFlow(
-        flow,
-        stage: 'refresh-failed',
-      );
-      return;
-    }
-
-    _authState.syncLocalState(
-      token: token,
-      refreshToken: refreshToken,
-      username: username,
-      isLoggedIn: true,
-      sessionBootState: SessionBootState.authenticated,
-      isSessionChecking: false,
-      authErrorMessage: null,
-      notify: false,
-    );
-    _api.setToken(token);
-    _securityState.syncLocalState(
-      logoutMode: AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    notifyListeners();
-    unawaited(hydrateFromCache());
-    unawaited(refreshAll());
-    unawaited(_validateSessionInBackground());
-    _lastSessionRestoreResult = finishAppAsyncFlow(
-      flow,
-      stage: 'token-restored',
-    );
   }
 
   Future<void> _validateSessionInBackground() async {
-    final flow = startAppAsyncFlow('flutter.validateSessionInBackground');
-    Map<String, dynamic>? profile = _profileLoaderOverride != null
-        ? await _profileLoaderOverride()
-        : await _api.getProfile();
-    if (profile == null && refreshToken != null && refreshToken!.isNotEmpty) {
-      try {
-        final refreshed = _refreshSessionOverride != null
-            ? await _refreshSessionOverride(refreshToken!)
-            : await _api.refreshSession(refreshToken: refreshToken!);
-        if (refreshed != null) {
-          await _applyAuthResult(refreshed);
-          profile = refreshed['user'] is Map<String, dynamic>
-              ? refreshed['user'] as Map<String, dynamic>
-              : await _api.getProfile();
-        }
-      } catch (error) {
-        _lastSessionValidationResult = finishAppAsyncFlow(
-          flow,
-          stage: 'refresh-failed',
-          error: error,
-        );
-      }
-    }
-    if (profile == null) {
-      await _clearSessionAndUnauthenticated();
-      _lastSessionValidationResult = finishAppAsyncFlow(
-        flow,
-        stage: 'profile-missing',
-      );
-      return;
-    }
-
-    _authState.applyProfile(profile, notify: false);
-    await _syncState.persistUserProfileCache(
-      authState: _authState,
-      staleAfter: _userProfileTtl,
-      userProfileDomain: _userProfileDomain,
-    );
-    _securityState.syncLocalState(
-      logoutMode: AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    notifyListeners();
-    _lastSessionValidationResult = finishAppAsyncFlow(
-      flow,
-      stage: 'profile-restored',
-    );
+    _lastSessionValidationResult = await _sessionState
+        .validateSessionInBackground(bindings: _sessionBindings);
   }
 
   Future<void> _clearSessionAndUnauthenticated() async {
-    final previousUsername = username;
-    final previousUserId = userId;
-    _authState.syncLocalState(
-      isLoggedIn: false,
-      isSessionChecking: false,
-      token: null,
-      refreshToken: null,
-      username: null,
-      userId: null,
-      userNumber: null,
-      nickname: null,
-      avatar: null,
-      createdAtRaw: null,
-      sessionBootState: SessionBootState.unauthenticated,
-      authErrorMessage: null,
-      notify: false,
+    await _sessionState.clearSessionAndUnauthenticated(
+      bindings: _sessionBindings,
     );
-    _api.clearToken();
-    _syncState.clearSyncRuntime(notify: false);
-    _priceSnapshots = {};
-    _marketState.resetMarketStatus(notify: false);
-    _securityState.syncLocalState(
-      logoutMode: AuthLogoutMode.normal,
-      isAppLocked: false,
-      notify: false,
-    );
-    notifyListeners();
-    try {
-      await _secureStorage.clearAllAuth();
-      await _secureStorage.clearLogoutMode();
-      await _syncState.clearUserProfileCache(
-        authState: _authState,
-        userProfileDomain: _userProfileDomain,
-        usernameHint: previousUsername,
-        userIdHint: previousUserId,
-      );
-    } catch (e) {
-      debugPrint('清理失效 token 失败: $e');
-    }
   }
 
   /// 切换金额隐藏

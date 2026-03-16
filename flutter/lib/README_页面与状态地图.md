@@ -93,6 +93,7 @@ flutter/lib/
 - [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
 - [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
 - [app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)
+- [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)
 - [app_sync_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_sync_state.dart)
 - [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart)
 - [app_preferences_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_preferences_state.dart)
@@ -164,6 +165,17 @@ flutter/lib/
 - 老接口交易兜底
 
 这些现在已经收口到 [app_trade_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_trade_state.dart)，`AppState` 在这块主要保留买卖入口和刷新编排。
+
+登录 / 会话恢复这一层这次也继续往前收了一层：
+
+- 用户名密码登录 / 注册
+- 启动会话恢复
+- 后台会话校验
+- 资料拉取与资料缓存
+- 生物识别登录
+- 登出与本地凭证清理
+
+这些现在已经收口到 [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)，`AppState` 在这块主要保留对外兼容入口和与其他子状态的总装配。
 
 所以 Flutter 端后续如果要继续工程化，第一关注点一定也是这里。
 
