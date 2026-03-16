@@ -1,3 +1,21 @@
+## 2026-03-16-01
+
+### 这版一句话
+
+Flutter 投资页持仓卡片布局调整后已上机验收，通过后合回主干。
+
+### 主要变化
+- [invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart)：调整投资页持仓卡片布局，让信息层次和卡片排版更贴近验收版本。
+- [home_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/home_page.dart)：同步首页问候语与基金待更新展示细节，保持首页与投资页体验一致。
+
+### 影响范围
+- Flutter 投资页持仓卡片展示
+- Flutter 首页局部文案与基金待更新展示
+
+### 验收重点
+- 已通过 USB 真机安装新包验收
+- 后续从 `main` 打包时，应能直接看到这版投资页 UI
+
 ## 2026-03-15-12
 
 ### 这版一句话
