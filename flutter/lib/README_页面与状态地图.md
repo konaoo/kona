@@ -92,6 +92,7 @@ flutter/lib/
 - [app_asset_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_asset_write_state.dart)
 - [app_assets_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_assets_state.dart)
 - [app_home_totals_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_home_totals_state.dart)
+- [app_investment_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_investment_write_state.dart)
 - [app_market_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_market_state.dart)
 - [app_overview_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_overview_state.dart)
 - [app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart)
@@ -169,6 +170,16 @@ flutter/lib/
 - 乐观更新后的首页总额回滚
 
 这些现在已经收口到 [app_asset_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_asset_write_state.dart)，`AppState` 在这块主要保留原来的公开入口和刷新调用，不再自己兼管现金 / 其他 / 负债写操作细节。
+
+投资写操作这一层这次也继续往前收了一层：
+
+- 新增持仓
+- 加仓 / 卖出 / 手动调整
+- 带现金账户的买入 / 卖出
+- 持仓删除
+- 投资写操作的乐观更新、回滚和 undo 提取
+
+这些现在已经收口到 [app_investment_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_investment_write_state.dart)，`AppState` 在这块主要保留原来的公开入口和刷新调用，不再自己兼管投资交易写操作细节。
 
 概览 / 历史这一步也继续往前收了一层：
 

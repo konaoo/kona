@@ -1,3 +1,23 @@
+## 2026-03-16-10
+
+### 这版一句话
+
+继续拆 Flutter `AppState`：把新增持仓、买卖、调仓、删持仓和带现金账户交易编排从总控里拆到独立投资写操作层。
+
+### 主要变化
+- [app_investment_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_investment_write_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把新增持仓、买入、卖出、手动调整、删除持仓，以及带现金账户的买卖和乐观更新回滚，从 `AppState` 拆成独立投资写操作层，`AppState` 继续保留公开接口不变。
+- [app_investment_write_state_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_investment_write_state_test.dart) / [app_state_smoke_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_smoke_test.dart)：补充投资写操作单测，并继续用现有 smoke test 兜住 `AppState` 对外调用方式不变。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md) / [AppState职责清单.md](/Users/kona/Desktop/kaka/AppState职责清单.md) / [AppState方法分组清单.md](/Users/kona/Desktop/kaka/AppState方法分组清单.md)：更新 Flutter 状态拆分地图和职责说明，明确投资写操作的新落点。
+
+### 影响范围
+- Flutter 投资资产新增、加仓、卖出、手动调整、删除
+- Flutter 带现金账户的买入 / 卖出
+- Flutter 投资交易失败时的乐观回滚和首页总额联动
+
+### 验收重点
+- 新增持仓、买入、卖出、带现金账户交易保持原行为
+- 投资写操作失败时，持仓列表、现金账户和首页总额都能回滚
+
 ## 2026-03-16-09
 
 ### 这版一句话

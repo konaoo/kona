@@ -13,6 +13,7 @@ import 'app_asset_write_state.dart';
 import 'app_assets_state.dart';
 import 'app_auth_state.dart';
 import 'app_home_totals_state.dart';
+import 'app_investment_write_state.dart';
 import 'app_market_state.dart';
 import 'app_overview_state.dart';
 import 'app_portfolio_view_state.dart';
@@ -40,6 +41,7 @@ class AppState extends ChangeNotifier {
   static const String _userProfileDomain = 'user_profile';
   final ApiService _api;
   late final AppAssetWriteState _assetWriteState;
+  late final AppInvestmentWriteState _investmentWriteState;
   final AppAssetsState _assetsState;
   final AppAuthState _authState;
   late final AppHomeTotalsState _homeTotalsState;
@@ -119,6 +121,12 @@ class AppState extends ChangeNotifier {
       api: api,
       assetsState: _assetsState,
       homeTotalsState: _homeTotalsState,
+    );
+    _investmentWriteState = AppInvestmentWriteState(
+      api: api,
+      assetsState: _assetsState,
+      homeTotalsState: _homeTotalsState,
+      tradeState: _tradeState,
     );
     _sessionState = AppSessionState(
       api: api,
@@ -403,6 +411,15 @@ class AppState extends ChangeNotifier {
     triggerHomeRefresh: (awaitRefresh) =>
         _triggerHomeRefresh(awaitRefresh: awaitRefresh),
   );
+
+  AppInvestmentWriteBindings get _investmentWriteBindings =>
+      AppInvestmentWriteBindings(
+        notifyListeners: notifyListeners,
+        triggerHomeRefresh: (awaitRefresh) =>
+            _triggerHomeRefresh(awaitRefresh: awaitRefresh),
+        normalizeInvestmentCurrency: normalizeInvestmentCurrency,
+        rateForCurrency: _rateForCurrency,
+      );
 
   AppRefreshBindings get _refreshBindings => AppRefreshBindings(
     username: () => username,
@@ -744,16 +761,6 @@ class AppState extends ChangeNotifier {
   // 12) 非投资资产操作
   // ============================================================
 
-  AssetSnapshot _captureAssetSnapshot() {
-    return _assetsState.captureAssetSnapshot();
-  }
-
-  void _restoreAssetSnapshot(AssetSnapshot snapshot) {
-    _assetsState.restoreAssetSnapshot(snapshot, notify: false);
-    _homeTotalsState.recalculateAssetTotals(notify: false);
-    notifyListeners();
-  }
-
   /// 添加资产（现金/其他/负债）
   Future<AssetActionResult> addAsset({
     required String type,
@@ -810,160 +817,12 @@ class AppState extends ChangeNotifier {
   // 13) 投资持仓操作
   // ============================================================
 
-  String _normalizeAssetCurrency(String? curr) {
-    return _assetsState.normalizeAssetCurrency(curr);
-  }
-
-  PortfolioSnapshot _capturePortfolioSnapshot() {
-    return _assetsState.capturePortfolioSnapshot();
-  }
-
-  void _restorePortfolioSnapshot(PortfolioSnapshot snapshot) {
-    _assetsState.restorePortfolioSnapshot(snapshot, notify: false);
-    _recalculatePortfolioTotals();
-  }
-
-  void _recalculatePortfolioTotals() {
-    _homeTotalsState.recalculatePortfolioTotals(notify: false);
-    notifyListeners();
-  }
-
-  int _portfolioIndexByCode(String code) {
-    return _assetsState.portfolioIndexByCode(code);
-  }
-
-  bool _optimisticAddInvestment({
-    required String code,
-    required String name,
-    required double price,
-    required double qty,
-    String? curr,
-    String? assetType,
-  }) {
-    return _assetsState.optimisticAddInvestment(
-      code: code,
-      name: name,
-      price: price,
-      qty: qty,
-      normalizedCurr: normalizeInvestmentCurrency(code: code, curr: curr),
-      assetType: assetType,
-      notify: false,
-    );
-  }
-
-  bool _optimisticBuyInvestment({
-    required String code,
-    required double price,
-    required double qty,
-  }) {
-    return _assetsState.optimisticBuyInvestment(
-      code: code,
-      price: price,
-      qty: qty,
-      notify: false,
-    );
-  }
-
-  bool _optimisticSellInvestment({
-    required String code,
-    required double price,
-    required double qty,
-  }) {
-    return _assetsState.optimisticSellInvestment(
-      code: code,
-      price: price,
-      qty: qty,
-      notify: false,
-    );
-  }
-
-  bool _optimisticModifyInvestment({
-    required String code,
-    required double qty,
-    required double price,
-    required double adjustment,
-  }) {
-    return _assetsState.optimisticModifyInvestment(
-      code: code,
-      qty: qty,
-      price: price,
-      adjustment: adjustment,
-      notify: false,
-    );
-  }
-
-  bool _optimisticDeleteInvestment({required String code}) {
-    return _assetsState.optimisticDeleteInvestment(code: code, notify: false);
-  }
-
-  bool _optimisticAdjustCashAssetAmount({
-    required int cashAssetId,
-    required double deltaAmount,
-  }) {
-    return _assetsState.optimisticAdjustCashAssetAmount(
-      cashAssetId: cashAssetId,
-      deltaAmount: deltaAmount,
-      notify: false,
-    );
-  }
-
   Future<void> _triggerHomeRefresh({required bool awaitRefresh}) async {
     if (awaitRefresh) {
       await refreshHomeData();
     } else {
       unawaited(refreshHomeData());
     }
-  }
-
-  double _convertAmountByCurrency({
-    required double amount,
-    required String fromCurr,
-    required String toCurr,
-  }) {
-    return _tradeState.convertAmountByCurrency(
-      amount: amount,
-      fromCurr: fromCurr,
-      toCurr: toCurr,
-      rateForCurrency: _rateForCurrency,
-    );
-  }
-
-  AssetActionResult _extractUndoInfo(AssetActionResult result) {
-    return _tradeState.extractUndoInfo(result);
-  }
-
-  Future<AssetActionResult> _legacyBuyWithCashFallback({
-    required String code,
-    required String name,
-    required double price,
-    required double qty,
-    required Asset cashAsset,
-    required double cashDeductAmount,
-  }) async {
-    return _tradeState.legacyBuyWithCashFallback(
-      code: code,
-      name: name,
-      price: price,
-      qty: qty,
-      cashAsset: cashAsset,
-      cashDeductAmount: cashDeductAmount,
-    );
-  }
-
-  Future<AssetActionResult> _legacySellToCashFallback({
-    required String code,
-    required double price,
-    required double qty,
-    required Asset cashAsset,
-    required double cashCreditAmount,
-  }) async {
-    return _tradeState.legacySellToCashFallback(
-      code: code,
-      price: price,
-      qty: qty,
-      cashAsset: cashAsset,
-      cashCreditAmount: cashCreditAmount,
-    );
   }
 
   /// 搜索股票/基金
@@ -985,40 +844,16 @@ class AppState extends ChangeNotifier {
     String? assetType,
     bool awaitRefresh = true,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
-    }
-    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
-    final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticAddInvestment(
+    return _investmentWriteState.addInvestment(
       code: code,
       name: name,
       price: price,
       qty: qty,
-      curr: normalizedCurr,
+      curr: curr,
       assetType: assetType,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!changed) return const AssetActionResult.failure('添加失败，请稍后重试');
-    _recalculatePortfolioTotals();
-
-    final result = await _api.addPortfolioAsset(
-      code,
-      name,
-      price,
-      qty,
-      curr: normalizedCurr,
-      assetType: assetType,
-    );
-    if (!result.ok) {
-      _restorePortfolioSnapshot(snapshot);
-      return result;
-    }
-    if (awaitRefresh) {
-      await refreshHomeData();
-    } else {
-      unawaited(refreshHomeData());
-    }
-    return result;
   }
 
   /// 从指定现金账户买入（同一事务扣现金 + 加仓）
@@ -1032,130 +867,17 @@ class AppState extends ChangeNotifier {
     String? assetType,
     bool awaitRefresh = true,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
-    }
-    if (cashAssetId == -999) {
-      if (_portfolioIndexByCode(code) >= 0) {
-        return buyInvestment(
-          code: code,
-          price: price,
-          qty: qty,
-          awaitRefresh: awaitRefresh,
-        );
-      } else {
-        return addInvestment(
-          code: code,
-          name: name,
-          price: price,
-          qty: qty,
-          curr: curr,
-          assetType: assetType,
-          awaitRefresh: awaitRefresh,
-        );
-      }
-    }
-    if (cashAssetId <= 0) {
-      return const AssetActionResult.failure('请选择资金来源账户');
-    }
-
-    final cashIndex = _cashAssets.indexWhere(
-      (asset) => asset.id == cashAssetId,
-    );
-    if (cashIndex < 0) {
-      return const AssetActionResult.failure('未找到资金来源账户');
-    }
-    final cashAsset = _cashAssets[cashIndex];
-    final normalizedCurr = normalizeInvestmentCurrency(code: code, curr: curr);
-    final normalizedCashCurr = _normalizeAssetCurrency(cashAsset.curr);
-    if (normalizedCashCurr != _normalizeAssetCurrency(normalizedCurr)) {
-      return AssetActionResult.failure(
-        '资金账户币种不匹配：需要${_normalizeAssetCurrency(normalizedCurr)}账户',
-        data: {
-          'asset_curr': _normalizeAssetCurrency(normalizedCurr),
-          'cash_curr': normalizedCashCurr,
-        },
-      );
-    }
-    final investAmount = price * qty;
-    final cashDeductAmount = _convertAmountByCurrency(
-      amount: investAmount,
-      fromCurr: normalizedCurr,
-      toCurr: cashAsset.curr,
-    );
-    if (cashDeductAmount <= 0) {
-      return const AssetActionResult.failure('扣款金额计算失败');
-    }
-    if (cashAsset.amount + 1e-6 < cashDeductAmount) {
-      return AssetActionResult.failure(
-        '账户余额不足：${cashAsset.name}',
-        data: {
-          'available': cashAsset.amount,
-          'required': cashDeductAmount,
-          'cash_curr': cashAsset.curr,
-        },
-      );
-    }
-
-    final assetSnapshot = _captureAssetSnapshot();
-    final portfolioSnapshot = _capturePortfolioSnapshot();
-    final hadHolding = _portfolioIndexByCode(code) >= 0;
-    final portfolioChanged = hadHolding
-        ? _optimisticBuyInvestment(code: code, price: price, qty: qty)
-        : _optimisticAddInvestment(
-            code: code,
-            name: name,
-            price: price,
-            qty: qty,
-            curr: normalizedCurr,
-            assetType: assetType,
-          );
-    final cashChanged = _optimisticAdjustCashAssetAmount(
+    return _investmentWriteState.buyInvestmentWithCash(
+      code: code,
+      name: name,
+      price: price,
+      qty: qty,
       cashAssetId: cashAssetId,
-      deltaAmount: -cashDeductAmount,
-    );
-    if (!portfolioChanged || !cashChanged) {
-      _restoreAssetSnapshot(assetSnapshot);
-      _restorePortfolioSnapshot(portfolioSnapshot);
-      return const AssetActionResult.failure('买入失败，请稍后重试');
-    }
-    _recalculateHomeTotals();
-    notifyListeners();
-
-    final result = await _api.buyPortfolioAssetWithCash(
-      code,
-      name,
-      price,
-      qty,
-      cashAssetId: cashAssetId,
-      curr: normalizedCurr,
       assetType: assetType,
+      curr: curr,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!result.ok) {
-      final statusCode = result.data?['status_code'];
-      if (statusCode == 404) {
-        final fallbackResult = await _legacyBuyWithCashFallback(
-          code: code,
-          name: name,
-          price: price,
-          qty: qty,
-          cashAsset: cashAsset,
-          cashDeductAmount: cashDeductAmount,
-        );
-        if (!fallbackResult.ok) {
-          _restoreAssetSnapshot(assetSnapshot);
-          _restorePortfolioSnapshot(portfolioSnapshot);
-          return fallbackResult;
-        }
-        await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-        return fallbackResult;
-      }
-      _restoreAssetSnapshot(assetSnapshot);
-      _restorePortfolioSnapshot(portfolioSnapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return _extractUndoInfo(result);
   }
 
   /// 卖出到指定现金账户（同一事务减仓 + 回款）
@@ -1166,104 +888,14 @@ class AppState extends ChangeNotifier {
     required int cashAssetId,
     bool awaitRefresh = true,
   }) async {
-    if (cashAssetId == -999) {
-      return sellInvestment(
-        code: code,
-        price: price,
-        qty: qty,
-        awaitRefresh: awaitRefresh,
-      );
-    }
-    final index = _portfolioIndexByCode(code);
-    if (index < 0) return const AssetActionResult.failure('未找到该持仓');
-    if (qty <= 0 || price <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
-    }
-    final current = _portfolio[index];
-    if (qty > current.qty + 1e-6) {
-      return const AssetActionResult.failure('卖出数量超过持仓数量');
-    }
-    if (cashAssetId <= 0) {
-      return const AssetActionResult.failure('请选择回款账户');
-    }
-    final cashIndex = _cashAssets.indexWhere(
-      (asset) => asset.id == cashAssetId,
-    );
-    if (cashIndex < 0) {
-      return const AssetActionResult.failure('未找到回款账户');
-    }
-    final cashAsset = _cashAssets[cashIndex];
-    final normalizedAssetCurr = _normalizeAssetCurrency(current.curr);
-    final normalizedCashCurr = _normalizeAssetCurrency(cashAsset.curr);
-    if (normalizedAssetCurr != normalizedCashCurr) {
-      return AssetActionResult.failure(
-        '回款账户币种不匹配：需要$normalizedAssetCurr账户',
-        data: {
-          'asset_curr': normalizedAssetCurr,
-          'cash_curr': normalizedCashCurr,
-        },
-      );
-    }
-    final sellAmount = price * qty;
-    final cashCreditAmount = _convertAmountByCurrency(
-      amount: sellAmount,
-      fromCurr: current.curr,
-      toCurr: cashAsset.curr,
-    );
-    if (cashCreditAmount <= 0) {
-      return const AssetActionResult.failure('回款金额计算失败');
-    }
-
-    final assetSnapshot = _captureAssetSnapshot();
-    final portfolioSnapshot = _capturePortfolioSnapshot();
-    final portfolioChanged = _optimisticSellInvestment(
+    return _investmentWriteState.sellInvestmentToCash(
       code: code,
       price: price,
       qty: qty,
-    );
-    final cashChanged = _optimisticAdjustCashAssetAmount(
       cashAssetId: cashAssetId,
-      deltaAmount: cashCreditAmount,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!portfolioChanged || !cashChanged) {
-      _restoreAssetSnapshot(assetSnapshot);
-      _restorePortfolioSnapshot(portfolioSnapshot);
-      return const AssetActionResult.failure('卖出失败，请稍后重试');
-    }
-    _recalculateHomeTotals();
-    notifyListeners();
-
-    final result = await _api.sellPortfolioAssetToCash(
-      code,
-      price,
-      qty,
-      cashAssetId: cashAssetId,
-    );
-    if (!result.ok) {
-      final statusCode = result.data?['status_code'];
-      if (statusCode == 404) {
-        final fallbackResult = await _legacySellToCashFallback(
-          code: code,
-          price: price,
-          qty: qty,
-          cashAsset: cashAsset,
-          cashCreditAmount: cashCreditAmount,
-        );
-        if (!fallbackResult.ok) {
-          _restoreAssetSnapshot(assetSnapshot);
-          _restorePortfolioSnapshot(portfolioSnapshot);
-          return fallbackResult;
-        }
-        await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-        return fallbackResult;
-      }
-      _restoreAssetSnapshot(assetSnapshot);
-      _restorePortfolioSnapshot(portfolioSnapshot);
-      return result;
-    }
-
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return _extractUndoInfo(result);
   }
 
   /// 买入（加仓）
@@ -1273,28 +905,13 @@ class AppState extends ChangeNotifier {
     required double qty,
     bool awaitRefresh = true,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
-    }
-    if (_portfolioIndexByCode(code) < 0) {
-      return const AssetActionResult.failure('未找到该持仓');
-    }
-    final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticBuyInvestment(
+    return _investmentWriteState.buyInvestment(
       code: code,
       price: price,
       qty: qty,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!changed) return const AssetActionResult.failure('买入失败，请稍后重试');
-    _recalculatePortfolioTotals();
-
-    final result = await _api.buyPortfolioAsset(code, price, qty);
-    if (!result.ok) {
-      _restorePortfolioSnapshot(snapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return _extractUndoInfo(result);
   }
 
   /// 卖出（减仓）
@@ -1304,30 +921,13 @@ class AppState extends ChangeNotifier {
     required double qty,
     bool awaitRefresh = true,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
-    }
-    final index = _portfolioIndexByCode(code);
-    if (index < 0) return const AssetActionResult.failure('未找到该持仓');
-    if (qty > _portfolio[index].qty + 1e-6) {
-      return const AssetActionResult.failure('卖出数量超过持仓数量');
-    }
-    final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticSellInvestment(
+    return _investmentWriteState.sellInvestment(
       code: code,
       price: price,
       qty: qty,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!changed) return const AssetActionResult.failure('卖出失败，请稍后重试');
-    _recalculatePortfolioTotals();
-
-    final result = await _api.sellPortfolioAsset(code, price, qty);
-    if (!result.ok) {
-      _restorePortfolioSnapshot(snapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return _extractUndoInfo(result);
   }
 
   /// 手动调整（数量/成本/调整）
@@ -1338,47 +938,22 @@ class AppState extends ChangeNotifier {
     required double adjustment,
     bool awaitRefresh = true,
   }) async {
-    if (qty <= 0 || !price.isFinite || !adjustment.isFinite) {
-      return const AssetActionResult.failure('请输入有效调整参数');
-    }
-    if (_portfolioIndexByCode(code) < 0) {
-      return const AssetActionResult.failure('未找到该持仓');
-    }
-    final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticModifyInvestment(
+    return _investmentWriteState.modifyInvestment(
       code: code,
       qty: qty,
       price: price,
       adjustment: adjustment,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
     );
-    if (!changed) return const AssetActionResult.failure('调整失败，请稍后重试');
-    _recalculatePortfolioTotals();
-
-    final result = await _api.modifyPortfolioAsset(
-      code,
-      qty,
-      price,
-      adjustment,
-    );
-    if (!result.ok) {
-      _restorePortfolioSnapshot(snapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return _extractUndoInfo(result);
   }
 
   /// 撤销投资写操作（买入/卖出/调整）
   Future<AssetActionResult> undoInvestmentOperation(String undoToken) async {
-    if (undoToken.trim().isEmpty) {
-      return const AssetActionResult.failure('撤销凭证无效');
-    }
-    final result = await _api.undoPortfolioOperation(undoToken.trim());
-    if (!result.ok) {
-      return result;
-    }
-    unawaited(_triggerHomeRefresh(awaitRefresh: false));
-    return result;
+    return _investmentWriteState.undoInvestmentOperation(
+      undoToken,
+      bindings: _investmentWriteBindings,
+    );
   }
 
   /// 删除投资资产
@@ -1387,24 +962,12 @@ class AppState extends ChangeNotifier {
     bool corrective = false,
     bool awaitRefresh = true,
   }) async {
-    final snapshot = _capturePortfolioSnapshot();
-    final changed = _optimisticDeleteInvestment(code: code);
-    if (!changed) return const AssetActionResult.failure('未找到该持仓');
-    _recalculatePortfolioTotals();
-
-    var result = corrective
-        ? await _api.deletePortfolioAssetCorrective(code)
-        : await _api.deletePortfolioAsset(code);
-    if (!result.ok && corrective) {
-      // 纠错删除失败时回退到普通删除，避免列表回弹。
-      result = await _api.deletePortfolioAsset(code);
-    }
-    if (!result.ok) {
-      _restorePortfolioSnapshot(snapshot);
-      return result;
-    }
-    await _triggerHomeRefresh(awaitRefresh: awaitRefresh);
-    return const AssetActionResult.success();
+    return _investmentWriteState.deleteInvestment(
+      code: code,
+      corrective: corrective,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
+    );
   }
 
   // ============================================================
