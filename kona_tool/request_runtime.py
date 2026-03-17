@@ -25,6 +25,8 @@ except Exception:  # pragma: no cover
 
 from flask import Flask, g, jsonify, make_response, request
 
+from core.request_trace import get_request_stages
+
 
 _PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/password/change",
@@ -383,8 +385,30 @@ class RequestRuntime:
         started_at = float(getattr(g, "request_started_at", self.time_getter()) or self.time_getter())
         duration_ms = max(0, int(round((self.time_getter() - started_at) * 1000)))
         user_id = str(getattr(g, "user_id", "") or "").strip() or "-"
+        request_stages = get_request_stages()
+        stage_count = len(request_stages)
+        stage_total_ms = round(
+            sum(max(float(item.get("elapsed_ms") or 0.0), 0.0) for item in request_stages),
+            3,
+        )
+        stage_gap_ms = round(max(float(duration_ms) - stage_total_ms, 0.0), 3)
+        response.headers["X-Trace-Stage-Count"] = str(stage_count)
+        response.headers["X-Trace-Stage-Total-Ms"] = f"{stage_total_ms:.3f}"
+        stage_parts = []
+        for item in request_stages:
+            stage_name = str(item.get("stage") or "").strip()
+            if not stage_name:
+                continue
+            elapsed_ms = max(float(item.get("elapsed_ms") or 0.0), 0.0)
+            meta_pairs = []
+            for key, value in item.items():
+                if key in {"stage", "elapsed_ms"}:
+                    continue
+                meta_pairs.append(f"{key}={value}")
+            meta_text = f"({','.join(meta_pairs[:3])})" if meta_pairs else ""
+            stage_parts.append(f"{stage_name}:{elapsed_ms:.3f}ms{meta_text}")
         self.logger.info(
-            "REQUEST request_id=%s method=%s path=%s status=%s duration_ms=%s user_id=%s ip=%s",
+            "REQUEST request_id=%s method=%s path=%s status=%s duration_ms=%s user_id=%s ip=%s stage_count=%s stage_total_ms=%.3f stage_gap_ms=%.3f stages=%s",
             request_id,
             request.method,
             path,
@@ -392,6 +416,10 @@ class RequestRuntime:
             duration_ms,
             user_id,
             self.client_ip_getter(),
+            stage_count,
+            stage_total_ms,
+            stage_gap_ms,
+            "|".join(stage_parts) or "-",
         )
         return response
 

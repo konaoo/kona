@@ -11,7 +11,6 @@ Flask App 组装工厂（只做“组装”，不做“启动后台线程”）�
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from dataclasses import dataclass
 import atexit
 from typing import Any, Callable, Dict, Optional
@@ -42,10 +41,7 @@ from market_runtime import create_market_runtime
 from misc_handlers import create_misc_payload_handlers
 from misc_routes import create_misc_blueprint
 from news_routes import create_news_blueprint
-from portfolio_handlers import (
-    build_portfolio_items_with_metrics,
-    create_portfolio_payload_handlers,
-)
+from portfolio_handlers import create_portfolio_payload_handlers
 from portfolio_routes import create_portfolio_blueprint
 from portfolio_runtime import create_portfolio_runtime
 from quote_handlers import create_quote_payload_handlers
@@ -60,6 +56,9 @@ from web_entry_handlers import create_web_entry_handlers
 from web_entry_routes import create_web_entry_blueprint
 
 from core.db import DatabaseManager
+from core.analysis_read_service import AnalysisReadService
+from core.history_read_service import HistoryReadService
+from core.portfolio_read_service import PortfolioReadService
 from core.price import PricePreloader
 
 
@@ -255,9 +254,12 @@ def create_app_components(
     else:
         logger.warning("admin_routes module not found; admin APIs are disabled")
 
-    analysis_payload_handlers = create_analysis_payload_handlers(
+    analysis_read_service = AnalysisReadService(
         db=db,
         price_batch_getter=wiring.batch_get_prices_getter,
+    )
+    analysis_payload_handlers = create_analysis_payload_handlers(
+        analysis_read_service=analysis_read_service,
     )
     web_entry_handlers = create_web_entry_handlers(
         web_app_dist_dir_getter=wiring.web_app_dist_dir_getter,
@@ -273,30 +275,16 @@ def create_app_components(
         rates_getter=wiring.forex_rates_getter,
         hstech_price_getter=wiring.hstech_price_getter,
     )
-    def _build_portfolio_metrics_payload(user_id: str | None, now_utc: datetime | None = None):
-        items = db.get_portfolio(user_id=user_id)
-        if not items:
-            return []
-        codes = [item.get("code") for item in items if item.get("code")]
-        quotes = wiring.batch_get_prices_getter(codes) if codes else {}
-        rates = wiring.forex_rates_getter() or {}
-        resolved_now = now_utc or datetime.now(timezone.utc)
-        market_payload = market_runtime.get_market_status_cached(
-            now_utc=resolved_now,
-            force_refresh=False,
-        )
-        market_statuses = (
-            market_payload.get("markets", {})
-            if isinstance(market_payload, dict)
-            else {}
-        )
-        return build_portfolio_items_with_metrics(
-            items,
-            quotes,
-            rates,
-            market_statuses,
-            portfolio_runtime.convert_amount,
-        )
+    portfolio_read_service = PortfolioReadService(
+        db=db,
+        batch_get_prices_getter=wiring.batch_get_prices_getter,
+        rates_getter=wiring.forex_rates_getter,
+        convert_amount=portfolio_runtime.convert_amount,
+        market_status_getter=lambda now_utc, force_refresh=False: market_runtime.get_market_status_cached(
+            now_utc=now_utc,
+            force_refresh=force_refresh,
+        ),
+    )
 
     sync_payload_handlers = create_sync_payload_handlers(
         db=db,
@@ -306,10 +294,14 @@ def create_app_components(
             force_refresh=force_refresh,
         ),
         market_scope=["a", "hk", "us", "fund"],
-        portfolio_metrics_builder=_build_portfolio_metrics_payload,
+        portfolio_metrics_builder=lambda user_id, now_utc=None: portfolio_read_service.build_metrics_payload(
+            user_id=user_id,
+            now_utc=now_utc,
+        ),
     )
+    history_read_service = HistoryReadService(db=db)
     misc_payload_handlers = create_misc_payload_handlers(
-        db=db,
+        history_read_service=history_read_service,
         asset_trends_getter=wiring.asset_trends_getter,
         app_version=wiring.app_version,
         metrics_token_ok_getter=lambda: startup_runtime.metrics_token_ok(
@@ -337,6 +329,7 @@ def create_app_components(
     portfolio_payload_handlers = create_portfolio_payload_handlers(
         db=db,
         logger=logger,
+        portfolio_read_service=portfolio_read_service,
         snapshot_saver_async=lambda user_id: snapshot_runtime.save_snapshot_for_user_async(user_id),
         portfolio_identity_normalizer=portfolio_runtime.normalize_portfolio_identity,
         idempotency_begin=portfolio_runtime.idempotency_begin,
@@ -345,13 +338,6 @@ def create_app_components(
         undo_claim=portfolio_runtime.claim_undo_record,
         undo_release=portfolio_runtime.release_undo_claim,
         take_snapshot_func=wiring.take_snapshot_for_user,
-        batch_get_prices_getter=wiring.batch_get_prices_getter,
-        rates_getter=wiring.forex_rates_getter,
-        convert_amount=portfolio_runtime.convert_amount,
-        market_status_getter=lambda now_utc, force_refresh=False: market_runtime.get_market_status_cached(
-            now_utc=now_utc,
-            force_refresh=force_refresh,
-        ),
     )
 
     app.register_blueprint(

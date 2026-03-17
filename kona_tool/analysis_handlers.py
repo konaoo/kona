@@ -1,17 +1,12 @@
-"""
-分析页概览 / 日历 / 排行处理函数
-"""
+"""分析页概览 / 日历 / 排行处理函数。"""
 from __future__ import annotations
-
-from typing import Callable, Dict, Any
 
 from flask import g, request
 
 
 def create_analysis_payload_handlers(
     *,
-    db,
-    price_batch_getter: Callable[[list[str]], Dict[str, Any]],
+    analysis_read_service,
 ):
     def _parse_positive_int_arg(name: str):
         raw = request.args.get(name)
@@ -40,16 +35,10 @@ def create_analysis_payload_handlers(
         """
         period = request.args.get('period', 'all')
         user_id = g.user_id
-
-        if period == 'all':
-            return {
-                'day': db.get_pnl_overview('day', user_id),
-                'month': db.get_pnl_overview('month', user_id),
-                'year': db.get_pnl_overview('year', user_id),
-                'all': db.get_pnl_overview('all', user_id),
-            }
-
-        return {period: db.get_pnl_overview(period, user_id)}
+        return analysis_read_service.build_overview_payload(
+            period=period,
+            user_id=user_id,
+        )
 
     def build_analysis_calendar_payload():
         """
@@ -79,7 +68,12 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
-        result = db.get_calendar_data(time_type, user_id, year=year, month=month)
+        result = analysis_read_service.build_calendar_payload(
+            time_type=time_type,
+            user_id=user_id,
+            year=year,
+            month=month,
+        )
         if result.get('code') == 'INVALID_CALENDAR_PERIOD':
             return result, 400
         return result
@@ -106,8 +100,7 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
-        result = db.get_market_breakdown_calendar_data(
-            time_type='day',
+        result = analysis_read_service.build_market_breakdown_payload(
             user_id=user_id,
             year=year,
             month=month,
@@ -129,49 +122,10 @@ def create_analysis_payload_handlers(
         """
         market = request.args.get('market', 'all')
         user_id = g.user_id
-
-        portfolio_data = db.get_rank_data('gain', market, user_id)
-        if not portfolio_data:
-            return {'gain': [], 'loss': []}
-
-        codes = [item['code'] for item in portfolio_data]
-        prices = price_batch_getter(codes)
-
-        result_items = []
-        for item in portfolio_data:
-            code = item['code']
-            price_info = prices.get(code, (0, 0, 0, 0))
-            current_price_raw = float(price_info[0] or 0.0)
-            yclose = float(price_info[1] or 0.0)
-            cost_price = float(item['cost_price'] or 0.0)
-            if current_price_raw > 0:
-                current_price = current_price_raw
-            elif yclose > 0:
-                current_price = yclose
-            elif cost_price > 0:
-                current_price = cost_price
-            else:
-                current_price = 0.0
-
-            qty = float(item['qty'] or 0.0)
-            cost = cost_price * qty
-            current_value = current_price * qty
-            pnl = current_value - cost + item['adjustment']
-            cost_abs = abs(cost)
-            pnl_rate = (pnl / cost_abs * 100) if cost_abs > 0 else 0
-
-            result_items.append({
-                'code': code,
-                'name': item['name'],
-                'pnl': round(pnl, 2),
-                'pnl_rate': round(pnl_rate, 2),
-                'market': item['market'],
-                'curr': item.get('curr', 'CNY'),
-            })
-
-        gain_list = sorted([x for x in result_items if x['pnl'] > 0], key=lambda x: x['pnl'], reverse=True)
-        loss_list = sorted([x for x in result_items if x['pnl'] < 0], key=lambda x: x['pnl'])
-        return {'gain': gain_list, 'loss': loss_list}
+        return analysis_read_service.build_rank_payload(
+            market=market,
+            user_id=user_id,
+        )
 
     return {
         'overview': build_analysis_overview_payload,

@@ -166,6 +166,7 @@ kona_tool/
 - 分析逻辑
 - 任务逻辑
 - 管理后台逻辑
+- 读侧服务与请求阶段追踪
 
 这轮已经先往前走了一小步：
 
@@ -178,6 +179,36 @@ kona_tool/
 - `core/db_maintenance.py`
 
 它把持仓交易、快照、分析、清理这些职责从 `core/db.py` 里抽了出来。
+
+这轮又继续往前收了一层：
+
+- `core/portfolio_read_service.py`
+- `core/history_read_service.py`
+- `core/analysis_read_service.py`
+- `core/portfolio_metrics.py`
+
+现在更推荐这样理解：
+
+- `db*.py` 负责把数据查出来、写进去
+- `*_read_service.py` 负责把读侧数据拼成页面和 API 真正要的结构
+- `portfolio_metrics.py` 负责实时持仓指标统一口径
+
+这样 handler 和 `app_factory.py` 就不用继续一边查库、一边取价、一边拼结果。
+
+同时，请求链路诊断也继续细化了：
+
+- `core/request_trace.py`
+- `request_runtime.py`
+
+现在后端不只是知道“这条请求一共花了多久”，还能进一步看到：
+
+- 数据库查多久
+- 批量取价多久
+- 汇率加载多久
+- 市场状态多久
+- 最后结果组装多久
+
+这对线上慢请求排障很值钱，因为以后不需要只知道“慢”，还能知道“慢在哪一段”。
 
 说人话就是：
 

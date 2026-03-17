@@ -10,6 +10,7 @@ if str(KONA_TOOL) not in sys.path:
     sys.path.insert(0, str(KONA_TOOL))
 
 from request_runtime import create_request_runtime  # noqa: E402
+from core.request_trace import trace_request_stage  # noqa: E402
 
 
 class _FakeDb:
@@ -167,6 +168,34 @@ class RequestRuntimeTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "REQUEST request_id=trace-req-001 method=GET path=/api/ping status=200" in message
+                for message in self.logger.info_messages
+            )
+        )
+
+    def test_request_trace_will_return_stage_headers_and_log_stage_summary(self):
+        self.runtime.register_hooks(self.app)
+
+        @self.app.route("/api/staged")
+        def _staged():
+            g.user_id = "u_stage"
+            with trace_request_stage("stage.db", query="ping"):
+                pass
+            with trace_request_stage("stage.assemble", item_count=1):
+                pass
+            return jsonify({"status": "ok"})
+
+        client = self.app.test_client()
+        resp = client.get("/api/staged", headers={"X-Request-Id": "trace-stage-001"})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("X-Trace-Stage-Count"), "2")
+        self.assertIsNotNone(resp.headers.get("X-Trace-Stage-Total-Ms"))
+        self.assertTrue(
+            any(
+                "REQUEST request_id=trace-stage-001 method=GET path=/api/staged status=200" in message
+                and "stage_count=2" in message
+                and "stage.db:" in message
+                and "stage.assemble:" in message
                 for message in self.logger.info_messages
             )
         )

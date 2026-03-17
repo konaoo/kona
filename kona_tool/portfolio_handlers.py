@@ -3,29 +3,11 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 import math
-from datetime import datetime, timezone
-from typing import Callable, Dict, Iterable, List, Tuple
+from typing import Callable
 
 from flask import g, jsonify, request
-
-from core.market_calendar import market_from_asset
-from core.price import is_exchange_fund_code
-
-
-def _to_float(value, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _first_positive(values: Iterable[float]) -> float:
-    for value in values:
-        if value > 0:
-            return value
-    return 0.0
-
 
 def _parse_bool(value) -> bool:
     if isinstance(value, bool):
@@ -34,145 +16,11 @@ def _parse_bool(value) -> bool:
     return text in {"1", "true", "yes", "y", "on"}
 
 
-def _compute_display_cost_price(price: float, qty: float, adjustment: float) -> float:
-    if abs(qty) <= 1e-9:
-        return price
-    return (price * qty - adjustment) / qty
-
-
-def build_portfolio_items_with_metrics(
-    items: List[Dict],
-    quotes: Dict[str, Tuple[float, float, float, float]],
-    rates: Dict[str, float],
-    market_statuses: Dict[str, Dict[str, float]],
-    convert_amount: Callable[[float, str, str, Dict[str, float]], float],
-) -> List[Dict]:
-    """
-    为实时持仓补齐统一指标口径。
-
-    约定：
-    - 实时投资页 / 首页优先认这里产出的 metrics 字段
-    - 历史分析页优先认 daily_snapshots / daily_snapshot_market_breakdowns
-    - 前端只允许在 metrics 缺失时做兼容性兜底，不再各自重算一套收益口径
-    """
-    enriched: List[Dict] = []
-    for item in items:
-        code = str(item.get("code") or "").strip()
-        qty = _to_float(item.get("qty"))
-        raw_cost_price = _to_float(item.get("price"))
-        adjustment = _to_float(item.get("adjustment"))
-        curr = str(item.get("curr") or "CNY").strip().upper()
-
-        market = str(item.get("category_type") or item.get("asset_type") or "").lower()
-        if market not in {"a", "hk", "us", "fund"}:
-            market = market_from_asset(item)
-
-        is_exchange_fund = is_exchange_fund_code(code)
-        status_market = "a" if is_exchange_fund else market
-        status = market_statuses.get(status_market, {}) if isinstance(market_statuses, dict) else {}
-        market_open = bool(status.get("open"))
-        market_trading_day = bool(status.get("trading_day"))
-        market_status_reason = str(status.get("reason") or "")
-
-        quote = quotes.get(code) or (0.0, 0.0, 0.0, 0.0)
-        quote_price = _to_float(quote[0])
-        quote_yclose = _to_float(quote[1])
-        quote_change = _to_float(quote[2])
-        quote_change_pct = _to_float(quote[3])
-
-        quoted_current_price = _first_positive([quote_price, quote_yclose])
-        current_price = _first_positive([quoted_current_price, raw_cost_price])
-
-        nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund
-        quote_ready = quote_price > 0
-        quote_pending = (not nav_update_pending) and (not quote_ready)
-
-        display_cost_price = _compute_display_cost_price(raw_cost_price, qty, adjustment)
-        cost = raw_cost_price * qty
-        value = current_price * qty
-        total_pnl = value - cost + adjustment
-        total_pnl_rate = (total_pnl / abs(cost) * 100) if abs(cost) > 0 else 0.0
-
-        day_pnl_display_enabled = (not nav_update_pending) and current_price > 0 and quote_yclose > 0
-        if day_pnl_display_enabled:
-            delta = current_price - quote_yclose
-            day_pnl_display = delta * qty
-            day_pnl_rate_display = (delta / quote_yclose) * 100
-        else:
-            day_pnl_display = 0.0
-            day_pnl_rate_display = 0.0
-        day_pnl_aggregate_enabled = day_pnl_display_enabled and market_trading_day
-        day_pnl_aggregate = day_pnl_display if day_pnl_aggregate_enabled else 0.0
-        day_pnl_rate_aggregate = day_pnl_rate_display if day_pnl_aggregate_enabled else 0.0
-
-        rate_to_cny = convert_amount(1.0, curr, "CNY", rates)
-        value_cny = value * rate_to_cny
-        cost_cny = cost * rate_to_cny
-        total_pnl_cny = total_pnl * rate_to_cny
-        day_pnl_cny = day_pnl_display * rate_to_cny
-        day_pnl_aggregate_cny = day_pnl_aggregate * rate_to_cny
-
-        enriched.append(
-            {
-                **item,
-                "market": market,
-                "market_open": market_open,
-                "market_trading_day": market_trading_day,
-                "market_status_reason": market_status_reason,
-                "current_price": current_price,
-                "yclose": quote_yclose,
-                "display_cost_price": display_cost_price,
-                "cost": cost,
-                "raw_cost_total": cost,
-                "value": value,
-                "total_pnl": total_pnl,
-                "total_pnl_rate": total_pnl_rate,
-                "day_pnl": day_pnl_display,
-                "day_pnl_rate": day_pnl_rate_display,
-                "day_pnl_display": day_pnl_display,
-                "day_pnl_rate_display": day_pnl_rate_display,
-                "day_pnl_aggregate": day_pnl_aggregate,
-                "day_pnl_rate_aggregate": day_pnl_rate_aggregate,
-                "nav_update_pending": nav_update_pending,
-                "quote_ready": quote_ready,
-                "quote_pending": quote_pending,
-                "day_pnl_display_enabled": day_pnl_display_enabled,
-                "day_pnl_aggregate_enabled": day_pnl_aggregate_enabled,
-                "rate_to_cny": rate_to_cny,
-                "value_cny": value_cny,
-                "cost_cny": cost_cny,
-                "total_pnl_cny": total_pnl_cny,
-                "day_pnl_cny": day_pnl_cny,
-                "day_pnl_aggregate_cny": day_pnl_aggregate_cny,
-                "quote_price": quote_price,
-                "quote_change": quote_change,
-                "quote_change_pct": quote_change_pct,
-            }
-        )
-
-    total_value_cny = sum(
-        float(row.get("value_cny") or 0.0) for row in enriched
-    )
-    if total_value_cny > 0:
-        for row in enriched:
-            value_cny = row.get("value_cny")
-            if value_cny is None:
-                row["position_pct"] = None
-            else:
-                row["position_pct"] = round(
-                    float(value_cny) / total_value_cny * 100, 6
-                )
-    else:
-        for row in enriched:
-            row["position_pct"] = None
-
-    return enriched
-
-
 def create_portfolio_payload_handlers(
     *,
     db,
     logger,
+    portfolio_read_service,
     snapshot_saver_async: Callable[[str | None], None],
     portfolio_identity_normalizer: Callable[[str, str, str], dict],
     idempotency_begin: Callable[[str, str, str], tuple[bool, dict, int]],
@@ -181,35 +29,17 @@ def create_portfolio_payload_handlers(
     undo_claim: Callable[[str, str], tuple[dict | None, tuple | None]],
     undo_release: Callable[[str, str], None],
     take_snapshot_func: Callable[[str | None], bool],
-    batch_get_prices_getter: Callable[[List[str]], Dict[str, Tuple[float, float, float, float]]],
-    rates_getter: Callable[[], dict],
-    convert_amount: Callable[[float, str, str, dict], float],
-    market_status_getter: Callable[..., Dict],
 ):
     def build_portfolio_payload():
         asset_type = request.args.get('type', 'all')
         with_metrics = _parse_bool(request.args.get('with_metrics'))
         user_id = g.user_id
         logger.info(f"API: get_portfolio called with type={asset_type}, user_id={user_id}")
-        data = db.get_portfolio(asset_type, user_id)
-        if with_metrics:
-            codes = [item.get("code") for item in data if item.get("code")]
-            quotes = batch_get_prices_getter(codes) if codes else {}
-            rates = rates_getter() or {}
-            now_utc = datetime.now(timezone.utc)
-            market_payload = market_status_getter(now_utc=now_utc, force_refresh=False)
-            market_statuses = (
-                market_payload.get("markets", {})
-                if isinstance(market_payload, dict)
-                else {}
-            )
-            data = build_portfolio_items_with_metrics(
-                data,
-                quotes,
-                rates,
-                market_statuses,
-                convert_amount,
-            )
+        data = portfolio_read_service.build_portfolio_payload(
+            asset_type=asset_type,
+            user_id=user_id,
+            with_metrics=with_metrics,
+        )
         logger.info(f"API: returning {len(data)} records")
         response = jsonify(data)
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0, private'

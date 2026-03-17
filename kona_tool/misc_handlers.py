@@ -11,7 +11,7 @@ from flask import g, request
 
 def create_misc_payload_handlers(
     *,
-    db,
+    history_read_service,
     asset_trends_getter: Callable[[list[dict[str, str]], int], Any],
     app_version: str,
     metrics_token_ok_getter: Callable[[], bool],
@@ -23,7 +23,7 @@ def create_misc_payload_handlers(
     def build_history_payload():
         days = request.args.get('days', 365, type=int)
         user_id = g.user_id
-        return db.get_history(days, user_id)
+        return history_read_service.get_history(days=days, user_id=user_id)
 
     def build_asset_trends_payload() -> Dict[str, Any]:
         payload = request.json or {}

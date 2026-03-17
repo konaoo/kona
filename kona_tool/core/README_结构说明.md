@@ -58,6 +58,11 @@ core/
 ├─ parser.py            # 资产代码标准化
 ├─ policy_runtime.py    # 后台策略开关读取
 ├─ price.py             # 统一取价入口与缓存
+├─ portfolio_metrics.py # 实时持仓指标统一口径
+├─ portfolio_read_service.py # 实时持仓读侧服务
+├─ history_read_service.py # 历史曲线读侧服务
+├─ analysis_read_service.py # 分析页读侧服务
+├─ request_trace.py     # 请求级阶段耗时记录
 ├─ snapshot.py          # 快照计算与保存
 ├─ source_health.py     # 行情源健康状态
 ├─ stock.py             # 股票与部分海外基金取价
@@ -177,6 +182,31 @@ core/
 
 所以以后如果真要做后端分层，这个文件一定是重点。
 
+### 3.3.1 读侧服务边界
+
+这轮又补了几份读侧服务：
+
+- [portfolio_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/portfolio_read_service.py)
+- [history_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/history_read_service.py)
+- [analysis_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py)
+- [portfolio_metrics.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/portfolio_metrics.py)
+
+它们解决的不是“把文件拆小”这么表面的事，而是：
+
+- handler 不再自己查库、取价、拼口径
+- `app_factory.py` 不再继续长匿名闭包和临时读模型组装
+- 同一条读链路的职责边界更清楚：谁查库、谁补价格、谁拼最终返回，一眼能看懂
+
+现在可以按这个理解：
+
+- `db*.py`：负责数据访问
+- `*_read_service.py`：负责读模型组装
+- `portfolio_metrics.py`：负责实时持仓统一指标口径
+
+也就是：
+
+`数据访问` 和 `读侧组装` 终于不是继续揉在一起了。
+
 ### 3.4 快照与收益计算
 
 这部分主要在：
@@ -247,6 +277,34 @@ core/
 
 - `news.py` 已经不是单纯工具，而是一个完整的快讯抓取缓存模块
 - `utils.py` 才更接近传统意义上的公共工具
+
+### 3.7 请求链路诊断
+
+这轮后端线上排障又往前走了一步：
+
+- [request_trace.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/request_trace.py)
+- [request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/request_runtime.py)
+
+现在一次 API 请求，除了原来的：
+
+- `request_id`
+- `path`
+- `status`
+- `duration_ms`
+
+还会补：
+
+- `X-Trace-Stage-Count`
+- `X-Trace-Stage-Total-Ms`
+
+并且日志里会带阶段摘要，比如：
+
+- `portfolio.db`
+- `portfolio.quotes`
+- `portfolio.rates`
+- `analysis.rank.assemble`
+
+以后查线上慢请求、偶发超时、某个用户说“今天特别卡”的问题，会比以前更容易分清到底慢在哪一段。
 
 ---
 

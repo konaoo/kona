@@ -1,3 +1,26 @@
+## 2026-03-17-01
+
+### 这版一句话
+
+继续收紧后端数据层边界，并把请求追踪从“只知道整条请求多久”升级成“能看出慢在哪一段”。
+
+### 主要变化
+- [portfolio_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/portfolio_read_service.py) / [history_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/history_read_service.py) / [analysis_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py)：把实时持仓、历史曲线、分析页概览/日历/排行这些读链路，从 handler 和 `app_factory.py` 里继续抽成明确读侧服务，减少“参数解析、查库、取价、拼结果”混在一层。
+- [portfolio_metrics.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/portfolio_metrics.py) / [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py) / [analysis_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/analysis_handlers.py) / [misc_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/misc_handlers.py)：把实时持仓指标统一口径从 handler 里拿出来，handler 现在主要保留参数解析和返回，后面查 bug 时更容易分清是“读模型错了”还是“路由入口错了”。
+- [request_trace.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/request_trace.py) / [request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/request_runtime.py)：新增请求级阶段耗时记录，API 响应头现在会返回 `X-Trace-Stage-Count` 和 `X-Trace-Stage-Total-Ms`，后端日志会把 `db / quotes / rates / market / assemble` 这类阶段摘要写出来，线上慢请求以后不再只能看总耗时。
+- [test_request_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_request_runtime.py) / [test_read_services.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_read_services.py)：补了请求阶段追踪和读侧服务边界的单测，避免这轮治理以后被人无意写回老路。
+- [请求追踪与排障手册.md](/Users/kona/Desktop/kaka/kona_repo/docs/请求追踪与排障手册.md) / [kona_tool/README_STRUCTURE.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/README_STRUCTURE.md) / [core/README_结构说明.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/README_结构说明.md)：把新边界和新排障方式写进目录说明和手册，后面接手的人不用再猜“读链路到底落哪、慢请求该怎么看”。
+
+### 影响范围
+- 后端实时持仓、历史曲线、分析页的读侧拼装路径
+- 后端 API 响应头和请求摘要日志
+- 后端排障方式与线上慢请求定位效率
+
+### 验收重点
+- `/api/portfolio`、`/api/history`、`/api/analysis/*` 继续按原口径返回
+- API 响应头里继续带 `X-Request-Id`，并能看到 `X-Trace-Stage-Count` / `X-Trace-Stage-Total-Ms`
+- 后端日志里能按同一个 `request_id` 看到阶段摘要，不再只剩总耗时
+
 ## 2026-03-16-20
 
 ### 这版一句话
