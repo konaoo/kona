@@ -29,6 +29,7 @@
 
 - `generate_api_docs.py`
 - `generate_api_details.py`
+- `request_id_trace.py`
 - `generate_openapi_types_web.sh`
 - `generate_openapi_types_flutter.sh`
 - `sync_openapi_paths.py`
@@ -65,6 +66,11 @@
 这两类脚本符合 `scripts/` 的定位，属于长期可复用的仓库级脚本。
 
 ### 3.2 运维 / 补数类
+
+- `request_id_trace.py`
+  用途：按 `request_id` 直接回查后端日志，快速看请求状态、总耗时和阶段摘要。
+
+这类脚本虽然偏排障，但它服务的是 Web / Flutter / 后端统一请求追踪，所以适合长期保留在仓库级 `scripts/`。
 
 - `fix_snapshot_rates.py`
   用途：一次性修复历史快照汇率问题。

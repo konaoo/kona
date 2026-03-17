@@ -12,11 +12,15 @@
 import logging
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class AdminStateDatabaseMixin:
@@ -53,7 +57,7 @@ class AdminStateDatabaseMixin:
     ) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = _utc_now().isoformat()
         try:
             cursor.execute(
                 """
@@ -102,7 +106,7 @@ class AdminStateDatabaseMixin:
         try:
             cursor.execute(
                 "UPDATE auth_refresh_tokens SET last_used_at = ? WHERE token_hash = ?",
-                (datetime.utcnow().isoformat(), token_hash),
+                (_utc_now().isoformat(), token_hash),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -118,7 +122,7 @@ class AdminStateDatabaseMixin:
         try:
             cursor.execute(
                 "UPDATE auth_refresh_tokens SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
-                (datetime.utcnow().isoformat(), token_hash),
+                (_utc_now().isoformat(), token_hash),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -138,7 +142,7 @@ class AdminStateDatabaseMixin:
                 SET revoked_at = ?
                 WHERE user_id = ? AND revoked_at IS NULL
                 """,
-                (datetime.utcnow().isoformat(), user_id),
+                (_utc_now().isoformat(), user_id),
             )
             conn.commit()
             return int(cursor.rowcount or 0)
@@ -154,7 +158,11 @@ class AdminStateDatabaseMixin:
         now: Optional[datetime] = None,
     ) -> int:
         keep_days = max(0, int(retention_days))
-        now_utc = now or datetime.utcnow()
+        now_utc = now or _utc_now()
+        if now_utc.tzinfo is None:
+            now_utc = now_utc.replace(tzinfo=timezone.utc)
+        else:
+            now_utc = now_utc.astimezone(timezone.utc)
         cutoff = (now_utc - timedelta(days=keep_days)).isoformat()
         conn = self.get_connection()
         cursor = conn.cursor()

@@ -8,6 +8,7 @@ import math
 from typing import Callable
 
 from flask import g, jsonify, request
+from core.request_trace import trace_request_stage
 
 def _parse_bool(value) -> bool:
     if isinstance(value, bool):
@@ -30,6 +31,10 @@ def create_portfolio_payload_handlers(
     undo_release: Callable[[str, str], None],
     take_snapshot_func: Callable[[str | None], bool],
 ):
+    def _save_snapshot_async(user_id: str | None, stage_prefix: str) -> None:
+        with trace_request_stage(f"{stage_prefix}.snapshot"):
+            snapshot_saver_async(user_id)
+
     def build_portfolio_payload():
         asset_type = request.args.get('type', 'all')
         with_metrics = _parse_bool(request.args.get('with_metrics'))
@@ -60,16 +65,18 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
-        normalized = portfolio_identity_normalizer(
-            data['code'],
-            data.get('curr', ''),
-            data.get('name', ''),
-        )
+        with trace_request_stage("portfolio.add.normalize"):
+            normalized = portfolio_identity_normalizer(
+                data['code'],
+                data.get('curr', ''),
+                data.get('name', ''),
+            )
 
         try:
-            qty = float(data.get('qty'))
-            price = float(data.get('price'))
-            adjustment = float(data.get('adjustment', 0.0))
+            with trace_request_stage("portfolio.add.validate"):
+                qty = float(data.get('qty'))
+                price = float(data.get('price'))
+                adjustment = float(data.get('adjustment', 0.0))
         except (TypeError, ValueError):
             return idempotent_response(
                 'portfolio_add',
@@ -104,9 +111,10 @@ def create_portfolio_payload_handlers(
         data['adjustment'] = adjustment
         data['asset_type'] = normalized['asset_type']
 
-        success = db.add_asset(data, user_id)
+        with trace_request_stage("portfolio.add.write", asset_type=data.get('asset_type')):
+            success = db.add_asset(data, user_id)
         if success:
-            snapshot_saver_async(user_id)
+            _save_snapshot_async(user_id, "portfolio.add")
             return idempotent_response('portfolio_add', user_id, request_id, {"status": "ok"})
         return idempotent_response(
             'portfolio_add',
@@ -129,35 +137,37 @@ def create_portfolio_payload_handlers(
             return jsonify(dedup_payload), dedup_status
 
         try:
-            val = float(data['val'])
-            if not math.isfinite(val):
-                return idempotent_response(
-                    'portfolio_update',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            field = str(data.get('field') or '').strip()
-            if field == 'price' and val <= 0:
-                return idempotent_response(
-                    'portfolio_update',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            if field == 'qty' and val <= 0:
-                return idempotent_response(
-                    'portfolio_update',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            success = db.update_asset(data['code'], data['field'], val, user_id)
+            with trace_request_stage("portfolio.update.validate"):
+                val = float(data['val'])
+                if not math.isfinite(val):
+                    return idempotent_response(
+                        'portfolio_update',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                field = str(data.get('field') or '').strip()
+                if field == 'price' and val <= 0:
+                    return idempotent_response(
+                        'portfolio_update',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                if field == 'qty' and val <= 0:
+                    return idempotent_response(
+                        'portfolio_update',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+            with trace_request_stage("portfolio.update.write", field=data.get('field')):
+                success = db.update_asset(data['code'], data['field'], val, user_id)
             if success:
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "portfolio.update")
                 return idempotent_response('portfolio_update', user_id, request_id, {"status": "ok"})
             return idempotent_response(
                 'portfolio_update',
@@ -188,33 +198,35 @@ def create_portfolio_payload_handlers(
             return jsonify(dedup_payload), dedup_status
 
         try:
-            qty = float(data['qty'])
-            price = float(data['price'])
-            adjustment = float(data['adjustment'])
-            if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
-                return idempotent_response(
-                    'portfolio_modify',
+            with trace_request_stage("portfolio.modify.validate"):
+                qty = float(data['qty'])
+                price = float(data['price'])
+                adjustment = float(data['adjustment'])
+                if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
+                    return idempotent_response(
+                        'portfolio_modify',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                if qty <= 0:
+                    return idempotent_response(
+                        'portfolio_modify',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+            with trace_request_stage("portfolio.modify.write"):
+                detail = db.modify_asset(
+                    data['code'],
+                    qty,
+                    price,
+                    adjustment,
                     user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
+                    return_detail=True,
                 )
-            if qty <= 0:
-                return idempotent_response(
-                    'portfolio_modify',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            detail = db.modify_asset(
-                data['code'],
-                qty,
-                price,
-                adjustment,
-                user_id,
-                return_detail=True,
-            )
             if detail and detail.get('ok'):
                 operation = {
                     'op_type': 'modify',
@@ -223,7 +235,7 @@ def create_portfolio_payload_handlers(
                     'tx_id': None,
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "portfolio.modify")
                 return idempotent_response('portfolio_modify', user_id, request_id, payload)
 
             error_code = (detail or {}).get('code', 'ASSET_NOT_FOUND')
@@ -251,7 +263,8 @@ def create_portfolio_payload_handlers(
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        success = db.save_daily_snapshot(data, user_id)
+        with trace_request_stage("snapshot.save.write"):
+            success = db.save_daily_snapshot(data, user_id)
         if success:
             day_pnl_by_market = data.get("day_pnl_by_market")
             if isinstance(day_pnl_by_market, dict):
@@ -265,15 +278,16 @@ def create_portfolio_payload_handlers(
                 meta_by_market = data.get("market_breakdown_meta")
                 if not isinstance(meta_by_market, dict):
                     meta_by_market = None
-                breakdown_ok = db.save_daily_snapshot_market_breakdown(
-                    date_str=snapshot_date,
-                    day_pnl_by_market=day_pnl_by_market,
-                    total_day_pnl=float(data.get("day_pnl", 0.0) or 0.0),
-                    user_id=user_id,
-                    source=source,
-                    confidence=confidence,
-                    meta_by_market=meta_by_market,
-                )
+                with trace_request_stage("snapshot.save.market_breakdown", item_count=len(day_pnl_by_market)):
+                    breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                        date_str=snapshot_date,
+                        day_pnl_by_market=day_pnl_by_market,
+                        total_day_pnl=float(data.get("day_pnl", 0.0) or 0.0),
+                        user_id=user_id,
+                        source=source,
+                        confidence=confidence,
+                        meta_by_market=meta_by_market,
+                    )
                 if not breakdown_ok:
                     logger.warning(
                         "Failed to save market breakdown in /api/snapshot/save: user_id=%s date=%s",
@@ -285,7 +299,8 @@ def create_portfolio_payload_handlers(
 
     def handle_snapshot_trigger():
         user_id = g.user_id
-        success = take_snapshot_func(user_id)
+        with trace_request_stage("snapshot.trigger.write"):
+            success = take_snapshot_func(user_id)
         if success:
             return jsonify({"status": "ok", "message": "Snapshot taken successfully"})
         return jsonify({"error": "Failed to take snapshot"}), 500
@@ -300,7 +315,8 @@ def create_portfolio_payload_handlers(
         if not isinstance(dates, list):
             return jsonify({"error": "dates must be a list"}), 400
 
-        success = db.fix_snapshot_day_pnl(dates, user_id)
+        with trace_request_stage("snapshot.fix.write", item_count=len(dates)):
+            success = db.fix_snapshot_day_pnl(dates, user_id)
         if success:
             return jsonify({"status": "ok", "message": f"Fixed {len(dates)} records"})
         return jsonify({"error": "Failed to fix snapshots"}), 500
@@ -317,9 +333,10 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
-        success = db.delete_asset(data['code'], user_id)
+        with trace_request_stage("portfolio.delete.write"):
+            success = db.delete_asset(data['code'], user_id)
         if success:
-            snapshot_saver_async(user_id)
+            _save_snapshot_async(user_id, "portfolio.delete")
             return idempotent_response('portfolio_delete', user_id, request_id, {"status": "ok"})
         return idempotent_response(
             'portfolio_delete',
@@ -341,9 +358,10 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
-        result = db.delete_asset_corrective(data['code'], user_id)
+        with trace_request_stage("portfolio.delete_corrective.write"):
+            result = db.delete_asset_corrective(data['code'], user_id)
         if result:
-            snapshot_saver_async(user_id)
+            _save_snapshot_async(user_id, "portfolio.delete_corrective")
             payload = {
                 "status": "ok",
                 "code": "CORRECTIVE_DELETE_DONE",
@@ -376,17 +394,19 @@ def create_portfolio_payload_handlers(
             return jsonify(dedup_payload), dedup_status
 
         try:
-            price = float(data['price'])
-            qty = float(data['qty'])
-            if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
-                return idempotent_response(
-                    'portfolio_buy',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True)
+            with trace_request_stage("portfolio.buy.validate"):
+                price = float(data['price'])
+                qty = float(data['qty'])
+                if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
+                    return idempotent_response(
+                        'portfolio_buy',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+            with trace_request_stage("portfolio.buy.write"):
+                detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True)
 
             if detail and detail.get('ok'):
                 operation = {
@@ -396,7 +416,7 @@ def create_portfolio_payload_handlers(
                     'tx_id': detail.get('tx_id'),
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "portfolio.buy")
                 return idempotent_response('portfolio_buy', user_id, request_id, payload)
 
             error_code = (detail or {}).get('code', 'ASSET_BUY_FAILED')
@@ -453,17 +473,19 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
-        normalized = portfolio_identity_normalizer(
-            data['code'],
-            data.get('curr', ''),
-            data.get('name', ''),
-        )
+        with trace_request_stage("portfolio.buy_with_cash.normalize"):
+            normalized = portfolio_identity_normalizer(
+                data['code'],
+                data.get('curr', ''),
+                data.get('name', ''),
+            )
         code = normalized['code']
         curr = normalized['curr']
         name = normalized['name']
         asset_type = normalized['asset_type']
 
-        cash_asset = db.get_cash_asset_by_id(cash_asset_id, user_id)
+        with trace_request_stage("portfolio.buy_with_cash.cash_lookup", cash_asset_id=cash_asset_id):
+            cash_asset = db.get_cash_asset_by_id(cash_asset_id, user_id)
         if not cash_asset:
             return idempotent_response(
                 'portfolio_buy_with_cash',
@@ -478,8 +500,9 @@ def create_portfolio_payload_handlers(
         if str(curr).upper() == str(cash_curr).upper():
             cash_deduct_amount = invest_amount
         else:
-            rates = rates_getter()
-            cash_deduct_amount = convert_amount(invest_amount, curr, cash_curr, rates)
+            with trace_request_stage("portfolio.buy_with_cash.rates"):
+                rates = rates_getter()
+                cash_deduct_amount = convert_amount(invest_amount, curr, cash_curr, rates)
         if cash_deduct_amount <= 0:
             return idempotent_response(
                 'portfolio_buy_with_cash',
@@ -489,17 +512,18 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
-        detail = db.buy_asset_with_cash(
-            code=code,
-            name=name,
-            price=price,
-            qty=qty,
-            curr=curr,
-            asset_type=asset_type,
-            cash_asset_id=cash_asset_id,
-            cash_deduct_amount=cash_deduct_amount,
-            user_id=user_id,
-        )
+        with trace_request_stage("portfolio.buy_with_cash.write"):
+            detail = db.buy_asset_with_cash(
+                code=code,
+                name=name,
+                price=price,
+                qty=qty,
+                curr=curr,
+                asset_type=asset_type,
+                cash_asset_id=cash_asset_id,
+                cash_deduct_amount=cash_deduct_amount,
+                user_id=user_id,
+            )
         if detail and detail.get('ok'):
             operation = {
                 'op_type': 'buy_with_cash',
@@ -518,7 +542,7 @@ def create_portfolio_payload_handlers(
                 user_id,
                 operation,
             )
-            snapshot_saver_async(user_id)
+            _save_snapshot_async(user_id, "portfolio.buy_with_cash")
             return idempotent_response('portfolio_buy_with_cash', user_id, request_id, payload)
 
         error_code = (detail or {}).get('code', 'ASSET_BUY_WITH_CASH_FAILED')
@@ -566,17 +590,19 @@ def create_portfolio_payload_handlers(
             return jsonify(dedup_payload), dedup_status
 
         try:
-            price = float(data['price'])
-            qty = float(data['qty'])
-            if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
-                return idempotent_response(
-                    'portfolio_sell',
-                    user_id,
-                    request_id,
-                    {"error": "Invalid value", "code": "INVALID_VALUE"},
-                    400,
-                )
-            detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True)
+            with trace_request_stage("portfolio.sell.validate"):
+                price = float(data['price'])
+                qty = float(data['qty'])
+                if (not math.isfinite(price)) or (not math.isfinite(qty)) or price <= 0 or qty <= 0:
+                    return idempotent_response(
+                        'portfolio_sell',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+            with trace_request_stage("portfolio.sell.write"):
+                detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True)
 
             if detail and detail.get('ok'):
                 operation = {
@@ -586,7 +612,7 @@ def create_portfolio_payload_handlers(
                     'tx_id': detail.get('tx_id'),
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "portfolio.sell")
                 return idempotent_response('portfolio_sell', user_id, request_id, payload)
 
             error_code = (detail or {}).get('code', 'ASSET_SELL_FAILED')
@@ -622,9 +648,10 @@ def create_portfolio_payload_handlers(
             code, message, status_code = error_info
             return jsonify({"error": message, "code": code}), status_code
 
-        result = db.undo_invest_operation(operation, user_id)
+        with trace_request_stage("portfolio.undo.write"):
+            result = db.undo_invest_operation(operation, user_id)
         if result and result.get('ok'):
-            snapshot_saver_async(user_id)
+            _save_snapshot_async(user_id, "portfolio.undo")
             return jsonify({"status": "ok", "code": "UNDO_DONE"})
 
         undo_release(user_id, undo_token)

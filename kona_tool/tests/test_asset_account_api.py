@@ -67,6 +67,7 @@ class AssetAccountApiTests(unittest.TestCase):
         })
         self.assertEqual(add_resp.status_code, 200)
         self.assertEqual(add_resp.get_json().get('status'), 'ok')
+        self.assertGreater(int(add_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
 
         list_resp = self.client.get('/api/cash_assets')
         self.assertEqual(list_resp.status_code, 200)
@@ -82,10 +83,12 @@ class AssetAccountApiTests(unittest.TestCase):
         })
         self.assertEqual(update_resp.status_code, 200)
         self.assertEqual(update_resp.get_json().get('status'), 'ok')
+        self.assertGreater(int(update_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
 
         delete_resp = self.client.post('/api/cash_assets/delete', json={'id': asset_id})
         self.assertEqual(delete_resp.status_code, 200)
         self.assertEqual(delete_resp.get_json().get('status'), 'ok')
+        self.assertGreater(int(delete_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
 
     def test_cash_asset_amount_allows_zero(self):
         add_resp = self.client.post('/api/cash_assets/add', json={

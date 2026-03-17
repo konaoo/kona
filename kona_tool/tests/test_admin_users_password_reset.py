@@ -1,7 +1,7 @@
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import unittest
 
@@ -59,7 +59,7 @@ class AdminUserPasswordResetTests(unittest.TestCase):
         app_module.db.create_refresh_token(
             user_id="u_target",
             token_hash=app_module.hash_refresh_token("refresh_token_before_reset"),
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             device_id="dev-1",
         )
 
@@ -99,7 +99,7 @@ class AdminUserPasswordResetTests(unittest.TestCase):
         app_module.db.create_refresh_token(
             user_id="u_target",
             token_hash=app_module.hash_refresh_token("refresh_token_for_revoke"),
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
             device_id="dev-1",
         )
         resp = self.client.post(

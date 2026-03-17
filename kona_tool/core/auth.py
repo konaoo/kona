@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Optional, Tuple
 
@@ -120,7 +120,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def generate_token(user_id: str, username: str) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload = {
         "user_id": user_id,
         "username": normalize_username(username),

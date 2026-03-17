@@ -23,10 +23,30 @@ from core.auth import (
     validate_password,
     verify_password,
 )
+from core.request_trace import trace_request_stage
 
 
 def _refresh_token_expiry_days() -> int:
     return int(getattr(config, "AUTH_REFRESH_TOKEN_DAYS", 365))
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_utc_datetime(value: str | datetime | None) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt_value = value
+    else:
+        try:
+            dt_value = datetime.fromisoformat(str(value))
+        except Exception:
+            return None
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=timezone.utc)
+    return dt_value.astimezone(timezone.utc)
 
 
 def _is_refresh_token_valid(token_row: dict) -> bool:
@@ -37,20 +57,17 @@ def _is_refresh_token_valid(token_row: dict) -> bool:
     expires_at = token_row.get("expires_at")
     if not expires_at:
         return False
-    try:
-        expire_dt = datetime.fromisoformat(str(expires_at))
-    except Exception:
+    expire_dt = _normalize_utc_datetime(expires_at)
+    if expire_dt is None:
         return False
-    if expire_dt.tzinfo is not None:
-        expire_dt = expire_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return expire_dt > datetime.utcnow()
+    return expire_dt > _utc_now()
 
 
 def _issue_auth_tokens(db, user_id: str, username: str, device_id: str = "") -> dict:
     access_token = generate_token(user_id, username)
     refresh_token = generate_refresh_token()
     refresh_hash = hash_refresh_token(refresh_token)
-    expires_at = datetime.utcnow() + timedelta(days=_refresh_token_expiry_days())
+    expires_at = _utc_now() + timedelta(days=_refresh_token_expiry_days())
     db.create_refresh_token(
         user_id=user_id,
         token_hash=refresh_hash,
@@ -130,7 +147,8 @@ def create_auth_blueprint(
             )
             return jsonify({"error": "请输入账号和密码"}), 400
 
-        user = db.get_user_by_username(username)
+        with trace_request_stage("auth.login.lookup_user"):
+            user = db.get_user_by_username(username)
         if not user:
             auth_audit(
                 event="auth_login",
@@ -158,7 +176,9 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": "当前账号还未完成密码初始化"}), 403
-        if not verify_password(password, str(user.get("password_hash") or "")):
+        with trace_request_stage("auth.login.verify_password"):
+            password_ok = verify_password(password, str(user.get("password_hash") or ""))
+        if not password_ok:
             auth_audit(
                 event="auth_login",
                 outcome="failed",
@@ -169,13 +189,16 @@ def create_auth_blueprint(
             return jsonify({"error": "账号或密码错误"}), 401
 
         client_ip = client_ip_getter()
-        db.update_last_login(
-            user["id"],
-            login_ip=client_ip,
-            login_region=resolve_ip_region(client_ip),
-        )
-        tokens = _issue_auth_tokens(db, user["id"], username, device_id=device_id)
-        profile = get_user_profile(db, user["id"]) or {}
+        with trace_request_stage("auth.login.update_last_login"):
+            db.update_last_login(
+                user["id"],
+                login_ip=client_ip,
+                login_region=resolve_ip_region(client_ip),
+            )
+        with trace_request_stage("auth.login.issue_tokens"):
+            tokens = _issue_auth_tokens(db, user["id"], username, device_id=device_id)
+        with trace_request_stage("auth.login.load_profile"):
+            profile = get_user_profile(db, user["id"]) or {}
         auth_audit(event="auth_login", outcome="success", username=username, reason=f"user_id={user['id']}")
         return jsonify(
             {
@@ -224,7 +247,9 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": "请填写邀请码"}), 400
-        if db.get_user_by_username(username):
+        with trace_request_stage("auth.register.lookup_user"):
+            existing_user = db.get_user_by_username(username)
+        if existing_user:
             auth_audit(
                 event="auth_register",
                 outcome="failed",
@@ -233,7 +258,8 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": "用户名已存在"}), 409
-        invite = db.get_invite_code(invite_code)
+        with trace_request_stage("auth.register.lookup_invite"):
+            invite = db.get_invite_code(invite_code)
         if not invite or invite.get("status") != "active" or invite.get("used_by_user_id"):
             auth_audit(
                 event="auth_register",
@@ -244,25 +270,27 @@ def create_auth_blueprint(
             )
             return jsonify({"error": "邀请码无效或已被使用"}), 400
 
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT COUNT(1) AS c FROM users WHERE COALESCE(password_hash, '') != ''")
-            pwd_user_count = int(cursor.fetchone()["c"] or 0)
-        finally:
-            conn.close()
+        with trace_request_stage("auth.register.first_admin_check"):
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT COUNT(1) AS c FROM users WHERE COALESCE(password_hash, '') != ''")
+                pwd_user_count = int(cursor.fetchone()["c"] or 0)
+            finally:
+                conn.close()
         is_first_password_user = pwd_user_count == 0
 
         user_id = secrets.token_hex(16)
         password_h = hash_password(password)
         try:
-            created = db.create_user(
-                username=username,
-                password_hash=password_h,
-                register_method="password_invite",
-                is_admin=is_first_password_user,
-                user_id=user_id,
-            )
+            with trace_request_stage("auth.register.create_user"):
+                created = db.create_user(
+                    username=username,
+                    password_hash=password_h,
+                    register_method="password_invite",
+                    is_admin=is_first_password_user,
+                    user_id=user_id,
+                )
         except Exception:
             auth_audit(
                 event="auth_register",
@@ -273,7 +301,8 @@ def create_auth_blueprint(
             )
             return jsonify({"error": "注册失败，请稍后重试"}), 500
 
-        consumed, reason = db.consume_invite_code(invite_code, created["id"])
+        with trace_request_stage("auth.register.consume_invite"):
+            consumed, reason = db.consume_invite_code(invite_code, created["id"])
         if not consumed:
             db.delete_user(created["id"])
             auth_audit(
@@ -286,13 +315,16 @@ def create_auth_blueprint(
             return jsonify({"error": reason or "邀请码无效或已被使用"}), 400
 
         client_ip = client_ip_getter()
-        db.update_last_login(
-            created["id"],
-            login_ip=client_ip,
-            login_region=resolve_ip_region(client_ip),
-        )
-        tokens = _issue_auth_tokens(db, created["id"], username, device_id=device_id)
-        profile = get_user_profile(db, created["id"]) or {}
+        with trace_request_stage("auth.register.update_last_login"):
+            db.update_last_login(
+                created["id"],
+                login_ip=client_ip,
+                login_region=resolve_ip_region(client_ip),
+            )
+        with trace_request_stage("auth.register.issue_tokens"):
+            tokens = _issue_auth_tokens(db, created["id"], username, device_id=device_id)
+        with trace_request_stage("auth.register.load_profile"):
+            profile = get_user_profile(db, created["id"]) or {}
         auth_audit(event="auth_register", outcome="success", username=username, reason=f"user_id={created['id']}")
         return jsonify(
             {
@@ -354,7 +386,8 @@ def create_auth_blueprint(
             )
             return jsonify({"error": "头像文件过大"}), 400
 
-        ok = db.update_user_profile(g.user_id, nickname=nickname, avatar=avatar)
+        with trace_request_stage("auth.profile.write"):
+            ok = db.update_user_profile(g.user_id, nickname=nickname, avatar=avatar)
         if not ok:
             auth_audit(
                 event="auth_profile_update",
@@ -366,7 +399,8 @@ def create_auth_blueprint(
             return jsonify({"error": "资料更新失败"}), 500
         auth_audit(event="auth_profile_update", outcome="success", username=g.username, reason=f"user_id={g.user_id}")
 
-        profile = get_user_profile(db, g.user_id) or {}
+        with trace_request_stage("auth.profile.load_profile"):
+            profile = get_user_profile(db, g.user_id) or {}
         return jsonify(profile)
 
     @bp.route("/bootstrap_credentials", methods=["POST"])
@@ -395,7 +429,8 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": msg}), 400
-        success, reason = db.bootstrap_credentials(g.user_id, username, hash_password(new_password))
+        with trace_request_stage("auth.bootstrap.write"):
+            success, reason = db.bootstrap_credentials(g.user_id, username, hash_password(new_password))
         if not success:
             auth_audit(
                 event="auth_bootstrap",
@@ -405,15 +440,19 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": reason or "初始化失败"}), 400
-        db.revoke_all_refresh_tokens(g.user_id)
+        with trace_request_stage("auth.bootstrap.revoke_refresh"):
+            db.revoke_all_refresh_tokens(g.user_id)
         client_ip = client_ip_getter()
-        db.update_last_login(
-            g.user_id,
-            login_ip=client_ip,
-            login_region=resolve_ip_region(client_ip),
-        )
-        tokens = _issue_auth_tokens(db, g.user_id, username)
-        profile = get_user_profile(db, g.user_id) or {}
+        with trace_request_stage("auth.bootstrap.update_last_login"):
+            db.update_last_login(
+                g.user_id,
+                login_ip=client_ip,
+                login_region=resolve_ip_region(client_ip),
+            )
+        with trace_request_stage("auth.bootstrap.issue_tokens"):
+            tokens = _issue_auth_tokens(db, g.user_id, username)
+        with trace_request_stage("auth.bootstrap.load_profile"):
+            profile = get_user_profile(db, g.user_id) or {}
         auth_audit(event="auth_bootstrap", outcome="success", username=username, reason=f"user_id={g.user_id}")
         return jsonify(
             {
@@ -436,10 +475,13 @@ def create_auth_blueprint(
         ok, msg = validate_password(new_password)
         if not ok:
             return jsonify({"error": msg}), 400
-        user = db.get_user_by_id(g.user_id)
+        with trace_request_stage("auth.password_change.lookup_user"):
+            user = db.get_user_by_id(g.user_id)
         if not user:
             return jsonify({"error": "用户不存在"}), 404
-        if not verify_password(old_password, str(user.get("password_hash") or "")):
+        with trace_request_stage("auth.password_change.verify_old_password"):
+            old_password_ok = verify_password(old_password, str(user.get("password_hash") or ""))
+        if not old_password_ok:
             auth_audit(
                 event="auth_password_change",
                 outcome="failed",
@@ -448,9 +490,12 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": "旧密码不正确"}), 400
-        if not db.set_user_password(g.user_id, hash_password(new_password)):
+        with trace_request_stage("auth.password_change.write"):
+            password_changed = db.set_user_password(g.user_id, hash_password(new_password))
+        if not password_changed:
             return jsonify({"error": "密码更新失败"}), 500
-        revoked = db.revoke_all_refresh_tokens(g.user_id)
+        with trace_request_stage("auth.password_change.revoke_refresh"):
+            revoked = db.revoke_all_refresh_tokens(g.user_id)
         auth_audit(
             event="auth_password_change",
             outcome="success",
@@ -468,11 +513,13 @@ def create_auth_blueprint(
         if not refresh_token:
             return jsonify({"error": "缺少刷新令牌"}), 400
         token_hash = hash_refresh_token(refresh_token)
-        token_row = db.get_refresh_token(token_hash)
+        with trace_request_stage("auth.refresh.lookup_token"):
+            token_row = db.get_refresh_token(token_hash)
         if not _is_refresh_token_valid(token_row):
             auth_audit(event="auth_refresh", outcome="failed", reason="invalid_refresh_token", level="warning")
             return jsonify({"error": "登录状态已过期，请重新登录"}), 401
-        user = db.get_user_by_id(token_row.get("user_id"))
+        with trace_request_stage("auth.refresh.lookup_user"):
+            user = db.get_user_by_id(token_row.get("user_id"))
         if not user or str(user.get("status") or "active").lower() != "active":
             auth_audit(
                 event="auth_refresh",
@@ -481,22 +528,27 @@ def create_auth_blueprint(
                 level="warning",
             )
             return jsonify({"error": "账号不可用，请重新登录"}), 403
-        db.revoke_refresh_token(token_hash)
-        db.touch_refresh_token(token_hash)
-        tokens = _issue_auth_tokens(
-            db,
-            user["id"],
-            user["username"],
-            device_id=device_id or (token_row.get("device_id") or ""),
-        )
-        db.update_last_login(user["id"])
+        with trace_request_stage("auth.refresh.revoke_old"):
+            db.revoke_refresh_token(token_hash)
+            db.touch_refresh_token(token_hash)
+        with trace_request_stage("auth.refresh.issue_tokens"):
+            tokens = _issue_auth_tokens(
+                db,
+                user["id"],
+                user["username"],
+                device_id=device_id or (token_row.get("device_id") or ""),
+            )
+        with trace_request_stage("auth.refresh.update_last_login"):
+            db.update_last_login(user["id"])
         auth_audit(event="auth_refresh", outcome="success", username=user["username"], reason=f"user_id={user['id']}")
+        with trace_request_stage("auth.refresh.load_profile"):
+            profile = get_user_profile(db, user["id"]) or {}
         return jsonify(
             {
                 "access_token": tokens["access_token"],
                 "refresh_token": tokens["refresh_token"],
                 "refresh_expires_at": tokens["refresh_expires_at"],
-                "user": get_user_profile(db, user["id"]) or {},
+                "user": profile,
             }
         )
 
@@ -507,10 +559,13 @@ def create_auth_blueprint(
         refresh_token = str(data.get("refresh_token", "")).strip()
         revoked = 0
         if refresh_token:
-            if db.revoke_refresh_token(hash_refresh_token(refresh_token)):
+            with trace_request_stage("auth.logout.revoke_refresh"):
+                revoked_one = db.revoke_refresh_token(hash_refresh_token(refresh_token))
+            if revoked_one:
                 revoked = 1
         else:
-            revoked = db.revoke_all_refresh_tokens(g.user_id)
+            with trace_request_stage("auth.logout.revoke_refresh"):
+                revoked = db.revoke_all_refresh_tokens(g.user_id)
         auth_audit(event="auth_logout", outcome="success", username=g.username, reason=f"revoked={revoked}")
         return jsonify({"status": "ok", "revoked_refresh_tokens": revoked})
 

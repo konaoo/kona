@@ -1,3 +1,25 @@
+## 2026-03-17-04
+
+### 这版一句话
+
+把 `request_id` 排障从“能查日志”继续推进到“顺手能查”，并把关键写接口和认证链路也补上阶段追踪。
+
+### 主要变化
+- [request_id_trace.py](/Users/kona/Desktop/kaka/kona_repo/scripts/request_id_trace.py) / [scripts/README.md](/Users/kona/Desktop/kaka/kona_repo/scripts/README.md)：新增一个零依赖排障脚本，输入 `request_id` 就能直接回查本地日志或 `journalctl`，把请求摘要、阶段耗时和相关日志一起捞出来，不用再手工翻整段日志。
+- [asset_account_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/asset_account_handlers.py) / [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py) / [auth_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/auth_routes.py)：给资产增删改、投资买卖改删、撤销、登录、注册、刷新、登出、改密码、资料更新这些关键写链路补上阶段追踪，后端现在能进一步看出是校验慢、查库慢、写库慢、发 token 慢，还是写完后的快照慢。
+- [core/auth.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/auth.py) / [core/db_admin_state.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_admin_state.py)：把剩余 `datetime.utcnow()` 换成明确的 UTC 时间写法，减少 Python 新版本下的弃用噪音，也避免刷新令牌过期判断继续混用 naive / aware 时间。
+- [test_asset_account_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_asset_account_api.py) / [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) / [test_auth_rate_limit.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_auth_rate_limit.py) / [test_admin_users_password_reset.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_admin_users_password_reset.py) / [请求追踪与排障手册.md](/Users/kona/Desktop/kaka/kona_repo/docs/请求追踪与排障手册.md)：补了关键写接口阶段追踪的回归断言，并把登录异常、投资页数据不对、分析页慢、sync 异常、用户说“刚刚不对”这些固定场景写成可直接照着查的剧本。
+
+### 影响范围
+- 后端资产 / 投资 / 认证关键写接口的响应头和请求摘要日志
+- 本地和线上按 `request_id` 排障的操作方式
+- 刷新令牌和认证时间处理的 UTC 口径
+
+### 验收重点
+- 关键写接口响应头里能看到 `X-Trace-Stage-Count`
+- `python3 scripts/request_id_trace.py req-xxxx` 能正确输出摘要和相关日志
+- 认证链路继续正常发 token，刷新令牌过期判断不受影响
+
 ## 2026-03-17-03
 
 ### 这版一句话

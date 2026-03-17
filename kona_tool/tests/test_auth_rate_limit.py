@@ -1,7 +1,7 @@
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import unittest
 
@@ -54,7 +54,8 @@ class AuthV2Tests(unittest.TestCase):
         self.assertIsInstance(reg_body.get("refresh_token"), str)
         self.assertFalse(bool((reg_body.get("user") or {}).get("must_change_password")))
         refresh_expires_at = datetime.fromisoformat(reg_body.get("refresh_expires_at"))
-        self.assertGreater(refresh_expires_at, datetime.utcnow() + timedelta(days=300))
+        self.assertGreater(refresh_expires_at, datetime.now(timezone.utc) + timedelta(days=300))
+        self.assertGreater(int(reg.headers.get("X-Trace-Stage-Count") or 0), 0)
 
         reg2 = self.client.post(
             "/api/auth/register",
@@ -74,6 +75,7 @@ class AuthV2Tests(unittest.TestCase):
         )
         self.assertEqual(ok_login.status_code, 200)
         self.assertIsInstance(ok_login.get_json().get("access_token"), str)
+        self.assertGreater(int(ok_login.headers.get("X-Trace-Stage-Count") or 0), 0)
 
     def test_change_password_revokes_refresh_tokens(self):
         code = self._seed_invite("INVITE2026B")
@@ -122,6 +124,7 @@ class AuthV2Tests(unittest.TestCase):
         self.assertEqual(refresh_resp.status_code, 200)
         new_refresh = refresh_resp.get_json().get("refresh_token")
         self.assertIsInstance(new_refresh, str)
+        self.assertGreater(int(refresh_resp.headers.get("X-Trace-Stage-Count") or 0), 0)
 
         logout = self.client.post(
             "/api/auth/logout",
@@ -129,6 +132,7 @@ class AuthV2Tests(unittest.TestCase):
             json={"refresh_token": new_refresh},
         )
         self.assertEqual(logout.status_code, 200)
+        self.assertGreater(int(logout.headers.get("X-Trace-Stage-Count") or 0), 0)
 
         refresh_after_logout = self.client.post(
             "/api/auth/refresh",

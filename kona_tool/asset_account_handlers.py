@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Callable
 
 from flask import g, jsonify, request
+from core.request_trace import trace_request_stage
 
 
 def create_asset_account_payload_handlers(
@@ -17,17 +18,22 @@ def create_asset_account_payload_handlers(
     def _current_user_id():
         return getattr(g, "user_id", None)
 
+    def _save_snapshot_async(user_id, stage_prefix: str) -> None:
+        with trace_request_stage(f"{stage_prefix}.snapshot"):
+            snapshot_saver_async(user_id)
+
     def _handle_asset_add(add_func, asset_type, user_id=None):
         data = request.json
 
-        if not data or 'name' not in data or 'amount' not in data:
-            logger.warning(
-                "[asset_add_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
-                asset_type,
-                user_id,
-                data,
-            )
-            return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
+        with trace_request_stage("asset.add.payload", asset_type=asset_type):
+            if not data or 'name' not in data or 'amount' not in data:
+                logger.warning(
+                    "[asset_add_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
+                    asset_type,
+                    user_id,
+                    data,
+                )
+                return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
 
         try:
             logger.info(
@@ -38,25 +44,27 @@ def create_asset_account_payload_handlers(
                 data.get('amount'),
                 data.get('curr', 'CNY'),
             )
-            amount = float(data['amount'])
-            allow_zero = asset_type == "cash asset"
-            if amount < 0 or (not allow_zero and amount <= 0):
-                logger.warning(
-                    "[asset_add_invalid_amount] type=%s user_id=%s amount=%s",
-                    asset_type,
+            with trace_request_stage("asset.add.validate", asset_type=asset_type):
+                amount = float(data['amount'])
+                allow_zero = asset_type == "cash asset"
+                if amount < 0 or (not allow_zero and amount <= 0):
+                    logger.warning(
+                        "[asset_add_invalid_amount] type=%s user_id=%s amount=%s",
+                        asset_type,
+                        user_id,
+                        data.get('amount'),
+                    )
+                    return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
+            with trace_request_stage("asset.add.write", asset_type=asset_type):
+                success = add_func(
+                    data['name'],
+                    amount,
+                    data.get('curr', 'CNY'),
                     user_id,
-                    data.get('amount'),
+                    str(data.get('icon', '') or '').strip(),
                 )
-                return jsonify({"error": "Invalid amount", "code": "INVALID_AMOUNT"}), 400
-            success = add_func(
-                data['name'],
-                amount,
-                data.get('curr', 'CNY'),
-                user_id,
-                str(data.get('icon', '') or '').strip(),
-            )
             if success:
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "asset.add")
                 logger.info("[asset_add_success] type=%s user_id=%s", asset_type, user_id)
                 return jsonify({"status": "ok"})
             logger.error("[asset_add_failed] type=%s user_id=%s", asset_type, user_id)
@@ -81,26 +89,29 @@ def create_asset_account_payload_handlers(
     def _handle_asset_delete(delete_func, asset_type, user_id=None):
         data = request.json
 
-        if not data or 'id' not in data:
-            logger.warning(
-                "[asset_delete_invalid_request] type=%s user_id=%s reason=missing_id payload=%s",
-                asset_type,
-                user_id,
-                data,
-            )
-            return jsonify({"error": "Missing id", "code": "MISSING_ID"}), 400
+        with trace_request_stage("asset.delete.payload", asset_type=asset_type):
+            if not data or 'id' not in data:
+                logger.warning(
+                    "[asset_delete_invalid_request] type=%s user_id=%s reason=missing_id payload=%s",
+                    asset_type,
+                    user_id,
+                    data,
+                )
+                return jsonify({"error": "Missing id", "code": "MISSING_ID"}), 400
 
         try:
-            asset_id = int(data['id'])
+            with trace_request_stage("asset.delete.validate", asset_type=asset_type):
+                asset_id = int(data['id'])
             logger.info(
                 "[asset_delete_request] type=%s user_id=%s id=%s",
                 asset_type,
                 user_id,
                 asset_id,
             )
-            success = delete_func(asset_id, user_id)
+            with trace_request_stage("asset.delete.write", asset_type=asset_type):
+                success = delete_func(asset_id, user_id)
             if success:
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "asset.delete")
                 logger.info(
                     "[asset_delete_success] type=%s user_id=%s id=%s",
                     asset_type,
@@ -135,28 +146,30 @@ def create_asset_account_payload_handlers(
     def _handle_asset_update(update_func, asset_type, user_id=None):
         data = request.json
 
-        if not data or 'id' not in data or 'name' not in data or 'amount' not in data:
-            logger.warning(
-                "[asset_update_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
-                asset_type,
-                user_id,
-                data,
-            )
-            return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
-
-        try:
-            asset_id = int(data['id'])
-            amount = float(data['amount'])
-            allow_zero = asset_type == "cash asset"
-            if amount < 0 or (not allow_zero and amount <= 0):
+        with trace_request_stage("asset.update.payload", asset_type=asset_type):
+            if not data or 'id' not in data or 'name' not in data or 'amount' not in data:
                 logger.warning(
-                    "[asset_update_invalid_amount] type=%s user_id=%s id=%s amount=%s",
+                    "[asset_update_invalid_request] type=%s user_id=%s reason=missing_required_fields payload=%s",
                     asset_type,
                     user_id,
-                    data.get('id'),
-                    data.get('amount'),
+                    data,
                 )
-                return jsonify({"error": "Invalid amount", "code": "INVALID_VALUE"}), 400
+                return jsonify({"error": "Missing required fields", "code": "MISSING_REQUIRED_FIELDS"}), 400
+
+        try:
+            with trace_request_stage("asset.update.validate", asset_type=asset_type):
+                asset_id = int(data['id'])
+                amount = float(data['amount'])
+                allow_zero = asset_type == "cash asset"
+                if amount < 0 or (not allow_zero and amount <= 0):
+                    logger.warning(
+                        "[asset_update_invalid_amount] type=%s user_id=%s id=%s amount=%s",
+                        asset_type,
+                        user_id,
+                        data.get('id'),
+                        data.get('amount'),
+                    )
+                    return jsonify({"error": "Invalid amount", "code": "INVALID_VALUE"}), 400
             logger.info(
                 "[asset_update_request] type=%s user_id=%s id=%s name=%s amount=%s curr=%s",
                 asset_type,
@@ -166,16 +179,17 @@ def create_asset_account_payload_handlers(
                 amount,
                 data.get('curr', 'CNY'),
             )
-            success = update_func(
-                asset_id,
-                data['name'],
-                amount,
-                data.get('curr', 'CNY'),
-                user_id,
-                str(data.get('icon', '') or '').strip(),
-            )
+            with trace_request_stage("asset.update.write", asset_type=asset_type):
+                success = update_func(
+                    asset_id,
+                    data['name'],
+                    amount,
+                    data.get('curr', 'CNY'),
+                    user_id,
+                    str(data.get('icon', '') or '').strip(),
+                )
             if success:
-                snapshot_saver_async(user_id)
+                _save_snapshot_async(user_id, "asset.update")
                 logger.info(
                     "[asset_update_success] type=%s user_id=%s id=%s",
                     asset_type,

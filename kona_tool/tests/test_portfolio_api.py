@@ -57,6 +57,7 @@ class PortfolioApiTests(unittest.TestCase):
         })
         self.assertEqual(buy_first.status_code, 200)
         self.assertEqual(buy_first.get_json().get('status'), 'ok')
+        self.assertGreater(int(buy_first.headers.get('X-Trace-Stage-Count') or 0), 0)
 
         buy_second = self.client.post('/api/portfolio/buy', json={
             'code': 'sh600000',
@@ -90,6 +91,7 @@ class PortfolioApiTests(unittest.TestCase):
         })
         self.assertEqual(modify_resp.status_code, 200)
         self.assertEqual((modify_resp.get_json() or {}).get('status'), 'ok')
+        self.assertGreater(int(modify_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
 
         list_resp = self.client.get('/api/portfolio')
         self.assertEqual(list_resp.status_code, 200)
@@ -254,6 +256,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(buy_resp.status_code, 200)
         buy_payload = buy_resp.get_json()
         self.assertEqual(buy_payload.get('status'), 'ok')
+        self.assertGreater(int(buy_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
         undo_token = buy_payload.get('undo_token')
         self.assertTrue(isinstance(undo_token, str) and len(undo_token) > 0)
 
@@ -278,6 +281,7 @@ class PortfolioApiTests(unittest.TestCase):
         undo_payload = undo_resp.get_json()
         self.assertEqual(undo_payload.get('status'), 'ok')
         self.assertEqual(undo_payload.get('code'), 'UNDO_DONE')
+        self.assertGreater(int(undo_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
 
         portfolio_resp_after_undo = self.client.get('/api/portfolio')
         self.assertEqual(portfolio_resp_after_undo.status_code, 200)
