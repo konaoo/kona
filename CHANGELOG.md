@@ -1,3 +1,24 @@
+## 2026-03-17-05
+
+### 这版一句话
+
+修掉了 Web 端现金买入老场内基金持仓时会拆成第二条记录的问题，避免同一只 ETF 被写成两条持仓。
+
+### 主要变化
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)：给 `buy_asset_with_cash` 补了“优先并到已有 legacy 持仓代码”的兼容逻辑。现在如果线上已经有像 `159655` 这种旧基金代码持仓，现金买入时不会再被写成新的 `sz159655` 持仓，而是会继续并到原来的记录里。
+- [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：把现金买入撤销链路里的 `code` 也改成跟最终写入的真实持仓代码一致，避免后面 undo 还在拿新代码找旧持仓。
+- [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)：补了一条回归测试，专门覆盖“已有 `159655/fund` 老持仓时，再现金买入 `159655` 应该继续并仓，而不是长出 `sz159655`”。
+
+### 影响范围
+- Web / App 的现金账户买入资产接口
+- 已有 legacy 场内基金代码持仓的继续加仓行为
+- 投资撤销时对这类兼容持仓的还原逻辑
+
+### 验收重点
+- 线上已有 `159655` 这类旧基金持仓时，再买入不会再长出第二条 `sz159655`
+- `/api/portfolio` 返回里只保留原持仓代码，数量正确累加
+- `test_portfolio_api` 继续全绿，普通现金买入和撤销不受影响
+
 ## 2026-03-17-04
 
 ### 这版一句话

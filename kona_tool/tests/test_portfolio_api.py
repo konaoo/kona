@@ -355,6 +355,59 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('qty') or 0.0), 81.0044, places=4)
 
+    def test_buy_with_cash_merges_legacy_numeric_exchange_fund_position(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('159655', '标普ETF', 8400.0, 1.783, 'CNY', 0.0, 'fund', ''),
+        )
+        conn.commit()
+        conn.close()
+
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '浦发银行',
+            'amount': 50000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': '159655',
+            'name': '标普ETF',
+            'price': 1.72,
+            'qty': 1600.0,
+            'curr': 'CNY',
+            'asset_type': 'fund',
+            'cash_asset_id': cash_id,
+            'request_id': 'req-buy-legacy-exchange-fund',
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+        self.assertEqual((buy_resp.get_json() or {}).get('status'), 'ok')
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        legacy_target = next((item for item in portfolio_items if item.get('code') == '159655'), None)
+        self.assertIsNotNone(legacy_target)
+        self.assertAlmostEqual(float(legacy_target.get('qty') or 0.0), 10000.0, places=4)
+        self.assertFalse(any(item.get('code') == 'sz159655' for item in portfolio_items))
+
+        tx_resp = self.client.get('/api/transactions?limit=20')
+        self.assertEqual(tx_resp.status_code, 200)
+        tx_items = tx_resp.get_json() or []
+        target_tx = next((item for item in tx_items if item.get('name') == '标普ETF'), None)
+        self.assertIsNotNone(target_tx)
+        self.assertEqual(target_tx.get('code'), '159655')
+
     def test_snapshot_trigger_returns_ok_when_take_snapshot_succeeds(self):
         with patch.object(app_module, 'take_snapshot', return_value=True) as mocked:
             resp = self.client.post('/api/snapshot/trigger', json={})

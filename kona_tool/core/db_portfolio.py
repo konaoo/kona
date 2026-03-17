@@ -27,6 +27,49 @@ DEFAULT_MARKETS = ("a", "hk", "us", "fund")
 class PortfolioDatabaseMixin:
     """给 DatabaseManager 提供持仓、交易与组合兼容迁移相关方法。"""
 
+    def _fetch_portfolio_row_by_code(self, cursor, code: str, user_id: str = None):
+        if user_id:
+            cursor.execute(
+                """
+                SELECT name, qty, price, curr, adjustment, asset_type
+                FROM portfolio
+                WHERE code = ? AND user_id = ?
+                """,
+                (code, user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT name, qty, price, curr, adjustment, asset_type
+                FROM portfolio
+                WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                """,
+                (code,),
+            )
+        return cursor.fetchone()
+
+    def _resolve_existing_portfolio_code(
+        self,
+        cursor,
+        code: str,
+        user_id: str = None,
+        legacy_codes: Optional[List[str]] = None,
+    ) -> tuple[str, Any]:
+        candidates: List[str] = []
+        seen: set[str] = set()
+        for raw in [code, *(legacy_codes or [])]:
+            candidate = str(raw or "").strip()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            candidates.append(candidate)
+
+        for candidate in candidates:
+            row = self._fetch_portfolio_row_by_code(cursor, candidate, user_id)
+            if row:
+                return candidate, row
+        return str(code or "").strip(), None
+
     def _ensure_portfolio_user_scoped_unique(self, cursor) -> None:
         """将 portfolio 的全局 code 唯一约束迁移为 (code, user_id) 唯一约束。"""
         cursor.execute(
@@ -974,6 +1017,7 @@ class PortfolioDatabaseMixin:
         cash_asset_id: int,
         cash_deduct_amount: float,
         user_id: str = None,
+        legacy_codes: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """使用现金账户买入。"""
         conn = self.get_connection()
@@ -1040,25 +1084,12 @@ class PortfolioDatabaseMixin:
             if cursor.rowcount <= 0:
                 return {"ok": False, "code": "CASH_ASSET_UPDATE_FAILED", "error": "Failed to update cash asset"}
 
-            if user_id:
-                cursor.execute(
-                    """
-                    SELECT name, qty, price, curr, adjustment, asset_type
-                    FROM portfolio
-                    WHERE code = ? AND user_id = ?
-                    """,
-                    (code, user_id),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT name, qty, price, curr, adjustment, asset_type
-                    FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
-                    """,
-                    (code,),
-                )
-            row = cursor.fetchone()
+            target_code, row = self._resolve_existing_portfolio_code(
+                cursor,
+                code,
+                user_id,
+                legacy_codes=legacy_codes,
+            )
 
             before_asset = None
             if row:
@@ -1069,7 +1100,7 @@ class PortfolioDatabaseMixin:
                 old_curr = row["curr"]
                 old_asset_type = row["asset_type"] if "asset_type" in row.keys() else "a"
                 before_asset = {
-                    "code": code,
+                    "code": target_code,
                     "name": old_name,
                     "qty": old_qty,
                     "price": old_price,
@@ -1086,7 +1117,7 @@ class PortfolioDatabaseMixin:
                         UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE code = ? AND user_id = ?
                         """,
-                        (new_qty, new_price, code, user_id),
+                        (new_qty, new_price, target_code, user_id),
                     )
                 else:
                     cursor.execute(
@@ -1094,10 +1125,10 @@ class PortfolioDatabaseMixin:
                         UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
                         """,
-                        (new_qty, new_price, code),
+                        (new_qty, new_price, target_code),
                     )
                 after_asset = {
-                    "code": code,
+                    "code": target_code,
                     "name": old_name,
                     "qty": float(new_qty),
                     "price": float(new_price),
@@ -1110,13 +1141,14 @@ class PortfolioDatabaseMixin:
                 tx_name = (name or code).strip() or code
                 next_asset_type = (asset_type or "a").strip() or "a"
                 next_curr = (curr or "CNY").strip() or "CNY"
+                target_code = str(code or "").strip()
                 if user_id:
                     cursor.execute(
                         """
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
                         VALUES (?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
                         """,
-                        (code, tx_name, qty, price, next_curr, next_asset_type, user_id),
+                        (target_code, tx_name, qty, price, next_curr, next_asset_type, user_id),
                     )
                 else:
                     cursor.execute(
@@ -1124,10 +1156,10 @@ class PortfolioDatabaseMixin:
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
                         VALUES (?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
                         """,
-                        (code, tx_name, qty, price, next_curr, next_asset_type),
+                        (target_code, tx_name, qty, price, next_curr, next_asset_type),
                     )
                 after_asset = {
-                    "code": code,
+                    "code": target_code,
                     "name": tx_name,
                     "qty": float(qty),
                     "price": float(price),
@@ -1143,7 +1175,7 @@ class PortfolioDatabaseMixin:
                 """,
                 (
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    code,
+                    target_code,
                     tx_name,
                     price,
                     qty,

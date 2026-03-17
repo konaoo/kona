@@ -442,6 +442,7 @@ def create_portfolio_payload_handlers(
         data = request.json
         user_id = g.user_id
         request_id = str((data or {}).get('request_id', '')).strip()
+        raw_code = str((data or {}).get('code', '')).strip()
 
         required = ('code', 'price', 'qty', 'cash_asset_id')
         if not data or any(field not in data for field in required):
@@ -523,11 +524,17 @@ def create_portfolio_payload_handlers(
                 cash_asset_id=cash_asset_id,
                 cash_deduct_amount=cash_deduct_amount,
                 user_id=user_id,
+                legacy_codes=[raw_code] if raw_code else None,
             )
         if detail and detail.get('ok'):
+            operation_code = (
+                ((detail.get('after_asset') or {}).get('code'))
+                or ((detail.get('before_asset') or {}).get('code'))
+                or code
+            )
             operation = {
                 'op_type': 'buy_with_cash',
-                'code': code,
+                'code': operation_code,
                 'before_asset': detail.get('before_asset'),
                 'tx_id': detail.get('tx_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
