@@ -330,6 +330,8 @@ def create_app_components(
         db=db,
         logger=logger,
         portfolio_read_service=portfolio_read_service,
+        rates_getter=wiring.forex_rates_getter,
+        convert_amount=portfolio_runtime.convert_amount,
         snapshot_saver_async=lambda user_id: snapshot_runtime.save_snapshot_for_user_async(user_id),
         portfolio_identity_normalizer=portfolio_runtime.normalize_portfolio_identity,
         idempotency_begin=portfolio_runtime.idempotency_begin,

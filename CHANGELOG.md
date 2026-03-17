@@ -1,3 +1,47 @@
+## 2026-03-17-08
+
+### 这版一句话
+
+把 Web 端 App 登录页、App 主壳子和浏览器标签页图标统一换成了正式品牌 logo，不再继续显示默认占位图标。
+
+### 主要变化
+- [AppShell.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/layouts/AppShell.vue) / [homepage-original.css](/Users/kona/Desktop/kaka/kona_repo/web/src/styles/homepage-original.css)：把 App 主壳子侧边栏顶部的手写折线图标替换成正式品牌图，并保留原有尺寸和阴影，不改周边布局。
+- [AppLoginPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppLoginPage.vue)：把登录页顶部的临时折线图标替换成正式品牌图，和首页、下载页现有品牌资源统一。
+- [web/index.html](/Users/kona/Desktop/kaka/kona_repo/web/index.html) / [web/app/index.html](/Users/kona/Desktop/kaka/kona_repo/web/app/index.html) / [web/admin/index.html](/Users/kona/Desktop/kaka/kona_repo/web/admin/index.html)：把浏览器标签页 favicon 从 Vite 默认的 `vite.svg` 改成项目自己的 [kaka-logo.png](/Users/kona/Desktop/kaka/kona_repo/web/public/assets/kaka-logo.png)。
+
+### 影响范围
+- App 登录页顶部品牌图
+- App 主壳子侧边栏品牌图
+- Portal / App / Admin 三个入口页的浏览器标签页图标
+
+### 验收重点
+- 登录页和 App 主壳子显示正式品牌图，不再出现临时折线图标
+- 浏览器标签页不再显示紫黄色 Vite 默认图标
+- `npm run build` 继续通过
+
+## 2026-03-17-07
+
+### 这版一句话
+
+修掉了美股用人民币账户买入会报 500 的问题，并把 Web 端常见英文错误提示统一翻成了中文。
+
+### 主要变化
+- [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py) / [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：把跨币种买入卖出需要的 `rates_getter` 和 `convert_amount` 正式注入到投资处理链里，修掉了美股配人民币现金账户时会因为依赖缺失直接抛 500 的问题。
+- [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)：补了一条“美股 + CNY 现金账户”回归测试，防止后面再把跨币种现金买入链路写坏。
+- [errorText.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/errorText.ts) / [http.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/shared/http.ts)：新增统一错误翻译入口，`Request failed: 500`、`Missing required fields`、`Insufficient cash balance`、`Failed to fetch` 这类后端英文和网络英文，现在会先翻成中文再给页面使用。
+- [InvestTradeModal.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/components/business/InvestTradeModal.vue) / [AppLoginPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppLoginPage.vue) / [AppMePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppMePage.vue) / [AppProfilePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppProfilePage.vue)：把交易弹窗、登录页、个人中心、资料页里会直接吃原始错误文案的地方切到统一中文错误解析，避免继续漏出英文提示。
+- [errorText.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/errorText.test.ts)：补了 Web 单测，保证状态码兜底和常见英文错误翻译继续有效。
+
+### 影响范围
+- Web 端跨币种现金买入链路
+- Web 端通用错误提示文案
+- 登录页、投资弹窗、个人中心、资料页的错误展示
+
+### 验收重点
+- 美股配人民币账户买入不再 500
+- `Request failed: 500`、`Missing required fields`、`Failed to fetch` 这类提示改为中文
+- `test_portfolio_api`、`errorText.test.ts`、`httpRequestTrace.test.ts` 和 `npm run build` 继续通过
+
 ## 2026-03-17-06
 
 ### 这版一句话

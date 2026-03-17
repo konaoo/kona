@@ -363,6 +363,45 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIsNotNone(undo_cash_item)
         self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 2000.0)
 
+    def test_buy_with_cash_supports_cross_currency_cash_account(self):
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '中国银行',
+            'amount': 20000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': 'AAPL',
+            'name': '苹果',
+            'price': 252.82,
+            'qty': 1.0,
+            'curr': 'USD',
+            'asset_type': 'us',
+            'cash_asset_id': cash_id,
+            'request_id': 'req-buy-with-cny-cash-us-stock',
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+        self.assertEqual((buy_resp.get_json() or {}).get('status'), 'ok')
+        self.assertGreater(int(buy_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        self.assertTrue(any(item.get('name') == '苹果' for item in portfolio_items))
+
+        cash_after_buy_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_after_buy_resp.status_code, 200)
+        cash_after_buy = cash_after_buy_resp.get_json() or []
+        buy_cash_item = next((item for item in cash_after_buy if item.get('id') == cash_id), None)
+        self.assertIsNotNone(buy_cash_item)
+        self.assertLess(float(buy_cash_item.get('amount', 0)), 20000.0)
+
     def test_buy_with_cash_insufficient_balance_returns_400(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={
             'name': '微信',

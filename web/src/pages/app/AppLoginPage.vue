@@ -4,11 +4,7 @@
       <!-- LEFT: FORM PANEL -->
       <div class="form-panel">
         <RouterLink to="/" class="panel-logo">
-          <div class="logo-icon">
-            <svg width="16" height="12" viewBox="0 0 18 14" fill="none">
-              <polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
+          <img class="logo-icon" src="/assets/kaka-logo.png" alt="咔咔记账 logo" />
           <div>
             <div class="logo-name">咔咔记账</div>
             <div class="logo-tag">GLOBAL ASSET DESK</div>
@@ -197,6 +193,7 @@ import { computed, onMounted, ref, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useKonaStore } from '../../stores/composables'
 import { api } from '../../shared/http'
+import { resolveErrorMessage } from '../../shared/errorText'
 import { useWebTheme } from '../../shared/webTheme'
 
 const REMEMBER_ENABLED_KEY = 'kona_web_remember_enabled'
@@ -346,7 +343,7 @@ async function submit() {
     }
     await router.push('/app/home')
   } catch (e: any) {
-    error.value = e.message || '操作失败，请重试'
+    error.value = resolveErrorMessage(e, '操作失败，请重试')
   } finally {
     submitting.value = false
   }
@@ -478,9 +475,10 @@ async function fetchWebConfig() {
 .panel-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 20px; position: relative; z-index: 1; }
 .logo-icon {
   width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg, #ff7b67, #f24688 55%, #f0279e);
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 16px rgba(240,39,158,0.26); flex-shrink: 0;
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(240,39,158,0.26);
+  flex-shrink: 0;
 }
 .logo-name { font-size: 15px; font-weight: 700; color: var(--auth-text-main); line-height: 1.1; }
 .logo-tag  { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .12em; color: var(--auth-text-muted); }

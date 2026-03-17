@@ -82,6 +82,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import LegacyAppShell from '../../layouts/LegacyAppShell.vue'
 import { api } from '../../shared/http'
+import { resolveErrorMessage } from '../../shared/errorText'
 import { toAvatarSrc } from '../../shared/avatar'
 import { newRequestId } from '../../shared/requestTrace'
 import { useKonaStore } from '../../stores/composables'
@@ -176,11 +177,11 @@ async function restoreData(event: Event) {
       body: formData,
     })
     const payload = await resp.json()
-    if (!resp.ok) throw new Error(String(payload.error || '恢复失败'))
+    if (!resp.ok) throw new Error(resolveErrorMessage({ status: resp.status, payload }, '恢复失败'))
     alert('数据恢复成功，页面将刷新。')
     window.location.reload()
   } catch (e) {
-    alert(e instanceof Error ? e.message : '恢复失败')
+    alert(resolveErrorMessage(e, '恢复失败'))
   } finally {
     input.value = ''
   }
@@ -258,7 +259,7 @@ async function saveProfile() {
     message.value = '保存成功'
     ok.value = true
   } catch (e) {
-    message.value = e instanceof Error ? e.message : '保存失败'
+    message.value = resolveErrorMessage(e, '保存失败')
     ok.value = false
   }
 }

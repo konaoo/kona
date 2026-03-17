@@ -118,6 +118,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as XLSX from 'xlsx'
+import { resolveErrorMessage } from '../../shared/errorText'
 import AppShell from '../../layouts/AppShell.vue'
 import { api } from '../../shared/http'
 import { toAvatarSrc } from '../../shared/avatar'
@@ -230,7 +231,7 @@ async function saveProfile() {
     message.value = '保存成功'
     ok.value = true
   } catch (e) {
-    message.value = e instanceof Error ? e.message : '保存失败'
+    message.value = resolveErrorMessage(e, '保存失败')
     ok.value = false
   }
 }

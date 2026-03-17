@@ -73,10 +73,8 @@ a {
   height: 34px;
   border-radius: 10px;
   flex-shrink: 0;
-  background: linear-gradient(135deg,#ff7b67,#f24688 55%,#f0279e);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  object-fit: cover;
   box-shadow: 0 4px 12px rgba(240,39,158,0.25);
 }
 .s-logo-name {

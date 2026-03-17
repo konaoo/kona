@@ -22,6 +22,8 @@ def create_portfolio_payload_handlers(
     db,
     logger,
     portfolio_read_service,
+    rates_getter: Callable[[], dict],
+    convert_amount: Callable[[float, str, str, dict], float],
     snapshot_saver_async: Callable[[str | None], None],
     portfolio_identity_normalizer: Callable[[str, str, str], dict],
     idempotency_begin: Callable[[str, str, str], tuple[bool, dict, int]],

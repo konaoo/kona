@@ -4,6 +4,7 @@ import {
   getResponseRequestId,
   newRequestId,
 } from './requestTrace'
+import { resolveErrorMessage } from './errorText'
 
 export type ApiError = Error & { status?: number; payload?: unknown; requestId?: string }
 let refreshInflight: Promise<boolean> | null = null
@@ -76,7 +77,14 @@ export async function apiRequest<T>(
     }
   }
 
-  const resp = await fetch(path, { ...init, headers })
+  let resp: Response
+  try {
+    resp = await fetch(path, { ...init, headers })
+  } catch (error) {
+    const err = new Error(resolveErrorMessage(error, '网络连接失败，请检查网络后重试')) as ApiError
+    err.requestId = requestId
+    throw err
+  }
   const responseRequestId = getResponseRequestId(resp, requestId)
   if (resp.status === 401 && auth && retry) {
     const ok = await refreshTokenIfNeeded(requestId)
@@ -88,7 +96,13 @@ export async function apiRequest<T>(
   const payload = await parseJson(resp)
   if (!resp.ok) {
     const err = new Error(
-      String((payload as Record<string, unknown>)?.error || `Request failed: ${resp.status}`),
+      resolveErrorMessage(
+        {
+          status: resp.status,
+          payload,
+        },
+        `请求失败（${resp.status}）`,
+      ),
     ) as ApiError
     err.status = resp.status
     err.payload = payload

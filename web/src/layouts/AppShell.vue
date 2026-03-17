@@ -77,11 +77,7 @@ async function handleLogout() {
     <!-- Unified Sidebar -->
     <aside class="sidebar">
       <router-link to="/app/home" class="sidebar-logo">
-        <div class="s-logo-icon">
-          <svg width="16" height="12" viewBox="0 0 18 14" fill="none">
-            <polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
+        <img class="s-logo-icon" src="/assets/kaka-logo.png" alt="咔咔记账 logo" />
         <div>
           <div class="s-logo-name">咔咔记账</div>
           <div class="s-logo-tag">GLOBAL ASSET DESK</div>
