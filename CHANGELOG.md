@@ -1,3 +1,21 @@
+## 2026-03-17-03
+
+### 这版一句话
+
+把已经废弃的 `docs/plans` 正式从仓库里删除，避免后面继续把历史草稿当成还在维护的正式文档。
+
+### 主要变化
+- 删除 [docs/plans/2026-02-03-baseline-tests-implementation.md](/Users/kona/Desktop/kaka/kona_repo/docs/plans/2026-02-03-baseline-tests-implementation.md) / [docs/plans/2026-02-03-performance-stability-design.md](/Users/kona/Desktop/kaka/kona_repo/docs/plans/2026-02-03-performance-stability-design.md) / [docs/plans/2026-02-03-swr-performance-implementation.md](/Users/kona/Desktop/kaka/kona_repo/docs/plans/2026-02-03-swr-performance-implementation.md) / [docs/plans/手机客户端访问改造成类似Flutter体验方案.md](/Users/kona/Desktop/kaka/kona_repo/docs/plans/手机客户端访问改造成类似Flutter体验方案.md)，把这组已经确认废弃的计划草稿正式从 Git 里移除。
+- 这次没有新增功能和代码逻辑改动，只是把仓库里的废弃文档状态收口，避免它们反复出现在工作区脏改动里。
+
+### 影响范围
+- 仓库里的历史计划草稿目录
+- 工作区状态判断和后续文档维护边界
+
+### 验收重点
+- `docs/plans` 不再作为 Git 跟踪目录存在
+- 仓库里没有正式文档继续引用这组废弃计划文件
+
 ## 2026-03-17-02
 
 ### 这版一句话
