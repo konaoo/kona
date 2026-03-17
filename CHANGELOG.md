@@ -298,7 +298,7 @@
 ### 主要变化
 - [app_investment_write_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_investment_write_state.dart) / [app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart)：把新增持仓、买入、卖出、手动调整、删除持仓，以及带现金账户的买卖和乐观更新回滚，从 `AppState` 拆成独立投资写操作层，`AppState` 继续保留公开接口不变。
 - [app_investment_write_state_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_investment_write_state_test.dart) / [app_state_smoke_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_smoke_test.dart)：补充投资写操作单测，并继续用现有 smoke test 兜住 `AppState` 对外调用方式不变。
-- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md) / [AppState职责清单.md](/Users/kona/Desktop/kaka/AppState职责清单.md) / [AppState方法分组清单.md](/Users/kona/Desktop/kaka/AppState方法分组清单.md)：更新 Flutter 状态拆分地图和职责说明，明确投资写操作的新落点。
+- [README_页面与状态地图.md](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/README_页面与状态地图.md) / [AppState职责清单.md](/Users/kona/Desktop/kaka/工作笔记/AppState职责清单.md) / [AppState方法分组清单.md](/Users/kona/Desktop/kaka/工作笔记/AppState方法分组清单.md)：更新 Flutter 状态拆分地图和职责说明，明确投资写操作的新落点。
 
 ### 影响范围
 - Flutter 投资资产新增、加仓、卖出、手动调整、删除
