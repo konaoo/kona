@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import '../services/async_flow_logger.dart';
 import '../services/secure_storage_service.dart';
+import '../utils/error_text.dart';
 import 'app_assets_state.dart';
 import 'app_auth_state.dart';
 import 'app_market_state.dart';
@@ -163,7 +164,11 @@ class AppSessionState {
       } else if (error.statusCode == 401) {
         return '用户名/密码错误，请重试';
       }
-      return raw.isNotEmpty ? raw : (isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试');
+      return resolveApiErrorText(
+        message: raw,
+        statusCode: error.statusCode,
+        fallback: isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试',
+      );
     }
     final raw = error.toString().trim();
     if (raw.isNotEmpty) {
@@ -174,7 +179,10 @@ class AppSessionState {
       if (_isWebStorageRuntimeError(lower)) {
         return '浏览器存储环境异常，请刷新页面或切换 HTTPS 后重试';
       }
-      return normalized;
+      return translateErrorText(
+        normalized,
+        fallback: isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试',
+      );
     }
     return isRegister ? '注册失败，请稍后重试' : '登录失败，请稍后重试';
   }

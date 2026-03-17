@@ -1,3 +1,25 @@
+## 2026-03-17-09
+
+### 这版一句话
+
+把 Flutter 端常见英文后端报错统一翻成中文，避免买卖弹窗、登录提示继续把英文原文直接展示给用户。
+
+### 主要变化
+- [error_text.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/utils/error_text.dart)：新增 Flutter 端统一错误翻译入口，把 `Request failed: 500`、`Failed to fetch`、`Insufficient cash balance`、`Failed to buy asset with cash` 这类常见英文状态码和后端错误统一翻成中文。
+- [api_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/api_service.dart)：把 HTTP 响应错误、网络异常和 `AssetActionResult` 失败结果统一接到错误翻译入口，后面投资弹窗、资产弹窗这类直接吃 `result.message` 的页面会一起受益，不再原样漏英文。
+- [app_session_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_session_state.dart)：保留登录 401 的“用户名/密码错误”特殊提示，同时把其他英文认证异常也统一翻成中文，避免登录页继续直接显示原始英文。
+- [error_text_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/error_text_test.dart) / [app_state_auth_resilience_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/app_state_auth_resilience_test.dart)：补了通用错误翻译测试和登录英文网络异常回归测试。
+
+### 影响范围
+- Flutter 端登录页错误提示
+- Flutter 端投资买卖弹窗、资产弹窗的失败提示
+- Flutter 端通用 `ApiService` 错误文案口径
+
+### 验收重点
+- App 端不再直接显示 `Request failed: 500`、`Failed to fetch`、`Failed to buy asset with cash` 这类英文提示
+- `flutter test test/error_text_test.dart test/app_state_auth_resilience_test.dart test/invest_trade_dialog_test.dart` 继续通过
+- `flutter analyze --no-fatal-infos --no-fatal-warnings` 继续全绿
+
 ## 2026-03-17-08
 
 ### 这版一句话

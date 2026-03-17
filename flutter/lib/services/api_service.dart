@@ -7,6 +7,7 @@ import '../config/api_config.dart';
 import '../models/app_version.dart';
 import '../models/asset_action_result.dart';
 import 'secure_storage_service.dart';
+import '../utils/error_text.dart';
 import '../utils/network_error_stub.dart'
     if (dart.library.io) '../utils/network_error_io.dart';
 
@@ -118,10 +119,7 @@ class ApiService {
       final response = await _client
           .post(
             buildApiUri(ApiConfig.refresh),
-            headers: _buildHeaders(
-              requestId: requestId,
-              includeAuth: false,
-            ),
+            headers: _buildHeaders(requestId: requestId, includeAuth: false),
             body: jsonEncode({'refresh_token': refreshToken}),
           )
           .timeout(const Duration(seconds: ApiConfig.timeout));
@@ -203,12 +201,18 @@ class ApiService {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
         final err = decoded['error'] ?? decoded['message'];
-        if (err is String && err.trim().isNotEmpty) {
-          return err.trim();
-        }
+        return resolveApiErrorText(
+          code: decoded['code']?.toString(),
+          message: err?.toString(),
+          statusCode: response.statusCode,
+          fallback: '请求失败: ${response.statusCode}',
+        );
       }
     } catch (_) {}
-    return '请求失败: ${response.statusCode}';
+    return resolveApiErrorText(
+      statusCode: response.statusCode,
+      fallback: '请求失败: ${response.statusCode}',
+    );
   }
 
   bool _isRetryableError(Object error) {
@@ -237,7 +241,7 @@ class ApiService {
     if (isSocketLikeError(error) || error is http.ClientException) {
       return ApiException('网络连接异常，请检查网络后重试');
     }
-    return ApiException('网络连接失败: $error');
+    return ApiException(translateErrorText(error, fallback: '网络连接失败，请检查网络后重试'));
   }
 
   @visibleForTesting
@@ -417,7 +421,11 @@ class ApiService {
   }) {
     if (error is ApiException) {
       return AssetActionResult.failure(
-        error.message,
+        resolveApiErrorText(
+          message: error.message,
+          statusCode: error.statusCode,
+          fallback: fallback,
+        ),
         data: {if (error.statusCode != null) 'status_code': error.statusCode},
       );
     }
@@ -468,8 +476,11 @@ class ApiService {
     if (data.isEmpty) return const AssetActionResult.success();
     final status = data['status']?.toString().trim();
     if (status == 'ok') return AssetActionResult(ok: true, data: data);
-    final error = data['error']?.toString().trim();
-    final message = (error != null && error.isNotEmpty) ? error : '操作失败，请稍后重试';
+    final message = resolveApiErrorText(
+      code: data['code']?.toString(),
+      message: data['error']?.toString(),
+      fallback: '操作失败，请稍后重试',
+    );
     return AssetActionResult.failure(message, data: data);
   }
 

@@ -68,6 +68,20 @@ void main() {
     expect(appState.authErrorMessage, '浏览器存储环境异常，请刷新页面或切换 HTTPS 后重试');
   });
 
+  test('login hides raw English network error', () async {
+    final appState = AppState(
+      tokenLoader: () async => null,
+      loginHandler: ({required username, required password}) async {
+        throw Exception('Failed to fetch');
+      },
+    );
+
+    final ok = await appState.login(username: 'kona', password: 'pw');
+
+    expect(ok, isFalse);
+    expect(appState.authErrorMessage, '网络连接失败，请检查网络后重试');
+  });
+
   test('auth expired callback clears session immediately', () async {
     final appState = AppState(tokenLoader: () async => null);
     await Future<void>.delayed(const Duration(milliseconds: 30));
