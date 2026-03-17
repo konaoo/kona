@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict
 
 from flask import g, request
 
+from core.request_trace import trace_request_stage
 from sync_contract import QUOTE_POLICY_DEFAULT, SYNC_BOOTSTRAP_DOMAINS
 
 
@@ -55,27 +56,28 @@ def create_sync_payload_handlers(
         with_portfolio_metrics: bool = False,
         now_utc: datetime | None = None,
     ) -> Any:
-        if domain == "portfolio":
-            if with_portfolio_metrics and portfolio_metrics_builder is not None:
-                return portfolio_metrics_builder(user_id=user_id, now_utc=now_utc)
-            return db.get_portfolio(user_id=user_id)
-        if domain == "cash_assets":
-            return db.get_cash_assets(user_id=user_id)
-        if domain == "other_assets":
-            return db.get_other_assets(user_id=user_id)
-        if domain == "liabilities":
-            return db.get_liabilities(user_id=user_id)
-        if domain == "history":
-            return db.get_history(365, user_id=user_id)
-        if domain == "overview_all":
-            return {
-                "day": db.get_pnl_overview("day", user_id),
-                "month": db.get_pnl_overview("month", user_id),
-                "year": db.get_pnl_overview("year", user_id),
-                "all": db.get_pnl_overview("all", user_id),
-            }
-        if domain == "rates":
-            return rates_getter()
+        with trace_request_stage(f"sync.domain.{domain}"):
+            if domain == "portfolio":
+                if with_portfolio_metrics and portfolio_metrics_builder is not None:
+                    return portfolio_metrics_builder(user_id=user_id, now_utc=now_utc)
+                return db.get_portfolio(user_id=user_id)
+            if domain == "cash_assets":
+                return db.get_cash_assets(user_id=user_id)
+            if domain == "other_assets":
+                return db.get_other_assets(user_id=user_id)
+            if domain == "liabilities":
+                return db.get_liabilities(user_id=user_id)
+            if domain == "history":
+                return db.get_history(365, user_id=user_id)
+            if domain == "overview_all":
+                return {
+                    "day": db.get_pnl_overview("day", user_id),
+                    "month": db.get_pnl_overview("month", user_id),
+                    "year": db.get_pnl_overview("year", user_id),
+                    "all": db.get_pnl_overview("all", user_id),
+                }
+            if domain == "rates":
+                return rates_getter()
         return None
 
     def build_sync_bootstrap_payload() -> Dict[str, Any]:
@@ -87,9 +89,11 @@ def create_sync_payload_handlers(
 
         user_id = getattr(g, "user_id", None)
         now_utc = datetime.now(timezone.utc)
-        rates = rates_getter()
+        with trace_request_stage("sync.rates"):
+            rates = rates_getter()
 
-        versions = db.get_sync_versions(user_id=user_id)
+        with trace_request_stage("sync.versions"):
+            versions = db.get_sync_versions(user_id=user_id)
         versions["rates"] = _sync_rates_version(rates)
 
         changed: list[str] = []
@@ -110,7 +114,8 @@ def create_sync_payload_handlers(
                     now_utc=now_utc,
                 )
 
-        market_payload = market_status_refresh_getter(now_utc=now_utc, force_refresh=True)
+        with trace_request_stage("sync.market_status"):
+            market_payload = market_status_refresh_getter(now_utc=now_utc, force_refresh=True)
         markets = market_payload.get("markets", {})
         return {
             "server_time": now_utc.isoformat(),

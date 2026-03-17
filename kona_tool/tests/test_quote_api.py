@@ -51,6 +51,7 @@ class QuoteApiTests(unittest.TestCase):
             resp = self.client.get('/api/rates')
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json().get('USD'), 7.0)
+            self.assertGreater(int(resp.headers.get('X-Trace-Stage-Count', '0')), 0)
 
     def test_price_mocked(self):
         with patch.object(app_module, 'get_price', return_value=(10, 9, 0, 0)):
@@ -73,6 +74,7 @@ class QuoteApiTests(unittest.TestCase):
             data = resp.get_json()
             self.assertIn('sh600000', data)
             self.assertEqual(data['sh600000']['price'], 10)
+            self.assertGreater(int(resp.headers.get('X-Trace-Stage-Count', '0')), 0)
 
     def test_prices_batch_merges_us_extended_quote(self):
         with patch.object(app_module, 'batch_get_prices', return_value={'AAPL': (10, 9, 1, 11.1)}):

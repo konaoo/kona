@@ -49,6 +49,7 @@ core/
 ├─ db_analysis.py       # 分析概览 / 收益日历 / 排行
 ├─ db_maintenance.py    # 休市日清理 / 快照修复
 ├─ db_users.py          # 用户查询 / 登录活跃打点 / 密码初始化 / 用户表兼容迁移 / 数据重绑
+├─ db_schema.py         # 数据库建表 / 兼容补列 / 基础索引
 ├─ db.py                # 数据库访问与大量业务口径
 ├─ email.py             # 邮件相关
 ├─ fund.py              # 基金取价
@@ -199,6 +200,7 @@ core/
 
 现在可以按这个理解：
 
+- `db_schema.py`：负责数据库结构初始化和兼容补齐
 - `db*.py`：负责数据访问
 - `*_read_service.py`：负责读模型组装
 - `portfolio_metrics.py`：负责实时持仓统一指标口径
@@ -305,6 +307,20 @@ core/
 - `analysis.rank.assemble`
 
 以后查线上慢请求、偶发超时、某个用户说“今天特别卡”的问题，会比以前更容易分清到底慢在哪一段。
+
+这轮又往前补到了更多高频接口：
+
+- `sync/bootstrap`
+- `market/status`
+- `market/indices`
+- `price`
+- `prices/batch`
+- `rates`
+- `search`
+
+也就是说：
+
+现在不只是投资页和分析页读链路能看阶段耗时，行情和同步这类高频链路也能更快定位慢点。
 
 ---
 

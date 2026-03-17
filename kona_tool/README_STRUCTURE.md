@@ -182,6 +182,7 @@ kona_tool/
 
 这轮又继续往前收了一层：
 
+- `core/db_schema.py`
 - `core/portfolio_read_service.py`
 - `core/history_read_service.py`
 - `core/analysis_read_service.py`
@@ -189,11 +190,16 @@ kona_tool/
 
 现在更推荐这样理解：
 
+- `db_schema.py` 负责数据库结构初始化和兼容补齐
 - `db*.py` 负责把数据查出来、写进去
 - `*_read_service.py` 负责把读侧数据拼成页面和 API 真正要的结构
 - `portfolio_metrics.py` 负责实时持仓指标统一口径
 
 这样 handler 和 `app_factory.py` 就不用继续一边查库、一边取价、一边拼结果。
+
+`core/db.py` 现在也不再继续自己硬扛整套建表和索引细节，而是把这部分收到了：
+
+- `core/db_schema.py`
 
 同时，请求链路诊断也继续细化了：
 

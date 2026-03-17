@@ -65,6 +65,7 @@ class SyncBootstrapApiTests(unittest.TestCase):
             self.assertIn('quote_policy', first_payload)
             self.assertIn('market_status', first_payload)
             self.assertIn('market_statuses', first_payload)
+            self.assertGreater(int(first.headers.get('X-Trace-Stage-Count', '0')), 0)
             detailed = first_payload.get('market_statuses') or {}
             self.assertIn('hk', detailed)
             self.assertIn('trading_day', detailed.get('hk') or {})

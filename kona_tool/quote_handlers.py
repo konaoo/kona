@@ -9,6 +9,8 @@ from typing import Any, Callable, Dict
 
 from flask import request
 
+from core.request_trace import trace_request_stage
+
 
 def create_quote_payload_handlers(
     *,
@@ -24,7 +26,8 @@ def create_quote_payload_handlers(
         if not code:
             return {"error": "Missing code"}, 400
 
-        price, yclose, amt, chg = get_price_getter(code)
+        with trace_request_stage("quote.price", code=code):
+            price, yclose, amt, chg = get_price_getter(code)
         return {
             "price": price,
             "yclose": yclose,
@@ -47,7 +50,8 @@ def create_quote_payload_handlers(
         except Exception:
             timeout_seconds = None
 
-        results = batch_get_prices_fast_getter(codes, timeout_seconds=timeout_seconds)
+        with trace_request_stage("quote.batch.base", code_count=len(codes)):
+            results = batch_get_prices_fast_getter(codes, timeout_seconds=timeout_seconds)
 
         formatted_results = {}
         for code, (price, yclose, amt, chg) in results.items():
@@ -68,19 +72,20 @@ def create_quote_payload_handlers(
                 continue
             ft_retry_codes.append(code_text)
 
-        for code in ft_retry_codes:
-            try:
-                price, yclose, amt, chg = get_price_getter(code, use_cache=False)
-            except Exception:
-                continue
-            if float(price or 0.0) <= 0:
-                continue
-            formatted_results[code] = {
-                "price": price,
-                "yclose": yclose,
-                "amt": amt,
-                "chg": chg,
-            }
+        with trace_request_stage("quote.batch.ft_retry", code_count=len(ft_retry_codes)):
+            for code in ft_retry_codes:
+                try:
+                    price, yclose, amt, chg = get_price_getter(code, use_cache=False)
+                except Exception:
+                    continue
+                if float(price or 0.0) <= 0:
+                    continue
+                formatted_results[code] = {
+                    "price": price,
+                    "yclose": yclose,
+                    "amt": amt,
+                    "chg": chg,
+                }
 
         us_codes = []
         symbol_by_code = {}
@@ -100,54 +105,57 @@ def create_quote_payload_handlers(
             symbol_by_code[code_text] = symbol
 
         if symbol_by_code:
-            try:
-                symbols = list(set(symbol_by_code.values()))
-                us_quote_timeout_sec = 0.35
-                us_quotes: Dict[str, Any] = {}
-                executor = ThreadPoolExecutor(max_workers=1)
-                fut = executor.submit(us_extended_quotes_getter, symbols)
+            with trace_request_stage("quote.batch.us_extended", symbol_count=len(symbol_by_code)):
                 try:
-                    us_quotes = fut.result(timeout=us_quote_timeout_sec)
-                except FuturesTimeoutError:
-                    fut.cancel()
-                    logger.debug(
-                        "US extended quote timed out (symbols=%s timeout=%.1fs)",
-                        len(symbols),
-                        us_quote_timeout_sec,
-                    )
-                finally:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                for code in us_codes:
-                    symbol = symbol_by_code.get(code)
-                    quote = us_quotes.get(symbol or '', {})
-                    if not quote:
-                        continue
-                    base = dict(formatted_results.get(code, {}))
-                    yclose = quote.get('yclose', base.get('yclose', 0))
-                    if quote.get('price', 0) > 0:
-                        base['price'] = quote.get('price', 0)
-                    if yclose:
-                        base['yclose'] = yclose
-                    base['amt'] = quote.get('amt', base.get('amt', 0))
-                    base['chg'] = quote.get('chg', base.get('chg', 0))
-                    base['regular_price'] = quote.get('regular_price', 0)
-                    base['premarket_price'] = quote.get('premarket_price', 0)
-                    base['after_hours_price'] = quote.get('after_hours_price', 0)
-                    base['session'] = quote.get('session', 'closed')
-                    base['effective_session'] = quote.get('effective_session', base['session'])
-                    base['extended_active'] = bool(quote.get('extended_active', False))
-                    formatted_results[code] = base
-            except Exception as exc:
-                logger.warning("US extended quote merge failed: %s", exc)
+                    symbols = list(set(symbol_by_code.values()))
+                    us_quote_timeout_sec = 0.35
+                    us_quotes: Dict[str, Any] = {}
+                    executor = ThreadPoolExecutor(max_workers=1)
+                    fut = executor.submit(us_extended_quotes_getter, symbols)
+                    try:
+                        us_quotes = fut.result(timeout=us_quote_timeout_sec)
+                    except FuturesTimeoutError:
+                        fut.cancel()
+                        logger.debug(
+                            "US extended quote timed out (symbols=%s timeout=%.1fs)",
+                            len(symbols),
+                            us_quote_timeout_sec,
+                        )
+                    finally:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    for code in us_codes:
+                        symbol = symbol_by_code.get(code)
+                        quote = us_quotes.get(symbol or '', {})
+                        if not quote:
+                            continue
+                        base = dict(formatted_results.get(code, {}))
+                        yclose = quote.get('yclose', base.get('yclose', 0))
+                        if quote.get('price', 0) > 0:
+                            base['price'] = quote.get('price', 0)
+                        if yclose:
+                            base['yclose'] = yclose
+                        base['amt'] = quote.get('amt', base.get('amt', 0))
+                        base['chg'] = quote.get('chg', base.get('chg', 0))
+                        base['regular_price'] = quote.get('regular_price', 0)
+                        base['premarket_price'] = quote.get('premarket_price', 0)
+                        base['after_hours_price'] = quote.get('after_hours_price', 0)
+                        base['session'] = quote.get('session', 'closed')
+                        base['effective_session'] = quote.get('effective_session', base['session'])
+                        base['extended_active'] = bool(quote.get('extended_active', False))
+                        formatted_results[code] = base
+                except Exception as exc:
+                    logger.warning("US extended quote merge failed: %s", exc)
 
         return formatted_results
 
     def build_rates_payload():
-        return rates_getter()
+        with trace_request_stage("quote.rates"):
+            return rates_getter()
 
     def build_search_payload():
         query = request.args.get('q', '')
-        return search_getter(query)
+        with trace_request_stage("quote.search", query=query):
+            return search_getter(query)
 
     return {
         "price": build_price_payload,

@@ -48,6 +48,7 @@ class MarketApiTests(unittest.TestCase):
             self.assertEqual((markets.get("a") or {}).get("open"), False)
             self.assertEqual((markets.get("a") or {}).get("reason"), "holiday_or_weekend")
             self.assertEqual((markets.get("us") or {}).get("reason"), "off_hours")
+            self.assertGreater(int(resp.headers.get('X-Trace-Stage-Count', '0')), 0)
 
     def test_market_indices_endpoint(self):
         with patch.object(
@@ -76,6 +77,7 @@ class MarketApiTests(unittest.TestCase):
             self.assertEqual(items[3].get('name'), '恒生科技')
             self.assertEqual(items[-1].get('name'), 'USD/CNY')
             self.assertEqual(items[-1].get('value'), 7.2)
+            self.assertGreater(int(resp.headers.get('X-Trace-Stage-Count', '0')), 0)
 
 
 if __name__ == '__main__':

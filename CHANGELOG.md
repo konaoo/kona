@@ -1,3 +1,25 @@
+## 2026-03-17-02
+
+### 这版一句话
+
+继续把后端数据层里“数据库结构初始化”这一坨从 `db.py` 拿出去，并把阶段追踪补到更多高频 API。
+
+### 主要变化
+- [db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py) / [db.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db.py)：把建表、旧库补列、基础索引这些数据库结构初始化逻辑，从 `DatabaseManager` 里收成单独结构模块，`db.py` 继续保留连接入口和 mixin 主入口，不再自己硬扛整套 schema 细节。
+- [sync_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/sync_handlers.py) / [quote_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/quote_handlers.py) / [market_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/market_handlers.py)：给 `sync/bootstrap`、行情、搜索、汇率、市场状态这些高频接口补了阶段追踪，后端现在不只是能看投资页 / 分析页慢在哪，连同步和行情链路也能拆到更细阶段。
+- [test_database_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_database_schema.py) / [test_quote_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_quote_api.py) / [test_market_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_api.py) / [test_sync_bootstrap_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_sync_bootstrap_api.py)：补了数据库结构初始化和接口阶段追踪的回归测试，防止后面有人把这层边界又写回去。
+- [README_STRUCTURE.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/README_STRUCTURE.md) / [README_结构说明.md](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/README_结构说明.md) / [请求追踪与排障手册.md](/Users/kona/Desktop/kaka/kona_repo/docs/请求追踪与排障手册.md)：同步更新目录说明和排障手册，明确 `db_schema.py` 的职责，以及现在哪些 API 已经支持阶段级排障。
+
+### 影响范围
+- 后端数据库结构初始化入口
+- `sync / market / quote` 相关接口的响应头和请求摘要日志
+- 后端数据库初始化和行情同步链路的后续维护方式
+
+### 验收重点
+- 数据库初始化后，核心表和索引继续正常创建
+- `sync / market / quote` 相关接口响应头里能看到 `X-Trace-Stage-Count`
+- 这些高频接口的日志里能看到更细的阶段摘要
+
 ## 2026-03-17-01
 
 ### 这版一句话
