@@ -295,6 +295,74 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIsNotNone(undo_cash_item)
         self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 20000.0)
 
+    def test_sell_to_cash_and_undo_restores_cash_and_portfolio(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600519',
+            'name': '贵州茅台',
+            'price': 1000.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '银行卡',
+            'amount': 2000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_list_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_list_resp.status_code, 200)
+        cash_assets = cash_list_resp.get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        sell_resp = self.client.post('/api/portfolio/sell_to_cash', json={
+            'code': 'sh600519',
+            'price': 1200.0,
+            'qty': 2.0,
+            'cash_asset_id': cash_id,
+            'request_id': 'req-sell-to-cash-1',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+        sell_payload = sell_resp.get_json() or {}
+        self.assertEqual(sell_payload.get('status'), 'ok')
+        self.assertGreater(int(sell_resp.headers.get('X-Trace-Stage-Count') or 0), 0)
+        self.assertAlmostEqual(float(sell_payload.get('cash_added') or 0.0), 2400.0)
+        undo_token = sell_payload.get('undo_token')
+        self.assertTrue(isinstance(undo_token, str) and len(undo_token) > 0)
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        target = next((item for item in portfolio_items if item.get('code') == 'sh600519'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('qty', 0)), 8.0)
+
+        cash_after_sell_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_after_sell_resp.status_code, 200)
+        cash_after_sell = cash_after_sell_resp.get_json() or []
+        sell_cash_item = next((item for item in cash_after_sell if item.get('id') == cash_id), None)
+        self.assertIsNotNone(sell_cash_item)
+        self.assertAlmostEqual(float(sell_cash_item.get('amount', 0)), 4400.0)
+
+        undo_resp = self.client.post('/api/portfolio/undo', json={'undo_token': undo_token})
+        self.assertEqual(undo_resp.status_code, 200)
+        self.assertEqual((undo_resp.get_json() or {}).get('code'), 'UNDO_DONE')
+
+        portfolio_after_undo_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_after_undo_resp.status_code, 200)
+        portfolio_after_undo = portfolio_after_undo_resp.get_json() or []
+        undo_target = next((item for item in portfolio_after_undo if item.get('code') == 'sh600519'), None)
+        self.assertIsNotNone(undo_target)
+        self.assertAlmostEqual(float(undo_target.get('qty', 0)), 10.0)
+
+        cash_after_undo_resp = self.client.get('/api/cash_assets')
+        self.assertEqual(cash_after_undo_resp.status_code, 200)
+        cash_after_undo = cash_after_undo_resp.get_json() or []
+        undo_cash_item = next((item for item in cash_after_undo if item.get('id') == cash_id), None)
+        self.assertIsNotNone(undo_cash_item)
+        self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 2000.0)
+
     def test_buy_with_cash_insufficient_balance_returns_400(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={
             'name': '微信',

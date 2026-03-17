@@ -429,6 +429,7 @@ def create_app_components(
             portfolio_buy_handler=portfolio_payload_handlers["portfolio_buy"],
             portfolio_buy_with_cash_handler=portfolio_payload_handlers["portfolio_buy_with_cash"],
             portfolio_sell_handler=portfolio_payload_handlers["portfolio_sell"],
+            portfolio_sell_to_cash_handler=portfolio_payload_handlers["portfolio_sell_to_cash"],
             portfolio_undo_handler=portfolio_payload_handlers["portfolio_undo"],
         )
     )

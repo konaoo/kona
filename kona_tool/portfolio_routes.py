@@ -32,6 +32,7 @@ def create_portfolio_blueprint(
     portfolio_buy_handler,
     portfolio_buy_with_cash_handler,
     portfolio_sell_handler,
+    portfolio_sell_to_cash_handler,
     portfolio_undo_handler,
 ):
     bp = Blueprint("portfolio_routes", __name__)
@@ -95,6 +96,11 @@ def create_portfolio_blueprint(
     @optional_auth
     def sell_asset():
         return _jsonify_result(portfolio_sell_handler())
+
+    @bp.route("/api/portfolio/sell_to_cash", methods=["POST"])
+    @optional_auth
+    def sell_asset_to_cash():
+        return _jsonify_result(portfolio_sell_to_cash_handler())
 
     @bp.route("/api/portfolio/undo", methods=["POST"])
     @optional_auth

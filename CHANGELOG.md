@@ -1,3 +1,25 @@
+## 2026-03-17-06
+
+### 这版一句话
+
+修掉了 Web 端“卖出到现金账户”会直接 404 的问题，现在选现金账户卖出会真的减仓并把回款加回对应现金账户。
+
+### 主要变化
+- [portfolio_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_routes.py) / [app_factory.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/app_factory.py)：补上 `/api/portfolio/sell_to_cash` 路由和注册入口，和 Web 端现有请求地址对齐，不再因为后端缺接口直接返回 404。
+- [portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：新增“卖出到现金账户”处理链路，补了持仓查找、现金账户查找、跨币种回款换算、撤销 token 和快照异步刷新，错误码也统一收口。
+- [db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)：新增 `sell_asset_to_cash`，在原有卖出基础上追加现金账户回款写入，避免前端卖出成功但现金余额不更新。
+- [test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)：补了一条回归测试，覆盖“卖出到现金账户 -> 持仓减少 -> 现金增加 -> undo 后全部还原”。
+
+### 影响范围
+- Web 端投资页选择现金账户的卖出链路
+- 后端 `/api/portfolio/sell_to_cash` 新接口
+- 投资撤销时对“卖出回款到现金账户”的还原逻辑
+
+### 验收重点
+- Web 端选现金账户卖出时不再 404
+- 卖出后持仓数量减少，目标现金账户金额同步增加
+- `undo` 后持仓和现金都能恢复
+
 ## 2026-03-17-05
 
 ### 这版一句话

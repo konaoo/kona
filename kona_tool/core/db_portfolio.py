@@ -1006,6 +1006,101 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
+    def sell_asset_to_cash(
+        self,
+        code: str,
+        price: float,
+        qty: float,
+        cash_asset_id: int,
+        cash_add_amount: float,
+        user_id: str = None,
+        return_detail: bool = False,
+    ) -> Dict[str, Any]:
+        """减仓并回款到现金账户。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            if qty <= 0 or price <= 0:
+                return {"ok": False, "code": "INVALID_VALUE", "error": "Invalid value"}
+            if cash_add_amount <= 0:
+                return {"ok": False, "code": "INVALID_CASH_AMOUNT", "error": "Invalid cash amount"}
+
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND user_id = ?
+                    """,
+                    (cash_asset_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, name, amount, curr
+                    FROM cash_assets
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    """,
+                    (cash_asset_id,),
+                )
+            cash_row = cursor.fetchone()
+            if not cash_row:
+                return {"ok": False, "code": "CASH_ASSET_NOT_FOUND", "error": "Cash account not found"}
+
+            sell_detail = self.sell_asset(code, price, qty, user_id=user_id, return_detail=True)
+            if not sell_detail or not sell_detail.get("ok"):
+                return sell_detail or {"ok": False, "code": "ASSET_SELL_FAILED", "error": "Failed to sell asset"}
+
+            cash_before = float(cash_row["amount"])
+            cash_after = cash_before + float(cash_add_amount)
+            if user_id:
+                cursor.execute(
+                    """
+                    UPDATE cash_assets
+                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                    """,
+                    (cash_after, cash_asset_id, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE cash_assets
+                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND (user_id IS NULL OR user_id = '')
+                    """,
+                    (cash_after, cash_asset_id),
+                )
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                return {"ok": False, "code": "CASH_ASSET_UPDATE_FAILED", "error": "Failed to update cash asset"}
+
+            conn.commit()
+            return {
+                "ok": True,
+                "tx_id": sell_detail.get("tx_id"),
+                "before_asset": sell_detail.get("before_asset"),
+                "after_asset": sell_detail.get("after_asset"),
+                "cash_asset_id": int(cash_asset_id),
+                "cash_curr": cash_row["curr"],
+                "cash_before_amount": cash_before,
+                "cash_after_amount": cash_after,
+                "cash_add_amount": float(cash_add_amount),
+            }
+        except Exception as exc:
+            logger.error(
+                "Failed to sell asset to cash: code=%s user_id=%s cash_asset_id=%s err=%s",
+                code,
+                user_id,
+                cash_asset_id,
+                exc,
+            )
+            conn.rollback()
+            return {"ok": False, "code": "ASSET_SELL_TO_CASH_FAILED", "error": "Failed to sell asset to cash"}
+        finally:
+            conn.close()
+
     def buy_asset_with_cash(
         self,
         code: str,

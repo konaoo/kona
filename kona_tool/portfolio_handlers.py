@@ -646,6 +646,145 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
+    def handle_portfolio_sell_to_cash():
+        data = request.json
+        user_id = g.user_id
+        request_id = str((data or {}).get('request_id', '')).strip()
+
+        required = ('code', 'price', 'qty', 'cash_asset_id')
+        if not data or any(field not in data for field in required):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        dedup_hit, dedup_payload, dedup_status = idempotency_begin('portfolio_sell_to_cash', user_id, request_id)
+        if dedup_hit:
+            return jsonify(dedup_payload), dedup_status
+
+        try:
+            price = float(data['price'])
+            qty = float(data['qty'])
+            cash_asset_id = int(data['cash_asset_id'])
+        except (TypeError, ValueError):
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+
+        if price <= 0 or qty <= 0:
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+
+        code = str(data.get('code') or '').strip()
+        if not code:
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Missing required fields", "code": "MISSING_CODE"},
+                400,
+            )
+
+        with trace_request_stage("portfolio.sell_to_cash.cash_lookup", cash_asset_id=cash_asset_id):
+            cash_asset = db.get_cash_asset_by_id(cash_asset_id, user_id)
+        if not cash_asset:
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Cash account not found", "code": "CASH_ASSET_NOT_FOUND"},
+                404,
+            )
+
+        with trace_request_stage("portfolio.sell_to_cash.asset_lookup"):
+            asset = db.get_asset(code, user_id)
+        if not asset:
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Asset not found", "code": "ASSET_NOT_FOUND"},
+                404,
+            )
+
+        sell_amount = price * qty
+        asset_curr = str(asset.get('curr') or 'CNY')
+        cash_curr = str(cash_asset.get('curr') or 'CNY')
+        if asset_curr.upper() == cash_curr.upper():
+            cash_add_amount = sell_amount
+        else:
+            with trace_request_stage("portfolio.sell_to_cash.rates"):
+                rates = rates_getter()
+                cash_add_amount = convert_amount(sell_amount, asset_curr, cash_curr, rates)
+        if cash_add_amount <= 0:
+            return idempotent_response(
+                'portfolio_sell_to_cash',
+                user_id,
+                request_id,
+                {"error": "Invalid cash amount", "code": "INVALID_CASH_AMOUNT"},
+                400,
+            )
+
+        with trace_request_stage("portfolio.sell_to_cash.write"):
+            detail = db.sell_asset_to_cash(
+                code=code,
+                price=price,
+                qty=qty,
+                cash_asset_id=cash_asset_id,
+                cash_add_amount=cash_add_amount,
+                user_id=user_id,
+                return_detail=True,
+            )
+        if detail and detail.get('ok'):
+            operation = {
+                'op_type': 'sell_to_cash',
+                'code': ((detail.get('before_asset') or {}).get('code')) or code,
+                'before_asset': detail.get('before_asset'),
+                'tx_id': detail.get('tx_id'),
+                'cash_asset_id': detail.get('cash_asset_id'),
+                'cash_before_amount': detail.get('cash_before_amount'),
+            }
+            payload = undo_decorator(
+                {
+                    "status": "ok",
+                    "cash_added": detail.get('cash_add_amount'),
+                    "cash_curr": detail.get('cash_curr'),
+                },
+                user_id,
+                operation,
+            )
+            _save_snapshot_async(user_id, "portfolio.sell_to_cash")
+            return idempotent_response('portfolio_sell_to_cash', user_id, request_id, payload)
+
+        error_code = (detail or {}).get('code', 'ASSET_SELL_TO_CASH_FAILED')
+        error_message = (detail or {}).get('error', 'Failed to sell asset to cash')
+        error_message_map = {
+            'INVALID_VALUE': '数值不合法',
+            'INVALID_CASH_AMOUNT': '回款金额不合法',
+            'CASH_ASSET_NOT_FOUND': '现金账户不存在',
+            'ASSET_NOT_FOUND': '资产不存在',
+            'OVERSELL': '卖出数量超过持仓',
+            'ASSET_SELL_TO_CASH_FAILED': '卖出失败，请稍后重试',
+        }
+        status_code = 500
+        if error_code in ('INVALID_VALUE', 'INVALID_CASH_AMOUNT', 'OVERSELL'):
+            status_code = 400
+        elif error_code in ('CASH_ASSET_NOT_FOUND', 'ASSET_NOT_FOUND'):
+            status_code = 404
+        return idempotent_response(
+            'portfolio_sell_to_cash',
+            user_id,
+            request_id,
+            {"error": error_message_map.get(error_code, error_message), "code": error_code},
+            status_code,
+        )
+
     def handle_portfolio_undo():
         data = request.json
         user_id = g.user_id
@@ -680,5 +819,6 @@ def create_portfolio_payload_handlers(
         "portfolio_buy": handle_portfolio_buy,
         "portfolio_buy_with_cash": handle_portfolio_buy_with_cash,
         "portfolio_sell": handle_portfolio_sell,
+        "portfolio_sell_to_cash": handle_portfolio_sell_to_cash,
         "portfolio_undo": handle_portfolio_undo,
     }
