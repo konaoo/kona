@@ -13,14 +13,35 @@ class AnalysisReadService:
         *,
         db: Any,
         price_batch_getter: Callable[[list[str]], Dict[str, Any]],
+        stats_getter: Callable[[str | None], Dict[str, Any]] | None = None,
     ) -> None:
         self.db = db
         self.price_batch_getter = price_batch_getter
+        self.stats_getter = stats_getter
+
+    def _get_day_overview(self, user_id: str | None) -> Dict[str, Any]:
+        """获取当日盈亏。优先走实时计算，失败时 fallback 到快照表。"""
+        if self.stats_getter is not None:
+            try:
+                stats = self.stats_getter(user_id)
+                pnl = float(stats.get("day_pnl") or 0.0)
+                # 分母用实时 total_invest（当前持仓市值），
+                # 与快照路径的分母口径略有差异，属于设计取舍，不是 bug
+                base = float(stats.get("total_invest") or 0.0) or 1.0
+                return {
+                    "pnl": round(pnl, 2),
+                    "pnl_rate": round(pnl / base * 100, 2),
+                    "base_value": round(base, 2),
+                }
+                # 注：前端只读 pnl 和 pnl_rate，base_value 不影响显示
+            except Exception:
+                pass  # fallback 到快照
+        return self.db.get_pnl_overview("day", user_id)
 
     def build_overview_payload(self, *, period: str, user_id: str | None):
         if period == "all":
             with trace_request_stage("analysis.overview.day"):
-                day = self.db.get_pnl_overview("day", user_id)
+                day = self._get_day_overview(user_id)
             with trace_request_stage("analysis.overview.month"):
                 month = self.db.get_pnl_overview("month", user_id)
             with trace_request_stage("analysis.overview.year"):
@@ -35,6 +56,8 @@ class AnalysisReadService:
             }
 
         with trace_request_stage("analysis.overview.single", period=period):
+            if period == "day":
+                return {"day": self._get_day_overview(user_id)}
             return {period: self.db.get_pnl_overview(period, user_id)}
 
     def build_calendar_payload(
