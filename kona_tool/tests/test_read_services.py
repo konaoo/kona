@@ -61,6 +61,9 @@ class _FakeDb:
             }
         ]
 
+    def get_today_buy_transactions(self, date_str, user_id=None):
+        return {}
+
 
 class ReadServicesTests(unittest.TestCase):
     def setUp(self):
@@ -96,6 +99,7 @@ class ReadServicesTests(unittest.TestCase):
                 "portfolio.quotes",
                 "portfolio.rates",
                 "portfolio.market",
+                "portfolio.today_buys",
                 "portfolio.assemble",
             ],
         )
@@ -448,6 +452,57 @@ class ReadServicesTests(unittest.TestCase):
 
         self.assertAlmostEqual(result["items"][0]["total_pnl"], 10.0)
         self.assertEqual(result["items"][0]["source"], "exact")
+
+
+    def test_portfolio_day_pnl_corrected_for_intraday_buy(self):
+        """加仓当日 day_pnl 应按昨持份额用昨收价差、新买份额用实际买价差计算。"""
+        # 持仓 10 股，今日加仓 4 股，均价 9.0；当前价 12.0，昨收 11.0
+        # 预期：(12-11)*6 + (12-9)*4 = 6 + 12 = 18 (CNY, rate=1)
+        db = _FakeDb()
+        db.portfolio_items = [
+            {"code": "sh600001", "name": "Test", "qty": 10, "price": 9.5, "adjustment": 0, "curr": "CNY", "asset_type": "a"}
+        ]
+        db.get_today_buy_transactions = lambda date_str, user_id=None: {
+            "sh600001": {"qty": 4.0, "amount": 36.0}  # 4 股，均价 9.0
+        }
+        service = PortfolioReadService(
+            db=db,
+            batch_get_prices_getter=lambda codes: {"sh600001": (12.0, 11.0, 1.0, 0.1)},
+            rates_getter=lambda: {},
+            convert_amount=lambda amount, f, t, rates: amount,
+            market_status_getter=lambda now_utc, force_refresh=False: {
+                "markets": {"a": {"open": True, "trading_day": True, "reason": "open"}}
+            },
+        )
+        with self.app.test_request_context("/api/portfolio"):
+            result = service.build_metrics_payload(user_id="u_1")
+        item = result[0]
+        self.assertAlmostEqual(item["day_pnl"], 18.0)
+
+    def test_portfolio_total_pnl_rate_uses_extended_denominator(self):
+        """减仓后 total_pnl_rate 分母应加上已实现盈亏，避免收益率虚高。"""
+        # 持仓成本 cost=100*10=1000, 当前价 12, 市值 1200
+        # adjustment=200 (已实现盈亏), total_pnl = (12-10)*100 + 200 = 400
+        # 分母 = |1000| + max(0, 200) = 1200
+        # rate = 400 / 1200 * 100 = 33.33%（而非 400/1000*100=40%）
+        db = _FakeDb()
+        db.portfolio_items = [
+            {"code": "sh600002", "name": "Test2", "qty": 100, "price": 10.0, "adjustment": 200.0, "curr": "CNY", "asset_type": "a"}
+        ]
+        service = PortfolioReadService(
+            db=db,
+            batch_get_prices_getter=lambda codes: {"sh600002": (12.0, 11.0, 1.0, 0.1)},
+            rates_getter=lambda: {},
+            convert_amount=lambda amount, f, t, rates: amount,
+            market_status_getter=lambda now_utc, force_refresh=False: {
+                "markets": {"a": {"open": False, "trading_day": False, "reason": "closed"}}
+            },
+        )
+        with self.app.test_request_context("/api/portfolio"):
+            result = service.build_metrics_payload(user_id="u_1")
+        item = result[0]
+        self.assertAlmostEqual(item["total_pnl"], 400.0)
+        self.assertAlmostEqual(item["total_pnl_rate"], 400.0 / 1200.0 * 100, places=4)
 
 
 if __name__ == "__main__":

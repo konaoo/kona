@@ -1492,6 +1492,40 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
+    def get_today_buy_transactions(self, date_str: str, user_id: str = None) -> Dict[str, Dict[str, float]]:
+        """返回指定日期的加仓记录，按 code 聚合 qty 和 amount。
+
+        Returns: {code: {"qty": float, "amount": float}}
+        """
+        result: Dict[str, Dict[str, float]] = {}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+        try:
+            cursor.execute(
+                """
+                SELECT code, SUM(qty) AS total_qty, SUM(amount) AS total_amount
+                FROM transactions
+                WHERE type = '加仓' AND time LIKE ?
+                """
+                + f" {user_condition}"
+                + " GROUP BY code",
+                (f"{date_str}%",) + user_param,
+            )
+            for row in cursor.fetchall():
+                code = str(row["code"] or "")
+                qty = float(row["total_qty"] or 0.0)
+                amount = float(row["total_amount"] or 0.0)
+                if qty > 0:
+                    result[code] = {"qty": qty, "amount": amount}
+            return result
+        except Exception as exc:
+            logger.error("Failed to get today buy transactions date=%s: %s", date_str, exc)
+            return result
+        finally:
+            conn.close()
+
     def get_realized_pnl_by_date(self, date_str: str, user_id: str = None) -> Dict[str, float]:
         """获取指定日期按市场聚合的已实现盈亏。"""
         result = {k: 0.0 for k in DEFAULT_MARKETS}

@@ -1,3 +1,27 @@
+## 2026-03-18-10
+
+### 这版一句话
+
+修复投资页两个计算缺陷：加仓当日 day_pnl 虚高、减仓后 total_pnl_rate 分母缩水导致收益率虚高。
+
+### 主要变化
+- [db_portfolio.py](kona_tool/core/db_portfolio.py)：新增 `get_today_buy_transactions(date_str, user_id)` 方法，按 code 聚合当日加仓的 qty 和 amount。
+- [portfolio_metrics.py](kona_tool/core/portfolio_metrics.py)：
+  - `build_portfolio_items_with_metrics` 新增可选参数 `today_buys`；有加仓时按"昨持仓份额用昨收价、新买入份额用实际均价"修正当日盈亏，避免今日新买入被错误地算入昨收价差。
+  - `total_pnl_rate` 分母改为 `|持仓成本| + max(0, adjustment)`，减仓后持仓成本缩减时不再导致收益率虚高。
+- [portfolio_read_service.py](kona_tool/core/portfolio_read_service.py)：`_enrich_items_with_metrics` 新增 `user_id` 参数，内部拉取今日加仓记录并传给 `build_portfolio_items_with_metrics`。
+- [snapshot.py](kona_tool/core/snapshot.py)：`calculate_portfolio_stats` 同步应用 day_pnl 修正逻辑，与投资页口径一致。
+- [test_read_services.py](kona_tool/tests/test_read_services.py)：阶段记录测试更新（新增 `portfolio.today_buys` 阶段）；`_FakeDb` 补齐 `get_today_buy_transactions` stub。
+
+### 影响范围
+- 投资页持仓列表的 `day_pnl`、`day_pnl_rate`：加仓当日更准确
+- 投资页持仓列表的 `total_pnl_rate`：重仓减仓后不再虚高
+- 分析页总览卡片的 `day_pnl`（通过 `calculate_portfolio_stats`）：加仓当日更准确
+
+### 验收重点
+- 加仓后当日盈亏应接近 0（若加仓时价格接近实时价）
+- 重仓减仓后总收益率不应突然大幅跳升
+
 ## 2026-03-18-09
 
 ### 这版一句话

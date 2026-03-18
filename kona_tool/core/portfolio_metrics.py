@@ -37,6 +37,7 @@ def build_portfolio_items_with_metrics(
     rates: Dict[str, float],
     market_statuses: Dict[str, Dict[str, float]],
     convert_amount: Callable[[float, str, str, Dict[str, float]], float],
+    today_buys: Dict[str, Dict[str, float]] | None = None,
 ) -> List[Dict]:
     """为实时持仓补齐统一指标口径。"""
     enriched: List[Dict] = []
@@ -75,12 +76,22 @@ def build_portfolio_items_with_metrics(
         cost = raw_cost_price * qty
         value = current_price * qty
         total_pnl = value - cost + adjustment
-        total_pnl_rate = (total_pnl / abs(cost) * 100) if abs(cost) > 0 else 0.0
+        # 分母用 |持仓成本| + max(0, 已实现盈亏)，避免减仓后分母缩水导致收益率虚高
+        cost_denominator = abs(cost) + max(0.0, adjustment)
+        total_pnl_rate = (total_pnl / cost_denominator * 100) if cost_denominator > 0 else 0.0
 
         day_pnl_display_enabled = (not nav_update_pending) and current_price > 0 and quote_yclose > 0
         if day_pnl_display_enabled:
             delta = current_price - quote_yclose
-            day_pnl_display = delta * qty
+            # 修正：今日加仓的份额不应该用昨收价算当日盈亏，用实际买入均价代替
+            buy_info = (today_buys or {}).get(code)
+            if buy_info and buy_info.get("qty", 0) > 0:
+                today_buy_qty = min(float(buy_info["qty"]), qty)  # 不超过当前持仓
+                today_avg_price = float(buy_info["amount"]) / today_buy_qty
+                pre_trade_qty = max(0.0, qty - today_buy_qty)
+                day_pnl_display = (current_price - quote_yclose) * pre_trade_qty + (current_price - today_avg_price) * today_buy_qty
+            else:
+                day_pnl_display = delta * qty
             day_pnl_rate_display = (delta / quote_yclose) * 100
         else:
             day_pnl_display = 0.0

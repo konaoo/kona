@@ -115,6 +115,9 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         market: _market_trading_day_now(market, now_utc, market_statuses)
         for market in DEFAULT_MARKETS
     }
+    # 今日加仓记录，用于修正 day_pnl（避免把新买入份额的昨收价差算进今日盈亏）
+    snapshot_date_for_buys = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+    today_buys = db.get_today_buy_transactions(snapshot_date_for_buys, user_id=user_id)
     
     for asset in portfolio:
         code = asset['code']
@@ -165,7 +168,18 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         elif yclose_ref > 0 and abs(cur_price - yclose_ref) / yclose_ref < 1e-9:
             item_day_pnl = 0.0
         else:
-            item_day_pnl = (cur_price - yclose_ref) * qty * rate
+            # 修正：今日加仓的份额不应用昨收价算今日盈亏，用实际买入均价代替
+            buy_info = today_buys.get(code)
+            if buy_info and buy_info.get("qty", 0) > 0:
+                today_buy_qty = min(float(buy_info["qty"]), qty)
+                today_avg_price = float(buy_info["amount"]) / today_buy_qty
+                pre_trade_qty = max(0.0, qty - today_buy_qty)
+                item_day_pnl = (
+                    (cur_price - yclose_ref) * pre_trade_qty
+                    + (cur_price - today_avg_price) * today_buy_qty
+                ) * rate
+            else:
+                item_day_pnl = (cur_price - yclose_ref) * qty * rate
         item_float_pnl = (cur_price - cost) * qty * rate
         item_total_pnl = item_float_pnl + (adj * rate)
         

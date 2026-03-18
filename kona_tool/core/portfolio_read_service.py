@@ -32,6 +32,7 @@ class PortfolioReadService:
         self,
         items: List[Dict[str, Any]],
         *,
+        user_id: str | None = None,
         now_utc: datetime | None = None,
     ) -> List[Dict[str, Any]]:
         if not items:
@@ -49,6 +50,10 @@ class PortfolioReadService:
                 force_refresh=False,
             )
         market_statuses = market_payload.get("markets", {}) if isinstance(market_payload, dict) else {}
+        from zoneinfo import ZoneInfo as _ZoneInfo
+        date_str = resolved_now.astimezone(_ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+        with trace_request_stage("portfolio.today_buys"):
+            today_buys = self.db.get_today_buy_transactions(date_str, user_id)
         with trace_request_stage("portfolio.assemble", item_count=len(items)):
             return build_portfolio_items_with_metrics(
                 items,
@@ -56,6 +61,7 @@ class PortfolioReadService:
                 rates,
                 market_statuses,
                 self.convert_amount,
+                today_buys,
             )
 
     def build_metrics_payload(
@@ -66,7 +72,7 @@ class PortfolioReadService:
     ) -> List[Dict[str, Any]]:
         with trace_request_stage("portfolio.db", query="get_portfolio", item_scope="all"):
             items = self.db.get_portfolio(user_id=user_id)
-        return self._enrich_items_with_metrics(items, now_utc=now_utc)
+        return self._enrich_items_with_metrics(items, user_id=user_id, now_utc=now_utc)
 
     def build_portfolio_payload(
         self,
@@ -79,4 +85,4 @@ class PortfolioReadService:
             items = self.db.get_portfolio(asset_type, user_id)
         if not with_metrics:
             return items
-        return self._enrich_items_with_metrics(items)
+        return self._enrich_items_with_metrics(items, user_id=user_id)
