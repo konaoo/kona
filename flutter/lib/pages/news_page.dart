@@ -564,6 +564,10 @@ class _NewsPageState extends State<NewsPage> {
   // ── 展开/折叠 ──
   final Set<String> _expandedKeys = {};
 
+  // ── 待合并新快讯（用户不在顶部时暂存，顶部横幅提示） ──
+  final List<Map<String, dynamic>> _pendingNews = [];
+  bool _atTop = true;
+
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -600,6 +604,16 @@ class _NewsPageState extends State<NewsPage> {
   // ─────────────  滚动加载更多  ─────────────
 
   void _onScroll() {
+    // 跟踪是否在顶部（80px 以内视为顶部）
+    final atTop = _scrollController.position.pixels < 80;
+    if (_atTop != atTop) {
+      setState(() => _atTop = atTop);
+    }
+    // 用户手动滑回顶部时，自动合并待显示快讯
+    if (atTop && _pendingNews.isNotEmpty) {
+      _flushPendingNews();
+    }
+    // 加载更多
     if (!_hasMore || _loadingMore || _isRefreshing || _isInitialLoading) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
@@ -633,6 +647,7 @@ class _NewsPageState extends State<NewsPage> {
     if (reset) {
       _analysisCache.clear();
       _expandedKeys.clear();
+      _pendingNews.clear();
     }
 
     try {
@@ -748,23 +763,58 @@ class _NewsPageState extends State<NewsPage> {
         return;
       }
 
-      setState(() {
-        _news = [...prepend, ..._news];
-        if (_news.length > _maxNewsItems) {
-          _news = _news.take(_maxNewsItems).toList();
-          _newsIds
-            ..clear()
-            ..addAll(_news.map(_itemKey));
-        }
-        _latestNewsId =
-            latestIdFromApi ??
-            (_news.isNotEmpty ? _itemKey(_news.first) : _latestNewsId);
-      });
+      final newLatestId =
+          latestIdFromApi ??
+          (prepend.isNotEmpty ? _itemKey(prepend.first) : _latestNewsId);
+      if (_atTop) {
+        // 用户在顶部：直接插入列表
+        setState(() {
+          _news = [...prepend, ..._news];
+          if (_news.length > _maxNewsItems) {
+            _news = _news.take(_maxNewsItems).toList();
+            _newsIds
+              ..clear()
+              ..addAll(_news.map(_itemKey));
+          }
+          _latestNewsId = newLatestId;
+        });
+      } else {
+        // 用户已下翻：暂存，顶部横幅提示
+        setState(() {
+          _pendingNews.addAll(prepend);
+          _latestNewsId = newLatestId;
+        });
+      }
     } catch (e) {
       debugPrint('轮询快讯失败: $e');
     } finally {
       _polling = false;
     }
+  }
+
+  // ─────────────  待合并快讯处理  ─────────────
+
+  void _flushPendingNews() {
+    if (_pendingNews.isEmpty) return;
+    setState(() {
+      _news = [..._pendingNews, ..._news];
+      _pendingNews.clear();
+      if (_news.length > _maxNewsItems) {
+        _news = _news.take(_maxNewsItems).toList();
+        _newsIds
+          ..clear()
+          ..addAll(_news.map(_itemKey));
+      }
+    });
+  }
+
+  void _scrollToTopAndFlush() {
+    _flushPendingNews();
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   String _itemKey(Map<String, dynamic> item) {
@@ -801,68 +851,121 @@ class _NewsPageState extends State<NewsPage> {
 
     final filtered = _filteredNews;
 
-    return RefreshIndicator(
-      onRefresh: () => _loadNews(reset: true),
-      color: AppTheme.accent,
-      child: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          // ── Hero 区域 ──
-          SliverToBoxAdapter(child: _buildHero()),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () => _loadNews(reset: true),
+          color: AppTheme.accent,
+          child: CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              // ── Hero 区域 ──
+              SliverToBoxAdapter(child: _buildHero()),
 
-          // ── 列表内容 ──
-          if (filtered.isNotEmpty)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _buildNewsCard(filtered[index]),
+              // ── 列表内容 ──
+              if (filtered.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _buildNewsCard(filtered[index]),
+                      ),
+                      childCount: filtered.length,
+                    ),
                   ),
-                  childCount: filtered.length,
-                ),
-              ),
-            )
-          else if (_isInitialLoading)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  children: List.generate(
-                    4,
-                    (_) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _buildSkeletonCard(),
+                )
+              else if (_isInitialLoading)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      children: List.generate(
+                        4,
+                        (_) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _buildSkeletonCard(),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverToBoxAdapter(child: _buildEmpty()),
+
+              // ── 加载更多 ──
+              if (_loadingMore)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.accent.withValues(alpha: 0.6),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-          else
-            SliverToBoxAdapter(child: _buildEmpty()),
 
-          // ── 加载更多 ──
-          if (_loadingMore)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.accent.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ),
+              // ── 底部安全区 ──
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
+          ),
+        ),
+        // ── 新快讯横幅 ──
+        if (_pendingNews.isNotEmpty && !_atTop)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _buildPendingBanner(),
+          ),
+      ],
+    );
+  }
+
+  // ═══════════════════════  新快讯横幅  ══════════════════════
+
+  Widget _buildPendingBanner() {
+    return GestureDetector(
+      onTap: _scrollToTopAndFlush,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.accent,
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.accent.withValues(alpha: 0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.arrow_upward_rounded,
+              size: 14,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${_pendingNews.length} 条新快讯',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
-
-          // ── 底部安全区 ──
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
+          ],
+        ),
       ),
     );
   }
