@@ -257,6 +257,7 @@ def create_app_components(
     analysis_read_service = AnalysisReadService(
         db=db,
         price_batch_getter=wiring.batch_get_prices_getter,
+        stats_getter=wiring.calculate_portfolio_stats,
     )
     analysis_payload_handlers = create_analysis_payload_handlers(
         analysis_read_service=analysis_read_service,
