@@ -1,6 +1,7 @@
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 import unittest
 
 from flask import Flask
@@ -132,6 +133,89 @@ class ReadServicesTests(unittest.TestCase):
             ],
         )
 
+
+    def test_calendar_today_cell_uses_stats_getter(self):
+        """日历当月视图里，今天那格应用实时 day_pnl 替换快照值"""
+        today = datetime.now()
+        today_label = f"{today.month}-{today.day}"
+
+        # db 返回今天那格的快照值 10.0
+        db = _FakeDb()
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "items": [{"label": today_label, "pnl": 10.0}],
+            "total_pnl": 10.0,
+            "total_rate": 1.0,
+            "period": {"time_type": "day", "year": today.year, "month": today.month},
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 55.0, "total_invest": 1000.0},
+        )
+
+        with self.app.test_request_context("/api/analysis/calendar?type=day"):
+            result = service.build_calendar_payload(
+                time_type="day", user_id="u_1", year=today.year, month=today.month
+            )
+
+        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
+        self.assertIsNotNone(today_item)
+        self.assertAlmostEqual(today_item["pnl"], 55.0)
+        # 底部汇总不变，仍是快照值
+        self.assertAlmostEqual(result["total_pnl"], 10.0)
+
+    def test_calendar_today_cell_added_when_no_snapshot_yet(self):
+        """今天还没有快照时，今天那格应从实时计算补上"""
+        today = datetime.now()
+        today_label = f"{today.month}-{today.day}"
+
+        db = _FakeDb()
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "items": [],  # 今天还没有快照
+            "total_pnl": 0.0,
+            "total_rate": 0.0,
+            "period": {"time_type": "day", "year": today.year, "month": today.month},
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 77.0, "total_invest": 1000.0},
+        )
+
+        with self.app.test_request_context("/api/analysis/calendar?type=day"):
+            result = service.build_calendar_payload(
+                time_type="day", user_id="u_1", year=today.year, month=today.month
+            )
+
+        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
+        self.assertIsNotNone(today_item)
+        self.assertAlmostEqual(today_item["pnl"], 77.0)
+
+    def test_calendar_past_month_not_affected_by_stats_getter(self):
+        """查的是历史月份，今天那格不应被 stats_getter 修改"""
+        db = _FakeDb()
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "items": [{"label": "1-15", "pnl": 20.0}],
+            "total_pnl": 20.0,
+            "total_rate": 2.0,
+            "period": {"time_type": "day", "year": 2026, "month": 1},
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 99.0, "total_invest": 1000.0},
+        )
+
+        with self.app.test_request_context("/api/analysis/calendar?type=day"):
+            result = service.build_calendar_payload(
+                time_type="day", user_id="u_1", year=2026, month=1
+            )
+
+        # 历史月份数据不应被修改
+        self.assertEqual(result["items"][0]["pnl"], 20.0)
 
     def test_analysis_overview_day_uses_stats_getter(self):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""

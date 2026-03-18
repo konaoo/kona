@@ -68,8 +68,34 @@ class AnalysisReadService:
         year: int | None,
         month: int | None,
     ):
+        from datetime import datetime as _dt
+
         with trace_request_stage("analysis.calendar.db", time_type=time_type):
-            return self.db.get_calendar_data(time_type, user_id, year=year, month=month)
+            result = self.db.get_calendar_data(time_type, user_id, year=year, month=month)
+
+        # 仅在查询日视图且是当月时，把今天那格替换为实时值
+        if time_type == "day" and self.stats_getter is not None:
+            period = result.get("period") or {}
+            now = _dt.now()
+            if int(period.get("year") or 0) == now.year and int(period.get("month") or 0) == now.month:
+                try:
+                    stats = self.stats_getter(user_id)
+                    realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
+                    today_label = f"{now.month}-{now.day}"
+                    items = list(result.get("items") or [])
+                    replaced = False
+                    for item in items:
+                        if item.get("label") == today_label:
+                            item["pnl"] = realtime_pnl
+                            replaced = True
+                            break
+                    if not replaced:
+                        items.append({"label": today_label, "pnl": realtime_pnl})
+                    result = {**result, "items": items}
+                except Exception:
+                    pass  # 实时拉取失败，保留快照值
+
+        return result
 
     def build_market_breakdown_payload(
         self,
