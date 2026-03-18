@@ -64,7 +64,7 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
             mode: map['mode'] as String,
             delta: (map['delta'] as num).toDouble(),
             note: (map['note'] as String?) ?? '',
-            time: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
+            time: (DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now()).toLocal(),
             balanceAfter: (map['balance_after'] as num).toDouble(),
           );
         }).toList();
