@@ -1,3 +1,23 @@
+## 2026-03-18-08
+
+### 这版一句话
+
+分析页刷新不再因实时行情拉取卡住：休市直接走快照，开市加 5 秒超时兜底。
+
+### 主要变化
+- [analysis_read_service.py](kona_tool/core/analysis_read_service.py)：`AnalysisReadService` 新增 `all_markets_closed_getter` 和 `stats_timeout` 参数；`_get_day_overview` 在全市场休市时跳过 `stats_getter` 直接返回快照，开市时通过线程池加超时（默认 5 秒）调用，超时或失败均 fallback 到快照。
+- [app_factory.py](kona_tool/app_factory.py)：注入 `all_markets_closed_getter`，取自 `market_runtime` 缓存状态（5 秒 TTL）。
+- [test_read_services.py](kona_tool/tests/test_read_services.py)：新增三个测试，覆盖休市跳过、开市调用、超时 fallback 三个场景。
+
+### 影响范围
+- 分析页下拉刷新响应速度（A 股/港股收盘后立即生效）
+- 当日盈亏大卡片的实时性（休市后显示快照值，开市期间仍实时）
+
+### 验收重点
+- A 股收盘后下拉刷新应明显变快（不再等待行情接口）
+- 开市期间当日盈亏仍为实时值
+- 行情接口异常时最多等待 5 秒后自动 fallback，不卡死
+
 ## 2026-03-18-07
 
 ### 这版一句话

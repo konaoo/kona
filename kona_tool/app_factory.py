@@ -260,6 +260,9 @@ def create_app_components(
         stats_getter=wiring.calculate_portfolio_stats,
         rates_getter=wiring.forex_rates_getter,
         convert_amount=portfolio_runtime.convert_amount,
+        all_markets_closed_getter=lambda: bool(
+            market_runtime.get_market_status_cached().get("all_closed", False)
+        ),
     )
     analysis_payload_handlers = create_analysis_payload_handlers(
         analysis_read_service=analysis_read_service,

@@ -1,4 +1,5 @@
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -253,6 +254,63 @@ class ReadServicesTests(unittest.TestCase):
             result = service.build_overview_payload(period="day", user_id="u_1")
 
         # _FakeDb.get_pnl_overview 返回 {"pnl": 12.34, ...}
+        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
+
+    def test_overview_day_skips_stats_getter_when_all_markets_closed(self):
+        """全市场休市时应直接走快照，不调用 stats_getter"""
+        stats_called = []
+
+        def tracking_stats_getter(user_id):
+            stats_called.append(user_id)
+            return {"day_pnl": 99.0, "total_invest": 1000.0}
+
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=tracking_stats_getter,
+            all_markets_closed_getter=lambda: True,  # 全部休市
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        # stats_getter 不应被调用
+        self.assertEqual(stats_called, [])
+        # 返回快照值
+        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
+
+    def test_overview_day_uses_stats_getter_when_markets_open(self):
+        """有市场开市时应调用 stats_getter 获取实时数据"""
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+            all_markets_closed_getter=lambda: False,  # 有市场开市
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        self.assertAlmostEqual(result["day"]["pnl"], 88.0)
+
+    def test_overview_day_falls_back_on_stats_getter_timeout(self):
+        """stats_getter 超时应 fallback 到快照"""
+        def slow_stats_getter(user_id):
+            time.sleep(1.0)  # 比 timeout 慢
+            return {"day_pnl": 99.0, "total_invest": 1000.0}
+
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=slow_stats_getter,
+            all_markets_closed_getter=lambda: False,
+            stats_timeout=0.1,  # 100ms 超时
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        # 超时后 fallback 到快照值
         self.assertAlmostEqual(result["day"]["pnl"], 12.34)
 
     def test_rank_uses_cny_for_cross_currency_sorting(self):

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
 from typing import Any, Callable, Dict
 
 from .request_trace import trace_request_stage
+
+# 共享线程池，用于给 stats_getter 调用加超时
+_stats_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis_stats")
+
+_DEFAULT_STATS_TIMEOUT = 5.0  # seconds
 
 
 class AnalysisReadService:
@@ -16,29 +22,44 @@ class AnalysisReadService:
         stats_getter: Callable[[str | None], Dict[str, Any]] | None = None,
         rates_getter: Callable[[], Dict[str, float]] | None = None,
         convert_amount: Callable[[float, str, str, Dict[str, float]], float] | None = None,
+        all_markets_closed_getter: Callable[[], bool] | None = None,
+        stats_timeout: float = _DEFAULT_STATS_TIMEOUT,
     ) -> None:
         self.db = db
         self.price_batch_getter = price_batch_getter
         self.stats_getter = stats_getter
         self.rates_getter = rates_getter
         self.convert_amount = convert_amount
+        self.all_markets_closed_getter = all_markets_closed_getter
+        self.stats_timeout = stats_timeout
 
     def _get_day_overview(self, user_id: str | None) -> Dict[str, Any]:
-        """获取当日盈亏。优先走实时计算，失败时 fallback 到快照表。"""
+        """获取当日盈亏。
+
+        全市场休市时直接走快照（价格不再变化，快照即最终值）；
+        开市时实时拉取，超时（默认 5 秒）或失败则 fallback 到快照。
+        """
         if self.stats_getter is not None:
+            # 全市场休市：无需实时拉取，直接用快照
+            if self.all_markets_closed_getter is not None:
+                try:
+                    if self.all_markets_closed_getter():
+                        return self.db.get_pnl_overview("day", user_id)
+                except Exception:
+                    pass  # 状态判断失败，继续尝试实时拉取
+
             try:
-                stats = self.stats_getter(user_id)
+                future = _stats_executor.submit(self.stats_getter, user_id)
+                stats = future.result(timeout=self.stats_timeout)
                 pnl = float(stats.get("day_pnl") or 0.0)
-                # 分母用实时 total_invest（当前持仓市值），
-                # 与快照路径的分母口径略有差异，属于设计取舍，不是 bug
+                # 分母用实时 total_invest，与快照口径略有差异，属于设计取舍
                 base = float(stats.get("total_invest") or 0.0) or 1.0
                 return {
                     "pnl": round(pnl, 2),
                     "pnl_rate": round(pnl / base * 100, 2),
                     "base_value": round(base, 2),
                 }
-                # 注：前端只读 pnl 和 pnl_rate，base_value 不影响显示
-            except Exception:
+            except (_FuturesTimeoutError, Exception):
                 pass  # fallback 到快照
         return self.db.get_pnl_overview("day", user_id)
 
