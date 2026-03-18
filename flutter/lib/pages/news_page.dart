@@ -917,13 +917,13 @@ class _NewsPageState extends State<NewsPage> {
             ],
           ),
         ),
-        // ── 新快讯横幅 ──
+        // ── 新快讯胶囊 ──
         if (_pendingNews.isNotEmpty && !_atTop)
           Positioned(
-            top: 0,
+            top: 12,
             left: 0,
             right: 0,
-            child: _buildPendingBanner(),
+            child: Center(child: _buildPendingBanner()),
           ),
       ],
     );
@@ -932,39 +932,55 @@ class _NewsPageState extends State<NewsPage> {
   // ═══════════════════════  新快讯横幅  ══════════════════════
 
   Widget _buildPendingBanner() {
-    return GestureDetector(
-      onTap: _scrollToTopAndFlush,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: AppTheme.accent,
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.accent.withValues(alpha: 0.35),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.arrow_upward_rounded,
-              size: 14,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '${_pendingNews.length} 条新快讯',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutBack,
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, t, child) => Transform.translate(
+        offset: Offset(0, -18 * (1 - t)),
+        child: Opacity(opacity: t.clamp(0.0, 1.0), child: child),
+      ),
+      child: GestureDetector(
+        onTap: _scrollToTopAndFlush,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: AppTheme.accent,
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accent.withValues(alpha: 0.45),
+                blurRadius: 16,
+                offset: const Offset(0, 5),
               ),
-            ),
-          ],
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.arrow_upward_rounded,
+                size: 13,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '${_pendingNews.length} 条新快讯',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

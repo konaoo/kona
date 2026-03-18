@@ -1578,7 +1578,7 @@ class AnalysisRankAllPage extends StatefulWidget {
 
 class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
   final ApiService _api = ApiService();
-  bool _loading = true;
+  bool _loading = false;
   List<_RankItem> _items = const [];
   int _retryCount = 0;
   Timer? _retryTimer;
