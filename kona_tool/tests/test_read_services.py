@@ -123,7 +123,7 @@ class ReadServicesTests(unittest.TestCase):
 
         self.assertEqual(len(result["gain"]), 1)
         self.assertEqual(result["gain"][0]["code"], "AAPL")
-        self.assertEqual(result["gain"][0]["pnl"], 20.0)
+        self.assertEqual(result["gain"][0]["pnl"], 10.0)  # 用昨收价(11.0)而非实时价(12.0)计算
         self.assertEqual(
             stages,
             [
@@ -254,6 +254,142 @@ class ReadServicesTests(unittest.TestCase):
 
         # _FakeDb.get_pnl_overview 返回 {"pnl": 12.34, ...}
         self.assertAlmostEqual(result["day"]["pnl"], 12.34)
+
+    def test_rank_uses_cny_for_cross_currency_sorting(self):
+        """多货币持仓排行应换算为 CNY 后排序，返回值保持原始货币"""
+        db = _FakeDb()
+        db.get_rank_data = lambda rank_type, market, user_id: [
+            {
+                "code": "AAPL",
+                "name": "Apple",
+                "qty": 10,
+                "cost_price": 10,
+                "adjustment": 0,
+                "market": "us",
+                "curr": "USD",
+            },
+            {
+                "code": "sh600000",
+                "name": "工行",
+                "qty": 100,
+                "cost_price": 9,
+                "adjustment": 0,
+                "market": "a",
+                "curr": "CNY",
+            },
+        ]
+        service = AnalysisReadService(
+            db=db,
+            # AAPL: yclose=11, pnl=10*(11-10)=10 USD → 70 CNY
+            # sh600000: yclose=9.5, pnl=100*(9.5-9)=50 CNY
+            # 换算后 AAPL(70) > sh600000(50)，AAPL 应排第一
+            price_batch_getter=lambda codes: {
+                "AAPL": (0, 11.0, 0, 0),
+                "sh600000": (0, 9.5, 0, 0),
+            },
+            rates_getter=lambda: {"USD": 7.0, "CNY": 1.0},
+            convert_amount=lambda amount, from_curr, to_curr, rates: amount * rates.get(from_curr, 1.0)
+            if to_curr == "CNY"
+            else amount,
+        )
+
+        with self.app.test_request_context("/api/analysis/rank?market=all"):
+            result = service.build_rank_payload(market="all", user_id="u_1")
+
+        self.assertEqual(result["gain"][0]["code"], "AAPL")
+        self.assertEqual(result["gain"][1]["code"], "sh600000")
+        # pnl 应保持原始货币
+        self.assertAlmostEqual(result["gain"][0]["pnl"], 10.0)  # USD
+        self.assertAlmostEqual(result["gain"][1]["pnl"], 50.0)  # CNY
+
+    def test_rank_without_currency_converter_falls_back_to_native_pnl_sort(self):
+        """未注入 convert_amount 时，直接按原始货币 pnl 排序（兼容旧行为）"""
+        db = _FakeDb()
+        db.get_rank_data = lambda rank_type, market, user_id: [
+            {"code": "AAPL", "name": "Apple", "qty": 10, "cost_price": 10, "adjustment": 0, "market": "us", "curr": "USD"},
+            {"code": "sh600000", "name": "工行", "qty": 100, "cost_price": 9, "adjustment": 0, "market": "a", "curr": "CNY"},
+        ]
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {
+                "AAPL": (0, 11.0, 0, 0),
+                "sh600000": (0, 9.5, 0, 0),
+            },
+        )
+
+        with self.app.test_request_context("/api/analysis/rank?market=all"):
+            result = service.build_rank_payload(market="all", user_id="u_1")
+
+        # 无换算时按原始 pnl 排：sh600000(50 CNY) > AAPL(10 USD)
+        self.assertEqual(result["gain"][0]["code"], "sh600000")
+        self.assertEqual(result["gain"][1]["code"], "AAPL")
+
+    def test_market_breakdown_today_uses_stats_getter(self):
+        """市场拆分日历当月今日的 total_pnl 应使用实时值"""
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+
+        db = _FakeDb()
+        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "time_type": "day",
+            "year": today.year,
+            "month": today.month,
+            "items": [
+                {
+                    "date": today_str,
+                    "markets": {"a": 5.0, "hk": None, "us": None, "fund": None, "unallocated": None},
+                    "total_pnl": 5.0,
+                    "source": "estimated",
+                }
+            ],
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+        )
+
+        with self.app.test_request_context("/api/analysis/market_breakdown"):
+            result = service.build_market_breakdown_payload(
+                user_id="u_1", year=today.year, month=today.month
+            )
+
+        today_item = next((i for i in result["items"] if i["date"] == today_str), None)
+        self.assertIsNotNone(today_item)
+        self.assertAlmostEqual(today_item["total_pnl"], 88.0)
+        self.assertEqual(today_item["source"], "partial_realtime")
+        # per-market 拆分保持快照值不变
+        self.assertAlmostEqual(today_item["markets"]["a"], 5.0)
+
+    def test_market_breakdown_past_month_not_affected_by_stats_getter(self):
+        """历史月份不应被 stats_getter 修改"""
+        db = _FakeDb()
+        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "time_type": "day",
+            "year": 2026,
+            "month": 1,
+            "items": [
+                {
+                    "date": "2026-01-15",
+                    "markets": {"a": 10.0, "hk": None, "us": None, "fund": None, "unallocated": None},
+                    "total_pnl": 10.0,
+                    "source": "exact",
+                }
+            ],
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {"day_pnl": 999.0, "total_invest": 1000.0},
+        )
+
+        with self.app.test_request_context("/api/analysis/market_breakdown"):
+            result = service.build_market_breakdown_payload(user_id="u_1", year=2026, month=1)
+
+        self.assertAlmostEqual(result["items"][0]["total_pnl"], 10.0)
+        self.assertEqual(result["items"][0]["source"], "exact")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,46 @@
+## 2026-03-18-06
+
+### 这版一句话
+
+排行榜跨货币统一换算为 CNY 后排序，市场拆分日历今日 total_pnl 改为实时值。
+
+### 主要变化
+- [analysis_read_service.py](kona_tool/core/analysis_read_service.py)：`AnalysisReadService` 新增 `rates_getter` / `convert_amount` 可选参数；`build_rank_payload` 用 CNY 换算后的金额排序，返回值仍保持原始货币；`build_market_breakdown_payload` 在查询当月时把今日那条 `total_pnl` 替换为实时值（per-market 拆分仍为快照，标记 `source: partial_realtime`）。
+- [app_factory.py](kona_tool/app_factory.py)：`AnalysisReadService` 注入 `rates_getter` 和 `convert_amount`。
+- [test_read_services.py](kona_tool/tests/test_read_services.py)：新增四个测试，覆盖多货币排序正确性、无换算器时兼容旧行为、市场拆分日历今日实时替换、历史月份不受影响。
+
+### 影响范围
+- 分析页盈亏排行榜（跨市场排名更准确）
+- 分析页市场拆分日历当月今日的 total_pnl
+
+### 验收重点
+- 美股/A股/港股混合持仓时，排行榜排名按 CNY 换算后的收益金额排序
+- 市场拆分日历今日 total_pnl 与大卡片当日盈亏一致
+- 历史月份市场拆分数据不受影响
+
+### 已知限制
+- 市场拆分日历今日的 per-market 拆分（a/hk/us/fund）仍为快照值，不是实时值，因 stats_getter 不返回市场维度拆分数据
+
+## 2026-03-18-05
+
+### 这版一句话
+
+修复盈亏排行"查看全部"卡在加载中的 bug，同时把排行改为用昨收价计算累计盈亏。
+
+### 主要变化
+- [analysis_page.dart](flutter/lib/pages/analysis_page.dart)：修复 `_AnalysisRankAllPageState` 初始 `_loading = true` 导致进入页面就被守卫拦截、永远加载不出来的 bug，改为 `false`。
+- [analysis_read_service.py](kona_tool/core/analysis_read_service.py)：排行榜盈亏计算从实时价改为昨收价，白天排名不随行情波动，与"累计收益"的语义一致。
+- [test_read_services.py](kona_tool/tests/test_read_services.py)：同步更新排行测试预期值。
+
+### 影响范围
+- Flutter 分析页"查看全部"子页面
+- 分析页盈亏排行榜数字（改用昨收价）
+
+### 验收重点
+- 点击"查看全部"能正常显示列表，不再卡加载
+- 排行榜盈亏数字白天保持稳定，不随行情跳动
+- 本次未做真机验收
+
 ## 2026-03-18-04
 
 ### 这版一句话

@@ -14,10 +14,14 @@ class AnalysisReadService:
         db: Any,
         price_batch_getter: Callable[[list[str]], Dict[str, Any]],
         stats_getter: Callable[[str | None], Dict[str, Any]] | None = None,
+        rates_getter: Callable[[], Dict[str, float]] | None = None,
+        convert_amount: Callable[[float, str, str, Dict[str, float]], float] | None = None,
     ) -> None:
         self.db = db
         self.price_batch_getter = price_batch_getter
         self.stats_getter = stats_getter
+        self.rates_getter = rates_getter
+        self.convert_amount = convert_amount
 
     def _get_day_overview(self, user_id: str | None) -> Dict[str, Any]:
         """获取当日盈亏。优先走实时计算，失败时 fallback 到快照表。"""
@@ -104,13 +108,45 @@ class AnalysisReadService:
         year: int | None,
         month: int | None,
     ):
+        from datetime import datetime as _dt
+
         with trace_request_stage("analysis.market_breakdown.db", time_type="day"):
-            return self.db.get_market_breakdown_calendar_data(
+            result = self.db.get_market_breakdown_calendar_data(
                 time_type="day",
                 user_id=user_id,
                 year=year,
                 month=month,
             )
+
+        # 当月视图：把今天那条的 total_pnl 替换为实时值（per-market 拆分仍为快照）
+        if self.stats_getter is not None:
+            now = _dt.now()
+            if int(result.get("year") or 0) == now.year and int(result.get("month") or 0) == now.month:
+                try:
+                    stats = self.stats_getter(user_id)
+                    realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
+                    today_str = now.strftime("%Y-%m-%d")
+                    items = list(result.get("items") or [])
+                    new_items = []
+                    replaced = False
+                    for item in items:
+                        if item.get("date") == today_str:
+                            new_items.append({**item, "total_pnl": realtime_pnl, "source": "partial_realtime"})
+                            replaced = True
+                        else:
+                            new_items.append(item)
+                    if not replaced:
+                        new_items.append({
+                            "date": today_str,
+                            "markets": {"a": None, "hk": None, "us": None, "fund": None, "unallocated": None},
+                            "total_pnl": realtime_pnl,
+                            "source": "partial_realtime",
+                        })
+                    result = {**result, "items": new_items}
+                except Exception:
+                    pass  # 实时拉取失败，保留快照值
+
+        return result
 
     def build_rank_payload(self, *, market: str, user_id: str | None):
         with trace_request_stage("analysis.rank.db", market=market):
@@ -122,17 +158,23 @@ class AnalysisReadService:
         with trace_request_stage("analysis.rank.quotes", code_count=len(codes)):
             prices = self.price_batch_getter(codes)
 
+        rates: Dict[str, float] = {}
+        if self.rates_getter is not None:
+            try:
+                rates = self.rates_getter() or {}
+            except Exception:
+                pass
+
+        # result_items: list of (pnl_cny, item_dict)，pnl_cny 仅用于排序
         result_items = []
         with trace_request_stage("analysis.rank.assemble", item_count=len(portfolio_data)):
             for item in portfolio_data:
                 code = item["code"]
                 price_info = prices.get(code, (0, 0, 0, 0))
-                current_price_raw = float(price_info[0] or 0.0)
                 yclose = float(price_info[1] or 0.0)
                 cost_price = float(item["cost_price"] or 0.0)
-                if current_price_raw > 0:
-                    current_price = current_price_raw
-                elif yclose > 0:
+                # 排行榜用昨收价计算累计盈亏，白天不随行情波动
+                if yclose > 0:
                     current_price = yclose
                 elif cost_price > 0:
                     current_price = cost_price
@@ -146,21 +188,36 @@ class AnalysisReadService:
                 cost_abs = abs(cost)
                 pnl_rate = (pnl / cost_abs * 100) if cost_abs > 0 else 0
 
+                curr = item.get("curr", "CNY")
+                # 换算为 CNY 用于跨货币排序，返回值保持原始货币
+                pnl_cny = pnl
+                if self.convert_amount is not None and curr and curr != "CNY":
+                    try:
+                        pnl_cny = self.convert_amount(pnl, curr, "CNY", rates)
+                    except Exception:
+                        pass
+
                 result_items.append(
-                    {
-                        "code": code,
-                        "name": item["name"],
-                        "pnl": round(pnl, 2),
-                        "pnl_rate": round(pnl_rate, 2),
-                        "market": item["market"],
-                        "curr": item.get("curr", "CNY"),
-                    }
+                    (
+                        pnl_cny,
+                        {
+                            "code": code,
+                            "name": item["name"],
+                            "pnl": round(pnl, 2),
+                            "pnl_rate": round(pnl_rate, 2),
+                            "market": item["market"],
+                            "curr": curr,
+                        },
+                    )
                 )
 
-        gain_list = sorted(
-            [x for x in result_items if x["pnl"] > 0],
-            key=lambda x: x["pnl"],
+        gain_list = [x for _, x in sorted(
+            [(cny, x) for cny, x in result_items if cny > 0],
+            key=lambda t: t[0],
             reverse=True,
-        )
-        loss_list = sorted([x for x in result_items if x["pnl"] < 0], key=lambda x: x["pnl"])
+        )]
+        loss_list = [x for _, x in sorted(
+            [(cny, x) for cny, x in result_items if cny < 0],
+            key=lambda t: t[0],
+        )]
         return {"gain": gain_list, "loss": loss_list}

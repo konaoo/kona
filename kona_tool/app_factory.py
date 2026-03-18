@@ -258,6 +258,8 @@ def create_app_components(
         db=db,
         price_batch_getter=wiring.batch_get_prices_getter,
         stats_getter=wiring.calculate_portfolio_stats,
+        rates_getter=wiring.forex_rates_getter,
+        convert_amount=portfolio_runtime.convert_amount,
     )
     analysis_payload_handlers = create_analysis_payload_handlers(
         analysis_read_service=analysis_read_service,
