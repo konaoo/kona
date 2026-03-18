@@ -189,7 +189,7 @@ class AnalysisDatabaseMixin:
             if period == "day":
                 cursor.execute(
                     f"""
-                    SELECT date, total_pnl, total_invest FROM daily_snapshots
+                    SELECT date, day_pnl, total_invest FROM daily_snapshots
                     WHERE date = ? AND {user_condition}
                     LIMIT 1
                     """,
@@ -197,27 +197,11 @@ class AnalysisDatabaseMixin:
                 )
                 row = cursor.fetchone()
                 if row:
-                    today_total = float(row["total_pnl"]) if row["total_pnl"] else 0
+                    pnl = float(row["day_pnl"]) if row["day_pnl"] else 0
                     base = float(row["total_invest"]) if row["total_invest"] else 1
-                    cursor.execute(
-                        f"""
-                        SELECT total_pnl, total_invest FROM daily_snapshots
-                        WHERE date < ? AND {user_condition}
-                        ORDER BY date DESC
-                        LIMIT 1
-                        """,
-                        (today_str,) + user_param,
-                    )
-                    prev = cursor.fetchone()
-                    if not prev:
-                        return {"pnl": 0, "pnl_rate": 0, "base_value": base}
-                    prev_total = float(prev["total_pnl"]) if prev["total_pnl"] else 0
-                    prev_invest = float(prev["total_invest"]) if prev["total_invest"] else 0
-                    calc_base = prev_invest if prev_invest > 0 else base
-                    pnl = today_total - prev_total
                     return {
                         "pnl": pnl,
-                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "pnl_rate": round(pnl / base * 100, 2) if base else 0,
                         "base_value": base,
                     }
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}

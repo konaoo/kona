@@ -146,12 +146,13 @@ class SnapshotDatabaseMixin:
         finally:
             conn.close()
 
-    def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None) -> bool:
+    def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None, snapshot_date: str = None) -> bool:
         """保存每日资产快照。"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        # 优先用调用方传入的日期，保证和 market_breakdown 写同一天
+        today = snapshot_date or data.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d")
         uid = user_id or ""
 
         try:

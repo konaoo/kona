@@ -50,7 +50,8 @@ class SnapshotRuntime:
         """保存用户当日快照。"""
         try:
             stats = self.calculate_portfolio_stats(user_id)
-            saved = self.db.save_daily_snapshot(stats, user_id)
+            snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+            saved = self.db.save_daily_snapshot(stats, user_id, snapshot_date=snapshot_date)
             if saved:
                 snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
                 breakdown_ok = self.db.save_daily_snapshot_market_breakdown(

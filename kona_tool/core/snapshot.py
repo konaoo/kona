@@ -153,7 +153,14 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         if market not in day_pnl_by_market:
             market = "a"
         market_trading_day = bool(market_trading_days.get(market))
-        item_day_pnl = ((cur_price - yclose_ref) * qty * rate) if market_trading_day else 0.0
+        # 开盘前价格源返回的 cur_price ≈ yclose_ref（都是上一个收盘价），
+        # 此时不应计入当日盈亏，否则会把昨天的涨幅错误记到今天
+        if not market_trading_day:
+            item_day_pnl = 0.0
+        elif yclose_ref > 0 and abs(cur_price - yclose_ref) / yclose_ref < 1e-9:
+            item_day_pnl = 0.0
+        else:
+            item_day_pnl = (cur_price - yclose_ref) * qty * rate
         item_float_pnl = (cur_price - cost) * qty * rate
         item_total_pnl = item_float_pnl + (adj * rate)
         
@@ -169,7 +176,8 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     total_liability = sum(_asset_amount_to_cny(a, rates, use_abs=True) for a in liabilities)
     
     # 5. 获取今日已实现盈亏（卖出）
-    snapshot_date = now_utc.strftime("%Y-%m-%d")
+    # 统一用北京时间作为快照日期，和 cron、服务器时区、用户认知一致
+    snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
     realized_pnl_by_market = db.get_realized_pnl_by_date(snapshot_date, user_id=user_id)
     realized_pnl = sum(float(v or 0.0) for v in realized_pnl_by_market.values())
     try:
@@ -227,7 +235,8 @@ def take_snapshot(user_id: str = None) -> bool:
         success_any = False
         for uid in user_ids:
             stats = calculate_portfolio_stats(uid)
-            success = db.save_daily_snapshot(stats, uid)
+            snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+            success = db.save_daily_snapshot(stats, uid, snapshot_date=snapshot_date)
             success_any = success_any or success
             if success:
                 snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))

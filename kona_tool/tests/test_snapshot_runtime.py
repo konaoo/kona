@@ -15,8 +15,8 @@ class _FakeDb:
         self.saved_stats = []
         self.saved_breakdowns = []
 
-    def save_daily_snapshot(self, stats, user_id):
-        self.saved_stats.append({"stats": stats, "user_id": user_id})
+    def save_daily_snapshot(self, stats, user_id, snapshot_date=None):
+        self.saved_stats.append({"stats": stats, "user_id": user_id, "snapshot_date": snapshot_date})
         return True
 
     def save_daily_snapshot_market_breakdown(self, **kwargs):
