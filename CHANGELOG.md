@@ -1,3 +1,48 @@
+## 2026-03-18-12
+
+### 这版一句话
+
+修复排行榜初始 loading 遮罩；新快讯提示从全宽横幅改为居中浮动胶囊。
+
+### 主要变化
+- [analysis_page.dart](flutter/lib/pages/analysis_page.dart)：`AnalysisRankAllPage` 的 `_loading` 初始值从 `true` 改为 `false`，避免首次渲染出现多余 loading 遮罩。
+- [news_page.dart](flutter/lib/pages/news_page.dart)：新快讯提示改为居中浮动胶囊（`BorderRadius.circular(20)` + 蓝色阴晕），加入 `TweenAnimationBuilder` 滑入淡出动画（easeOutBack 320ms），视觉更轻量。
+
+### 影响范围
+- 分析页持仓排行全列表的初始渲染状态
+- 快讯页有新快讯时的横幅样式和动画
+
+### 验收重点
+- 进入排行全列表页面，不应出现短暂 loading 遮罩
+- 快讯页下滑后出现新快讯时，应看到居中胶囊从顶部滑入
+
+## 2026-03-18-11
+
+### 这版一句话
+
+资产调整记录功能：支持对现金/其他资产/负债做增减操作，并持久化记录每次调整历史。
+
+### 主要变化
+- [db_asset_adjustments.py](kona_tool/core/db_asset_adjustments.py)：新增 `AssetAdjustmentDatabaseMixin`，包含 `add_asset_adjustment`（单事务更新余额 + 写记录）和 `get_asset_adjustments` 两个方法。
+- [db_schema.py](kona_tool/core/db_schema.py)：新增 `asset_adjustments` 表（asset_type/asset_id/mode/delta/note/balance_after）及索引。
+- [db.py](kona_tool/core/db.py)：`DatabaseManager` 继承 `AssetAdjustmentDatabaseMixin`。
+- [asset_adjustment_handlers.py](kona_tool/asset_adjustment_handlers.py) + [asset_adjustment_routes.py](kona_tool/asset_adjustment_routes.py)：`POST/GET /api/assets/<type>/<id>/adjustments`，遵循已有 handler factory + Blueprint 规范。
+- [app_factory.py](kona_tool/app_factory.py)：注册新 Blueprint。
+- [asset_item_detail_page.dart](flutter/lib/pages/asset_item_detail_page.dart)：新增资产详情页，含余额卡片 + 调整记录列表（initState 从 API 加载历史，新增后乐观插入顶部）。
+- [asset_adjust_dialog.dart](flutter/lib/widgets/asset_adjust_dialog.dart)：增加/减少弹窗，调 `adjustAsset` API，`balance_after` 取自服务端返回值。
+- [asset_detail_page.dart](flutter/lib/pages/asset_detail_page.dart)：点击资产卡片跳转详情页（有 id）或原编辑弹窗（无 id 兜底）。
+- [app_state.dart](flutter/lib/providers/app_state.dart) / [app_asset_write_state.dart](flutter/lib/providers/app_asset_write_state.dart) / [api_service.dart](flutter/lib/services/api_service.dart)：新增 `adjustAsset` + `getAssetAdjustments`。
+
+### 影响范围
+- 现金账户、其他资产、负债的资产卡片点击行为（从弹窗改为跳转详情页）
+- 新增调整记录写入数据库并影响资产余额
+
+### 验收重点
+- 点击资产卡片 → 进入详情页，显示余额卡片和历史记录列表
+- 点击编辑图标 → 弹窗选增加/减少，填金额和备注，确认后余额更新、记录出现在列表顶部
+- 重启 App 后历史记录仍然存在（从服务端加载）
+- 删除资产后详情页自动返回
+
 ## 2026-03-18-10
 
 ### 这版一句话
