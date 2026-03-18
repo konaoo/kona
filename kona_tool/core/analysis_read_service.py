@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # 共享线程池，用于给 stats_getter 调用加超时
 _stats_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis_stats")
 
-_DEFAULT_STATS_TIMEOUT = 5.0  # seconds
+_DEFAULT_STATS_TIMEOUT = 20.0  # seconds — 待调优，先用宽松值观测实际耗时后再收紧
 
 
 class AnalysisReadService:
