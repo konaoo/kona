@@ -1,3 +1,26 @@
+## 2026-03-18-01
+
+### 这版一句话
+
+修复快照日期错位导致三个页面"今日收益"数字对不上的问题，并加固盘前误算保护。
+
+### 主要变化
+- [snapshot.py](kona_tool/core/snapshot.py)：快照日期从 UTC 统一为北京时间，和 cron、服务器时区一致；盘前价格和昨收相同时当日收益归零，避免把昨天涨幅错算到今天。
+- [db_snapshots.py](kona_tool/core/db_snapshots.py)：`save_daily_snapshot` 新增 `snapshot_date` 参数，优先用调用方传入的日期，保证快照表和分市场表写同一天。
+- [snapshot_runtime.py](kona_tool/snapshot_runtime.py)：`save_snapshot_for_user` 透传 `snapshot_date`，和 `snapshot.py` 同步。
+- [db_analysis.py](kona_tool/core/db_analysis.py)：分析页"当日"收益改为直接读快照里的当日收益字段，不再用"今天累计盈亏 - 昨天累计盈亏"差值算法（差值会被新加仓位的历史调整干扰）。
+- [test_snapshot_runtime.py](kona_tool/tests/test_snapshot_runtime.py)：mock 签名同步更新。
+
+### 影响范围
+- 分析页"当日盈亏"大卡片
+- 收益日历的分市场拆分数据
+- 每 2 小时 cron 快照写入逻辑
+
+### 验收重点
+- 分析页"当日盈亏"和投资页"今日收益"数字一致
+- 收益日历各天数字不变，分市场拆分加起来等于当天总收益
+- `pytest kona_tool/tests/test_snapshot_runtime.py test_contracts_analysis_snapshot_admin.py test_analysis_api.py test_calendar_weekend.py` 全通过
+
 ## 2026-03-17-09
 
 ### 这版一句话
