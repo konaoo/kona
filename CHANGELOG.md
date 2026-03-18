@@ -1,3 +1,16 @@
+## 2026-03-18-09
+
+### 这版一句话
+
+给 stats_getter 调用加计时日志，方便排查开市期间行情接口的实际响应时间。
+
+### 主要变化
+- [analysis_read_service.py](kona_tool/core/analysis_read_service.py)：记录 stats_getter 每次调用的耗时（INFO 级别）；超时时输出实际等待时长（WARNING）；异常时输出错误原因（WARNING）。
+
+### 验收重点
+- 开市期间下拉刷新后，在服务端日志中搜索 `stats_getter` 确认实际耗时
+- 根据实际耗时决定是否需要调整 `stats_timeout`（当前默认 5 秒）
+
 ## 2026-03-18-08
 
 ### 这版一句话

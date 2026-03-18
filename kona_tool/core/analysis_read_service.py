@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import time as _time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
 from typing import Any, Callable, Dict
 
 from .request_trace import trace_request_stage
+
+logger = logging.getLogger(__name__)
 
 # 共享线程池，用于给 stats_getter 调用加超时
 _stats_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis_stats")
@@ -49,8 +53,11 @@ class AnalysisReadService:
                     pass  # 状态判断失败，继续尝试实时拉取
 
             try:
+                t0 = _time.monotonic()
                 future = _stats_executor.submit(self.stats_getter, user_id)
                 stats = future.result(timeout=self.stats_timeout)
+                elapsed = _time.monotonic() - t0
+                logger.info("stats_getter completed in %.3fs", elapsed)
                 pnl = float(stats.get("day_pnl") or 0.0)
                 # 分母用实时 total_invest，与快照口径略有差异，属于设计取舍
                 base = float(stats.get("total_invest") or 0.0) or 1.0
@@ -59,7 +66,12 @@ class AnalysisReadService:
                     "pnl_rate": round(pnl / base * 100, 2),
                     "base_value": round(base, 2),
                 }
-            except (_FuturesTimeoutError, Exception):
+            except _FuturesTimeoutError:
+                elapsed = _time.monotonic() - t0
+                logger.warning("stats_getter timed out after %.3fs, falling back to snapshot", elapsed)
+                pass  # fallback 到快照
+            except Exception as exc:
+                logger.warning("stats_getter failed (%s), falling back to snapshot", exc)
                 pass  # fallback 到快照
         return self.db.get_pnl_overview("day", user_id)
 
