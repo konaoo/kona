@@ -17,6 +17,7 @@ try:
     from .db_snapshots import SnapshotDatabaseMixin
     from .db_users import UserDatabaseMixin
     from .db_asset_accounts import AssetAccountDatabaseMixin
+    from .db_asset_adjustments import AssetAdjustmentDatabaseMixin
 except ImportError:  # 兼容被单文件动态加载的测试场景
     from core.db_schema import DatabaseSchemaManager
     from core.db_admin_state import AdminStateDatabaseMixin
@@ -27,6 +28,7 @@ except ImportError:  # 兼容被单文件动态加载的测试场景
     from core.db_snapshots import SnapshotDatabaseMixin
     from core.db_users import UserDatabaseMixin
     from core.db_asset_accounts import AssetAccountDatabaseMixin
+    from core.db_asset_adjustments import AssetAdjustmentDatabaseMixin
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class DatabaseManager(
     UserDatabaseMixin,
     AdminStateDatabaseMixin,
     AssetAccountDatabaseMixin,
+    AssetAdjustmentDatabaseMixin,
     PortfolioDatabaseMixin,
     SnapshotDatabaseMixin,
     AnalysisDatabaseMixin,

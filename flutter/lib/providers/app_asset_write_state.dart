@@ -170,6 +170,54 @@ class AppAssetWriteState {
     return const AssetActionResult.success();
   }
 
+  Future<AssetActionResult> adjustAsset({
+    required String type,
+    required int id,
+    required String name,
+    required double currentAmount,
+    required String mode,
+    required double delta,
+    required String note,
+    String? curr,
+    bool awaitRefresh = false,
+    required AppAssetWriteBindings bindings,
+  }) async {
+    if (id <= 0) {
+      return const AssetActionResult.failure('操作失败，请稍后重试');
+    }
+    final updatedAmount = mode == 'add' ? currentAmount + delta : currentAmount - delta;
+    final normalizedCurr = _assetsState.normalizeAssetCurrency(curr);
+    final snapshot = _assetsState.captureAssetSnapshot();
+    final changed = _assetsState.optimisticUpdateAsset(
+      type: type,
+      id: id,
+      name: name,
+      amount: updatedAmount,
+      curr: normalizedCurr,
+      notify: false,
+    );
+    if (changed) {
+      _recalculateAssetTotals(bindings.notifyListeners);
+    }
+
+    final result = await _api.adjustAsset(
+      assetType: type,
+      assetId: id,
+      name: name,
+      mode: mode,
+      delta: delta,
+      note: note,
+    );
+    if (!result.ok) {
+      if (changed) {
+        _restoreAssetSnapshot(snapshot, bindings.notifyListeners);
+      }
+      return result;
+    }
+    await bindings.triggerHomeRefresh(awaitRefresh);
+    return result;
+  }
+
   void _restoreAssetSnapshot(AssetSnapshot snapshot, void Function() notify) {
     _assetsState.restoreAssetSnapshot(snapshot, notify: false);
     _homeTotalsState.recalculateAssetTotals(notify: false);

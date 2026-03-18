@@ -1037,6 +1037,39 @@ class ApiService {
     }
   }
 
+  /// 新增资产调整记录（同时更新余额）
+  Future<AssetActionResult> adjustAsset({
+    required String assetType,
+    required int assetId,
+    required String name,
+    required String mode,
+    required double delta,
+    required String note,
+  }) async {
+    try {
+      final data = await _post(
+        '/api/assets/$assetType/$assetId/adjustments',
+        {'name': name, 'mode': mode, 'delta': delta, 'note': note},
+      );
+      final map = (data is Map) ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      return AssetActionResult.success(data: map);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 获取资产调整记录列表
+  Future<List<dynamic>> getAssetAdjustments({
+    required String assetType,
+    required int assetId,
+  }) async {
+    final data = await _get('/api/assets/$assetType/$assetId/adjustments');
+    if (data is Map && data['adjustments'] is List) {
+      return data['adjustments'] as List<dynamic>;
+    }
+    return [];
+  }
+
   // ============================================================
   // 分析相关
   // ============================================================

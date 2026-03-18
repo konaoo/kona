@@ -34,6 +34,8 @@ from analysis_handlers import create_analysis_payload_handlers
 from analysis_routes import create_analysis_blueprint
 from asset_account_handlers import create_asset_account_payload_handlers
 from asset_account_routes import create_asset_account_blueprint
+from asset_adjustment_handlers import create_asset_adjustment_handlers
+from asset_adjustment_routes import create_asset_adjustment_blueprint
 from auth_routes import create_auth_blueprint
 from market_handlers import create_market_payload_handlers
 from market_routes import create_market_blueprint
@@ -332,6 +334,11 @@ def create_app_components(
         logger=logger,
         snapshot_saver_async=lambda user_id: snapshot_runtime.save_snapshot_for_user_async(user_id),
     )
+    asset_adjustment_payload_handlers = create_asset_adjustment_handlers(
+        db=db,
+        logger=logger,
+        snapshot_saver_async=lambda user_id: snapshot_runtime.save_snapshot_for_user_async(user_id),
+    )
     portfolio_payload_handlers = create_portfolio_payload_handlers(
         db=db,
         logger=logger,
@@ -402,6 +409,13 @@ def create_app_components(
             prices_batch_payload_getter=quote_payload_handlers["prices_batch"],
             rates_payload_getter=quote_payload_handlers["rates"],
             search_payload_getter=quote_payload_handlers["search"],
+        )
+    )
+    app.register_blueprint(
+        create_asset_adjustment_blueprint(
+            optional_auth=wiring.optional_auth,
+            adjustment_add_handler=asset_adjustment_payload_handlers["adjustment_add"],
+            adjustments_list_handler=asset_adjustment_payload_handlers["adjustments_list"],
         )
     )
     app.register_blueprint(

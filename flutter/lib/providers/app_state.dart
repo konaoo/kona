@@ -774,6 +774,39 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// 资产增减调整（同时写入调整记录）
+  Future<AssetActionResult> adjustAsset({
+    required String type,
+    required int id,
+    required String name,
+    required double currentAmount,
+    required String mode,
+    required double delta,
+    required String note,
+    String? curr,
+  }) async {
+    return _assetWriteState.adjustAsset(
+      type: type,
+      id: id,
+      name: name,
+      currentAmount: currentAmount,
+      mode: mode,
+      delta: delta,
+      note: note,
+      curr: curr,
+      awaitRefresh: false,
+      bindings: _assetWriteBindings,
+    );
+  }
+
+  /// 获取资产调整记录
+  Future<List<dynamic>> getAssetAdjustments({
+    required String type,
+    required int id,
+  }) {
+    return _api.getAssetAdjustments(assetType: type, assetId: id);
+  }
+
   // ============================================================
   // 13) 投资持仓操作
   // ============================================================

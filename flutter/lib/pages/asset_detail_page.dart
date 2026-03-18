@@ -8,6 +8,7 @@ import '../models/asset.dart';
 import '../providers/app_state.dart';
 import '../config/theme.dart';
 import '../widgets/add_asset_dialog.dart';
+import 'asset_item_detail_page.dart';
 
 /// 资产详情页面（现金/其他/负债统一样式）
 class AssetDetailPage extends StatelessWidget {
@@ -230,7 +231,20 @@ class AssetDetailPage extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _showEditDialog(context, asset),
+        onTap: () {
+          if (asset.id != null) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AssetItemDetailPage(
+                  assetId: asset.id!,
+                  assetType: assetType,
+                ),
+              ),
+            );
+          } else {
+            _showEditDialog(context, asset);
+          }
+        },
         child: Ink(
           decoration: BoxDecoration(
             gradient: LinearGradient(

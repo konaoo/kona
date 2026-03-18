@@ -276,6 +276,21 @@ class DatabaseSchemaManager:
             )
         '''
         )
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS asset_adjustments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_type TEXT NOT NULL,
+                asset_id INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                delta REAL NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                balance_after REAL NOT NULL,
+                user_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        '''
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -324,6 +339,10 @@ class DatabaseSchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cash_assets_user_id ON cash_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_other_assets_user_id ON other_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_liabilities_user_id ON liabilities(user_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_asset_adjustments_asset"
+            " ON asset_adjustments(asset_type, asset_id, user_id)"
+        )
 
     def _create_snapshot_indexes(self, cursor: Any) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date ON daily_snapshots(date)")
