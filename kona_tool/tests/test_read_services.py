@@ -133,5 +133,44 @@ class ReadServicesTests(unittest.TestCase):
         )
 
 
+    def test_analysis_overview_day_uses_stats_getter(self):
+        """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""
+        called_with = []
+
+        def fake_stats_getter(user_id):
+            called_with.append(user_id)
+            return {"day_pnl": 99.0, "total_invest": 1000.0}
+
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=fake_stats_getter,
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        self.assertEqual(called_with, ["u_1"])
+        self.assertAlmostEqual(result["day"]["pnl"], 99.0)
+        self.assertAlmostEqual(result["day"]["pnl_rate"], 9.9)  # 99/1000*100
+
+    def test_analysis_overview_day_falls_back_to_snapshot_on_error(self):
+        """stats_getter 抛异常时，应 fallback 回 db.get_pnl_overview"""
+        def failing_stats_getter(user_id):
+            raise RuntimeError("price fetch failed")
+
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=failing_stats_getter,
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        # _FakeDb.get_pnl_overview 返回 {"pnl": 12.34, ...}
+        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
+
+
 if __name__ == "__main__":
     unittest.main()
