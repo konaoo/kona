@@ -15,7 +15,7 @@ from .market_calendar import (
     is_trading_day,
     market_from_asset,
 )
-from .price import batch_get_prices, get_forex_rates
+from .price import batch_get_prices, get_forex_rates, is_exchange_fund_code
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
@@ -153,9 +153,14 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         if market not in day_pnl_by_market:
             market = "a"
         market_trading_day = bool(market_trading_days.get(market))
+        # 场外基金（f_/ft_ 开头且非场内 ETF）白天净值尚未更新，
+        # 价格源返回的是昨日净值，算出来是昨天的涨跌而非今天的，必须跳过
+        nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
         # 开盘前价格源返回的 cur_price ≈ yclose_ref（都是上一个收盘价），
         # 此时不应计入当日盈亏，否则会把昨天的涨幅错误记到今天
-        if not market_trading_day:
+        if nav_update_pending:
+            item_day_pnl = 0.0
+        elif not market_trading_day:
             item_day_pnl = 0.0
         elif yclose_ref > 0 and abs(cur_price - yclose_ref) / yclose_ref < 1e-9:
             item_day_pnl = 0.0

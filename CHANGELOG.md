@@ -1,3 +1,20 @@
+## 2026-03-18-02
+
+### 这版一句话
+
+快照计算对齐投资页口径：场外基金净值未更新时不计入当日盈亏。
+
+### 主要变化
+- [snapshot.py](kona_tool/core/snapshot.py)：新增 `nav_update_pending` 判断，场外基金（f_/ft_ 开头且非场内 ETF）在净值未更新时当日收益归零，和投资页 `portfolio_metrics.py` 保持一致，避免把昨天的净值变动错算到今天。
+
+### 影响范围
+- 每 2 小时 cron 快照写入的 day_pnl
+- 分析页"当日盈亏"读取快照后的显示
+
+### 验收重点
+- 分析页"当日盈亏"和投资页"今日收益"数字一致（场外基金部分归零）
+- `pytest kona_tool/tests/test_snapshot_runtime.py test_contracts_analysis_snapshot_admin.py test_analysis_api.py test_calendar_weekend.py` 全通过
+
 ## 2026-03-18-01
 
 ### 这版一句话
