@@ -1,3 +1,22 @@
+## 2026-03-18-03
+
+### 这版一句话
+
+分析页当日盈亏改为实时计算，不再依赖每 2 小时跑一次的快照。
+
+### 主要变化
+- [analysis_read_service.py](kona_tool/core/analysis_read_service.py)：新增 `stats_getter` 参数和 `_get_day_overview` 方法，day 数据走实时计算，失败时 fallback 快照。月/年/全部继续走快照不动。
+- [app_factory.py](kona_tool/app_factory.py)：注入 `wiring.calculate_portfolio_stats` 作为 `stats_getter`，复用和快照任务同一套实时计算逻辑。
+- [test_read_services.py](kona_tool/tests/test_read_services.py)：新增两个测试，覆盖实时路径和 fallback 路径。
+
+### 影响范围
+- 分析页大卡片"当日盈亏"显示
+- 前端零改动，接口返回格式不变
+
+### 验收重点
+- 分析页"当日盈亏"和投资页"今日收益"数字基本一致（口径相同）
+- 当天首次快照跑之前不再显示 0
+
 ## 2026-03-18-02
 
 ### 这版一句话
