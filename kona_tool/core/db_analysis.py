@@ -219,15 +219,15 @@ class AnalysisDatabaseMixin:
                 rows = cursor.fetchall()
                 normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(month_start)
-                base_invest = float(prev["total_invest"] or 0) if prev else 0.0
+                prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
                     pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
                     latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
-                    base = base_invest or latest_invest or 1
-                    calc_base = base_invest if base_invest > 0 else base
+                    # 分母用期末持仓成本：反映"当前账户里这么多钱，赚了多少比例"
+                    base = latest_invest or prev_invest or 1
                     return {
                         "pnl": pnl,
-                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "pnl_rate": round(pnl / base * 100, 2) if base else 0,
                         "base_value": base,
                     }
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
@@ -245,15 +245,15 @@ class AnalysisDatabaseMixin:
                 rows = cursor.fetchall()
                 normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(year_start)
-                base_invest = float(prev["total_invest"] or 0) if prev else 0.0
+                prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
                     pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
                     latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
-                    base = base_invest or latest_invest or 1
-                    calc_base = base_invest if base_invest > 0 else base
+                    # 分母用期末持仓成本
+                    base = latest_invest or prev_invest or 1
                     return {
                         "pnl": pnl,
-                        "pnl_rate": round(pnl / calc_base * 100, 2) if calc_base else 0,
+                        "pnl_rate": round(pnl / base * 100, 2) if base else 0,
                         "base_value": base,
                     }
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
@@ -272,7 +272,8 @@ class AnalysisDatabaseMixin:
                 pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
                 latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
                 first_invest = float(normalized_rows[0]["total_invest"] or 0.0)
-                base = first_invest or latest_invest or 1
+                # 分母用期末持仓成本
+                base = latest_invest or first_invest or 1
                 return {
                     "pnl": pnl,
                     "pnl_rate": round(pnl / base * 100, 2) if base else 0,
@@ -470,9 +471,9 @@ class AnalysisDatabaseMixin:
                 for row in normalized_rows:
                     day = int(str(row["date"]).split("-")[2])
                     items.append({"label": f"{target_month}-{day}", "pnl": row["pnl"]})
-                period_base = _fetch_prev_invest(month_start)
+                period_base = _fetch_last_invest(month_end)
                 if period_base <= 0:
-                    period_base = _fetch_last_invest(month_end)
+                    period_base = _fetch_prev_invest(month_start)
                 rate_base = period_base
                 title = f"{target_year}年{target_month}月累计"
 
@@ -525,9 +526,9 @@ class AnalysisDatabaseMixin:
                     pnl = float(month_totals.get(m, 0.0) or 0.0)
                     items.append({"label": f"{m}月", "pnl": pnl})
                     total_pnl = round(total_pnl + pnl, 2)
-                period_base = _fetch_prev_invest(year_start)
+                period_base = _fetch_last_invest(year_end)
                 if period_base <= 0:
-                    period_base = _fetch_last_invest(year_end)
+                    period_base = _fetch_prev_invest(year_start)
                 rate_base = period_base
                 title = f"{target_year}年累计"
 
@@ -553,9 +554,9 @@ class AnalysisDatabaseMixin:
                         pnl = float(year_totals.get(y, 0.0) or 0.0)
                         items.append({"label": str(y), "pnl": pnl})
                         total_pnl = round(total_pnl + pnl, 2)
-                period_base = _fetch_first_invest()
+                period_base = _fetch_last_invest(today_str)
                 if period_base <= 0:
-                    period_base = _fetch_last_invest(today_str)
+                    period_base = _fetch_first_invest()
                 rate_base = period_base
                 title = "总累计"
             else:
