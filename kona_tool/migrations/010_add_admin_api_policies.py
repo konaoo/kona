@@ -35,7 +35,7 @@ def migrate() -> None:
                 limit_per_min INTEGER,
                 note TEXT,
                 updated_by TEXT,
-                updated_at TIMESTAMP DEFAULT datetime('now','localtime')
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
             """
         )

@@ -33,7 +33,7 @@ def migrate():
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT datetime('now','localtime'),
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 last_login TIMESTAMP
             )
         ''')
@@ -118,7 +118,7 @@ def migrate():
                 total_liability REAL NOT NULL,
                 total_pnl REAL NOT NULL,
                 day_pnl REAL NOT NULL,
-                updated_at TIMESTAMP DEFAULT datetime('now','localtime'),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(date, user_id)
             )
         ''')

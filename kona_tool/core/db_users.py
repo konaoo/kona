@@ -94,7 +94,7 @@ class UserDatabaseMixin:
                     user_number INTEGER,
                     is_admin INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT datetime('now','localtime'),
+                    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                     build_start_at TIMESTAMP,
                     last_login TIMESTAMP,
                     last_login_ip TEXT,
@@ -179,7 +179,7 @@ class UserDatabaseMixin:
             _ensure_column("user_number", "user_number INTEGER")
             _ensure_column("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0")
             _ensure_column("status", "status TEXT NOT NULL DEFAULT 'active'")
-            _ensure_column("created_at", "created_at TIMESTAMP DEFAULT datetime('now','localtime')")
+            _ensure_column("created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
             _ensure_column("build_start_at", "build_start_at TIMESTAMP")
             _ensure_column("last_login", "last_login TIMESTAMP")
             _ensure_column("last_login_ip", "last_login_ip TEXT")

@@ -50,7 +50,7 @@ class SnapshotDatabaseMixin:
                     total_pnl REAL NOT NULL,
                     day_pnl REAL NOT NULL,
                     user_id TEXT NOT NULL DEFAULT '',
-                    updated_at TIMESTAMP DEFAULT datetime('now','localtime'),
+                    updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                     UNIQUE(date, user_id)
                 )
                 """

@@ -95,8 +95,8 @@ class PortfolioDatabaseMixin:
                     adjustment REAL DEFAULT 0.0,
                     asset_type TEXT DEFAULT 'a',
                     user_id TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMP DEFAULT datetime('now','localtime'),
-                    updated_at TIMESTAMP DEFAULT datetime('now','localtime')
+                    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
                 )
                 """
             )
