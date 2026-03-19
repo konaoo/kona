@@ -62,8 +62,8 @@
             <button class="action-btn delete-btn" @click="deleteProvider(p)">删除</button>
           </div>
 
-          <p v-if="testResults[p.id]" class="test-result" :class="testResults[p.id].ok ? 'up' : 'down'">
-            {{ testResults[p.id].message }}
+          <p v-if="testResults[p.id]" class="test-result" :class="testResults[p.id]?.ok ? 'up' : 'down'">
+            {{ testResults[p.id]?.message }}
           </p>
         </div>
       </div>
