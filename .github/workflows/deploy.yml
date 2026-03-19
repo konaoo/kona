@@ -185,6 +185,8 @@ jobs:
     # 部署链路允许非代码原因失败（网络/SSH抖动），不阻塞代码检查结论。
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      REMOTE_WEB_ARCHIVE: /tmp/web-dist-${{ github.sha }}.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -197,9 +199,11 @@ jobs:
       - name: Build Web artifact for deploy
         working-directory: web
         run: |
+          set -eu
           npm ci
           npm run build
-          tar -C dist -czf ../web-dist.tar.gz .
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -C dist -czf ../web-dist.tar.gz .
+          gzip -t ../web-dist.tar.gz
 
       - name: Upload Web artifact to server (with retries)
         env:
@@ -234,16 +238,27 @@ jobs:
           fi
 
           SCP_OK=0
+          LOCAL_SHA="$(sha256sum web-dist.tar.gz | awk '{print $1}')"
+          REMOTE_TMP_ARCHIVE="${REMOTE_WEB_ARCHIVE}.part"
           for attempt in 1 2 3 4 5; do
             echo "SCP attempt $attempt ..."
-            if scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":/tmp/web-dist.tar.gz; then
+            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'" >/dev/null 2>&1 || true
+            if scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":"$REMOTE_TMP_ARCHIVE" && \
+              ssh $SSH_OPTS root@"$SSH_HOST" "set -eu
+                actual_sha=\$(sha256sum '$REMOTE_TMP_ARCHIVE' | awk '{print \$1}')
+                [ \"\$actual_sha\" = '$LOCAL_SHA' ]
+                gzip -t '$REMOTE_TMP_ARCHIVE'
+                mv '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'
+              "; then
+              echo "Remote artifact verified: $REMOTE_WEB_ARCHIVE"
               SCP_OK=1
               break
             fi
+            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE'" >/dev/null 2>&1 || true
             sleep $((attempt * 2))
           done
           if [ "$SCP_OK" -ne 1 ]; then
-            echo "SCP upload failed after retries."
+            echo "SCP upload or remote artifact verification failed after retries."
             exit 1
           fi
 
@@ -258,6 +273,7 @@ jobs:
 
             APP_DIR="${{ secrets.APP_DIR }}"
             TARGET_SHA="${{ github.sha }}"
+            REMOTE_WEB_ARCHIVE="/tmp/web-dist-${{ github.sha }}.tar.gz"
             if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
               echo "Invalid APP_DIR: $APP_DIR"
               exit 1
@@ -356,13 +372,17 @@ jobs:
               $PYTHON_BIN -m pip install -r kona_tool/requirements.txt --user
             fi
 
-            if [ ! -f /tmp/web-dist.tar.gz ]; then
-              echo "Missing /tmp/web-dist.tar.gz"
+            if [ ! -f "$REMOTE_WEB_ARCHIVE" ]; then
+              echo "Missing $REMOTE_WEB_ARCHIVE"
+              exit 1
+            fi
+            if ! gzip -t "$REMOTE_WEB_ARCHIVE"; then
+              echo "Invalid gzip archive: $REMOTE_WEB_ARCHIVE"
               exit 1
             fi
             TMP_WEB_DIR="$(mktemp -d)"
-            tar -xzf /tmp/web-dist.tar.gz -C "$TMP_WEB_DIR"
-            rm -f /tmp/web-dist.tar.gz
+            tar -xzf "$REMOTE_WEB_ARCHIVE" -C "$TMP_WEB_DIR"
+            rm -f "$REMOTE_WEB_ARCHIVE"
             
             BACKUP_WEB_DIR="${WEB_DIR}.bak.$(date +%s)"
             if [ -d "$WEB_DIR" ]; then
