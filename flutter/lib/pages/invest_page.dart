@@ -879,7 +879,7 @@ class InvestPageState extends State<InvestPage> {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(color: AppTheme.isLight ? AppTheme.border : AppTheme.borderSubtle),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -900,7 +900,7 @@ class InvestPageState extends State<InvestPage> {
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      accentColor.withValues(alpha: 0.85),
+                      accentColor.withValues(alpha: AppTheme.isLight ? 0.85 : 0.45),
                       Colors.transparent,
                     ],
                   ),
