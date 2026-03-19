@@ -30,6 +30,8 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     run_provider_test_report_job = None
 
+from ai_handlers import create_ai_chat_handler
+from ai_routes import create_ai_blueprint
 from analysis_handlers import create_analysis_payload_handlers
 from analysis_routes import create_analysis_blueprint
 from asset_account_handlers import create_asset_account_payload_handlers
@@ -456,6 +458,23 @@ def create_app_components(
         )
     )
     app.register_blueprint(create_system_blueprint(db, wiring.system_manager))
+
+    # AI 聊天
+    ai_chat_handler = create_ai_chat_handler(
+        db=db,
+        portfolio_read_service=portfolio_read_service,
+        rates_getter=wiring.forex_rates_getter,
+        market_status_getter=lambda now_utc, force_refresh=False: market_runtime.get_market_status_cached(
+            now_utc=now_utc,
+            force_refresh=force_refresh,
+        ),
+    )
+    app.register_blueprint(
+        create_ai_blueprint(
+            limiter=limiter,
+            ai_chat_handler=ai_chat_handler,
+        )
+    )
 
     @app.errorhandler(429)
     def ratelimit_handler(e):  # noqa: ANN001

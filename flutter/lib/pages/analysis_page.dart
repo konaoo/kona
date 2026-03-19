@@ -561,11 +561,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
             children: [
               const SizedBox(height: 12),
               _buildOverviewCard(appState),
-              const SizedBox(height: 14),
+              _buildSectionDivider(),
               _buildCalendarSection(appState),
-              const SizedBox(height: 14),
+              _buildSectionDivider(),
               _buildCalendarSummary(appState),
-              const SizedBox(height: 16),
+              _buildSectionDivider(),
               _buildRankSection(appState),
               const SizedBox(height: 100),
             ],
@@ -617,10 +617,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
         title = '累计盈亏';
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-      decoration: AppTheme.heroDecoration,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -628,10 +626,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
             title,
             style: _S.label.copyWith(
               color: const Color(0xFF9AA3B7),
-              fontSize: 13,
+              fontSize: 12,
+              letterSpacing: 0.05,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.center,
@@ -639,11 +638,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
               showLoading ? '加载中...' : amountText,
               style: _S.value.copyWith(
                 color: showLoading ? const Color(0xFFF0F4FF) : pnlColor,
-                fontSize: 32,
+                fontSize: 34,
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -658,6 +657,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 style: _S.label.copyWith(
                   color: hasRate ? pnlColor : AppTheme.textMuted,
                   fontSize: 13,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(width: 4),
@@ -665,13 +665,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 showLoading ? '--' : rateText,
                 style: _S.pnlRate.copyWith(
                   color: hasRate ? pnlColor : AppTheme.textMuted,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _buildPeriodSegmentedControl(),
         ],
       ),
@@ -680,14 +680,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Widget _buildPeriodSegmentedControl() {
     return Container(
-      height: 44,
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppTheme.isLight ? AppTheme.surface3 : const Color(0xFF16181F),
-        borderRadius: BorderRadius.circular(999),
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.06),
+            width: 1,
+          ),
+        ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildPeriodButton('当日', _currentPeriod == 'day', 'day'),
           _buildPeriodButton('本月', _currentPeriod == 'month', 'month'),
@@ -699,32 +700,27 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _buildPeriodButton(String label, bool isSelected, String period) {
-    final blue = const Color(0xFF3F8CFF);
     return Expanded(
       child: GestureDetector(
         onTap: () => _changePeriod(period),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           alignment: Alignment.center,
+          padding: const EdgeInsets.only(bottom: 10, top: 2),
           decoration: BoxDecoration(
-            color: isSelected ? blue : Colors.transparent,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: blue.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? AppTheme.accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
           ),
           child: Text(
             label,
             style: _S.label.copyWith(
               fontSize: 13,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              color: isSelected ? Colors.white : AppTheme.textSecondary,
+              color: isSelected ? AppTheme.textPrimary : AppTheme.textMuted,
             ),
           ),
         ),
@@ -772,18 +768,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
       }
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: AppTheme.cardGradient,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -793,16 +779,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
               Text(
                 '收益日历',
                 style: _S.label.copyWith(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _buildCalendarHeaderControls(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           _buildCalendarGrid(calendarGrid, appState),
         ],
       ),
@@ -1071,15 +1057,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
     return Container(
       decoration: BoxDecoration(
         color: isSelected
-            ? AppTheme.accent.withValues(alpha: 0.15)
-            : AppTheme.surface2.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isSelected
-              ? AppTheme.accent
-              : Colors.white.withValues(alpha: 0.05),
-          width: isSelected ? 1.5 : 1,
-        ),
+            ? AppTheme.accent.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(8),
+        border: isSelected
+            ? Border.all(
+                color: AppTheme.accent.withValues(alpha: 0.4),
+                width: 1,
+              )
+            : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1091,7 +1077,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               child: Text(
                 label,
                 style: _S.calDate.copyWith(
-                  fontSize: label.contains('-') ? 11 : 13,
+                  fontSize: label.contains('-') ? 11 : 12,
                   color: isSelected
                       ? (AppTheme.isLight ? Colors.black : Colors.white)
                       : AppTheme.textPrimary,
@@ -1099,7 +1085,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           SizedBox(
             height: 10,
             child: FittedBox(
@@ -1133,40 +1119,22 @@ class _AnalysisPageState extends State<AnalysisPage> {
         ? AppTheme.textMuted
         : (pnlRaw >= 0 ? AppTheme.danger : AppTheme.success);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.bgCard.withValues(alpha: 0.9),
-            AppTheme.bgPrimary.withValues(alpha: 0.8),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$pnlLabel：',
+                pnlLabel,
                 style: _S.calSumLabel.copyWith(
                   color: AppTheme.textSecondary,
-                  fontSize: 13,
+                  fontSize: 12,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 pnlValue,
                 style: _S.calSumVal.copyWith(
@@ -1177,15 +1145,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
             ],
           ),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '盈亏率：',
+                '盈亏率',
                 style: _S.calSumLabel.copyWith(
                   color: AppTheme.textSecondary,
-                  fontSize: 13,
+                  fontSize: 12,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 pnlRate,
                 style: _S.calSumVal.copyWith(
@@ -1208,21 +1178,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   Widget _buildRankSection(AppState appState) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.055)),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppTheme.bgCard.withValues(alpha: 0.8),
-            AppTheme.bgPrimary.withValues(alpha: 0.5),
-          ],
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1232,7 +1189,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               Text(
                 '盈亏排行',
                 style: _S.label.copyWith(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
                 ),
@@ -1253,7 +1210,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
                       '查看全部',
                       style: _S.label.copyWith(
                         color: AppTheme.accent,
-                        fontSize: 11,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     Icon(Icons.chevron_right, size: 14, color: AppTheme.accent),
@@ -1262,7 +1220,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Row(
             children: [
               _buildRankTab(
@@ -1270,7 +1228,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 _rankType == 'profit',
                 () => setState(() => _rankType = 'profit'),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _buildRankTab(
                 '亏损榜',
                 _rankType == 'loss',
@@ -1278,7 +1236,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           _buildRankItems(appState),
         ],
       ),
@@ -1352,17 +1310,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget _buildRankCard(_RankItem item, AppState appState, int rank) {
     final pnlColor = item.pnl >= 0 ? AppTheme.danger : AppTheme.success;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.isLight
-            ? const Color(0x0A222C40)
-            : AppPalette.dark.surface2.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppTheme.isLight
-              ? const Color(0x0A222C40)
-              : Colors.white.withValues(alpha: 0.03),
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.03),
+            width: 1,
+          ),
         ),
       ),
       child: Row(
@@ -1375,9 +1329,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
               children: [
                 Text(
                   item.name,
-                  style: _S.rankName.copyWith(color: AppTheme.textPrimary),
+                  style: _S.rankName.copyWith(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   _formatDisplayCode(item.code),
                   style: _S.rankCode.copyWith(color: AppTheme.textMuted),
@@ -1390,13 +1347,17 @@ class _AnalysisPageState extends State<AnalysisPage> {
             children: [
               Text(
                 '${item.currencySymbol}${item.pnl.toStringAsFixed(0)}',
-                style: _S.rankVal.copyWith(color: pnlColor),
+                style: _S.rankVal.copyWith(
+                  color: pnlColor,
+                  fontSize: 14,
+                ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 '${item.pnlRate >= 0 ? '+' : ''}${item.pnlRate.toStringAsFixed(2)}%',
                 style: _S.rankPct.copyWith(
                   color: pnlColor.withValues(alpha: 0.8),
+                  fontSize: 10,
                 ),
               ),
             ],
@@ -1446,6 +1407,22 @@ class _AnalysisPageState extends State<AnalysisPage> {
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected ? Colors.white : AppTheme.textSecondary,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionDivider() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 16),
+      height: 1,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.transparent,
+            Colors.white.withValues(alpha: 0.06),
+            Colors.transparent,
+          ],
         ),
       ),
     );

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../widgets/fab_scroll_visibility_controller.dart';
+import 'ai_chat_page.dart';
 import 'asset_history_page.dart';
 
 // ──────────────────────────────────────────────────
@@ -406,6 +407,28 @@ class HomePageState extends State<HomePage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+            ),
+          ),
+
+          // AI 助手入口
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AiChatPage()),
+              );
+            },
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6C5CE7), Color(0xFF5B8DEF)],
+                ),
+              ),
+              child: const Icon(Icons.auto_awesome, size: 17, color: Colors.white),
             ),
           ),
         ],

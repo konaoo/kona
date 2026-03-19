@@ -69,6 +69,7 @@ const nav = [
   { path: '/admin/invites', label: '邀请码管理', shortLabel: '邀请码', icon: '🛡️' },
   { path: '/admin/config', label: '运营配置', shortLabel: '配置', icon: '⚙️' },
   { path: '/admin/apis', label: '接口管理', shortLabel: '接口', icon: '🔌' },
+  { path: '/admin/ai', label: 'AI 助手', shortLabel: 'AI', icon: '🤖' },
 ]
 
 const avatarStyle = computed(() => ({
@@ -272,7 +273,7 @@ async function goApp() {
     right: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
     border-radius: 20px;

@@ -84,6 +84,7 @@ def create_admin_blueprint(db, admin_write_audit):
     admin_monitoring.set_admin_db(db)
     bp = Blueprint("admin_routes", __name__, url_prefix="/api/admin")
 
+    from admin_routes_ai import register_admin_ai_routes
     from admin_routes_apis import register_admin_api_routes
     from admin_routes_config_ops import register_admin_config_ops_routes
     from admin_routes_dashboard import register_admin_dashboard_routes
@@ -105,6 +106,7 @@ def create_admin_blueprint(db, admin_write_audit):
     register_admin_data_routes(bp, db, admin_write_audit)
     register_admin_api_routes(bp, db, admin_write_audit)
     register_admin_invite_routes(bp, db, admin_write_audit)
+    register_admin_ai_routes(bp, db, admin_write_audit)
     return bp
 
 

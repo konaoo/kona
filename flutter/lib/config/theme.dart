@@ -68,7 +68,7 @@ class AppPalette {
     border: Color(0x1FFFFFFF),
     borderSubtle: Color(0x0CFFFFFF),
     borderDivider: Color(0x0FFFFFFF),
-    cardGradient: [Color(0xFF1A2744), Color(0xFF0F1829)],
+    cardGradient: [Color(0xFF14161F), Color(0xFF10121A)],
   );
 
   // 轻浅文艺风：柔和米白 + 低饱和蓝绿
@@ -151,23 +151,23 @@ class AppTheme {
         border: Border.all(
           color: isLight
               ? const Color(0x2E5B8DEF) // rgba(91,141,239,0.18)
-              : Colors.white.withValues(alpha: 0.06),
+              : Colors.white.withValues(alpha: 0.04),
         ),
         gradient: LinearGradient(
           begin: const Alignment(-0.6, -1),
           end: const Alignment(1, 1),
           colors: isLight
               ? [const Color(0xFFDDE8FF), const Color(0xFFCFDAF5), const Color(0xFFC8D5F0)]
-              : [const Color(0x335B8DEF), const Color(0x0F4A7BE0), const Color(0xF0191C25)],
-          stops: const [0.0, 0.6, 1.0],
+              : [const Color(0xFF181C28), const Color(0xFF13161F), const Color(0xFF10121A)],
+          stops: const [0.0, 0.5, 1.0],
         ),
         boxShadow: [
           BoxShadow(
             color: isLight
                 ? const Color(0x1A222C48) // rgba(34,44,72,0.10)
-                : Colors.black.withValues(alpha: 0.35),
-            blurRadius: isLight ? 20 : 26,
-            offset: isLight ? const Offset(0, 8) : const Offset(0, 12),
+                : Colors.black.withValues(alpha: 0.25),
+            blurRadius: isLight ? 20 : 16,
+            offset: isLight ? const Offset(0, 8) : const Offset(0, 2),
           ),
         ],
       );
@@ -180,7 +180,15 @@ class AppTheme {
       isLight ? const Color(0xFF111C2E) : const Color(0xFFF0F4FF);
 
   static List<BoxShadow> get cardShadow {
-    if (!isLight) return [];
+    if (!isLight) {
+      return [
+        BoxShadow(
+          color: Color(0x40000000),
+          blurRadius: 16,
+          offset: Offset(0, 2),
+        ),
+      ];
+    }
     return [
       BoxShadow(
         color: Color(0x14000000),

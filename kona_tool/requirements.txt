@@ -8,3 +8,5 @@ python-dotenv>=1.0,<2
 gunicorn==22.0.0
 redis>=4.5,<6
 exchange_calendars>=4.5,<5
+anthropic>=0.40,<1
+openai>=1.0,<2
