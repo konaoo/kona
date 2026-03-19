@@ -40,7 +40,7 @@ def migrate():
                     user_number INTEGER,
                     is_admin INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT datetime('now','localtime'),
                     last_login TIMESTAMP
                 )
                 """
@@ -66,7 +66,7 @@ def migrate():
                         user_number INTEGER,
                         is_admin INTEGER NOT NULL DEFAULT 0,
                         status TEXT NOT NULL DEFAULT 'active',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT datetime('now','localtime'),
                         last_login TIMESTAMP
                     )
                     """
@@ -148,7 +148,7 @@ def migrate():
                 batch_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_by TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT datetime('now','localtime'),
                 used_by_user_id TEXT,
                 used_at TIMESTAMP,
                 note TEXT

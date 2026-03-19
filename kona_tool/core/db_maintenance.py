@@ -110,7 +110,7 @@ class MaintenanceDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE daily_snapshots
-                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        SET day_pnl = 0, updated_at = datetime('now','localtime')
                         WHERE date = ? AND user_id = ?
                         """,
                         (date_str, user_id),
@@ -119,7 +119,7 @@ class MaintenanceDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE daily_snapshots
-                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        SET day_pnl = 0, updated_at = datetime('now','localtime')
                         WHERE date = ?
                         """,
                         (date_str,),
@@ -144,7 +144,7 @@ class MaintenanceDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE daily_snapshots
-                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        SET day_pnl = 0, updated_at = datetime('now','localtime')
                         WHERE date = ? AND user_id = ?
                         """,
                         (date, user_id),
@@ -153,7 +153,7 @@ class MaintenanceDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE daily_snapshots
-                        SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+                        SET day_pnl = 0, updated_at = datetime('now','localtime')
                         WHERE date = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (date,),

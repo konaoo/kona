@@ -94,7 +94,7 @@ class UserDatabaseMixin:
                     user_number INTEGER,
                     is_admin INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT datetime('now','localtime'),
                     build_start_at TIMESTAMP,
                     last_login TIMESTAMP,
                     last_login_ip TEXT,
@@ -179,7 +179,7 @@ class UserDatabaseMixin:
             _ensure_column("user_number", "user_number INTEGER")
             _ensure_column("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0")
             _ensure_column("status", "status TEXT NOT NULL DEFAULT 'active'")
-            _ensure_column("created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            _ensure_column("created_at", "created_at TIMESTAMP DEFAULT datetime('now','localtime')")
             _ensure_column("build_start_at", "build_start_at TIMESTAMP")
             _ensure_column("last_login", "last_login TIMESTAMP")
             _ensure_column("last_login_ip", "last_login_ip TEXT")
@@ -363,7 +363,7 @@ class UserDatabaseMixin:
                 INSERT INTO users (
                     id, username, password_hash, legacy_needs_password_setup,
                     password_updated_at, register_method, user_number, is_admin
-                ) VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, ?, ?, ?)
+                ) VALUES (?, ?, ?, 0, datetime('now','localtime'), ?, ?, ?)
                 """,
                 (
                     resolved_user_id,
@@ -418,7 +418,7 @@ class UserDatabaseMixin:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            updates = ["last_login = CURRENT_TIMESTAMP", "last_active_at = CURRENT_TIMESTAMP"]
+            updates = ["last_login = datetime('now','localtime')", "last_active_at = datetime('now','localtime')"]
             params: List[Any] = []
             if login_ip is not None:
                 updates.append("last_login_ip = ?")
@@ -453,7 +453,7 @@ class UserDatabaseMixin:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            updates = ["last_active_at = CURRENT_TIMESTAMP"]
+            updates = ["last_active_at = datetime('now','localtime')"]
             params: List[Any] = []
             if active_ip is not None:
                 updates.append("last_active_ip = ?")
@@ -561,7 +561,7 @@ class UserDatabaseMixin:
                     must_change_password = 0,
                     password_reset_at = NULL,
                     password_reset_by = NULL,
-                    password_updated_at = CURRENT_TIMESTAMP
+                    password_updated_at = datetime('now','localtime')
                 WHERE id = ?
                 """,
                 (password_hash, user_id),
@@ -588,7 +588,7 @@ class UserDatabaseMixin:
                     """
                     UPDATE users
                     SET must_change_password = 1,
-                        password_reset_at = CURRENT_TIMESTAMP,
+                        password_reset_at = datetime('now','localtime'),
                         password_reset_by = ?
                     WHERE id = ?
                     """,
@@ -629,9 +629,9 @@ class UserDatabaseMixin:
                 SET password_hash = ?,
                     legacy_needs_password_setup = 0,
                     must_change_password = ?,
-                    password_reset_at = CURRENT_TIMESTAMP,
+                    password_reset_at = datetime('now','localtime'),
                     password_reset_by = ?,
-                    password_updated_at = CURRENT_TIMESTAMP
+                    password_updated_at = datetime('now','localtime')
                 WHERE id = ?
                 """,
                 (
@@ -660,7 +660,7 @@ class UserDatabaseMixin:
             cursor.execute(
                 """
                 UPDATE users
-                SET username = ?, password_hash = ?, legacy_needs_password_setup = 0, password_updated_at = CURRENT_TIMESTAMP
+                SET username = ?, password_hash = ?, legacy_needs_password_setup = 0, password_updated_at = datetime('now','localtime')
                 WHERE id = ? AND (legacy_needs_password_setup = 1 OR COALESCE(password_hash, '') = '')
                 """,
                 (username_text, password_hash, user_id),

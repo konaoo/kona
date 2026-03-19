@@ -30,7 +30,7 @@ def migrate():
                 register_method TEXT,
                 phone TEXT,
                 user_number INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT datetime('now','localtime'),
                 last_login TIMESTAMP
             )
         ''')
@@ -40,7 +40,7 @@ def migrate():
         add_column('users', 'register_method', 'register_method TEXT')
         add_column('users', 'phone', 'phone TEXT')
         add_column('users', 'user_number', 'user_number INTEGER')
-        add_column('users', 'created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+        add_column('users', 'created_at', 'created_at TIMESTAMP DEFAULT datetime('now','localtime')')
         add_column('users', 'last_login', 'last_login TIMESTAMP')
 
         conn.commit()

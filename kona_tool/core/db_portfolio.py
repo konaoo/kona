@@ -95,8 +95,8 @@ class PortfolioDatabaseMixin:
                     adjustment REAL DEFAULT 0.0,
                     asset_type TEXT DEFAULT 'a',
                     user_id TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT datetime('now','localtime'),
+                    updated_at TIMESTAMP DEFAULT datetime('now','localtime')
                 )
                 """
             )
@@ -115,8 +115,8 @@ class PortfolioDatabaseMixin:
                     COALESCE(adjustment, 0.0),
                     COALESCE(NULLIF(asset_type, ''), 'a'),
                     COALESCE(user_id, ''),
-                    COALESCE(created_at, CURRENT_TIMESTAMP),
-                    COALESCE(updated_at, CURRENT_TIMESTAMP)
+                    COALESCE(created_at, datetime('now','localtime')),
+                    COALESCE(updated_at, datetime('now','localtime'))
                 FROM portfolio
                 """
             )
@@ -381,7 +381,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE portfolio
-                        SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                        SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND user_id = ?
                         """,
                         (
@@ -399,7 +399,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE portfolio
-                        SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                        SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (
@@ -418,7 +418,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                         """,
                         (
                             data["code"],
@@ -435,7 +435,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                         """,
                         (
                             data["code"],
@@ -483,7 +483,7 @@ class PortfolioDatabaseMixin:
             if field == "adjustment":
                 cursor.execute(
                     f"""
-                    UPDATE portfolio SET adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                    UPDATE portfolio SET adjustment = COALESCE(adjustment, 0) + ?, updated_at = datetime('now','localtime')
                     WHERE code = ? {user_condition}
                     """,
                     (value,) + params_suffix,
@@ -491,7 +491,7 @@ class PortfolioDatabaseMixin:
             else:
                 cursor.execute(
                     f"""
-                    UPDATE portfolio SET {field} = ?, updated_at = CURRENT_TIMESTAMP
+                    UPDATE portfolio SET {field} = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? {user_condition}
                     """,
                     (value,) + params_suffix,
@@ -561,7 +561,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE portfolio
-                    SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
+                    SET qty = ?, price = ?, adjustment = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND user_id = ?
                     """,
                     (qty, price, adjustment, code, user_id),
@@ -570,7 +570,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE portfolio
-                    SET qty = ?, price = ?, adjustment = ?, updated_at = CURRENT_TIMESTAMP
+                    SET qty = ?, price = ?, adjustment = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND (user_id IS NULL OR user_id = '')
                     """,
                     (qty, price, adjustment, code),
@@ -801,7 +801,7 @@ class PortfolioDatabaseMixin:
             if user_id:
                 cursor.execute(
                     """
-                    UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                    UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND user_id = ?
                     """,
                     (new_qty, new_price, code, user_id),
@@ -809,7 +809,7 @@ class PortfolioDatabaseMixin:
             else:
                 cursor.execute(
                     """
-                    UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                    UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND (user_id IS NULL OR user_id = '')
                     """,
                     (new_qty, new_price, code),
@@ -927,7 +927,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE portfolio
-                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND user_id = ?
                         """,
                         (pnl, code, user_id),
@@ -936,7 +936,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE portfolio
-                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = CURRENT_TIMESTAMP
+                        SET qty = 0, adjustment = COALESCE(adjustment, 0) + ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (pnl, code),
@@ -946,7 +946,7 @@ class PortfolioDatabaseMixin:
                 if user_id:
                     cursor.execute(
                         """
-                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND user_id = ?
                         """,
                         (new_qty, pnl, code, user_id),
@@ -954,7 +954,7 @@ class PortfolioDatabaseMixin:
                 else:
                     cursor.execute(
                         """
-                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE portfolio SET qty = ?, adjustment = adjustment + ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (new_qty, pnl, code),
@@ -1058,7 +1058,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE cash_assets
-                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    SET amount = ?, updated_at = datetime('now','localtime')
                     WHERE id = ? AND user_id = ?
                     """,
                     (cash_after, cash_asset_id, user_id),
@@ -1067,7 +1067,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE cash_assets
-                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    SET amount = ?, updated_at = datetime('now','localtime')
                     WHERE id = ? AND (user_id IS NULL OR user_id = '')
                     """,
                     (cash_after, cash_asset_id),
@@ -1162,7 +1162,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE cash_assets
-                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    SET amount = ?, updated_at = datetime('now','localtime')
                     WHERE id = ? AND user_id = ?
                     """,
                     (cash_after, cash_asset_id, user_id),
@@ -1171,7 +1171,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE cash_assets
-                    SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                    SET amount = ?, updated_at = datetime('now','localtime')
                     WHERE id = ? AND (user_id IS NULL OR user_id = '')
                     """,
                     (cash_after, cash_asset_id),
@@ -1209,7 +1209,7 @@ class PortfolioDatabaseMixin:
                 if user_id:
                     cursor.execute(
                         """
-                        UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND user_id = ?
                         """,
                         (new_qty, new_price, target_code, user_id),
@@ -1217,7 +1217,7 @@ class PortfolioDatabaseMixin:
                 else:
                     cursor.execute(
                         """
-                        UPDATE portfolio SET qty = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                         WHERE code = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (new_qty, new_price, target_code),
@@ -1241,7 +1241,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now','localtime'))
                         """,
                         (target_code, tx_name, qty, price, next_curr, next_asset_type, user_id),
                     )
@@ -1249,7 +1249,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now','localtime'))
                         """,
                         (target_code, tx_name, qty, price, next_curr, next_asset_type),
                     )
@@ -1351,7 +1351,7 @@ class PortfolioDatabaseMixin:
                         cursor.execute(
                             """
                             UPDATE portfolio
-                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
                             WHERE code = ? AND user_id = ?
                             """,
                             (name, qty, price, curr, adjustment, asset_type, code, user_id),
@@ -1360,7 +1360,7 @@ class PortfolioDatabaseMixin:
                         cursor.execute(
                             """
                             UPDATE portfolio
-                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = CURRENT_TIMESTAMP
+                            SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
                             WHERE code = ? AND (user_id IS NULL OR user_id = '')
                             """,
                             (name, qty, price, curr, adjustment, asset_type, code),
@@ -1370,7 +1370,7 @@ class PortfolioDatabaseMixin:
                         cursor.execute(
                             """
                             INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                             """,
                             (code, name, qty, price, curr, adjustment, asset_type, user_id),
                         )
@@ -1378,7 +1378,7 @@ class PortfolioDatabaseMixin:
                         cursor.execute(
                             """
                             INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                             """,
                             (code, name, qty, price, curr, adjustment, asset_type),
                         )
@@ -1407,7 +1407,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE cash_assets
-                        SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                        SET amount = ?, updated_at = datetime('now','localtime')
                         WHERE id = ? AND user_id = ?
                         """,
                         (cash_before, cash_asset_id_int, user_id),
@@ -1416,7 +1416,7 @@ class PortfolioDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE cash_assets
-                        SET amount = ?, updated_at = CURRENT_TIMESTAMP
+                        SET amount = ?, updated_at = datetime('now','localtime')
                         WHERE id = ? AND (user_id IS NULL OR user_id = '')
                         """,
                         (cash_before, cash_asset_id_int),

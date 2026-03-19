@@ -159,7 +159,7 @@ def apply_candidates(conn: sqlite3.Connection, candidates: List[Candidate]) -> i
         cursor.execute(
             """
             UPDATE daily_snapshots
-            SET day_pnl = ?, updated_at = CURRENT_TIMESTAMP
+            SET day_pnl = ?, updated_at = datetime('now','localtime')
             WHERE date = ? AND COALESCE(user_id, '') = ?
             """,
             (item.new_day_pnl, item.date, item.user_id),

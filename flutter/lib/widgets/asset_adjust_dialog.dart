@@ -112,7 +112,10 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
           width: 1,
         ),
       ),
-      child: child,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: child,
+      ),
     );
   }
 
@@ -605,12 +608,11 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                             controller: _nameController,
                             focusNode: _nameFocusNode,
                             enabled: !_saving,
-                            expands: true,
-                            minLines: null,
-                            maxLines: null,
+                            maxLines: 1,
                             textAlignVertical: TextAlignVertical.center,
                             style: _dm(size: 13, color: _kText),
                             decoration: InputDecoration(
+                              isDense: true,
                               filled: true,
                               fillColor: Colors.transparent,
                               hintText: '账户名称',
@@ -664,9 +666,7 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                                   controller: _amountController,
                                   focusNode: _amountFocusNode,
                                   enabled: !_saving,
-                                  expands: true,
-                                  minLines: null,
-                                  maxLines: null,
+                                  maxLines: 1,
                                   textAlignVertical: TextAlignVertical.center,
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
@@ -678,6 +678,7 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                                     color: _kText,
                                   ),
                                   decoration: InputDecoration(
+                                    isDense: true,
                                     filled: true,
                                     fillColor: Colors.transparent,
                                     hintText: '0.00',
@@ -731,12 +732,11 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                                 child: TextField(
                                   controller: _noteController,
                                   enabled: !_saving,
-                                  expands: true,
-                                  minLines: null,
-                                  maxLines: null,
+                                  maxLines: 1,
                                   textAlignVertical: TextAlignVertical.center,
                                   style: _dm(size: 13, color: _kText),
                                   decoration: InputDecoration(
+                                    isDense: true,
                                     filled: true,
                                     fillColor: Colors.transparent,
                                     hintText: '备注（可选）',

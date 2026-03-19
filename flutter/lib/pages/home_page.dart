@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../providers/app_state.dart';
 import '../widgets/fab_scroll_visibility_controller.dart';
+import 'asset_history_page.dart';
 
 // ──────────────────────────────────────────────────
 // Cached TextStyles – created once, reused every build
@@ -416,8 +417,15 @@ class HomePageState extends State<HomePage> {
   Widget _buildHeroCard(AppState appState) {
     final anyOpen = _isAnyMarketOpen(appState);
 
-    return Container(
-      width: double.infinity,
+    return GestureDetector(
+      onTap: () {
+        _hideDropdown(); // 确保 overlay 在跳转前销毁，防止覆盖新页面
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AssetHistoryPage()),
+        );
+      },
+      child: Container(
+        width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
       decoration: AppTheme.heroDecoration,
       child: Stack(
@@ -514,6 +522,7 @@ class HomePageState extends State<HomePage> {
             ],
           ),
         ],
+      ),
       ),
     );
   }

@@ -873,7 +873,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           width: 1,
         ),
       ),
-      child: child,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: child,
+      ),
     );
   }
 
@@ -1049,12 +1052,11 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             controller: _nameController,
                             focusNode: _nameFocusNode,
                             enabled: !_saving,
-                            expands: true,
-                            minLines: null,
-                            maxLines: null,
+                            maxLines: 1,
                             textAlignVertical: TextAlignVertical.center,
                             style: _dm(size: 13, color: _kText),
                             decoration: InputDecoration(
+                              isDense: true,
                               filled: true,
                               fillColor: Colors.transparent,
                               hintText: '如：招商银行储蓄卡',
@@ -1092,15 +1094,14 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             controller: _amountController,
                             focusNode: _amountFocusNode,
                             enabled: !_saving,
-                            expands: true,
-                            minLines: null,
-                            maxLines: null,
+                            maxLines: 1,
                             textAlignVertical: TextAlignVertical.center,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
                             style: _mono(size: 13, color: _kText),
                             decoration: InputDecoration(
+                              isDense: true,
                               filled: true,
                               fillColor: Colors.transparent,
                               hintText: '请输入金额',

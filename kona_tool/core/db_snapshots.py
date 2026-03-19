@@ -50,7 +50,7 @@ class SnapshotDatabaseMixin:
                     total_pnl REAL NOT NULL,
                     day_pnl REAL NOT NULL,
                     user_id TEXT NOT NULL DEFAULT '',
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT datetime('now','localtime'),
                     UNIQUE(date, user_id)
                 )
                 """
@@ -119,13 +119,13 @@ class SnapshotDatabaseMixin:
                     """
                     INSERT INTO daily_snapshot_market_breakdowns
                     (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                     ON CONFLICT(date, user_id, market) DO UPDATE SET
                         day_pnl = excluded.day_pnl,
                         source = excluded.source,
                         confidence = excluded.confidence,
                         meta_json = excluded.meta_json,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = datetime('now','localtime')
                     """,
                     (
                         str(date_str),
@@ -161,7 +161,7 @@ class SnapshotDatabaseMixin:
                 INSERT INTO daily_snapshots (
                     date, total_asset, total_invest, total_cash,
                     total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(date, user_id) DO UPDATE SET
                     total_asset = excluded.total_asset,
                     total_invest = excluded.total_invest,
@@ -170,7 +170,7 @@ class SnapshotDatabaseMixin:
                     total_liability = excluded.total_liability,
                     total_pnl = excluded.total_pnl,
                     day_pnl = excluded.day_pnl,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = datetime('now','localtime')
                 """,
                 (
                     today,

@@ -250,7 +250,7 @@ class AdminStateDatabaseMixin:
             params.append(str(note)[:500])
         updates.append("updated_by = ?")
         params.append(str(updated_by or "")[:64])
-        updates.append("updated_at = CURRENT_TIMESTAMP")
+        updates.append("updated_at = datetime('now','localtime')")
         params.append(key)
 
         conn = self.get_connection()
@@ -395,7 +395,7 @@ class AdminStateDatabaseMixin:
             cursor.execute(
                 """
                 UPDATE invite_codes
-                SET status = 'used', used_by_user_id = ?, used_at = CURRENT_TIMESTAMP
+                SET status = 'used', used_by_user_id = ?, used_at = datetime('now','localtime')
                 WHERE code = ? AND status = 'active' AND used_by_user_id IS NULL
                 """,
                 (user_id, code_text),
@@ -540,11 +540,11 @@ class AdminStateDatabaseMixin:
             cursor.execute(
                 """
                 INSERT INTO runtime_configs (key, value, updated_by, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(key) DO UPDATE SET
                     value = excluded.value,
                     updated_by = excluded.updated_by,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = datetime('now','localtime')
                 """,
                 (cfg_key, cfg_value, updater),
             )
@@ -584,14 +584,14 @@ class AdminStateDatabaseMixin:
                     items_json,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(report_date) DO UPDATE SET
                     tested_at_utc = excluded.tested_at_utc,
                     total_assets = excluded.total_assets,
                     alert_count = excluded.alert_count,
                     summary_json = excluded.summary_json,
                     items_json = excluded.items_json,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = datetime('now','localtime')
                 """,
                 (
                     report_date_text,
@@ -712,12 +712,12 @@ class AdminStateDatabaseMixin:
                     providers_json,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(report_slot) DO UPDATE SET
                     tested_at_utc = excluded.tested_at_utc,
                     summary_json = excluded.summary_json,
                     providers_json = excluded.providers_json,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = datetime('now','localtime')
                 """,
                 (report_slot_text, tested_at_text, summary_json, providers_json),
             )
