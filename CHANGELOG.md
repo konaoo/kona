@@ -1,3 +1,22 @@
+## 2026-03-19-01
+
+### 这版一句话
+
+资产调整弹窗改为乐观提交（即时关闭），历史列表加静态缓存（再次进入秒开）。
+
+### 主要变化
+- [asset_adjust_dialog.dart](flutter/lib/widgets/asset_adjust_dialog.dart)：`_submit` 验证通过后立即 pop 并显示成功 toast，API 在后台异步执行；失败时在 hostContext 补一条错误 toast。移除 `_saving` 等待状态。
+- [asset_item_detail_page.dart](flutter/lib/pages/asset_item_detail_page.dart)：新增 `static Map<String, List<_AdjustRecord>> _cache`，`_loadHistory` 先展示缓存（有则秒开），再后台刷新并更新缓存；乐观插入新记录后同步写入缓存，下次进入可即时看到最新记录。
+
+### 影响范围
+- 资产调整弹窗的保存体验：从等待 3 秒变为即时关闭
+- 资产详情页历史列表：首次进入仍需加载，再次进入秒开
+
+### 验收重点
+- 填完金额点确认，弹窗立即关闭并显示「已记录」，记录出现在列表顶部
+- 退出详情页再进入，历史列表立即展示（无 loading），随后数据静默刷新
+- 网络异常时保存应在后台失败后弹出错误 toast
+
 ## 2026-03-18-13
 
 ### 这版一句话

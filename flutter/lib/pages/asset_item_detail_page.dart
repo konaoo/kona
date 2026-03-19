@@ -40,8 +40,13 @@ class AssetItemDetailPage extends StatefulWidget {
 }
 
 class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
+  // 跨页面实例的静态缓存，App 生命周期内有效
+  static final Map<String, List<_AdjustRecord>> _cache = {};
+
   List<_AdjustRecord> _history = [];
   bool _historyLoaded = false;
+
+  String get _cacheKey => '${widget.assetType}/${widget.assetId}';
 
   @override
   void initState() {
@@ -50,6 +55,15 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
   }
 
   Future<void> _loadHistory() async {
+    // 有缓存先展示，后台静默刷新
+    final cached = _cache[_cacheKey];
+    if (cached != null && mounted) {
+      setState(() {
+        _history = cached;
+        _historyLoaded = true;
+      });
+    }
+
     try {
       final appState = context.read<AppState>();
       final records = await appState.getAssetAdjustments(
@@ -57,21 +71,23 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
         id: widget.assetId,
       );
       if (!mounted) return;
+      final parsed = records.map((r) {
+        final map = r as Map<String, dynamic>;
+        return _AdjustRecord(
+          mode: map['mode'] as String,
+          delta: (map['delta'] as num).toDouble(),
+          note: (map['note'] as String?) ?? '',
+          time: (DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now()).toLocal(),
+          balanceAfter: (map['balance_after'] as num).toDouble(),
+        );
+      }).toList();
+      _cache[_cacheKey] = parsed;
       setState(() {
-        _history = records.map((r) {
-          final map = r as Map<String, dynamic>;
-          return _AdjustRecord(
-            mode: map['mode'] as String,
-            delta: (map['delta'] as num).toDouble(),
-            note: (map['note'] as String?) ?? '',
-            time: (DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now()).toLocal(),
-            balanceAfter: (map['balance_after'] as num).toDouble(),
-          );
-        }).toList();
+        _history = parsed;
         _historyLoaded = true;
       });
     } catch (_) {
-      if (mounted) setState(() => _historyLoaded = true);
+      if (mounted && !_historyLoaded) setState(() => _historyLoaded = true);
     }
   }
 
@@ -172,6 +188,7 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
             balanceAfter: result['balanceAfter'] as double,
           ),
         );
+        _cache[_cacheKey] = List.from(_history); // 同步更新缓存
       });
     }
   }

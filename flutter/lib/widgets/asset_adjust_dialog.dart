@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -232,49 +234,45 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
         ? currentAmount + delta
         : currentAmount - delta;
 
-    setState(() => _saving = true);
+    // 乐观成功：立即关闭弹窗，API 后台执行
+    final note = _noteController.text.trim();
+    final mode = _mode;
+    final assetType = widget.assetType;
+    final assetId = widget.asset.id!;
+    final assetCurr = widget.asset.curr;
+    final hostContext = widget.hostContext;
     final appState = context.read<AppState>();
 
-    final result = await appState.adjustAsset(
-      type: widget.assetType,
-      id: widget.asset.id!,
-      name: name,
-      currentAmount: widget.asset.amount,
-      mode: _mode,
-      delta: delta,
-      note: _noteController.text.trim(),
-      curr: widget.asset.curr,
-    );
-
-    if (!mounted) return;
-
-    if (!result.ok) {
-      setState(() {
-        _saving = false;
-        _errorText = result.message ?? '保存失败，请稍后重试';
-      });
-      if (widget.hostContext.mounted) {
-        TopToast.showError(
-          widget.hostContext,
-          result.message ?? '保存失败，请稍后重试',
-        );
-      }
-      return;
+    if (hostContext.mounted) {
+      TopToast.showSuccess(hostContext, '已记录');
     }
-
-    final balanceAfter =
-        (result.data?['balance_after'] as num?)?.toDouble() ?? newAmount;
-
-    if (widget.hostContext.mounted) {
-      TopToast.showSuccess(widget.hostContext, '已记录');
-    }
-    // 把本次调整记录回传给详情页
     Navigator.of(context).pop({
-      'mode': _mode,
+      'mode': mode,
       'delta': delta,
-      'note': _noteController.text.trim(),
-      'balanceAfter': balanceAfter,
+      'note': note,
+      'balanceAfter': newAmount,
     });
+
+    // 后台调用 API，失败时补一条错误 toast
+    unawaited(
+      appState.adjustAsset(
+        type: assetType,
+        id: assetId,
+        name: name,
+        currentAmount: currentAmount,
+        mode: mode,
+        delta: delta,
+        note: note,
+        curr: assetCurr,
+      ).then((result) {
+        if (!result.ok && hostContext.mounted) {
+          TopToast.showError(
+            hostContext,
+            result.message ?? '保存失败，请稍后重试',
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _confirmAndDelete() async {
