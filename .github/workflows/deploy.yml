@@ -285,8 +285,6 @@ jobs:
                   echo "git fetch attempt $attempt failed with exit code: $status"
                   cat "$fetch_log" || true
                   rm -f "$fetch_log"
-                  pkill -f "git -c http.version=HTTP/1.1 fetch --depth=1 origin main" || true
-                  pkill -f "git-remote-http.*github.com/konaoo/kona.git" || true
                   return 1
                 fi
               }
