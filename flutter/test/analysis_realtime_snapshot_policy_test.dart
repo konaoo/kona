@@ -184,7 +184,7 @@ void main() {
 
     expect(find.text('¥999'), findsOneWidget);
     expect(find.text('41'), findsWidgets);
-    expect(find.text('本月盈亏：'), findsOneWidget);
+    expect(find.text('本月盈亏'), findsOneWidget);
     expect(find.text('88'), findsNothing);
   });
 
@@ -253,7 +253,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('本月盈亏：'), findsOneWidget);
+    expect(find.text('本月盈亏'), findsOneWidget);
     expect(find.text('¥17118'), findsOneWidget);
     expect(find.text('+0.83%'), findsOneWidget);
   });
