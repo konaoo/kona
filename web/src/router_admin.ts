@@ -4,6 +4,7 @@ import AdminOverviewPage from './pages/admin/AdminOverviewPage.vue'
 import AdminUsersPage from './pages/admin/AdminUsersPage.vue'
 import AdminInvitesPage from './pages/admin/AdminInvitesPage.vue'
 import AdminApisPage from './pages/admin/AdminApisPage.vue'
+import AdminAiPage from './pages/admin/AdminAiPage.vue'
 import AdminConfigPage from './pages/admin/AdminConfigPage.vue'
 import { useSessionCoordinatorStore } from './stores/sessionCoordinator'
 
@@ -15,6 +16,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/admin/invites', component: AdminInvitesPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/apis', component: AdminApisPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/config', component: AdminConfigPage, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/admin/ai', component: AdminAiPage, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/admin/data', redirect: '/admin/overview' },
 ]
 

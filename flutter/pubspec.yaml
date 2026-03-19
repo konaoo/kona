@@ -40,6 +40,8 @@ dependencies:
   gal: ^2.3.2
   # 路径处理
   path_provider: ^2.1.1
+  # Markdown 渲染（AI 聊天页）
+  flutter_markdown: ^0.7.4
 
 dev_dependencies:
   flutter_test:

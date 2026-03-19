@@ -49,4 +49,5 @@ class ApiConfig {
   static const String marketStatus = '/api/market/status';
   static const String syncBootstrap = '/api/sync/bootstrap';
   static const String search = '/api/search';
+  static const String aiChat = '/api/ai/chat';
 }

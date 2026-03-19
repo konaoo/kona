@@ -1,3 +1,27 @@
+## 2026-03-19-03
+
+### 这版一句话
+
+新增"小咔"AI 投资助手：后端 SSE 流式对话 + Flutter 聊天页 + 管理后台供应商配置。
+
+### 主要变化
+- **后端 AI 聊天端点**：新增 `POST /api/ai/chat`（SSE 流式返回），支持 Anthropic Claude 和 OpenAI 兼容协议（DeepSeek/OpenAI/Gemini/智谱等）双 provider 切换
+- **数据上下文注入**：新增 [ai_context_builder.py](kona_tool/ai_context_builder.py)，每次对话自动聚合用户持仓明细、资产趋势、盈亏排行、市场状态注入 system prompt
+- **管理后台 AI 配置**：新增 [AdminAiPage.vue](web/src/pages/admin/AdminAiPage.vue)，支持多供应商 CRUD、测试连通性、动态拉取模型列表、一键切换激活供应商
+- **后端供应商管理**：新增 [admin_routes_ai.py](kona_tool/admin_routes_ai.py)，6 种预置供应商类型（DeepSeek/OpenAI/Anthropic/Gemini/智谱/自定义），API Key 脱敏存储
+- **Flutter 聊天页**：新增 [ai_chat_page.dart](flutter/lib/pages/ai_chat_page.dart)，首页入口按钮，4 个预设快捷问题，Markdown 渲染，流式逐字显示，支持取消发送
+- **新增依赖**：后端 `anthropic` + `openai`；Flutter `flutter_markdown`
+
+### 影响范围
+- 后端：新增 4 个 Python 文件，修改 app_factory/admin_routes/config/requirements
+- Flutter：新增 3 个文件，修改 home_page/api_config/api_service/pubspec
+- Web 管理后台：新增 AdminAiPage，侧边栏增加"AI 助手"入口
+
+### 验收重点
+- 管理后台配置 AI 供应商后，测试连通性正常
+- Flutter 端发送消息能收到流式回复，Markdown 渲染正常
+- AI 回复中包含用户真实持仓数据（非通用回答）
+
 ## 2026-03-19-02
 
 ### 这版一句话

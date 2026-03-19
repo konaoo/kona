@@ -258,6 +258,12 @@ ALLOW_LOCAL_ADMIN_BYPASS = os.getenv("ALLOW_LOCAL_ADMIN_BYPASS", "false").lower(
 ENABLE_BACKGROUND_SNAPSHOT = os.getenv("ENABLE_BACKGROUND_SNAPSHOT", "false").lower() == "true"
 ENABLE_STARTUP_SNAPSHOT = os.getenv("ENABLE_STARTUP_SNAPSHOT", "false").lower() == "true"
 
+# AI 助手配置
+AI_PROVIDER = os.getenv("AI_PROVIDER", "deepseek")  # anthropic | deepseek
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_MODEL = os.getenv("AI_MODEL", "")  # 留空则按 provider 使用默认模型
+AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "2000"))
+
 # 证券类型分类
 ASSET_TYPES = {
     "stock_cn": {"name": "A股", "prefixes": ["sh", "sz", "bj"]},

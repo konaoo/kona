@@ -59,6 +59,14 @@ class ApiService {
     return headers;
   }
 
+  /// 构建包含认证信息的请求头（供需要自定义请求的服务使用）
+  Map<String, String> buildHeaders({
+    String? requestId,
+    bool includeAuth = true,
+  }) {
+    return _buildHeaders(requestId: requestId, includeAuth: includeAuth);
+  }
+
   @visibleForTesting
   Map<String, String> debugBuildHeaders({
     String? requestId,
