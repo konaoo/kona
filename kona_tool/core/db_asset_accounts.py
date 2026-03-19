@@ -416,7 +416,7 @@ class AssetAccountDatabaseMixin:
                 if user_id:
                     cursor.execute(
                         f'''
-                        UPDATE {table} SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE {table} SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = datetime('now','localtime')
                         WHERE id = ? AND user_id = ?
                         ''',
                         (icon or default_icon, name, amount, curr, asset_id, user_id),
@@ -424,7 +424,7 @@ class AssetAccountDatabaseMixin:
                 else:
                     cursor.execute(
                         f'''
-                        UPDATE {table} SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE {table} SET icon = ?, name = ?, amount = ?, curr = ?, updated_at = datetime('now','localtime')
                         WHERE id = ? AND (user_id IS NULL OR user_id = '')
                         ''',
                         (icon or default_icon, name, amount, curr, asset_id),

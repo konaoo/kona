@@ -71,13 +71,13 @@ class AssetAdjustmentDatabaseMixin:
             # 3. 更新资产（余额 + 可选名称）
             if name:
                 cursor.execute(
-                    f"UPDATE {table} SET amount = ?, name = ?, updated_at = CURRENT_TIMESTAMP"
+                    f"UPDATE {table} SET amount = ?, name = ?, updated_at = datetime('now','localtime')"
                     f" WHERE id = ?",
                     (balance_after, name, asset_id),
                 )
             else:
                 cursor.execute(
-                    f"UPDATE {table} SET amount = ?, updated_at = CURRENT_TIMESTAMP"
+                    f"UPDATE {table} SET amount = ?, updated_at = datetime('now','localtime')"
                     f" WHERE id = ?",
                     (balance_after, asset_id),
                 )

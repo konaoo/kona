@@ -42,8 +42,8 @@ class DatabaseSchemaManager:
                 adjustment REAL DEFAULT 0.0,
                 asset_type TEXT DEFAULT 'a',
                 user_id TEXT NOT NULL DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -60,7 +60,7 @@ class DatabaseSchemaManager:
                 amount REAL NOT NULL,
                 pnl REAL DEFAULT 0.0,
                 user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -73,8 +73,8 @@ class DatabaseSchemaManager:
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -87,8 +87,8 @@ class DatabaseSchemaManager:
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -101,8 +101,8 @@ class DatabaseSchemaManager:
                 amount REAL NOT NULL,
                 curr TEXT NOT NULL DEFAULT 'CNY',
                 user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -124,7 +124,7 @@ class DatabaseSchemaManager:
                 user_number INTEGER,
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 build_start_at TIMESTAMP,
                 last_login TIMESTAMP,
                 last_login_ip TEXT,
@@ -150,7 +150,7 @@ class DatabaseSchemaManager:
                 status_code INTEGER NOT NULL,
                 result TEXT NOT NULL,
                 error TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -161,7 +161,7 @@ class DatabaseSchemaManager:
                 batch_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_by TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 used_by_user_id TEXT,
                 used_at TIMESTAMP,
                 note TEXT
@@ -188,7 +188,7 @@ class DatabaseSchemaManager:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_by TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -202,7 +202,7 @@ class DatabaseSchemaManager:
                 limit_per_min INTEGER,
                 note TEXT,
                 updated_by TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
             """
         )
@@ -215,7 +215,7 @@ class DatabaseSchemaManager:
                 alert_count INTEGER NOT NULL DEFAULT 0,
                 summary_json TEXT NOT NULL DEFAULT '{}',
                 items_json TEXT NOT NULL DEFAULT '[]',
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
             """
         )
@@ -226,7 +226,7 @@ class DatabaseSchemaManager:
                 tested_at_utc TEXT NOT NULL,
                 summary_json TEXT NOT NULL DEFAULT '{}',
                 providers_json TEXT NOT NULL DEFAULT '{}',
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
             """
         )
@@ -236,8 +236,8 @@ class DatabaseSchemaManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 activity_date TEXT NOT NULL,
-                first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                first_seen_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                last_seen_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(user_id, activity_date)
             )
             """
@@ -255,7 +255,7 @@ class DatabaseSchemaManager:
                 total_pnl REAL NOT NULL,
                 day_pnl REAL NOT NULL,
                 user_id TEXT NOT NULL DEFAULT '',
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(date, user_id)
             )
         '''
@@ -271,7 +271,7 @@ class DatabaseSchemaManager:
                 source TEXT NOT NULL DEFAULT 'exact',
                 confidence REAL NOT NULL DEFAULT 1.0,
                 meta_json TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(date, user_id, market)
             )
         '''
@@ -287,7 +287,7 @@ class DatabaseSchemaManager:
                 note TEXT NOT NULL DEFAULT '',
                 balance_after REAL NOT NULL,
                 user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -311,12 +311,12 @@ class DatabaseSchemaManager:
         _ensure_column("cash_assets", "curr", "curr TEXT NOT NULL DEFAULT 'CNY'")
         _ensure_column("other_assets", "curr", "curr TEXT NOT NULL DEFAULT 'CNY'")
         _ensure_column("liabilities", "curr", "curr TEXT NOT NULL DEFAULT 'CNY'")
-        _ensure_column("cash_assets", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        _ensure_column("cash_assets", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        _ensure_column("other_assets", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        _ensure_column("other_assets", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        _ensure_column("liabilities", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        _ensure_column("liabilities", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        _ensure_column("cash_assets", "created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
+        _ensure_column("cash_assets", "updated_at", "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
+        _ensure_column("other_assets", "created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
+        _ensure_column("other_assets", "updated_at", "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
+        _ensure_column("liabilities", "created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
+        _ensure_column("liabilities", "updated_at", "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
         _ensure_column("daily_snapshots", "user_id", "user_id TEXT DEFAULT ''")
         _ensure_column("daily_snapshot_market_breakdowns", "user_id", "user_id TEXT DEFAULT ''")
         _ensure_column("daily_snapshot_market_breakdowns", "source", "source TEXT NOT NULL DEFAULT 'exact'")
@@ -325,7 +325,7 @@ class DatabaseSchemaManager:
         _ensure_column(
             "daily_snapshot_market_breakdowns",
             "updated_at",
-            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
         )
 
     def _create_base_indexes(self, cursor: Any) -> None:

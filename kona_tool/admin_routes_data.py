@@ -202,7 +202,7 @@ def register_admin_data_routes(bp, db, admin_write_audit) -> None:
 
         sql = """
             UPDATE daily_snapshots
-            SET day_pnl = 0, updated_at = CURRENT_TIMESTAMP
+            SET day_pnl = 0, updated_at = datetime('now','localtime')
             WHERE CAST(strftime('%w', date) AS INTEGER) IN (0, 6)
         """
         params: List[Any] = []

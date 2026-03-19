@@ -12,6 +12,7 @@ import { useMarketStore } from './market'
 import { useSyncStore } from './sync'
 
 let hydratedCacheUserId = ''
+let initialLoadDone = false
 let autoRefreshResumeHandlerBound = false
 let autoRefreshResumeCallback: null | (() => Promise<void>) = null
 let autoRefreshResumeInflight: Promise<void> | null = null
@@ -81,6 +82,12 @@ export const useRefreshCoordinatorStore = defineStore('refreshCoordinator', () =
       marketStore,
       syncStore,
     } = resolveStores()
+
+    // 页面首次加载（F5/刷新）时清除 sync versions，强制拉取完整数据
+    if (!initialLoadDone) {
+      syncStore.invalidateSyncVersion()
+      initialLoadDone = true
+    }
 
     try {
       await syncStore.loadBootstrap(['portfolio', 'rates'])

@@ -33,8 +33,8 @@ class PortfolioSchemaMigrationTests(unittest.TestCase):
                     adjustment REAL DEFAULT 0.0,
                     asset_type TEXT DEFAULT 'a',
                     user_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                    updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
                 )
                 """
             )

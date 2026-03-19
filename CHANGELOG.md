@@ -1,3 +1,29 @@
+## 2026-03-19-02
+
+### 这版一句话
+
+后端时间统一北京时间 + Flutter 多项 UI 修复 + Web 端 F5 刷新数据不更新修复。
+
+### 主要变化
+- **后端时间统一**：所有 SQLite 写入从 `CURRENT_TIMESTAMP`(UTC) 改为 `datetime('now','localtime')`(北京时间)，涉及 db_schema/db_portfolio/db_snapshots/db_users 等全部写入点；新增 [012 迁移脚本](kona_tool/migrations/012_timestamps_utc_to_local.py) 将已有数据 +8 小时；`auth_refresh_tokens` 保持 UTC
+- **资产历史页**：新增 [asset_history_page.dart](flutter/lib/pages/asset_history_page.dart)，首页大卡片点击跳转，含折线图 + 饼图 + 日变动列表
+- **fl_chart 桌面端修复**：macOS/Windows/Linux 禁用触摸事件，防止 setState 风暴卡死
+- **饼图交互修复**：单击切换选中，中心百分比动态更新
+- **输入框样式修复**：[asset_adjust_dialog.dart](flutter/lib/widgets/asset_adjust_dialog.dart) 和 [add_asset_dialog.dart](flutter/lib/widgets/add_asset_dialog.dart) 修复文字偏移和底色阴影（ClipRRect + isDense + filled transparent）
+- **时间解析简化**：[asset_item_detail_page.dart](flutter/lib/pages/asset_item_detail_page.dart) 移除前端 UTC 转换逻辑（后端已统一北京时间）
+- **Web 刷新修复**：[refreshCoordinator.ts](web/src/stores/refreshCoordinator.ts) 页面首次加载时清除 syncVersions 强制拉取完整数据，解决 F5 后数据不更新
+
+### 影响范围
+- 后端所有时间写入（除 JWT token 外）
+- Flutter 资产历史页、资产详情页、资产编辑弹窗
+- Web 端数据同步机制
+
+### 验收重点
+- 资产详情页时间显示为北京时间
+- 资产历史页图表交互流畅（桌面端不卡顿）
+- 编辑资产弹窗输入框无偏移和阴影
+- Web 端 F5 刷新后数据正常更新（无需退出登录）
+
 ## 2026-03-19-01
 
 ### 这版一句话
