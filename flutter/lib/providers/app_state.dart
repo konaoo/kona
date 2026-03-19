@@ -253,6 +253,7 @@ class AppState extends ChangeNotifier {
   String? get username => _authState.username;
   String? get userId => _authState.userId;
   int? get userNumber => _authState.userNumber;
+  int get aiCreditsBalance => _authState.aiCreditsBalance;
   String? get nickname => _authState.nickname;
   String? get avatar => _authState.avatar;
   String? get createdAtRaw => _authState.createdAtRaw;
@@ -596,6 +597,7 @@ class AppState extends ChangeNotifier {
     required String username,
     required String userId,
     int? userNumber,
+    int? aiCreditsBalance,
     String? nickname,
     String? avatar,
     String? createdAtRaw,
@@ -606,6 +608,7 @@ class AppState extends ChangeNotifier {
       username: username,
       userId: userId,
       userNumber: userNumber,
+      aiCreditsBalance: aiCreditsBalance,
       nickname: nickname,
       avatar: avatar,
       createdAtRaw: createdAtRaw,

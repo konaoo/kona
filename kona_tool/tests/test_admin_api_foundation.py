@@ -66,6 +66,7 @@ class AdminApiFoundationTests(unittest.TestCase):
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM transactions")
+        cursor.execute("DELETE FROM ai_credit_ledger")
         cursor.execute("DELETE FROM cash_assets")
         cursor.execute("DELETE FROM other_assets")
         cursor.execute("DELETE FROM liabilities")
@@ -1307,6 +1308,107 @@ class AdminApiFoundationTests(unittest.TestCase):
         row = self._latest_audit()
         self.assertEqual(row["action"], "admin.apis.policies.update")
         self.assertEqual(row["status_code"], 200)
+
+    def test_admin_users_list_and_detail_include_ai_credits(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "kona_user", is_admin=0, status="active")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET ai_credits_balance = ? WHERE id = ?",
+            (5, "u_target"),
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-03-19", 100.0, 80.0, 10.0, 10.0, 0.0, 0.0, 0.0, "u_target"),
+        )
+        conn.commit()
+        conn.close()
+
+        list_resp = self.client.get(
+            "/api/admin/users?include_local=0&q=kona",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(list_resp.status_code, 200)
+        items = (list_resp.get_json() or {}).get("items") or []
+        target = next((item for item in items if item.get("id") == "u_target"), None)
+        self.assertIsNotNone(target)
+        self.assertEqual(int(target.get("ai_credits_balance") or 0), 5)
+
+        detail_resp = self.client.get(
+            "/api/admin/users/u_target",
+            headers=_auth_headers("u_admin", "admin_user"),
+        )
+        self.assertEqual(detail_resp.status_code, 200)
+        detail = detail_resp.get_json() or {}
+        self.assertEqual(int(detail.get("ai_credits_balance") or 0), 5)
+        self.assertEqual(detail.get("ai_credit_ledger"), [])
+
+    def test_admin_can_grant_and_deduct_ai_credits_by_username(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        _seed_user("u_target", "kona_user", is_admin=0, status="active")
+        headers = _auth_headers("u_admin", "admin_user")
+
+        grant_resp = self.client.post(
+            "/api/admin/users/ai_credits/grant",
+            headers=headers,
+            json={
+                "username": "kona_user",
+                "delta": 3,
+                "reason": "后台发放",
+            },
+        )
+        self.assertEqual(grant_resp.status_code, 200)
+        self.assertEqual(int((grant_resp.get_json() or {}).get("ai_credits_balance") or 0), 3)
+
+        deduct_resp = self.client.post(
+            "/api/admin/users/ai_credits/grant",
+            headers=headers,
+            json={
+                "username": "kona_user",
+                "delta": -2,
+                "reason": "人工扣减",
+            },
+        )
+        self.assertEqual(deduct_resp.status_code, 200)
+        self.assertEqual(int((deduct_resp.get_json() or {}).get("ai_credits_balance") or 0), 1)
+
+        detail_resp = self.client.get(
+            "/api/admin/users/u_target",
+            headers=headers,
+        )
+        self.assertEqual(detail_resp.status_code, 200)
+        detail = detail_resp.get_json() or {}
+        ledger = detail.get("ai_credit_ledger") or []
+        self.assertEqual(int(detail.get("ai_credits_balance") or 0), 1)
+        self.assertEqual(len(ledger), 2)
+        self.assertEqual(ledger[0].get("reason"), "人工扣减")
+        self.assertEqual(ledger[1].get("reason"), "后台发放")
+
+    def test_admin_ai_credit_grant_requires_reason_and_exact_username(self):
+        _seed_user("u_admin", "admin_user", is_admin=1, status="active")
+        headers = _auth_headers("u_admin", "admin_user")
+
+        missing_reason = self.client.post(
+            "/api/admin/users/ai_credits/grant",
+            headers=headers,
+            json={"username": "kona_user", "delta": 1, "reason": ""},
+        )
+        self.assertEqual(missing_reason.status_code, 400)
+        self.assertEqual((missing_reason.get_json() or {}).get("error"), "Missing reason")
+
+        unknown_user = self.client.post(
+            "/api/admin/users/ai_credits/grant",
+            headers=headers,
+            json={"username": "not-exists", "delta": 1, "reason": "后台发放"},
+        )
+        self.assertEqual(unknown_user.status_code, 404)
+        self.assertEqual((unknown_user.get_json() or {}).get("error"), "User not found")
 
 
 if __name__ == "__main__":

@@ -503,9 +503,6 @@ class _AssetHistoryPageState extends State<AssetHistoryPage> {
     final dominant = pieItems.isNotEmpty
         ? pieItems.reduce((a, b) => a.value.$2.abs() > b.value.$2.abs() ? a : b)
         : null;
-    final dominantPct = dominant != null && total > 0
-        ? '${(dominant.value.$2.abs() / total * 100).toStringAsFixed(0)}%'
-        : null;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),

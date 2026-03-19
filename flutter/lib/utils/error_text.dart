@@ -19,6 +19,7 @@ const Map<String, String> _codeTextMap = <String, String>{
   'ASSET_DELETE_FAILED': '删除资产失败，请稍后重试',
   'UNDO_FAILED': '撤销失败，请稍后重试',
   'INVALID_CALENDAR_PERIOD': '时间范围不合法',
+  'AI_CREDITS_REQUIRED': '当前没有可用积分，加入咔咔用户群获取积分',
 };
 
 const Map<String, String> _messageTextMap = <String, String>{

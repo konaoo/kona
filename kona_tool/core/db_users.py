@@ -60,6 +60,7 @@ class UserDatabaseMixin:
             "register_method",
             "phone",
             "user_number",
+            "ai_credits_balance",
             "is_admin",
             "status",
             "created_at",
@@ -92,6 +93,7 @@ class UserDatabaseMixin:
                     register_method TEXT,
                     phone TEXT,
                     user_number INTEGER,
+                    ai_credits_balance INTEGER NOT NULL DEFAULT 0,
                     is_admin INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
@@ -121,9 +123,9 @@ class UserDatabaseMixin:
                         id, username, password_hash, legacy_needs_password_setup,
                         must_change_password, password_updated_at, password_reset_at, password_reset_by,
                         nickname, avatar, register_method, phone,
-                        user_number, is_admin, status, created_at, build_start_at, last_login, last_login_ip,
-                        last_login_region, last_active_ip, last_active_region, last_active_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        user_number, ai_credits_balance, is_admin, status, created_at, build_start_at,
+                        last_login, last_login_ip, last_login_region, last_active_ip, last_active_region, last_active_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user_id,
@@ -139,6 +141,7 @@ class UserDatabaseMixin:
                         row.get("register_method") or "legacy_email_otp",
                         row.get("phone"),
                         row.get("user_number") or (9999 + idx),
+                        int(row.get("ai_credits_balance") or 0),
                         int(row.get("is_admin") or 0),
                         row.get("status") or "active",
                         row.get("created_at"),
@@ -177,6 +180,7 @@ class UserDatabaseMixin:
             _ensure_column("register_method", "register_method TEXT")
             _ensure_column("phone", "phone TEXT")
             _ensure_column("user_number", "user_number INTEGER")
+            _ensure_column("ai_credits_balance", "ai_credits_balance INTEGER NOT NULL DEFAULT 0")
             _ensure_column("is_admin", "is_admin INTEGER NOT NULL DEFAULT 0")
             _ensure_column("status", "status TEXT NOT NULL DEFAULT 'active'")
             _ensure_column("created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
@@ -189,6 +193,7 @@ class UserDatabaseMixin:
             _ensure_column("last_active_at", "last_active_at TIMESTAMP")
 
         cursor.execute("UPDATE users SET is_admin = 0 WHERE is_admin IS NULL")
+        cursor.execute("UPDATE users SET ai_credits_balance = 0 WHERE ai_credits_balance IS NULL")
         cursor.execute("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''")
         cursor.execute("UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL")
         cursor.execute(
@@ -281,7 +286,7 @@ class UserDatabaseMixin:
             cursor.execute(
                 '''
                 SELECT id, username, nickname, avatar, register_method, phone,
-                       user_number, is_admin, created_at, build_start_at, last_login, legacy_needs_password_setup,
+                       user_number, ai_credits_balance, is_admin, created_at, build_start_at, last_login, legacy_needs_password_setup,
                        must_change_password
                 FROM users
                 WHERE id = ?
@@ -305,7 +310,7 @@ class UserDatabaseMixin:
                 '''
                 SELECT id, username, password_hash, legacy_needs_password_setup,
                        must_change_password, password_reset_at, password_reset_by,
-                       nickname, avatar, register_method, phone, user_number,
+                       nickname, avatar, register_method, phone, user_number, ai_credits_balance,
                        is_admin, status, created_at, build_start_at, last_login
                 FROM users
                 WHERE username = ?
@@ -328,7 +333,7 @@ class UserDatabaseMixin:
                 """
                 SELECT id, username, password_hash, legacy_needs_password_setup,
                        must_change_password, password_reset_at, password_reset_by,
-                       nickname, avatar, register_method, phone, user_number,
+                       nickname, avatar, register_method, phone, user_number, ai_credits_balance,
                        is_admin, status, created_at, build_start_at, last_login
                 FROM users
                 WHERE id = ?
@@ -546,6 +551,146 @@ class UserDatabaseMixin:
         except Exception:
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def get_user_ai_credits_balance(self, user_id: str) -> int:
+        uid = str(user_id or "").strip()
+        if not uid:
+            return 0
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(ai_credits_balance, 0) AS ai_credits_balance
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            row = cursor.fetchone()
+            return int((row["ai_credits_balance"] or 0) if row else 0)
+        finally:
+            conn.close()
+
+    def adjust_user_ai_credits(
+        self,
+        *,
+        user_id: str,
+        delta: int,
+        reason: str,
+        source: str,
+        request_id: str = "",
+        operator_user_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        uid = str(user_id or "").strip()
+        normalized_reason = str(reason or "").strip()
+        normalized_source = str(source or "").strip()
+        normalized_request_id = str(request_id or "").strip()
+        normalized_operator_user_id = str(operator_user_id or "").strip()
+        normalized_delta = int(delta or 0)
+        if not uid or not normalized_reason or not normalized_source or normalized_delta == 0:
+            return None
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(
+                """
+                SELECT id, username, COALESCE(ai_credits_balance, 0) AS ai_credits_balance
+                FROM users
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                conn.rollback()
+                return None
+
+            current_balance = int(row["ai_credits_balance"] or 0)
+            next_balance = current_balance + normalized_delta
+            if next_balance < 0:
+                conn.rollback()
+                return {
+                    "ok": False,
+                    "code": "AI_CREDITS_REQUIRED",
+                    "user_id": str(row["id"]),
+                    "username": str(row["username"]),
+                    "balance_before": current_balance,
+                    "balance_after": current_balance,
+                }
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET ai_credits_balance = ?
+                WHERE id = ?
+                """,
+                (next_balance, uid),
+            )
+            cursor.execute(
+                """
+                INSERT INTO ai_credit_ledger (
+                    user_id,
+                    delta,
+                    balance_after,
+                    reason,
+                    source,
+                    request_id,
+                    operator_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    uid,
+                    normalized_delta,
+                    next_balance,
+                    normalized_reason,
+                    normalized_source,
+                    normalized_request_id or None,
+                    normalized_operator_user_id or None,
+                ),
+            )
+            ledger_id = int(cursor.lastrowid or 0)
+            conn.commit()
+            return {
+                "ok": True,
+                "ledger_id": ledger_id,
+                "user_id": str(row["id"]),
+                "username": str(row["username"]),
+                "balance_before": current_balance,
+                "balance_after": next_balance,
+                "delta": normalized_delta,
+            }
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def list_ai_credit_ledger(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        uid = str(user_id or "").strip()
+        if not uid:
+            return []
+        normalized_limit = max(1, min(int(limit or 20), 100))
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_id, delta, balance_after, reason, source, request_id, operator_user_id, created_at
+                FROM ai_credit_ledger
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (uid, normalized_limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()
 

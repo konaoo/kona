@@ -28,7 +28,7 @@ void main() {
       loginHandler: ({required username, required password}) async => {
         'access_token': 'access-ok',
         'refresh_token': 'refresh-ok',
-        'user': {'id': 'u-1', 'username': 'kona'},
+        'user': {'id': 'u-1', 'username': 'kona', 'ai_credits_balance': 3},
       },
     );
 
@@ -37,6 +37,7 @@ void main() {
     expect(ok, isTrue);
     expect(appState.isLoggedIn, isTrue);
     expect(appState.token, 'access-ok');
+    expect(appState.aiCreditsBalance, 3);
     expect(appState.authErrorMessage, isNull);
   });
 

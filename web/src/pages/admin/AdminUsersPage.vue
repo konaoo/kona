@@ -48,6 +48,7 @@
                     注册时间 <span>{{ sortIcon('created_at') }}</span>
                   </button>
                 </th>
+                <th>AI 积分</th>
                 <th>
                   <button class="sort-btn" @click="toggleSort('last_active_at')">
                     最近活跃 <span>{{ sortIcon('last_active_at') }}</span>
@@ -63,6 +64,7 @@
                 <td>{{ formatCny(u.total_asset_cny) }}</td>
                 <td>{{ formatCny(u.total_invest_cny) }}</td>
                 <td>{{ shortDateTime(u.created_at) }}</td>
+                <td>{{ formatCredits(u.ai_credits_balance) }}</td>
                 <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
                 <td class="actions">
                   <button class="action-btn-sm secondary" @click="openDetail(u)">详情</button>
@@ -76,7 +78,7 @@
                 </td>
               </tr>
               <tr v-if="!(users.items || []).length">
-                <td colspan="7" style="text-align: center; color: #999; padding: 40px;">暂无匹配用户</td>
+                <td colspan="8" style="text-align: center; color: #999; padding: 40px;">暂无匹配用户</td>
               </tr>
             </tbody>
           </table>
@@ -109,6 +111,10 @@
               <div class="mobile-metric">
                 <span class="metric-label">注册时间</span>
                 <strong>{{ shortDateTime(u.created_at) }}</strong>
+              </div>
+              <div class="mobile-metric">
+                <span class="metric-label">AI 积分</span>
+                <strong>{{ formatCredits(u.ai_credits_balance) }}</strong>
               </div>
               <div class="mobile-metric">
                 <span class="metric-label">最近活跃</span>
@@ -184,6 +190,72 @@
             <div class="summary-item-simple debt">
               <div class="label">我的负债</div>
               <div class="value">{{ formatCny(detail.summary.liability_cny) }}</div>
+            </div>
+          </div>
+
+          <div class="ai-credit-section">
+            <div class="ai-credit-card">
+              <div class="ai-credit-head">
+                <div>
+                  <h4>AI 积分</h4>
+                  <p>用于控制小咔助手对话成本，按次扣减。</p>
+                </div>
+                <div class="ai-credit-balance">{{ formatCredits(detail.aiCreditsBalance) }}</div>
+              </div>
+
+              <div class="ai-credit-form">
+                <label class="ai-credit-field">
+                  <span>变动值</span>
+                  <input
+                    v-model.number="detail.grantDelta"
+                    type="number"
+                    step="1"
+                    placeholder="例如 5 或 -1"
+                  />
+                </label>
+                <label class="ai-credit-field ai-credit-reason">
+                  <span>原因</span>
+                  <input
+                    v-model.trim="detail.grantReason"
+                    type="text"
+                    maxlength="40"
+                    placeholder="例如 后台发放 / 人工扣减"
+                  />
+                </label>
+                <button
+                  class="action-btn-sm dark"
+                  :disabled="detail.grantSubmitting"
+                  @click="submitAiCreditsGrant"
+                >
+                  {{ detail.grantSubmitting ? '提交中...' : '提交积分调整' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="ledger-card">
+              <div class="ledger-head">
+                <h4>最近积分流水</h4>
+                <span>{{ detail.aiCreditLedger.length }} 条</span>
+              </div>
+              <div v-if="detail.aiCreditLedger.length" class="ledger-list">
+                <div
+                  v-for="entry in detail.aiCreditLedger"
+                  :key="entry.id || `${entry.created_at}-${entry.delta}`"
+                  class="ledger-item"
+                >
+                  <div class="ledger-main">
+                    <strong :class="Number(entry.delta || 0) >= 0 ? 'up' : 'down'">
+                      {{ formatSignedCredits(entry.delta) }}
+                    </strong>
+                    <span>{{ entry.reason || entry.source || '-' }}</span>
+                  </div>
+                  <div class="ledger-meta">
+                    <span>余额 {{ formatCredits(entry.balance_after) }}</span>
+                    <span>{{ shortDateTime(entry.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="ledger-empty">暂无积分流水</div>
             </div>
           </div>
 
@@ -265,6 +337,11 @@ const detail = reactive<{
   loading: boolean
   userId: string
   username: string
+  aiCreditsBalance: number
+  aiCreditLedger: Array<Record<string, any>>
+  grantDelta: number
+  grantReason: string
+  grantSubmitting: boolean
   summary: { cash_cny: number; other_cny: number; liability_cny: number; as_of: string }
   cache: { cached_at: string; expires_at: string }
   items: Array<Record<string, any>>
@@ -273,6 +350,11 @@ const detail = reactive<{
   loading: false,
   userId: '',
   username: '',
+  aiCreditsBalance: 0,
+  aiCreditLedger: [],
+  grantDelta: 1,
+  grantReason: '',
+  grantSubmitting: false,
   summary: { cash_cny: 0, other_cny: 0, liability_cny: 0, as_of: '' },
   cache: { cached_at: '', expires_at: '' },
   items: [],
@@ -358,10 +440,23 @@ async function openDetail(user: Record<string, any>) {
   detail.loading = true
   detail.userId = String(user.id || '')
   detail.username = String(user.username || '')
+  detail.aiCreditsBalance = Number(user.ai_credits_balance || 0)
+  detail.aiCreditLedger = []
+  detail.grantDelta = 1
+  detail.grantReason = ''
+  detail.grantSubmitting = false
   detail.items = []
   detail.summary = { cash_cny: 0, other_cny: 0, liability_cny: 0, as_of: '' }
   try {
-    const payload = await api.get<Record<string, any>>(`/api/admin/users/${encodeURIComponent(detail.userId)}/portfolio`)
+    const [userPayload, payload] = await Promise.all([
+      api.get<Record<string, any>>(`/api/admin/users/${encodeURIComponent(detail.userId)}`),
+      api.get<Record<string, any>>(`/api/admin/users/${encodeURIComponent(detail.userId)}/portfolio`),
+    ])
+    detail.username = String(userPayload?.username || detail.username)
+    detail.aiCreditsBalance = Number(userPayload?.ai_credits_balance || 0)
+    detail.aiCreditLedger = Array.isArray(userPayload?.ai_credit_ledger)
+      ? userPayload.ai_credit_ledger
+      : []
     detail.items = Array.isArray(payload?.items) ? payload.items : []
     const summary = payload?.summary || {}
     detail.summary = {
@@ -387,6 +482,46 @@ function closeDetail() {
   detail.loading = false
 }
 
+async function refreshDetail() {
+  if (!detail.userId) return
+  await openDetail({
+    id: detail.userId,
+    username: detail.username,
+    ai_credits_balance: detail.aiCreditsBalance,
+  })
+}
+
+async function submitAiCreditsGrant() {
+  if (!detail.username) {
+    flash('缺少用户名，无法调整积分', false)
+    return
+  }
+  if (!Number.isInteger(detail.grantDelta) || detail.grantDelta === 0) {
+    flash('积分变动值必须是非 0 整数', false)
+    return
+  }
+  if (!detail.grantReason.trim()) {
+    flash('请先填写调整原因', false)
+    return
+  }
+  detail.grantSubmitting = true
+  try {
+    await api.post('/api/admin/users/ai_credits/grant', {
+      username: detail.username,
+      delta: detail.grantDelta,
+      reason: detail.grantReason.trim(),
+    })
+    flash('AI 积分已更新', true)
+    detail.grantDelta = 1
+    detail.grantReason = ''
+    await Promise.all([load({ force: true }), refreshDetail()])
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '积分调整失败', false)
+  } finally {
+    detail.grantSubmitting = false
+  }
+}
+
 function formatCny(value: unknown): string {
   const n = Number(value)
   return money(Number.isFinite(n) ? n : 0, 'CNY')
@@ -402,6 +537,17 @@ function formatSignedCny(value: unknown): string {
 function formatQty(value: unknown): string {
   const n = Number(value)
   return Number.isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '-'
+}
+
+function formatCredits(value: unknown): string {
+  const n = Number(value)
+  return Number.isFinite(n) ? `${Math.trunc(n)} 积分` : '0 积分'
+}
+
+function formatSignedCredits(value: unknown): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '0'
+  return `${n >= 0 ? '+' : ''}${Math.trunc(n)}`
 }
 
 function formatPct(value: unknown): string {
@@ -590,8 +736,10 @@ onMounted(() => {
 }
 .action-btn-sm.secondary { background: #f8f9fa; color: #666; }
 .action-btn-sm.danger { background: #fff5f5; color: #fa5252; border-color: #ffe3e3; }
+.action-btn-sm.dark { background: #111827; color: #fff; border-color: #111827; }
 .action-btn-sm:hover { border-color: #000; transform: translateY(-1px); }
 .action-btn-sm.danger:hover { background: #fa5252; color: white; border-color: #fa5252; }
+.action-btn-sm.dark:hover { background: #000; color: #fff; border-color: #000; }
 
 /* Table Footer Sync */
 .table-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 5px 0; }
@@ -652,6 +800,146 @@ onMounted(() => {
 
 .cache-tip { padding: 0 30px; color: #aaa; font-size: 12px; margin: 10px 0; }
 
+.ai-credit-section {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 20px;
+  padding: 0 30px 20px;
+}
+
+.ai-credit-card,
+.ledger-card {
+  background: #fff;
+  border: 1px solid #edeef1;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.ai-credit-head,
+.ledger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-credit-head h4,
+.ledger-head h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #111;
+}
+
+.ai-credit-head p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7b8190;
+}
+
+.ai-credit-balance {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #f4f7ff;
+  color: #2b5ee6;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ai-credit-form {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ai-credit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-credit-field span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7b8190;
+}
+
+.ai-credit-field input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #dde2ea;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111;
+  background: #fff;
+  outline: none;
+}
+
+.ai-credit-field input:focus {
+  border-color: #111827;
+}
+
+.ai-credit-reason {
+  min-width: 0;
+}
+
+.ledger-head span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7b8190;
+}
+
+.ledger-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.ledger-item {
+  border: 1px solid #eef0f4;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #fafbfc;
+}
+
+.ledger-main,
+.ledger-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-main strong {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.ledger-main span,
+.ledger-meta span {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.ledger-meta {
+  margin-top: 8px;
+}
+
+.ledger-empty {
+  margin-top: 16px;
+  border: 1px dashed #d8dde6;
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+  color: #8a90a1;
+  font-weight: 700;
+}
+
 .sub-table { margin: 0 30px 30px 30px; max-height: 400px; overflow-y: auto; }
 .asset-cell { display: flex; flex-direction: column; gap: 2px; }
 .asset-cell strong { font-size: 14px; color: #000; }
@@ -666,6 +954,13 @@ onMounted(() => {
   .header-actions { width: 100%; }
   .search-bar { width: 100%; }
   .summary-grid-simple { grid-template-columns: 1fr; }
+  .ai-credit-section {
+    grid-template-columns: 1fr;
+    padding: 0 20px 18px;
+  }
+  .ai-credit-form {
+    grid-template-columns: 1fr;
+  }
   .table-container {
     display: none;
   }

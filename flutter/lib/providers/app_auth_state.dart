@@ -13,6 +13,7 @@ class AppAuthState extends ChangeNotifier {
   String? _username;
   String? _userId;
   int? _userNumber;
+  int _aiCreditsBalance = 0;
   String? _nickname;
   String? _avatar;
   String? _createdAtRaw;
@@ -26,6 +27,7 @@ class AppAuthState extends ChangeNotifier {
   String? get username => _username;
   String? get userId => _userId;
   int? get userNumber => _userNumber;
+  int get aiCreditsBalance => _aiCreditsBalance;
   String? get nickname => _nickname;
   String? get avatar => _avatar;
   String? get createdAtRaw => _createdAtRaw;
@@ -40,6 +42,7 @@ class AppAuthState extends ChangeNotifier {
     Object? username = _noChange,
     Object? userId = _noChange,
     Object? userNumber = _noChange,
+    Object? aiCreditsBalance = _noChange,
     Object? nickname = _noChange,
     Object? avatar = _noChange,
     Object? createdAtRaw = _noChange,
@@ -92,6 +95,13 @@ class AppAuthState extends ChangeNotifier {
       final nextUserNumber = _intValue(userNumber);
       if (_userNumber != nextUserNumber) {
         _userNumber = nextUserNumber;
+        changed = true;
+      }
+    }
+    if (aiCreditsBalance != _noChange) {
+      final nextAiCreditsBalance = _intValue(aiCreditsBalance) ?? 0;
+      if (_aiCreditsBalance != nextAiCreditsBalance) {
+        _aiCreditsBalance = nextAiCreditsBalance;
         changed = true;
       }
     }
@@ -150,6 +160,7 @@ class AppAuthState extends ChangeNotifier {
       username: user['username']?.toString() ?? _username,
       userId: user['id']?.toString() ?? user['user_id']?.toString(),
       userNumber: _parseOptionalInt(user['user_number']),
+      aiCreditsBalance: _parseOptionalInt(user['ai_credits_balance']) ?? 0,
       nickname: user.containsKey('nickname')
           ? user['nickname']?.toString()
           : _nickname,
@@ -177,6 +188,9 @@ class AppAuthState extends ChangeNotifier {
       userNumber: includeIdentity
           ? _parseOptionalInt(profile['user_number'])
           : _noChange,
+      aiCreditsBalance: profile.containsKey('ai_credits_balance')
+          ? (_parseOptionalInt(profile['ai_credits_balance']) ?? 0)
+          : _noChange,
       nickname: profile.containsKey('nickname')
           ? profile['nickname']?.toString()
           : _noChange,
@@ -195,6 +209,7 @@ class AppAuthState extends ChangeNotifier {
     String? username,
     String? userId,
     int? userNumber,
+    int? aiCreditsBalance,
     String? nickname,
     String? avatar,
     String? createdAtRaw,
@@ -204,6 +219,7 @@ class AppAuthState extends ChangeNotifier {
       username: (_username ?? '').trim().isEmpty ? username : _noChange,
       userId: (_userId ?? '').trim().isEmpty ? userId : _noChange,
       userNumber: userNumber,
+      aiCreditsBalance: aiCreditsBalance,
       nickname: nickname,
       avatar: avatar,
       createdAtRaw: createdAtRaw,

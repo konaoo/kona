@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Callable, Dict, Optional
 
-from flask import Response, g, jsonify, request
+from flask import Response, g, jsonify, request, stream_with_context
 
 import config
 from ai_context_builder import build_user_context
+from core.admin.runtime_config import load_user_group_ops_config
+from core.request_trace import record_request_stage, trace_request_stage
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,18 @@ SYSTEM_PROMPT = """你是"小咔"，咔咔记账的 AI 投资助手。你能看�
 - 不给出具体买卖建议（合规），用"值得关注""需注意风险"等表述
 - 回答要有条理，适当使用 markdown 格式
 - 如果用户问的问题跟投资无关，礼貌提示你是投资分析助手"""
+
+
+def _build_ai_credits_required_payload(db: Any, user_id: str, *, balance: int | None = None) -> Dict[str, Any]:
+    ops_config = load_user_group_ops_config(db)
+    resolved_balance = balance if balance is not None else db.get_user_ai_credits_balance(user_id)
+    return {
+        "error": "当前没有可用积分，加入咔咔用户群获取积分",
+        "code": "AI_CREDITS_REQUIRED",
+        "ai_credits_balance": max(int(resolved_balance or 0), 0),
+        "user_group_text": str(ops_config.get("text") or "").strip() or "加入咔咔用户群",
+        "user_group_image_url": str(ops_config.get("image_url") or "").strip(),
+    }
 
 
 def _get_active_provider(db: Any) -> Optional[Dict[str, Any]]:
@@ -72,6 +87,11 @@ def create_ai_chat_handler(
         if not messages:
             return jsonify({"error": "消息列表不能为空"}), 400
 
+        with trace_request_stage("ai.credits.precheck"):
+            ai_credits_balance = db.get_user_ai_credits_balance(user_id)
+        if ai_credits_balance <= 0:
+            return jsonify(_build_ai_credits_required_payload(db, user_id, balance=ai_credits_balance)), 402
+
         # 读取激活的供应商配置
         provider_cfg = _get_active_provider(db)
         if not provider_cfg:
@@ -82,13 +102,14 @@ def create_ai_chat_handler(
 
         # 构建用户数据上下文
         try:
-            context = build_user_context(
-                user_id=user_id,
-                db=db,
-                portfolio_read_service=portfolio_read_service,
-                rates_getter=rates_getter,
-                market_status_getter=market_status_getter,
-            )
+            with trace_request_stage("ai.context.build"):
+                context = build_user_context(
+                    user_id=user_id,
+                    db=db,
+                    portfolio_read_service=portfolio_read_service,
+                    rates_getter=rates_getter,
+                    market_status_getter=market_status_getter,
+                )
         except Exception as exc:
             logger.error("ai_context build failed: %s", exc)
             context = "（用户数据加载失败，请基于对话内容回答）"
@@ -103,21 +124,93 @@ def create_ai_chat_handler(
         max_tokens = getattr(config, "AI_MAX_TOKENS", 2000)
 
         def generate():
+            provider_started_at = time.perf_counter()
+            first_token_recorded = False
+            credit_consumed = False
+            request_id = str(getattr(g, "request_id", "") or "-").strip() or "-"
             try:
                 if protocol == "anthropic":
-                    yield from _stream_anthropic(system_prompt, trimmed, api_key, model, max_tokens)
-                else:
-                    yield from _stream_openai_compatible(
-                        system_prompt, trimmed, api_key, model, max_tokens,
-                        base_url=base_url, provider_type=provider_type,
+                    stream_iter = _stream_anthropic(
+                        system_prompt,
+                        trimmed,
+                        api_key,
+                        model,
+                        max_tokens,
                     )
+                else:
+                    stream_iter = _stream_openai_compatible(
+                        system_prompt,
+                        trimmed,
+                        api_key,
+                        model,
+                        max_tokens,
+                        base_url=base_url,
+                        provider_type=provider_type,
+                    )
+                for chunk in stream_iter:
+                    if not first_token_recorded:
+                        first_token_ms = (time.perf_counter() - provider_started_at) * 1000.0
+                        record_request_stage(
+                            "ai.provider.first_token",
+                            first_token_ms,
+                            provider=provider_type,
+                            model=model or "",
+                            protocol=protocol,
+                        )
+                        logger.info(
+                            "AI_CHAT_TRACE request_id=%s stage=provider.first_token elapsed_ms=%.3f provider=%s model=%s protocol=%s",
+                            request_id,
+                            first_token_ms,
+                            provider_type,
+                            model or "-",
+                            protocol,
+                        )
+                        with trace_request_stage("ai.credits.consume"):
+                            consume_result = db.adjust_user_ai_credits(
+                                user_id=user_id,
+                                delta=-1,
+                                reason="AI 对话消费",
+                                source="ai_chat",
+                                request_id=request_id,
+                            )
+                        if not consume_result or not consume_result.get("ok"):
+                            yield (
+                                "data: "
+                                f"{json.dumps(_build_ai_credits_required_payload(db, user_id, balance=0), ensure_ascii=False)}"
+                                "\n\n"
+                            )
+                            return
+                        credit_consumed = True
+                        first_token_recorded = True
+                    yield chunk
             except Exception as exc:
                 logger.error("AI stream error: %s", exc)
                 yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            finally:
+                total_ms = (time.perf_counter() - provider_started_at) * 1000.0
+                record_request_stage(
+                    "ai.provider.total",
+                    total_ms,
+                    provider=provider_type,
+                    model=model or "",
+                    protocol=protocol,
+                    first_token=first_token_recorded,
+                    credit_consumed=credit_consumed,
+                )
+                logger.info(
+                    "AI_CHAT_TRACE request_id=%s stage=provider.total elapsed_ms=%.3f provider=%s model=%s protocol=%s first_token=%s credit_consumed=%s",
+                    request_id,
+                    total_ms,
+                    provider_type,
+                    model or "-",
+                    protocol,
+                    "yes" if first_token_recorded else "no",
+                    "yes" if credit_consumed else "no",
+                )
             yield f"data: {json.dumps({'done': True})}\n\n"
 
         return Response(
-            generate(),
+            stream_with_context(generate()),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

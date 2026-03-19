@@ -122,6 +122,7 @@ class DatabaseSchemaManager:
                 register_method TEXT,
                 phone TEXT,
                 user_number INTEGER,
+                ai_credits_balance INTEGER NOT NULL DEFAULT 0,
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
@@ -132,6 +133,21 @@ class DatabaseSchemaManager:
                 last_active_ip TEXT,
                 last_active_region TEXT,
                 last_active_at TIMESTAMP
+            )
+        '''
+        )
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS ai_credit_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                delta INTEGER NOT NULL,
+                balance_after INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                source TEXT NOT NULL,
+                request_id TEXT,
+                operator_user_id TEXT,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime'))
             )
         '''
         )
@@ -339,6 +355,12 @@ class DatabaseSchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cash_assets_user_id ON cash_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_other_assets_user_id ON other_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_liabilities_user_id ON liabilities(user_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_credit_ledger_user_created ON ai_credit_ledger(user_id, created_at DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_credit_ledger_request_id ON ai_credit_ledger(request_id)"
+        )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_asset_adjustments_asset"
             " ON asset_adjustments(asset_type, asset_id, user_id)"

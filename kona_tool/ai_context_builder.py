@@ -6,6 +6,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, List
 
+from core.request_trace import trace_request_stage
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +29,8 @@ def build_user_context(
 
     # 1. 持仓明细 + 资产总览（通过 portfolio_read_service 获取实时数据）
     try:
-        items = portfolio_read_service.build_metrics_payload(user_id=user_id)
+        with trace_request_stage("ai.context.portfolio"):
+            items = portfolio_read_service.build_metrics_payload(user_id=user_id)
         if items:
             sections.append(_build_portfolio_section(items, rates))
     except Exception as exc:
@@ -35,16 +38,18 @@ def build_user_context(
 
     # 2. 现金 / 其他 / 负债
     try:
-        cash_assets = db.get_cash_assets(user_id)
-        other_assets = db.get_other_assets(user_id)
-        liabilities = db.get_liabilities(user_id)
+        with trace_request_stage("ai.context.accounts"):
+            cash_assets = db.get_cash_assets(user_id)
+            other_assets = db.get_other_assets(user_id)
+            liabilities = db.get_liabilities(user_id)
         sections.append(_build_accounts_section(cash_assets, other_assets, liabilities, rates))
     except Exception as exc:
         logger.warning("ai_context: accounts failed: %s", exc)
 
     # 3. 近 30 天日快照
     try:
-        history = db.get_history(30, user_id)
+        with trace_request_stage("ai.context.history", days=30):
+            history = db.get_history(30, user_id)
         if history:
             sections.append(_build_history_section(history))
     except Exception as exc:
@@ -52,7 +57,8 @@ def build_user_context(
 
     # 4. 盈亏排行
     try:
-        rank = db.get_rank_data("gain", "all", user_id)
+        with trace_request_stage("ai.context.rank", rank_type="gain", market="all"):
+            rank = db.get_rank_data("gain", "all", user_id)
         if rank:
             sections.append(_build_rank_section(rank))
     except Exception as exc:
@@ -61,7 +67,11 @@ def build_user_context(
     # 5. 市场状态
     try:
         from datetime import datetime, timezone
-        market_info = market_status_getter(now_utc=datetime.now(timezone.utc), force_refresh=False)
+        with trace_request_stage("ai.context.market"):
+            market_info = market_status_getter(
+                now_utc=datetime.now(timezone.utc),
+                force_refresh=False,
+            )
         if market_info:
             sections.append(_build_market_section(market_info))
     except Exception as exc:

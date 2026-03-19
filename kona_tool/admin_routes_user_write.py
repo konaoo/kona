@@ -211,3 +211,50 @@ def register_admin_user_write_routes(bp, db, admin_write_audit) -> None:
             return jsonify({"error": "Local anonymous user is read-only"}), 400
         payload, code = revoke_user_sessions(db=db, user_id=user_id)
         return jsonify(payload), code
+
+    @bp.route("/users/ai_credits/grant", methods=["POST"])
+    @admin_write_audit(action="admin.users.ai_credits.grant", target_type="user")
+    @admin_required
+    def admin_users_ai_credits_grant():
+        data = admin_common.json_body()
+        username = str(data.get("username", "")).strip().lower()
+        reason = str(data.get("reason", "")).strip()
+        try:
+            delta = int(data.get("delta", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delta 必须是整数"}), 400
+
+        if not username:
+            return jsonify({"error": "Missing username"}), 400
+        if not reason:
+            return jsonify({"error": "Missing reason"}), 400
+        if delta == 0:
+            return jsonify({"error": "delta 不能为 0"}), 400
+
+        user = db.get_user_by_username(username)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        result = db.adjust_user_ai_credits(
+            user_id=str(user.get("id") or ""),
+            delta=delta,
+            reason=reason,
+            source="admin_grant",
+            request_id=str(getattr(g, "request_id", "") or ""),
+            operator_user_id=str(getattr(g, "user_id", "") or ""),
+        )
+        if not result:
+            return jsonify({"error": "积分调整失败"}), 500
+        if not result.get("ok"):
+            return jsonify({"error": "积分不足，无法继续扣减"}), 400
+
+        return jsonify(
+            {
+                "status": "ok",
+                "user_id": result.get("user_id"),
+                "username": result.get("username"),
+                "delta": result.get("delta"),
+                "ai_credits_balance": result.get("balance_after"),
+                "reason": reason,
+            }
+        )

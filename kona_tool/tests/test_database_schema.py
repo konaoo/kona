@@ -20,7 +20,7 @@ class DatabaseSchemaTests(unittest.TestCase):
             cursor = conn.cursor()
 
             cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio', 'users', 'daily_snapshots')"
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio', 'users', 'daily_snapshots', 'ai_credit_ledger')"
             )
             table_names = {row[0] for row in cursor.fetchall()}
 
@@ -28,7 +28,15 @@ class DatabaseSchemaTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_daily_snapshots_date_user_unique'"
             )
             index_row = cursor.fetchone()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_ai_credit_ledger_user_created'"
+            )
+            ai_credit_index_row = cursor.fetchone()
             conn.close()
 
-        self.assertEqual(table_names, {"portfolio", "users", "daily_snapshots"})
+        self.assertEqual(
+            table_names,
+            {"portfolio", "users", "daily_snapshots", "ai_credit_ledger"},
+        )
         self.assertIsNotNone(index_row)
+        self.assertIsNotNone(ai_credit_index_row)

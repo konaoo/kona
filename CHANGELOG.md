@@ -1,3 +1,28 @@
+## 2026-03-19-04
+
+### 这版一句话
+
+给 Flutter 端 AI 助手加上积分门槛：默认 0 积分，后台可按用户名发放，成功开始回答后才扣 1 分。
+
+### 主要变化
+- **后端积分模型**：`users` 表新增 `ai_credits_balance`，新增 `ai_credit_ledger` 流水表，保留余额和每次变动记录，方便后面查账、排障和审计。
+- **AI 聊天扣点规则**：`/api/ai/chat` 进入时先校验积分；没有积分直接返回 `AI_CREDITS_REQUIRED`；有积分时只有在 AI 成功返回第一段内容后才原子扣减 `1` 分，失败不白扣。
+- **管理后台发放积分**：用户列表和详情新增 `AI 积分` 展示；在现有用户详情里直接支持按用户名增减积分，并展示最近积分流水。
+- **Flutter 无积分态**：AI 聊天页会显示剩余积分；没有积分时允许进入页面，但不允许发送，并展示“加入咔咔用户群”的引导文案和二维码。
+- **聊天记录持久化**：AI 对话历史按用户本地持久化，退出页面再进会恢复，不同账号不会串记录。
+- **AI 链路埋点**：AI 聊天补了上下文构建、首字返回、总耗时埋点，后面可以更快判断慢在本地上下文还是慢在模型响应。
+
+### 影响范围
+- 后端：AI 聊天、用户表、用户读写接口、管理后台用户管理接口
+- Flutter：AI 聊天页、登录资料同步、错误提示、聊天记录缓存
+- Web 管理后台：用户管理页新增 AI 积分展示、发放入口和积分流水
+
+### 验收重点
+- 新用户进入 AI 页面时，应看到“无积分引导态”，不能发送消息
+- 后台给某个用户名发 1 积分后，该用户重新进入 AI 页面可以发送；成功收到首字后余额应减 1
+- 同一个用户退出再进入，聊天记录应恢复；换账号后不应串历史记录
+- 管理后台用户列表和详情里能看到 AI 积分，发放后余额和流水应立即刷新
+
 ## 2026-03-19-03
 
 ### 这版一句话
@@ -320,6 +345,27 @@
 - 分析页"当日盈亏"和投资页"今日收益"数字一致
 - 收益日历各天数字不变，分市场拆分加起来等于当天总收益
 - `pytest kona_tool/tests/test_snapshot_runtime.py test_contracts_analysis_snapshot_admin.py test_analysis_api.py test_calendar_weekend.py` 全通过
+
+## 2026-03-19-01
+
+### 这版一句话
+
+把 Flutter 端 AI 助手聊天记录做成本地按用户持久化，退出页面再回来也能继续上次对话。
+
+### 主要变化
+- [ai_chat_history_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/ai_chat_history_service.dart)：新增 AI 聊天记录存储服务，统一负责按用户读写本地历史，避免把存储细节直接塞进页面。
+- [chat_message.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/models/chat_message.dart)：补了时间戳序列化和反序列化，保证聊天记录恢复后消息顺序和时间还能保住。
+- [ai_chat_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/ai_chat_page.dart)：页面进入时会自动恢复当前用户的聊天记录，发送消息、流式返回、报错结束后也会同步落本地。
+- [ai_chat_history_service_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/ai_chat_history_service_test.dart)：补了按用户持久化和用户隔离测试，防止后面把不同账号的聊天记录串在一起。
+
+### 影响范围
+- Flutter 端 AI 助手聊天页
+- 本地 SharedPreferences 中的 AI 聊天记录缓存
+
+### 验收重点
+- 进入 AI 助手页时能恢复上一次聊天记录
+- 退出页面再进入，对话内容还在
+- 切换不同用户时，不会串用对方的聊天记录
 
 ## 2026-03-17-09
 

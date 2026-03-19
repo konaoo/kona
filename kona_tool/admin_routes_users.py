@@ -80,6 +80,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                         'local_anonymous' AS register_method,
                         0 AS is_admin,
                         0 AS must_change_password,
+                        0 AS ai_credits_balance,
                         'active' AS status,
                         NULL AS created_at,
                         NULL AS last_login,
@@ -119,6 +120,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                         COALESCE(u.register_method, '') AS register_method,
                         COALESCE(u.is_admin, 0) AS is_admin,
                         COALESCE(u.must_change_password, 0) AS must_change_password,
+                        COALESCE(u.ai_credits_balance, 0) AS ai_credits_balance,
                         LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                         u.created_at,
                         u.last_login,
@@ -165,6 +167,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                         bu.register_method,
                         bu.is_admin,
                         bu.must_change_password,
+                        bu.ai_credits_balance,
                         bu.status,
                         bu.created_at,
                         bu.last_login,
@@ -263,6 +266,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                         "register_method": "local_anonymous",
                         "is_admin": 0,
                         "must_change_password": 0,
+                        "ai_credits_balance": 0,
                         "status": "active",
                         "created_at": None,
                         "last_login": None,
@@ -286,6 +290,7 @@ def register_admin_user_read_routes(bp, db) -> None:
                     COALESCE(u.register_method, '') AS register_method,
                     COALESCE(u.is_admin, 0) AS is_admin,
                     COALESCE(u.must_change_password, 0) AS must_change_password,
+                    COALESCE(u.ai_credits_balance, 0) AS ai_credits_balance,
                     LOWER(COALESCE(NULLIF(u.status, ''), 'active')) AS status,
                     u.created_at,
                     u.last_login,
@@ -316,6 +321,7 @@ def register_admin_user_read_routes(bp, db) -> None:
             item["last_active_region"] = admin_common.admin_region_display(
                 item.get("last_active_region") or item.get("last_login_region")
             )
+            item["ai_credit_ledger"] = db.list_ai_credit_ledger(uid, limit=10)
             return jsonify(item)
         finally:
             conn.close()

@@ -110,6 +110,7 @@ ACTION_LABELS: Dict[str, str] = {
     "admin.users.enable": "启用用户",
     "admin.users.password.reset": "重置用户密码",
     "admin.users.sessions.revoke": "强制用户下线",
+    "admin.users.ai_credits.grant": "调整用户AI积分",
     "admin.config.update": "更新系统配置",
     "admin.config.reset": "恢复系统配置默认值",
     "admin.data.snapshot.trigger": "手动触发快照",
@@ -144,6 +145,8 @@ ERROR_LABELS: Dict[str, str] = {
     "Local anonymous user is read-only": "本机匿名用户是只读用户，无法操作",
     "Missing scope_key": "缺少策略标识",
     "Missing target_user_id": "缺少目标用户标识",
+    "Missing username": "缺少用户名",
+    "Missing reason": "缺少调整原因",
     "Invite code not active or not found": "邀请码不存在或不可作废",
 }
 

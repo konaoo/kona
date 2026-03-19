@@ -112,6 +112,7 @@ class AppSyncState extends ChangeNotifier {
       'username': cachedUsername ?? '',
       'user_id': cachedUserId ?? '',
       'user_number': authState.userNumber,
+      'ai_credits_balance': authState.aiCreditsBalance,
       'nickname': authState.nickname ?? '',
       'avatar': authState.avatar ?? '',
       'created_at': authState.createdAtRaw ?? '',
@@ -164,11 +165,16 @@ class AppSyncState extends ChangeNotifier {
       final cachedUserNumber = userNumberRaw is num
           ? userNumberRaw.toInt()
           : int.tryParse('${userNumberRaw ?? ''}');
+      final aiCreditsRaw = data['ai_credits_balance'];
+      final cachedAiCreditsBalance = aiCreditsRaw is num
+          ? aiCreditsRaw.toInt()
+          : int.tryParse('${aiCreditsRaw ?? ''}');
 
       authState.restoreCachedProfile(
         username: cachedUsername,
         userId: cachedUserId,
         userNumber: cachedUserNumber,
+        aiCreditsBalance: cachedAiCreditsBalance,
         nickname: cachedNickname,
         avatar: cachedAvatar,
         createdAtRaw: cachedCreatedAt,

@@ -10,6 +10,10 @@ void main() {
   test('resolveApiErrorText prefers code mapping and hides raw English', () {
     expect(resolveApiErrorText(code: 'INSUFFICIENT_CASH'), '账户余额不足，请更换其他账户');
     expect(
+      resolveApiErrorText(code: 'AI_CREDITS_REQUIRED'),
+      '当前没有可用积分，加入咔咔用户群获取积分',
+    );
+    expect(
       resolveApiErrorText(
         message: 'Failed to buy asset with cash',
         fallback: '保存失败，请稍后重试',
