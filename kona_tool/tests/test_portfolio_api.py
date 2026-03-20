@@ -27,6 +27,8 @@ class PortfolioApiTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
+        with app_module.market_runtime._market_status_lock:
+            app_module.market_runtime._market_status_cache.clear()
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM portfolio_correction_logs")

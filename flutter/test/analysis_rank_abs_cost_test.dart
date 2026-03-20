@@ -51,6 +51,7 @@ class _FakeApiService implements ApiService {
     double qty,
     double price,
     double adjustment, {
+    String? note,
     String? requestId,
   }) async {
     return const AssetActionResult.success(data: {'status': 'ok'});

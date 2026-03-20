@@ -2095,17 +2095,18 @@ class PortfolioDatabaseMixin:
             # 交易记录
             cursor.execute(
                 """
-                SELECT type, price, qty, amount, pnl, time
+                SELECT id, type, price, qty, amount, pnl, time
                 FROM transactions
                 WHERE code = ?
                 """
                 + f" {user_condition}"
-                + " ORDER BY time DESC",
+                + " ORDER BY time DESC, id DESC",
                 (code,) + user_param,
             )
             records = []
             for row in cursor.fetchall():
                 records.append({
+                    "_sort_id": int(row["id"] or 0),
                     "type": row["type"],
                     "price": float(row["price"] or 0),
                     "qty": float(row["qty"] or 0),
@@ -2117,17 +2118,18 @@ class PortfolioDatabaseMixin:
             # 调整台账
             cursor.execute(
                 """
-                SELECT event_type, amount, note, created_at
+                SELECT id, event_type, amount, note, created_at
                 FROM portfolio_adjustment_ledger
                 WHERE code = ? AND event_type IN ('dividend', 'fee', 'tax')
                 """
                 + f" {user_condition}"
-                + " ORDER BY created_at DESC",
+                + " ORDER BY created_at DESC, id DESC",
                 (code,) + user_param,
             )
             for row in cursor.fetchall():
                 raw_type = str(row["event_type"] or "")
                 records.append({
+                    "_sort_id": int(row["id"] or 0),
                     "type": event_type_labels.get(raw_type, raw_type),
                     "amount": float(row["amount"] or 0),
                     "note": str(row["note"] or ""),
@@ -2136,17 +2138,18 @@ class PortfolioDatabaseMixin:
 
             cursor.execute(
                 """
-                SELECT correction_type, before_qty, after_qty, before_price, after_price, note, created_at
+                SELECT id, correction_type, before_qty, after_qty, before_price, after_price, note, created_at
                 FROM portfolio_correction_logs
                 WHERE code = ?
                 """
                 + f" {user_condition}"
-                + " ORDER BY created_at DESC",
+                + " ORDER BY created_at DESC, id DESC",
                 (code,) + user_param,
             )
             for row in cursor.fetchall():
                 raw_type = str(row["correction_type"] or "")
                 records.append({
+                    "_sort_id": int(row["id"] or 0),
                     "type": correction_type_labels.get(raw_type, "持仓修正"),
                     "note": str(row["note"] or ""),
                     "before_qty": row["before_qty"],
@@ -2156,7 +2159,15 @@ class PortfolioDatabaseMixin:
                     "time": str(row["created_at"] or ""),
                 })
 
-            records.sort(key=lambda r: r.get("time", ""), reverse=True)
+            records.sort(
+                key=lambda r: (
+                    str(r.get("time", "")),
+                    int(r.get("_sort_id") or 0),
+                ),
+                reverse=True,
+            )
+            for row in records:
+                row.pop("_sort_id", None)
             return records
         except Exception as exc:
             logger.error("Failed to get portfolio transactions code=%s: %s", code, exc)
