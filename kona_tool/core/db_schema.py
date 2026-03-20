@@ -307,6 +307,23 @@ class DatabaseSchemaManager:
             )
         '''
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portfolio_adjustment_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT '',
+                code TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                note TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'manual',
+                related_tx_id INTEGER,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -364,6 +381,18 @@ class DatabaseSchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_asset_adjustments_asset"
             " ON asset_adjustments(asset_type, asset_id, user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_adjustment_ledger_user_code"
+            " ON portfolio_adjustment_ledger(user_id, code)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_adjustment_ledger_user_created"
+            " ON portfolio_adjustment_ledger(user_id, created_at DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_adjustment_ledger_related_tx"
+            " ON portfolio_adjustment_ledger(related_tx_id)"
         )
 
     def _create_snapshot_indexes(self, cursor: Any) -> None:

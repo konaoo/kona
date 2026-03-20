@@ -26,6 +26,7 @@ class ApiService {
   ApiService._internal();
 
   String? _token;
+  String? _refreshToken;
   final http.Client _client = http.Client();
   final SecureStorageService _secureStorage = SecureStorageService();
   Future<bool>? _refreshInFlight;
@@ -41,6 +42,21 @@ class ApiService {
   /// 清除认证 token
   void clearToken() {
     _token = null;
+  }
+
+  /// 同步整组认证 token，避免续签时反复读取安全存储。
+  void setAuthTokens({
+    String? accessToken,
+    String? refreshToken,
+  }) {
+    _token = accessToken;
+    _refreshToken = refreshToken;
+  }
+
+  /// 清除整组认证 token
+  void clearAuthTokens() {
+    _token = null;
+    _refreshToken = null;
   }
 
   /// 获取请求头
@@ -75,12 +91,30 @@ class ApiService {
     return _buildHeaders(requestId: requestId, includeAuth: includeAuth);
   }
 
+  @visibleForTesting
+  Future<String?> debugResolveRefreshToken() {
+    return _resolveRefreshToken();
+  }
+
   Future<void> _clearAuthTokensFromStorage() async {
     try {
       await _secureStorage.clearToken();
       await _secureStorage.clearRefreshToken();
     } catch (_) {}
-    _token = null;
+    clearAuthTokens();
+  }
+
+  Future<String?> _resolveRefreshToken() async {
+    final cached = _refreshToken?.trim() ?? '';
+    if (cached.isNotEmpty) {
+      return cached;
+    }
+    final stored = (await _secureStorage.getRefreshToken())?.trim() ?? '';
+    if (stored.isEmpty) {
+      return null;
+    }
+    _refreshToken = stored;
+    return stored;
   }
 
   void _notifyAuthExpired() {
@@ -117,7 +151,7 @@ class ApiService {
 
   Future<bool> _refreshAccessTokenInternal() async {
     _lastRefreshHardFailure = false;
-    final refreshToken = await _secureStorage.getRefreshToken();
+    final refreshToken = await _resolveRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
       _lastRefreshHardFailure = true;
       return false;
@@ -152,7 +186,7 @@ class ApiService {
         _lastRefreshHardFailure = true;
         return false;
       }
-      _token = accessToken;
+      setAuthTokens(accessToken: accessToken, refreshToken: nextRefreshToken);
       await _secureStorage.setToken(accessToken);
       await _secureStorage.setRefreshToken(nextRefreshToken);
       return true;
@@ -556,9 +590,10 @@ class ApiService {
       }
     }
     final data = _ensureMapResponse(raw, actionLabel: '登录');
-    if (data['access_token'] != null) {
-      _token = data['access_token'];
-    }
+    setAuthTokens(
+      accessToken: data['access_token']?.toString(),
+      refreshToken: data['refresh_token']?.toString(),
+    );
     return data;
   }
 
@@ -575,9 +610,10 @@ class ApiService {
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
     final data = _ensureMapResponse(raw, actionLabel: '注册');
-    if (data['access_token'] != null) {
-      _token = data['access_token'];
-    }
+    setAuthTokens(
+      accessToken: data['access_token']?.toString(),
+      refreshToken: data['refresh_token']?.toString(),
+    );
     return data;
   }
 
@@ -597,9 +633,10 @@ class ApiService {
       if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
     });
     final data = _ensureMapResponse(raw, actionLabel: '会话刷新');
-    if (data['access_token'] != null) {
-      _token = data['access_token'];
-    }
+    setAuthTokens(
+      accessToken: data['access_token']?.toString(),
+      refreshToken: data['refresh_token']?.toString() ?? refreshToken,
+    );
     return data;
   }
 
@@ -608,7 +645,7 @@ class ApiService {
       if (refreshToken != null && refreshToken.isNotEmpty)
         'refresh_token': refreshToken,
     });
-    _token = null;
+    clearAuthTokens();
     return true;
   }
 

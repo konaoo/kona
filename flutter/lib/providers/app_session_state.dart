@@ -92,7 +92,7 @@ class AppSessionState {
     required AppSessionBindings bindings,
   }) async {
     _authState.applyAuthResult(result, notify: false);
-    _api.setToken(token!);
+    _api.setAuthTokens(accessToken: token, refreshToken: refreshToken);
     _securityState.syncLocalState(
       logoutMode: AuthLogoutMode.normal,
       isAppLocked: false,
@@ -340,7 +340,7 @@ class AppSessionState {
       authErrorMessage: null,
       notify: false,
     );
-    _api.setToken(token);
+    _api.setAuthTokens(accessToken: token, refreshToken: refreshToken);
     _securityState.syncLocalState(
       logoutMode: AuthLogoutMode.normal,
       isAppLocked: false,
@@ -400,7 +400,7 @@ class AppSessionState {
       authErrorMessage: null,
       notify: false,
     );
-    _api.clearToken();
+    _api.clearAuthTokens();
     _assetsState.clearAll(notify: false);
     bindings.clearPrices();
     bindings.clearPriceSnapshots();
@@ -495,7 +495,7 @@ class AppSessionState {
         isSessionChecking: false,
         notify: false,
       );
-      _api.clearToken();
+      _api.clearAuthTokens();
       _securityState.lockApp(notify: false);
       bindings.notifyListeners();
       return finishAppAsyncFlow(flow, stage: 'biometric-locked');
@@ -541,7 +541,10 @@ class AppSessionState {
       authErrorMessage: null,
       notify: false,
     );
-    _api.setToken(resolvedToken);
+    _api.setAuthTokens(
+      accessToken: resolvedToken,
+      refreshToken: resolvedRefreshToken,
+    );
     _securityState.syncLocalState(
       logoutMode: AuthLogoutMode.normal,
       isAppLocked: false,
@@ -615,7 +618,7 @@ class AppSessionState {
       authErrorMessage: null,
       notify: false,
     );
-    _api.clearToken();
+    _api.clearAuthTokens();
     _syncState.clearSyncRuntime(notify: false);
     bindings.clearPriceSnapshots();
     _marketState.resetMarketStatus(notify: false);

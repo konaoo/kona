@@ -192,7 +192,7 @@ def create_portfolio_payload_handlers(
         user_id = g.user_id
         request_id = str((data or {}).get('request_id', '')).strip()
 
-        if not data or 'code' not in data or 'qty' not in data or 'price' not in data or 'adjustment' not in data:
+        if not data or 'code' not in data or 'qty' not in data or 'price' not in data:
             return jsonify({"error": "Missing required fields"}), 400
 
         dedup_hit, dedup_payload, dedup_status = idempotency_begin('portfolio_modify', user_id, request_id)
@@ -203,8 +203,17 @@ def create_portfolio_payload_handlers(
             with trace_request_stage("portfolio.modify.validate"):
                 qty = float(data['qty'])
                 price = float(data['price'])
-                adjustment = float(data['adjustment'])
-                if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
+                raw_adjustment = data.get('adjustment', None)
+                adjustment = None if raw_adjustment is None else float(raw_adjustment)
+                if (not math.isfinite(qty)) or (not math.isfinite(price)):
+                    return idempotent_response(
+                        'portfolio_modify',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                if adjustment is not None and (not math.isfinite(adjustment)):
                     return idempotent_response(
                         'portfolio_modify',
                         user_id,
@@ -619,6 +628,7 @@ def create_portfolio_payload_handlers(
                     'code': data['code'],
                     'before_asset': detail.get('before_asset'),
                     'tx_id': detail.get('tx_id'),
+                    'ledger_event_id': detail.get('ledger_event_id'),
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.sell")
@@ -749,6 +759,7 @@ def create_portfolio_payload_handlers(
                 'code': ((detail.get('before_asset') or {}).get('code')) or code,
                 'before_asset': detail.get('before_asset'),
                 'tx_id': detail.get('tx_id'),
+                'ledger_event_id': detail.get('ledger_event_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
                 'cash_before_amount': detail.get('cash_before_amount'),
             }

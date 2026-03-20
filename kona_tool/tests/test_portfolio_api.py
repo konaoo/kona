@@ -29,6 +29,7 @@ class PortfolioApiTests(unittest.TestCase):
     def setUp(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM portfolio_adjustment_ledger")
         cursor.execute("DELETE FROM cash_assets")
         cursor.execute("DELETE FROM other_assets")
         cursor.execute("DELETE FROM liabilities")
@@ -99,6 +100,60 @@ class PortfolioApiTests(unittest.TestCase):
         target = next((item for item in items if item.get('code') == 'sh600002'), None)
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('price') or 0.0), -1.23, places=6)
+
+    def test_portfolio_modify_without_adjustment_preserves_realized_pnl_ledger(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600011',
+            'name': '测试修改持仓',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        sell_resp = self.client.post('/api/portfolio/sell', json={
+            'code': 'sh600011',
+            'price': 12.0,
+            'qty': 2.0,
+            'request_id': 'req-modify-preserve-ledger',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600011',
+            'qty': 8.0,
+            'price': 11.0,
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+        self.assertEqual((modify_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600011'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('price') or 0.0), 11.0, places=6)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 4.0, places=6)
+        self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 4.0, places=6)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+            ('sh600011',),
+        )
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(float(row['adjustment'] or 0.0), 0.0, places=6)
+        cursor.execute(
+            "SELECT event_type, amount FROM portfolio_adjustment_ledger WHERE code = ?",
+            ('sh600011',),
+        )
+        ledger_rows = cursor.fetchall()
+        conn.close()
+        self.assertEqual(len(ledger_rows), 1)
+        self.assertEqual(ledger_rows[0]['event_type'], 'realized_pnl')
+        self.assertAlmostEqual(float(ledger_rows[0]['amount'] or 0.0), 4.0, places=6)
 
     def test_add_buy_sell_reject_non_positive_price(self):
         bad_add = self.client.post('/api/portfolio/add', json={
@@ -230,6 +285,50 @@ class PortfolioApiTests(unittest.TestCase):
             with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
                 stats = app_module.calculate_portfolio_stats(None)
         self.assertAlmostEqual(float(stats.get('total_pnl') or 0.0), 20.0, places=2)
+
+    def test_sell_undo_removes_realized_pnl_ledger(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600012',
+            'name': '测试撤销卖出',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        sell_resp = self.client.post('/api/portfolio/sell', json={
+            'code': 'sh600012',
+            'price': 12.0,
+            'qty': 2.0,
+            'request_id': 'req-sell-undo-ledger',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+        undo_token = (sell_resp.get_json() or {}).get('undo_token')
+        self.assertTrue(isinstance(undo_token, str) and len(undo_token) > 0)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(1) AS c FROM portfolio_adjustment_ledger WHERE code = ?", ('sh600012',))
+        before_cnt = int(cursor.fetchone()['c'] or 0)
+        conn.close()
+        self.assertEqual(before_cnt, 1)
+
+        undo_resp = self.client.post('/api/portfolio/undo', json={'undo_token': undo_token})
+        self.assertEqual(undo_resp.status_code, 200)
+        self.assertEqual((undo_resp.get_json() or {}).get('code'), 'UNDO_DONE')
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        items = portfolio_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600012'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('qty') or 0.0), 10.0, places=6)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 0.0, places=6)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(1) AS c FROM portfolio_adjustment_ledger WHERE code = ?", ('sh600012',))
+        after_cnt = int(cursor.fetchone()['c'] or 0)
+        conn.close()
+        self.assertEqual(after_cnt, 0)
 
     def test_buy_with_cash_and_undo_restores_cash_and_portfolio(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={

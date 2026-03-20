@@ -27,6 +27,7 @@ class AnalysisApiTests(unittest.TestCase):
     def setUp(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM portfolio_adjustment_ledger")
         cursor.execute("DELETE FROM cash_assets")
         cursor.execute("DELETE FROM other_assets")
         cursor.execute("DELETE FROM liabilities")
@@ -418,6 +419,35 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('pnl') or 0.0), 20.0, places=2)
         self.assertAlmostEqual(float(target.get('pnl_rate') or 0.0), 100.0, places=2)
+
+    def test_analysis_rank_includes_ledger_adjustment(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600013',
+            'name': '排行流水补差',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
+            VALUES ('', 'sh600013', 'manual_adjustment', 15.0, 'CNY', '', 'test')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600013': (0.0, 10.0, 0.0, 0.0)}):
+            rank_resp = self.client.get('/api/analysis/rank?type=all')
+        self.assertEqual(rank_resp.status_code, 200)
+        payload = rank_resp.get_json() or {}
+        items = (payload.get('gain') or []) + (payload.get('loss') or [])
+        target = next((item for item in items if item.get('code') == 'sh600013'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('pnl') or 0.0), 15.0, places=2)
 
 
 if __name__ == '__main__':

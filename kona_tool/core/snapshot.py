@@ -208,10 +208,8 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         for market in DEFAULT_MARKETS:
             day_pnl_by_market[market] += float(realized_pnl_by_market.get(market, 0.0) or 0.0)
     # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
-    # adjustment 字段通常用于存储 "已实现盈亏 + 分红" 等历史调整。
-    # 当我们减仓时，modify_asset/sell_asset 会更新 adjustment 吗？
-    # 检查 db.py: sell_asset 更新 adjustment = adjustment + pnl。
-    # 所以 total_pnl 已经包含了历史所有 realized_pnl (包括今天的)。
+    # 这里的 adjustment 已经是“旧 portfolio.adjustment + 流水表汇总”的总调整值。
+    # 所以 total_pnl 已经包含了历史所有 realized_pnl / 分红 / 手工补差。
     # 因此这里只需要将 realized_pnl 加到 day_pnl 中即可（因为 loop calculated floating day pnl only）。
     
     # 6. 汇总

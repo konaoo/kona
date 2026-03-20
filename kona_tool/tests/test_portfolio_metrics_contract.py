@@ -60,6 +60,26 @@ def _seed_portfolio(
     conn.close()
 
 
+def _seed_portfolio_adjustment_event(
+    user_id: str,
+    code: str,
+    amount: float,
+    event_type: str = "manual_adjustment",
+    curr: str = "CNY",
+) -> None:
+    conn = app_module.db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
+        VALUES (?, ?, ?, ?, ?, '', 'test')
+        """,
+        (user_id, code, event_type, amount, curr),
+    )
+    conn.commit()
+    conn.close()
+
+
 def _auth_headers(user_id: str, username: str) -> dict:
     token = app_module.generate_token(user_id, username)
     return {"Authorization": f"Bearer {token}"}
@@ -74,6 +94,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
     def setUp(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM portfolio_adjustment_ledger")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
         conn.commit()
@@ -186,6 +207,28 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertTrue(item.get("day_pnl_display_enabled"))
         self.assertTrue(item.get("market_trading_day"))
         self.assertTrue(item.get("market_open"))
+
+    def test_portfolio_metrics_aggregates_ledger_adjustment_into_total_pnl(self):
+        _seed_user("u_ledger", "ledger_user")
+        _seed_portfolio("u_ledger", code="sh600001", qty=10.0, price=10.0, adjustment=5.0)
+        _seed_portfolio_adjustment_event("u_ledger", "sh600001", 15.0)
+        headers = _auth_headers("u_ledger", "ledger_user")
+
+        with patch(
+            "app.batch_get_prices",
+            return_value={"sh600001": (12.0, 11.0, 1.0, 0.1)},
+        ), patch(
+            "app.get_market_statuses",
+            return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
+        ):
+            resp = self.client.get("/api/portfolio?with_metrics=1", headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        item = (resp.get_json() or [])[0]
+        self.assertAlmostEqual(float(item.get("legacy_adjustment") or 0.0), 5.0, places=6)
+        self.assertAlmostEqual(float(item.get("ledger_adjustment") or 0.0), 15.0, places=6)
+        self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 20.0, places=6)
+        self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 40.0, places=6)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ def build_portfolio_items_with_metrics(
         code = str(item.get("code") or "").strip()
         qty = _to_float(item.get("qty"))
         raw_cost_price = _to_float(item.get("price"))
-        adjustment = _to_float(item.get("adjustment"))
+        adjustment = _to_float(item.get("adjustment_total", item.get("adjustment")))
         curr = str(item.get("curr") or "CNY").strip().upper()
 
         market = str(item.get("category_type") or item.get("asset_type") or "").lower()

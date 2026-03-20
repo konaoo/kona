@@ -16,6 +16,24 @@ from core.db import DatabaseManager  # noqa: E402
 
 
 class PortfolioSchemaMigrationTests(unittest.TestCase):
+    def test_init_creates_portfolio_adjustment_ledger_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "ledger.db"
+            db = DatabaseManager(str(db_path))
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio_adjustment_ledger'"
+            )
+            table = cursor.fetchone()
+            cursor.execute("PRAGMA index_list(portfolio_adjustment_ledger)")
+            indexes = [str(row[1]) for row in cursor.fetchall()]
+            conn.close()
+
+            self.assertIsNotNone(table)
+            self.assertIn("idx_portfolio_adjustment_ledger_user_code", indexes)
+
     def test_old_code_unique_schema_migrates_to_user_scoped_unique(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "legacy.db"

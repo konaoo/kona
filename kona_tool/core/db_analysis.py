@@ -803,17 +803,33 @@ class AnalysisDatabaseMixin:
             else:
                 return []
 
+            rows = cursor.fetchall()
+            ledger_sums = {}
+            fetch_ledger_sums = getattr(self, "_fetch_portfolio_adjustment_ledger_sums", None)
+            if callable(fetch_ledger_sums):
+                ledger_sums = fetch_ledger_sums(
+                    cursor,
+                    [row["code"] for row in rows],
+                    user_id,
+                )
+
             data = []
-            for row in cursor.fetchall():
+            for row in rows:
+                code = str(row["code"] or "")
+                legacy_adjustment = float(row["adjustment"] or 0.0)
+                ledger_adjustment = float(ledger_sums.get(code, 0.0))
                 data.append(
                     {
-                        "code": row["code"],
+                        "code": code,
                         "name": row["name"],
                         "qty": float(row["qty"]),
                         "cost_price": float(row["price"]),
                         "curr": row["curr"],
-                        "adjustment": float(row["adjustment"]),
-                        "market": self._detect_market(row["code"]),
+                        "adjustment": legacy_adjustment + ledger_adjustment,
+                        "adjustment_total": legacy_adjustment + ledger_adjustment,
+                        "legacy_adjustment": legacy_adjustment,
+                        "ledger_adjustment": ledger_adjustment,
+                        "market": self._detect_market(code),
                     }
                 )
 
