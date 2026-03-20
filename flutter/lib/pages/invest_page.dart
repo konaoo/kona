@@ -228,8 +228,8 @@ class InvestPageState extends State<InvestPage> {
   String _fmtPnl(double value, String symbol) {
     if (value == 0) return '--';
     final prefix = value > 0 ? '+' : '-';
-    final intVal = value.toInt().abs();
-    final formatted = intVal.toString().replaceAllMapped(
+    final intVal = (value.abs() + 1e-9).toStringAsFixed(0);
+    final formatted = intVal.replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (m) => '${m[1]},',
     );

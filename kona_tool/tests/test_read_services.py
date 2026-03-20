@@ -455,10 +455,10 @@ class ReadServicesTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["source"], "exact")
 
 
-    def test_portfolio_day_pnl_corrected_for_intraday_buy(self):
-        """加仓当日 day_pnl 应按昨持份额用昨收价差、新买份额用实际买价差计算。"""
-        # 持仓 10 股，今日加仓 4 股，均价 9.0；当前价 12.0，昨收 11.0
-        # 预期：(12-11)*6 + (12-9)*4 = 6 + 12 = 18 (CNY, rate=1)
+    def test_portfolio_day_pnl_excludes_intraday_buy_under_bookkeeping_rule(self):
+        """记账口径下，今日新增买入不参与 day_pnl。"""
+        # 持仓 10 股，今日加仓 4 股；当前价 12.0，昨收 11.0
+        # 只看昨仓 6 股：预期 (12-11)*6 = 6
         db = _FakeDb()
         db.portfolio_items = [
             {"code": "sh600001", "name": "Test", "qty": 10, "price": 9.5, "adjustment": 0, "curr": "CNY", "asset_type": "a"}
@@ -479,7 +479,8 @@ class ReadServicesTests(unittest.TestCase):
         with self.app.test_request_context("/api/portfolio"):
             result = service.build_metrics_payload(user_id="u_1")
         item = result[0]
-        self.assertAlmostEqual(item["day_pnl"], 18.0)
+        self.assertAlmostEqual(item["day_pnl"], 6.0)
+        self.assertAlmostEqual(item["day_pnl_rate"], (1.0 / 11.0) * 100)
 
     def test_portfolio_total_pnl_rate_uses_extended_denominator(self):
         """减仓后 total_pnl_rate 分母应加上已实现盈亏，避免收益率虚高。"""

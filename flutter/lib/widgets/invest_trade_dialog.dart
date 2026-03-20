@@ -1426,6 +1426,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
   }
 
+  String _assetCurrencySymbol(String? curr) {
+    switch ((curr ?? '').trim().toUpperCase()) {
+      case 'HKD':
+        return 'HK\$';
+      case 'USD':
+        return '\$';
+      default:
+        return '¥';
+    }
+  }
+
   List<Map<String, dynamic>> _filteredSearchResults() {
     final query = _queryController.text.trim().toLowerCase();
     return _results.whereType<Map<String, dynamic>>().where((item) {
@@ -2119,7 +2130,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       final selected = asset.id == _selectedCashAssetId;
                       final amountText = asset.id == -999
                           ? null
-                          : '${asset.curr} ${_formatInputNumber(asset.amount)}';
+                          : '${_assetCurrencySymbol(asset.curr)} ${_formatInputNumber(asset.amount)}';
                       return InkWell(
                         onTap: () {
                           setState(() => _selectedCashAssetId = asset.id);
@@ -2893,7 +2904,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         ? '请选择账户'
                         : selected.id == -999
                         ? selected.displayName
-                        : '${selected.displayName} · ${selected.curr} ${_formatInputNumber(selected.amount)}',
+                        : '${selected.displayName} · ${_assetCurrencySymbol(selected.curr)} ${_formatInputNumber(selected.amount)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: _dm(

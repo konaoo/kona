@@ -29,6 +29,30 @@ def _compute_display_cost_price(price: float, qty: float, adjustment: float) -> 
     return price
 
 
+def _compute_day_pnl_metrics(
+    *,
+    current_price: float,
+    quote_yclose: float,
+    qty: float,
+    today_buy_qty: float = 0.0,
+) -> tuple[float, float, float]:
+    """按记账口径计算当日盈亏：只看昨仓，今天新买不参与。"""
+    if current_price <= 0 or quote_yclose <= 0 or qty <= 0:
+        return 0.0, 0.0, 0.0
+
+    effective_today_buy_qty = min(max(today_buy_qty, 0.0), qty)
+    yesterday_qty = max(0.0, qty - effective_today_buy_qty)
+    if yesterday_qty <= 0:
+        return 0.0, 0.0, 0.0
+
+    delta = current_price - quote_yclose
+    day_pnl = delta * yesterday_qty
+    day_base = quote_yclose * yesterday_qty
+
+    day_pnl_rate = (day_pnl / day_base * 100) if day_base > 0 else 0.0
+    return day_pnl, day_pnl_rate, yesterday_qty
+
+
 def build_portfolio_items_with_metrics(
     items: List[Dict],
     quotes: Dict[str, Tuple[float, float, float, float]],
@@ -80,22 +104,24 @@ def build_portfolio_items_with_metrics(
         cost_denominator = abs(cost) + max(0.0, adjustment)
         total_pnl_rate = (total_pnl / cost_denominator * 100) if cost_denominator > 0 else 0.0
 
-        day_pnl_display_enabled = (not nav_update_pending) and current_price > 0 and quote_yclose > 0
-        if day_pnl_display_enabled:
-            delta = current_price - quote_yclose
-            # 修正：今日加仓的份额不应该用昨收价算当日盈亏，用实际买入均价代替
-            buy_info = (today_buys or {}).get(code)
-            if buy_info and buy_info.get("qty", 0) > 0:
-                today_buy_qty = min(float(buy_info["qty"]), qty)  # 不超过当前持仓
-                today_avg_price = float(buy_info["amount"]) / today_buy_qty
-                pre_trade_qty = max(0.0, qty - today_buy_qty)
-                day_pnl_display = (current_price - quote_yclose) * pre_trade_qty + (current_price - today_avg_price) * today_buy_qty
-            else:
-                day_pnl_display = delta * qty
-            day_pnl_rate_display = (delta / quote_yclose) * 100
+        day_pnl_ready = (not nav_update_pending) and current_price > 0 and quote_yclose > 0
+        buy_info = (today_buys or {}).get(code)
+        if day_pnl_ready:
+            (
+                day_pnl_display,
+                day_pnl_rate_display,
+                yesterday_qty,
+            ) = _compute_day_pnl_metrics(
+                current_price=current_price,
+                quote_yclose=quote_yclose,
+                qty=qty,
+                today_buy_qty=_to_float((buy_info or {}).get("qty")),
+            )
+            day_pnl_display_enabled = yesterday_qty > 0
         else:
             day_pnl_display = 0.0
             day_pnl_rate_display = 0.0
+            day_pnl_display_enabled = False
         day_pnl_aggregate_enabled = day_pnl_display_enabled and market_trading_day
         day_pnl_aggregate = day_pnl_display if day_pnl_aggregate_enabled else 0.0
         day_pnl_rate_aggregate = day_pnl_rate_display if day_pnl_aggregate_enabled else 0.0

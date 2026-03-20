@@ -232,6 +232,75 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 20.0, places=6)
         self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 40.0, places=6)
 
+    def test_today_buy_is_excluded_from_day_pnl_by_bookkeeping_rule(self):
+        _seed_user("u_today_buy", "today_buy_user")
+        _seed_portfolio(
+            "u_today_buy",
+            code="f_159687",
+            name="南方基金南方东英富时亚太低碳精选ETF(QDII)",
+            qty=1581.7335,
+            price=2.1,
+            curr="CNY",
+            asset_type="fund",
+            adjustment=1.0,
+        )
+        headers = _auth_headers("u_today_buy", "today_buy_user")
+
+        with patch.object(
+            app_module.db,
+            "get_today_buy_transactions",
+            return_value={"f_159687": {"qty": 1000.0, "amount": 1550.0}},
+        ), patch(
+            "app.batch_get_prices",
+            return_value={"f_159687": (1.602, 1.607, -0.005, -0.3111387678904725)},
+        ), patch(
+            "app.get_market_statuses",
+            return_value={
+                "fund": {"open": False, "trading_day": False, "reason": "test"},
+            },
+        ):
+            resp = self.client.get("/api/portfolio?with_metrics=1", headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        item = (resp.get_json() or [])[0]
+        self.assertAlmostEqual(float(item.get("day_pnl") or 0.0), -2.9086675, places=6)
+        self.assertAlmostEqual(float(item.get("day_pnl_rate") or 0.0), -0.3111387678904725, places=6)
+        self.assertLess(float(item.get("quote_change_pct") or 0.0), 0.0)
+
+    def test_same_day_new_position_does_not_show_day_pnl(self):
+        _seed_user("u_same_day_only", "same_day_only_user")
+        _seed_portfolio(
+            "u_same_day_only",
+            code="f_520870",
+            name="易方达伊塔乌巴西IBOVESPAETF(QDII)",
+            qty=500.0,
+            price=1.88,
+            curr="CNY",
+            asset_type="fund",
+        )
+        headers = _auth_headers("u_same_day_only", "same_day_only_user")
+
+        with patch.object(
+            app_module.db,
+            "get_today_buy_transactions",
+            return_value={"f_520870": {"qty": 500.0, "amount": 940.0}},
+        ), patch(
+            "app.batch_get_prices",
+            return_value={"f_520870": (1.166, 1.165, 0.001, 0.08583690987123517)},
+        ), patch(
+            "app.get_market_statuses",
+            return_value={
+                "fund": {"open": False, "trading_day": False, "reason": "test"},
+            },
+        ):
+            resp = self.client.get("/api/portfolio?with_metrics=1", headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        item = (resp.get_json() or [])[0]
+        self.assertAlmostEqual(float(item.get("day_pnl") or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(item.get("day_pnl_rate") or 0.0), 0.0, places=6)
+        self.assertFalse(bool(item.get("day_pnl_display_enabled")))
+
 
 if __name__ == "__main__":
     unittest.main()

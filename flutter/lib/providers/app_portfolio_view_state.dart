@@ -378,7 +378,8 @@ class AppPortfolioViewState extends ChangeNotifier {
   }
 
   String _formatInteger(double value) {
-    return value
+    final normalized = value.isFinite ? value + 1e-9 : 0.0;
+    return normalized
         .toStringAsFixed(0)
         .replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),

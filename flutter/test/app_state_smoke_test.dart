@@ -97,6 +97,12 @@ void main() {
     expect(hidden, '****');
   });
 
+  test('AppState formatPnlInt rounds away floating point residue', () {
+    final state = AppState();
+    expect(state.formatPnlInt(0.49999999999994493), '+1');
+    expect(state.formatPnlInt(-0.49999999999994493), '-1');
+  });
+
   test(
     'AppState investment actions return failure when holding missing',
     () async {
