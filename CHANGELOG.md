@@ -1,3 +1,23 @@
+## 2026-03-20-06
+
+### 这版一句话
+
+补齐交易记录同秒排序，并把这轮投资详情改动的 CI 门禁收绿。
+
+### 主要变化
+- **交易记录同秒排序补稳**：`transactions / portfolio_adjustment_ledger / portfolio_correction_logs` 在同一秒产生多条记录时，统一按 `time DESC, id DESC` 返回，避免详情页出现“明明后记的手续费却排到分红后面”。
+- **后端测试隔离补齐**：`test_portfolio_api.py` 和 `test_portfolio_metrics_contract.py` 在 `setUp` 里清掉 `market_runtime` 的市场状态缓存，避免前一条测试把 5 秒缓存带进后一条，导致场内 ETF 市场状态契约偶发误判。
+- **Flutter 测试桩签名补齐**：`analysis_rank_abs_cost_test.dart` 的假 `ApiService` 现在补上 `note` 参数，和真实接口保持一致，避免 `flutter analyze` 被无效 override 拦住。
+
+### 影响范围
+- 后端：投资详情页交易记录排序稳定性
+- 测试与 CI：后端单测隔离、Flutter analyze 门禁
+
+### 验收重点
+- 同一秒连续补记 `分红 / 手续费 / 修正记录` 时，详情页列表应按最新一条排在最上面
+- `python3 -m unittest discover -s tests -p 'test_*.py'` 通过
+- `flutter analyze --no-fatal-infos --no-fatal-warnings` 通过
+
 ## 2026-03-20-05
 
 ### 这版一句话
