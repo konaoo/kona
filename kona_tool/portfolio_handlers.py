@@ -55,6 +55,14 @@ def create_portfolio_payload_handlers(
         response.headers['Vary'] = '*'
         return response
 
+    def handle_portfolio_transactions():
+        code = request.args.get('code', '').strip()
+        user_id = g.user_id
+        if not code:
+            return {"error": "Missing required parameter: code", "code": "MISSING_CODE"}, 400
+        records = db.get_portfolio_transactions(code=code, user_id=user_id)
+        return {"records": records}
+
     def handle_portfolio_add():
         data = request.json
         user_id = g.user_id
@@ -203,17 +211,7 @@ def create_portfolio_payload_handlers(
             with trace_request_stage("portfolio.modify.validate"):
                 qty = float(data['qty'])
                 price = float(data['price'])
-                raw_adjustment = data.get('adjustment', None)
-                adjustment = None if raw_adjustment is None else float(raw_adjustment)
                 if (not math.isfinite(qty)) or (not math.isfinite(price)):
-                    return idempotent_response(
-                        'portfolio_modify',
-                        user_id,
-                        request_id,
-                        {"error": "Invalid value", "code": "INVALID_VALUE"},
-                        400,
-                    )
-                if adjustment is not None and (not math.isfinite(adjustment)):
                     return idempotent_response(
                         'portfolio_modify',
                         user_id,
@@ -234,8 +232,9 @@ def create_portfolio_payload_handlers(
                     data['code'],
                     qty,
                     price,
-                    adjustment,
-                    user_id,
+                    None,
+                    note=str(data.get('note') or '').strip(),
+                    user_id=user_id,
                     return_detail=True,
                 )
             if detail and detail.get('ok'):
@@ -244,6 +243,8 @@ def create_portfolio_payload_handlers(
                     'code': data['code'],
                     'before_asset': detail.get('before_asset'),
                     'tx_id': None,
+                    'ledger_event_id': None,
+                    'correction_log_id': detail.get('correction_log_id'),
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.modify")
@@ -262,6 +263,100 @@ def create_portfolio_payload_handlers(
         except ValueError:
             return idempotent_response(
                 'portfolio_modify',
+                user_id,
+                request_id,
+                {"error": "Invalid value", "code": "INVALID_VALUE"},
+                400,
+            )
+
+    def handle_portfolio_adjustment_event():
+        data = request.json
+        user_id = g.user_id
+        request_id = str((data or {}).get('request_id', '')).strip()
+
+        if not data or 'code' not in data or 'event_type' not in data or 'amount' not in data:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        dedup_hit, dedup_payload, dedup_status = idempotency_begin(
+            'portfolio_adjustment_event',
+            user_id,
+            request_id,
+        )
+        if dedup_hit:
+            return jsonify(dedup_payload), dedup_status
+
+        try:
+            with trace_request_stage("portfolio.adjustment_event.validate"):
+                event_type = str(data.get('event_type') or '').strip()
+                note = str(data.get('note') or '').strip()
+                raw_amount = float(data.get('amount'))
+                if not math.isfinite(raw_amount):
+                    return idempotent_response(
+                        'portfolio_adjustment_event',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                if event_type not in {'dividend', 'fee', 'tax'}:
+                    return idempotent_response(
+                        'portfolio_adjustment_event',
+                        user_id,
+                        request_id,
+                        {"error": "Unsupported adjustment event type", "code": "UNSUPPORTED_EVENT_TYPE"},
+                        400,
+                    )
+                if raw_amount <= 0:
+                    return idempotent_response(
+                        'portfolio_adjustment_event',
+                        user_id,
+                        request_id,
+                        {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                amount = raw_amount if event_type == 'dividend' else -raw_amount
+
+            with trace_request_stage("portfolio.adjustment_event.write", event_type=event_type):
+                detail = db.add_portfolio_adjustment_event(
+                    code=str(data.get('code') or '').strip(),
+                    event_type=event_type,
+                    amount=amount,
+                    note=note,
+                    curr=data.get('curr'),
+                    user_id=user_id,
+                    return_detail=True,
+                )
+
+            if detail and detail.get('ok'):
+                operation = {
+                    'op_type': 'adjustment_event',
+                    'code': data['code'],
+                    'before_asset': detail.get('before_asset'),
+                    'tx_id': None,
+                    'ledger_event_id': detail.get('ledger_event_id'),
+                }
+                payload = undo_decorator({"status": "ok"}, user_id, operation)
+                _save_snapshot_async(user_id, "portfolio.adjustment_event")
+                return idempotent_response(
+                    'portfolio_adjustment_event',
+                    user_id,
+                    request_id,
+                    payload,
+                )
+
+            error_code = (detail or {}).get('code', 'PORTFOLIO_ADJUSTMENT_EVENT_FAILED')
+            error_message = (detail or {}).get('error', 'Failed to add portfolio adjustment event')
+            status_code = 404 if error_code == 'ASSET_NOT_FOUND' else 500
+            return idempotent_response(
+                'portfolio_adjustment_event',
+                user_id,
+                request_id,
+                {"error": error_message, "code": error_code},
+                status_code,
+            )
+        except ValueError:
+            return idempotent_response(
+                'portfolio_adjustment_event',
                 user_id,
                 request_id,
                 {"error": "Invalid value", "code": "INVALID_VALUE"},
@@ -824,6 +919,7 @@ def create_portfolio_payload_handlers(
         "portfolio_add": handle_portfolio_add,
         "portfolio_update": handle_portfolio_update,
         "portfolio_modify": handle_portfolio_modify,
+        "portfolio_adjustment_event": handle_portfolio_adjustment_event,
         "snapshot_save": handle_snapshot_save,
         "snapshot_trigger": handle_snapshot_trigger,
         "snapshot_fix": handle_snapshot_fix,
@@ -834,4 +930,5 @@ def create_portfolio_payload_handlers(
         "portfolio_sell": handle_portfolio_sell,
         "portfolio_sell_to_cash": handle_portfolio_sell_to_cash,
         "portfolio_undo": handle_portfolio_undo,
+        "portfolio_transactions": handle_portfolio_transactions,
     }

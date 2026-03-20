@@ -297,7 +297,7 @@ class AssetDetailPage extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        asset.name,
+                        asset.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: _nameStyle,

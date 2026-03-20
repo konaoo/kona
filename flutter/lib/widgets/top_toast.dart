@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 
 enum TopToastType { success, error, info }
+enum TopToastPlacement { top, bottom }
 
 class TopToast {
   static OverlayEntry? _entry;
@@ -41,13 +42,15 @@ class TopToast {
     required String actionLabel,
     required VoidCallback onAction,
     TopToastType type = TopToastType.info,
-    Duration duration = const Duration(seconds: 15),
+    Duration duration = const Duration(seconds: 5),
+    TopToastPlacement placement = TopToastPlacement.top,
   }) {
     _show(
       context,
       message: message,
       type: type,
       duration: duration,
+      placement: placement,
       actionLabel: actionLabel,
       onAction: () {
         _removeCurrent();
@@ -61,6 +64,7 @@ class TopToast {
     required String message,
     required TopToastType type,
     required Duration duration,
+    TopToastPlacement placement = TopToastPlacement.top,
     String? actionLabel,
     VoidCallback? onAction,
   }) {
@@ -89,18 +93,29 @@ class TopToast {
     _entry = OverlayEntry(
       builder: (ctx) {
         final topPadding = MediaQuery.of(ctx).padding.top;
+        final bottomPadding = MediaQuery.of(ctx).padding.bottom;
         return Positioned(
-          top: topPadding + 10,
+          top: placement == TopToastPlacement.top ? topPadding + 10 : null,
+          bottom:
+              placement == TopToastPlacement.bottom ? bottomPadding + 120 : null,
           left: 16,
           right: 16,
-          child: Material(
-            color: Colors.transparent,
-            child: _ToastCard(
-              message: message,
-              icon: icon,
-              bgColor: bgColor,
-              actionLabel: actionLabel,
-              onAction: onAction,
+          child: Align(
+            alignment: placement == TopToastPlacement.top
+                ? Alignment.topCenter
+                : Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Material(
+                color: Colors.transparent,
+                child: _ToastCard(
+                  message: message,
+                  icon: icon,
+                  bgColor: bgColor,
+                  actionLabel: actionLabel,
+                  onAction: onAction,
+                ),
+              ),
             ),
           ),
         );

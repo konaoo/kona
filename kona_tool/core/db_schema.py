@@ -22,6 +22,7 @@ class DatabaseSchemaManager:
         db_manager._ensure_portfolio_user_scoped_unique(cursor)
         db_manager._ensure_users_schema(cursor)
         self._create_base_indexes(cursor)
+        db_manager._migrate_portfolio_corrections_schema(cursor)
         db_manager._ensure_daily_snapshots_schema(cursor)
         self._create_snapshot_indexes(cursor)
         db_manager._ensure_portfolio_asset_type(cursor)
@@ -324,6 +325,24 @@ class DatabaseSchemaManager:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portfolio_correction_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT '',
+                code TEXT NOT NULL,
+                correction_type TEXT NOT NULL,
+                before_qty REAL,
+                after_qty REAL,
+                before_price REAL,
+                after_price REAL,
+                note TEXT NOT NULL DEFAULT '',
+                legacy_ledger_id INTEGER,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -393,6 +412,18 @@ class DatabaseSchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_portfolio_adjustment_ledger_related_tx"
             " ON portfolio_adjustment_ledger(related_tx_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_correction_logs_user_code"
+            " ON portfolio_correction_logs(user_id, code)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_correction_logs_user_created"
+            " ON portfolio_correction_logs(user_id, created_at DESC)"
+        )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_correction_logs_legacy_ledger"
+            " ON portfolio_correction_logs(legacy_ledger_id)"
         )
 
     def _create_snapshot_indexes(self, cursor: Any) -> None:

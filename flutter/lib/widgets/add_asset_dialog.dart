@@ -542,7 +542,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                             child: Text(
-                              '确定删除「${widget.editingAsset?.name ?? ''}」吗？',
+                              '确定删除「${widget.editingAsset?.displayName ?? ''}」吗？',
                               style: _dm(size: 13, color: _kTextMuted),
                             ),
                           ),

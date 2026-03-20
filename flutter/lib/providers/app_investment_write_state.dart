@@ -451,6 +451,7 @@ class AppInvestmentWriteState {
     required double qty,
     required double price,
     required double adjustment,
+    String? note,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
   }) async {
@@ -478,6 +479,60 @@ class AppInvestmentWriteState {
       qty,
       price,
       adjustment,
+      note: note,
+    );
+    if (!result.ok) {
+      _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);
+      return result;
+    }
+    await bindings.triggerHomeRefresh(awaitRefresh);
+    return _tradeState.extractUndoInfo(result);
+  }
+
+  Future<AssetActionResult> addInvestmentAdjustmentEvent({
+    required String code,
+    required String eventType,
+    required double amount,
+    String? note,
+    bool awaitRefresh = true,
+    required AppInvestmentWriteBindings bindings,
+  }) async {
+    final index = _portfolioIndexByCode(code);
+    if (index < 0) {
+      return const AssetActionResult.failure('未找到该持仓');
+    }
+    if (!amount.isFinite || amount <= 0) {
+      return const AssetActionResult.failure('请输入有效金额');
+    }
+    final cleanEventType = eventType.trim();
+    if (cleanEventType != 'dividend' && cleanEventType != 'fee') {
+      return const AssetActionResult.failure('不支持的修正类型');
+    }
+    final cleanNote = (note ?? '').trim();
+
+    final current = _assetsState.portfolio[index];
+    final nextAdjustment = cleanEventType == 'dividend'
+        ? current.adjustment + amount
+        : current.adjustment - amount;
+    final snapshot = _assetsState.capturePortfolioSnapshot();
+    final changed = _assetsState.optimisticModifyInvestment(
+      code: code,
+      qty: current.qty,
+      price: current.price,
+      adjustment: nextAdjustment,
+      notify: false,
+    );
+    if (!changed) {
+      return const AssetActionResult.failure('保存失败，请稍后重试');
+    }
+    _recalculatePortfolioTotals(bindings.notifyListeners);
+
+    final result = await _api.addPortfolioAdjustmentEvent(
+      code,
+      cleanEventType,
+      amount,
+      note: cleanNote,
+      curr: current.curr,
     );
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);

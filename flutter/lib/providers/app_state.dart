@@ -814,6 +814,11 @@ class AppState extends ChangeNotifier {
     return _api.getAssetAdjustments(assetType: type, assetId: id);
   }
 
+  /// 获取投资持仓交易记录
+  Future<List<dynamic>> getInvestmentTransactions(String code) {
+    return _api.getPortfolioTransactions(code);
+  }
+
   // ============================================================
   // 13) 投资持仓操作
   // ============================================================
@@ -931,12 +936,13 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// 手动调整（数量/成本/调整）
+  /// 手动调整（数量/成本）
   Future<AssetActionResult> modifyInvestment({
     required String code,
     required double qty,
     required double price,
     required double adjustment,
+    String? note,
     bool awaitRefresh = true,
   }) async {
     return _investmentWriteState.modifyInvestment(
@@ -944,6 +950,25 @@ class AppState extends ChangeNotifier {
       qty: qty,
       price: price,
       adjustment: adjustment,
+      note: note,
+      awaitRefresh: awaitRefresh,
+      bindings: _investmentWriteBindings,
+    );
+  }
+
+  /// 投资收益事件（分红/手续费）
+  Future<AssetActionResult> addInvestmentAdjustmentEvent({
+    required String code,
+    required String eventType,
+    required double amount,
+    String? note,
+    bool awaitRefresh = true,
+  }) async {
+    return _investmentWriteState.addInvestmentAdjustmentEvent(
+      code: code,
+      eventType: eventType,
+      amount: amount,
+      note: note,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
     );

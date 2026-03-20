@@ -64,7 +64,7 @@ def _seed_portfolio_adjustment_event(
     user_id: str,
     code: str,
     amount: float,
-    event_type: str = "manual_adjustment",
+    event_type: str = "dividend",
     curr: str = "CNY",
 ) -> None:
     conn = app_module.db.get_connection()

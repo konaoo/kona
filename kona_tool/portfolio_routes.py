@@ -24,6 +24,7 @@ def create_portfolio_blueprint(
     portfolio_add_handler,
     portfolio_update_handler,
     portfolio_modify_handler,
+    portfolio_adjustment_event_handler,
     snapshot_save_handler,
     snapshot_trigger_handler,
     snapshot_fix_handler,
@@ -34,6 +35,7 @@ def create_portfolio_blueprint(
     portfolio_sell_handler,
     portfolio_sell_to_cash_handler,
     portfolio_undo_handler,
+    portfolio_transactions_handler,
 ):
     bp = Blueprint("portfolio_routes", __name__)
 
@@ -56,6 +58,11 @@ def create_portfolio_blueprint(
     @optional_auth
     def modify_asset():
         return _jsonify_result(portfolio_modify_handler())
+
+    @bp.route("/api/portfolio/adjustment_event", methods=["POST"])
+    @optional_auth
+    def add_adjustment_event():
+        return _jsonify_result(portfolio_adjustment_event_handler())
 
     @bp.route("/api/snapshot/save", methods=["POST"])
     @optional_auth
@@ -106,5 +113,10 @@ def create_portfolio_blueprint(
     @optional_auth
     def undo_portfolio_operation():
         return _jsonify_result(portfolio_undo_handler())
+
+    @bp.route("/api/portfolio/transactions", methods=["GET"])
+    @optional_auth
+    def get_portfolio_transactions():
+        return _jsonify_result(portfolio_transactions_handler())
 
     return bp

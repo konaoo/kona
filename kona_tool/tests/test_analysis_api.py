@@ -434,7 +434,7 @@ class AnalysisApiTests(unittest.TestCase):
         cursor.execute(
             """
             INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
-            VALUES ('', 'sh600013', 'manual_adjustment', 15.0, 'CNY', '', 'test')
+            VALUES ('', 'sh600013', 'dividend', 15.0, 'CNY', '', 'test')
             """
         )
         conn.commit()

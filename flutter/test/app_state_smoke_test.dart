@@ -14,6 +14,11 @@ class _NoRefreshAppState extends AppState {
 
 class _FakeApiService implements ApiService {
   void Function()? _onAuthExpired;
+  int addPortfolioAdjustmentEventCalls = 0;
+  String? lastAdjustmentEventCode;
+  String? lastAdjustmentEventType;
+  double? lastAdjustmentEventAmount;
+  String? lastAdjustmentEventNote;
 
   @override
   void Function()? get onAuthExpired => _onAuthExpired;
@@ -48,8 +53,26 @@ class _FakeApiService implements ApiService {
     double qty,
     double price,
     double adjustment, {
+    String? note,
     String? requestId,
   }) async {
+    return const AssetActionResult.success(data: {'status': 'ok'});
+  }
+
+  @override
+  Future<AssetActionResult> addPortfolioAdjustmentEvent(
+    String code,
+    String eventType,
+    double amount, {
+    String? note,
+    String? curr,
+    String? requestId,
+  }) async {
+    addPortfolioAdjustmentEventCalls += 1;
+    lastAdjustmentEventCode = code;
+    lastAdjustmentEventType = eventType;
+    lastAdjustmentEventAmount = amount;
+    lastAdjustmentEventNote = note;
     return const AssetActionResult.success(data: {'status': 'ok'});
   }
 
@@ -232,4 +255,34 @@ void main() {
       expect(state.investHoldingPnlRate, 0);
     },
   );
+
+  test('AppState adjustment event allows empty note', () async {
+    final api = _FakeApiService();
+    final state = _NoRefreshAppState(api: api);
+
+    final addResult = await state.addInvestment(
+      code: 'gb_tsla',
+      name: 'Tesla',
+      price: 2,
+      qty: 10,
+      curr: 'USD',
+      assetType: 'us',
+      awaitRefresh: false,
+    );
+    expect(addResult.ok, isTrue);
+
+    final adjustResult = await state.addInvestmentAdjustmentEvent(
+      code: 'gb_tsla',
+      eventType: 'dividend',
+      amount: 8,
+      note: '',
+      awaitRefresh: false,
+    );
+    expect(adjustResult.ok, isTrue);
+    expect(api.addPortfolioAdjustmentEventCalls, 1);
+    expect(api.lastAdjustmentEventCode, 'gb_tsla');
+    expect(api.lastAdjustmentEventType, 'dividend');
+    expect(api.lastAdjustmentEventAmount, 8);
+    expect(api.lastAdjustmentEventNote, '');
+  });
 }

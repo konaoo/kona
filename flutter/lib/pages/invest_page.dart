@@ -6,7 +6,7 @@ import '../config/theme.dart';
 import '../models/portfolio.dart';
 import '../providers/app_state.dart';
 import '../services/portfolio_metrics_service.dart';
-import '../widgets/invest_trade_dialog.dart';
+import 'investment_detail_page.dart';
 import '../widgets/fab_scroll_visibility_controller.dart';
 
 // ══════════════════════════════════════════════════
@@ -871,7 +871,7 @@ class InvestPageState extends State<InvestPage> {
     final shouldShowFundDayPnlPlaceholder =
         isFund && latestNavDate != null && !_isDateToday(latestNavDate);
     final qtyUnit = isFund ? '份' : '股';
-    final name = (item.name as String? ?? '').trim();
+    final name = item.displayName.trim();
     final code = (item.code as String? ?? '').trim();
     final displayName = name.isNotEmpty ? name : _formatDisplayCode(code);
 
@@ -930,13 +930,15 @@ class InvestPageState extends State<InvestPage> {
     }
 
     return GestureDetector(
-      onTap: () => showInvestTradeSheet(
-        context: context,
-        mode: 'trade',
-        item: item,
-        hostContext: context,
-        presentation: InvestTradeDialogPresentation.centered,
-      ),
+      onTap: () async {
+        final appState = context.read<AppState>();
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => InvestmentDetailPage(item: item),
+          ),
+        );
+        appState.refreshPortfolio();
+      },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),

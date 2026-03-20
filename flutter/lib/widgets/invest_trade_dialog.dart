@@ -37,6 +37,7 @@ Future<T?> showInvestTradeSheet<T>({
   required String mode,
   PortfolioItem? item,
   BuildContext? hostContext,
+  String? initialTradeMode,
   InvestTradeDialogPresentation presentation =
       InvestTradeDialogPresentation.sheet,
 }) {
@@ -53,6 +54,7 @@ Future<T?> showInvestTradeSheet<T>({
           mode: mode,
           item: item,
           hostContext: hostContext,
+          initialTradeMode: initialTradeMode,
           presentation: presentation,
         ),
       ),
@@ -75,6 +77,7 @@ Future<T?> showInvestTradeSheet<T>({
         mode: mode,
         item: item,
         hostContext: hostContext,
+        initialTradeMode: initialTradeMode,
         presentation: presentation,
       ),
     ),
@@ -138,6 +141,7 @@ class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
   final BuildContext? hostContext;
+  final String? initialTradeMode;
   final InvestTradeDialogPresentation presentation;
 
   const InvestTradeDialog({
@@ -145,6 +149,7 @@ class InvestTradeDialog extends StatefulWidget {
     required this.mode,
     this.item,
     this.hostContext,
+    this.initialTradeMode,
     this.presentation = InvestTradeDialogPresentation.sheet,
   });
 
@@ -159,10 +164,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   final _qtyFocusNode = FocusNode();
   final _amountFocusNode = FocusNode();
   final _adjustAmountFocusNode = FocusNode();
+  final _noteFocusNode = FocusNode();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
   final _amountController = TextEditingController();
   final _adjustController = TextEditingController();
+  final _noteController = TextEditingController();
   final LayerLink _searchFieldLink = LayerLink();
   final LayerLink _cashFieldLink = LayerLink();
   final LayerLink _adjustTypeFieldLink = LayerLink();
@@ -180,7 +187,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   List<dynamic> _results = [];
   Map<String, dynamic>? _selected;
   String _tradeMode = 'buy';
-  String _adjustType = 'pnl';
+  String _adjustType = 'cost_price';
   String _fundInputMode = 'qty';
   int? _selectedCashAssetId;
   int _searchSeq = 0;
@@ -215,10 +222,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   static const Key _qtyFieldKey = Key('invest_qty_field');
   static const Key _amountFieldKey = Key('invest_amount_field');
   static const Key _adjustAmountFieldKey = Key('invest_adjust_amount_field');
+  static const Key _noteFieldKey = Key('invest_note_field');
   static const Key _submitButtonKey = Key('invest_submit_button');
   static const Key _cancelButtonKey = Key('invest_cancel_button');
   static const List<_AdjustModeOption> _adjustModeOptions = [
-    _AdjustModeOption('pnl', '累计收益'),
     _AdjustModeOption('cost_price', '成本价'),
     _AdjustModeOption('quantity', '数量'),
     _AdjustModeOption('dividend', '分红'),
@@ -230,6 +237,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isSell => widget.mode == 'sell';
   bool get _isTrade => widget.mode == 'trade';
   bool get _isAdjust => _tradeMode == 'adjust';
+  bool get _isDirectAdjustEntry =>
+      _isTrade && widget.initialTradeMode == 'adjust';
 
   _InvestSheetTokens get _tokens {
     if (AppTheme.isLight) {
@@ -310,16 +319,19 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _qtyController.addListener(_onQtyChanged);
     _amountController.addListener(_onAmountChanged);
     _adjustController.addListener(_onInputControllerChanged);
+    _noteController.addListener(_onInputControllerChanged);
     _queryFocusNode.addListener(_onQueryFocusChanged);
     _priceFocusNode.addListener(_onInputControllerChanged);
     _qtyFocusNode.addListener(_onInputControllerChanged);
     _amountFocusNode.addListener(_onInputControllerChanged);
     _adjustAmountFocusNode.addListener(_onInputControllerChanged);
+    _noteFocusNode.addListener(_onInputControllerChanged);
     _syncDefaultCashAsset();
     if (!_isAdd && widget.item != null) {
       _prefillPriceFromCurrent();
       if (_isTrade) {
-        _tradeMode = 'buy';
+        _tradeMode = widget.initialTradeMode ?? 'buy';
+        _adjustType = 'cost_price';
         _adjustController.clear();
         if (_isCurrentFundTarget()) {
           _fundInputMode = 'amount';
@@ -342,11 +354,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _qtyController.removeListener(_onQtyChanged);
     _amountController.removeListener(_onAmountChanged);
     _adjustController.removeListener(_onInputControllerChanged);
+    _noteController.removeListener(_onInputControllerChanged);
     _queryFocusNode.removeListener(_onQueryFocusChanged);
     _priceFocusNode.removeListener(_onInputControllerChanged);
     _qtyFocusNode.removeListener(_onInputControllerChanged);
     _amountFocusNode.removeListener(_onInputControllerChanged);
     _adjustAmountFocusNode.removeListener(_onInputControllerChanged);
+    _noteFocusNode.removeListener(_onInputControllerChanged);
     _hideSearchOverlay(updateState: false);
     _hideCashOverlay(updateState: false);
     _hideAdjustTypeOverlay(updateState: false);
@@ -355,11 +369,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _qtyFocusNode.dispose();
     _amountFocusNode.dispose();
     _adjustAmountFocusNode.dispose();
+    _noteFocusNode.dispose();
     _queryController.dispose();
     _priceController.dispose();
     _qtyController.dispose();
     _amountController.dispose();
     _adjustController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -646,16 +662,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return (widget.item?.price ?? 0).toDouble();
   }
 
-  double _currentAdjustment() {
-    return (widget.item?.adjustment ?? 0).toDouble();
-  }
-
   double _currentDisplayCostPrice() {
-    final qty = _currentHoldingQty();
-    final rawPrice = _currentRawCostPrice();
-    final adjustment = _currentAdjustment();
-    if (qty.abs() <= 1e-9) return rawPrice;
-    return ((rawPrice * qty) - adjustment) / qty;
+    return _currentRawCostPrice();
   }
 
   String _adjustInputLabel() {
@@ -663,7 +671,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_adjustType == 'quantity') return '目标数量';
     if (_adjustType == 'dividend') return '分红金额';
     if (_adjustType == 'fee') return '手续费金额';
-    return '调整金额';
+    return '目标成本价';
   }
 
   int _adjustInputDecimals() {
@@ -712,7 +720,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     _setControllerText(
       _adjustController,
-      _formatInputNumber(_currentAdjustment(), decimals: 2),
+      _formatInputNumber(
+        _currentDisplayCostPrice(),
+        decimals: _adjustInputDecimals(),
+      ),
     );
   }
 
@@ -746,7 +757,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (value <= 0) return '手续费金额必须大于 0';
       return null;
     }
-    if (qty <= 0) return '当前持仓数量无效，不能调整累计收益';
+    if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
+    if (value <= 0) return '目标成本价必须大于 0';
     return null;
   }
 
@@ -759,8 +771,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_adjustType == 'cost_price') {
       return _ResolvedAdjustPayload(
         qty: qty,
-        price: rawPrice,
-        adjustment: rawPrice * qty - value * qty,
+        price: value,
+        adjustment: currentAdjustment,
       );
     }
     if (_adjustType == 'quantity') {
@@ -784,7 +796,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         adjustment: currentAdjustment - value,
       );
     }
-    return _ResolvedAdjustPayload(qty: qty, price: rawPrice, adjustment: value);
+    return _ResolvedAdjustPayload(
+      qty: qty,
+      price: rawPrice,
+      adjustment: rawPrice * qty - value * qty,
+    );
   }
 
   Future<void> _prefillFundNavForCode(String code) async {
@@ -813,14 +829,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final code = (curr ?? '').trim().toUpperCase();
     if (code == 'USD' || code == 'HKD' || code == 'CNY') return code;
     return 'CNY';
-  }
-
-  String _displayCurrencyLabel(String? curr) {
-    final code = _normalizeCurrencyCode(curr);
-    if (code == 'HKD') return 'HK\$';
-    if (code == 'CNY') return '￥';
-    if (code == 'USD') return '\$';
-    return code;
   }
 
   String _targetCashCurrency(AppState appState, String actionMode) {
@@ -944,7 +952,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _navErrorText = null;
       _navLoading = false;
       if (mode == 'adjust') {
-        _adjustType = 'pnl';
+        _adjustType = 'cost_price';
         _syncAdjustInputDefault();
       } else if (_priceController.text.trim().isEmpty) {
         _prefillPriceFromCurrent();
@@ -1079,6 +1087,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       }
       if (mode == 'adjust') {
         final adjustStr = _adjustController.text.trim();
+        final note = _noteController.text.trim();
         final adjustVal = double.tryParse(adjustStr);
         if (adjustVal == null) {
           setState(() {
@@ -1107,13 +1116,24 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           currentAdjustment: currentAdjustmentVal.toDouble(),
           value: adjustVal,
         );
-        actionFuture = appState.modifyInvestment(
-          code: code,
-          qty: payload.qty,
-          price: payload.price,
-          adjustment: payload.adjustment,
-          awaitRefresh: false,
-        );
+        if (_adjustType == 'dividend' || _adjustType == 'fee') {
+          actionFuture = appState.addInvestmentAdjustmentEvent(
+            code: code,
+            eventType: _adjustType,
+            amount: adjustVal,
+            note: note,
+            awaitRefresh: false,
+          );
+        } else {
+          actionFuture = appState.modifyInvestment(
+            code: code,
+            qty: payload.qty,
+            price: payload.price,
+            adjustment: payload.adjustment,
+            note: note,
+            awaitRefresh: false,
+          );
+        }
       } else if (mode == 'buy') {
         final priceStr = _priceController.text.trim();
         price = double.tryParse(priceStr);
@@ -1231,7 +1251,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return;
     }
 
-    TopToast.showSuccess(toastContext, '已保存');
     _closeDialog();
 
     final undoToken = result.data?['undo_token']?.toString();
@@ -1240,6 +1259,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         toastContext,
         message: '已保存',
         actionLabel: '撤销',
+        placement: TopToastPlacement.bottom,
         onAction: () {
           unawaited(() async {
             final undoResult = await appState.undoInvestmentOperation(
@@ -1253,186 +1273,12 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             }
           }());
         },
-        duration: const Duration(seconds: 15),
+        duration: const Duration(seconds: 5),
       );
+      return;
     }
-  }
 
-  Future<void> _confirmCorrectiveDelete() async {
-    if (_saving) return;
-    final item = widget.item;
-    if (item == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: const Color(0x9E000000),
-      builder: (dialogContext) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _tokens.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _tokens.border),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0xB3000000),
-                        blurRadius: 64,
-                        offset: Offset(0, 24),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '删除并清理历史',
-                              style: _dm(
-                                size: 14,
-                                weight: FontWeight.w600,
-                                color: _tokens.text,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '该操作不可撤销',
-                              style: _dm(size: 11, color: _tokens.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: Text(
-                          '仅用于误录入纠错：将删除「${item.name}」持仓、相关交易记录，并清理受影响快照。\n\n'
-                          '注意：不会回款到现金账户。\n'
-                          '如果是正常平仓，请使用“卖出”并选择回款账户。',
-                          style: _dm(
-                            size: 13,
-                            color: _tokens.textMuted,
-                          ).copyWith(height: 1.5),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 42,
-                                child: OutlinedButton(
-                                  onPressed: () =>
-                                      Navigator.of(dialogContext).pop(false),
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: _tokens.surface2,
-                                    side: BorderSide(
-                                      color: _tokens.border,
-                                      width: 1,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '取消',
-                                    style: _dm(
-                                      size: 13,
-                                      weight: FontWeight.w600,
-                                      color: _tokens.textMuted,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: SizedBox(
-                                height: 42,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFFF05A55),
-                                        Color(0xFFDB4B46),
-                                      ],
-                                    ),
-                                  ),
-                                  child: ElevatedButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(true),
-                                    style: ElevatedButton.styleFrom(
-                                      elevation: 0,
-                                      backgroundColor: Colors.transparent,
-                                      shadowColor: Colors.transparent,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '仍要纠错删除',
-                                      style: _dm(
-                                        size: 13,
-                                        weight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    if (confirmed != true) return;
-    if (!mounted) return;
-    // ignore: use_build_context_synchronously
-    final appState = context.read<AppState>();
-    // ignore: use_build_context_synchronously
-    final toastContext = widget.hostContext ?? context;
-    // ignore: use_build_context_synchronously
-    _closeDialog();
-    // ignore: use_build_context_synchronously
-    TopToast.showSuccess(toastContext, '已删除');
-    unawaited(() async {
-      final result = await appState.deleteInvestment(
-        code: item.code,
-        corrective: true,
-        awaitRefresh: false,
-      );
-      // ignore: use_build_context_synchronously
-      if (!toastContext.mounted) return;
-      if (!result.ok) {
-        TopToast.showError(toastContext, result.message ?? '删除失败，请稍后重试');
-      }
-    }());
-  }
-
-  void _onMoreMenuSelect(String value) {
-    if (value == 'corrective_delete') {
-      _confirmCorrectiveDelete();
-    }
+    TopToast.showSuccess(toastContext, '已保存');
   }
 
   void _markOverlaysNeedsBuild() {
@@ -1783,156 +1629,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           color: style.fg,
           letterSpacing: 0.03,
         ),
-      ),
-    );
-  }
-
-  Widget _buildEditSummarySchemeBCard({
-    required PortfolioItem currentItem,
-    required String summaryQtyText,
-    required String summaryCurrency,
-    required String summaryCostText,
-    required String summaryAdjustmentText,
-  }) {
-    final isZeroAdjustment = currentItem.adjustment == 0;
-    final adjustmentUp = currentItem.adjustment > 0;
-    final adjustmentColor = isZeroAdjustment
-        ? _tokens.textMuted
-        : adjustmentUp
-        ? _tokens.red
-        : _tokens.green;
-    final adjustmentBackground = isZeroAdjustment
-        ? _tokens.surface.withValues(alpha: 0.28)
-        : adjustmentUp
-        ? _tokens.red.withValues(alpha: 0.1)
-        : _tokens.green.withValues(alpha: 0.08);
-    final adjustmentBorder = isZeroAdjustment
-        ? _tokens.border.withValues(alpha: 0.7)
-        : adjustmentUp
-        ? _tokens.red.withValues(alpha: 0.22)
-        : _tokens.green.withValues(alpha: 0.2);
-    final adjustmentDisplay = isZeroAdjustment
-        ? '调整额 +0'
-        : '调整额 $summaryCurrency$summaryAdjustmentText';
-    final shareDisplay = summaryQtyText
-        .replaceAll('股', ' 股')
-        .replaceAll('份', ' 份');
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
-      decoration: BoxDecoration(
-        color: AppTheme.isLight
-            ? const Color(0xFFF8F2E8)
-            : const Color(0xFF1B1914),
-        border: Border.all(
-          color: _tokens.gold.withValues(alpha: 0.18),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 7),
-                    child: Text(
-                      currentItem.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.left,
-                      style: _dm(
-                        size: 15,
-                        weight: FontWeight.w800,
-                        color: _tokens.gold,
-                        letterSpacing: -0.01,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '成本价',
-                    style: _dm(
-                      size: 9,
-                      color: _tokens.textMuted,
-                      letterSpacing: 0.04,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '$summaryCurrency $summaryCostText',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _mono(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: _tokens.text,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: _tokens.border.withValues(alpha: 0.36),
-          ),
-          const SizedBox(height: 11),
-          Row(
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.person_outline_rounded,
-                    size: 13,
-                    color: _tokens.textMuted,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    shareDisplay,
-                    style: _dm(
-                      size: 11,
-                      color: _tokens.textSub,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: adjustmentBackground,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: adjustmentBorder, width: 0.7),
-                ),
-                child: Text(
-                  adjustmentDisplay,
-                  style: _mono(
-                    size: 10.5,
-                    weight: FontWeight.w700,
-                    color: adjustmentColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -2451,7 +2147,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      asset.name,
+                                      asset.displayName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: _dm(
@@ -2548,7 +2244,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   Widget _buildTradeToggle() {
-    if (!_isTrade) return const SizedBox.shrink();
+    if (!_isTrade || _isDirectAdjustEntry) return const SizedBox.shrink();
     Widget item(String mode, String label) {
       final selected = _tradeMode == mode;
       return Expanded(
@@ -2790,6 +2486,40 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
+  TextField _buildTextField({
+    Key? key,
+    required TextEditingController controller,
+    required String hint,
+    FocusNode? focusNode,
+  }) {
+    return TextField(
+      key: key,
+      controller: controller,
+      focusNode: focusNode,
+      expands: true,
+      minLines: null,
+      maxLines: null,
+      textAlignVertical: TextAlignVertical.center,
+      keyboardType: TextInputType.text,
+      cursorColor: _tokens.blueStart,
+      style: _dm(size: 14, weight: FontWeight.w500, color: _tokens.text),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.transparent,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        hintText: hint,
+        hintStyle: _dm(size: 13, color: _tokens.textSub),
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+  }
+
   Widget _buildAdjustTypeField() {
     final selectedOption = _adjustModeOptions.firstWhere(
       (option) => option.value == _adjustType,
@@ -2933,97 +2663,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     );
   }
 
-  Widget _buildAdjustPreview() {
-    final parsedValue = double.tryParse(_adjustController.text.trim());
-    if (parsedValue == null || widget.item == null) {
-      return const SizedBox.shrink();
-    }
-    final qty = _currentHoldingQty();
-    final rawPrice = _currentRawCostPrice();
-    final currentAdjustment = _currentAdjustment();
-    final validationError = _validateAdjustPayload(
-      qty: qty,
-      value: parsedValue,
-    );
-    if (validationError != null) {
-      return const SizedBox.shrink();
-    }
-    final payload = _buildAdjustPayload(
-      qty: qty,
-      rawPrice: rawPrice,
-      currentAdjustment: currentAdjustment,
-      value: parsedValue,
-    );
-    final displayCost = payload.qty.abs() <= 1e-9
-        ? payload.price
-        : ((payload.price * payload.qty) - payload.adjustment) / payload.qty;
-    final currentMarketPrice =
-        context
-            .read<AppState>()
-            .resolvePriceInfoByCode(widget.item!.code)
-            ?.price ??
-        0;
-    final previewMarketPrice = currentMarketPrice > 0
-        ? currentMarketPrice
-        : payload.price;
-    final totalPnl =
-        (previewMarketPrice - payload.price) * payload.qty + payload.adjustment;
-    final pnlColor = AppState.getPnlColor(totalPnl);
-
-    Widget item(String label, String value, {Color? color}) {
-      return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            color: _tokens.surface2,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _tokens.border, width: 1),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: _dm(size: 11, color: _tokens.textMuted)),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: _mono(
-                  size: 12,
-                  weight: FontWeight.w600,
-                  color: color ?? _tokens.text,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final qtyDecimals =
-        _isFundAsset(assetType: widget.item?.assetType, code: widget.item?.code)
-        ? 4
-        : 2;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          item('调整后数量', _formatInputNumber(payload.qty, decimals: qtyDecimals)),
-          const SizedBox(width: 8),
-          item(
-            '调整后成本价',
-            _formatInputNumber(displayCost, decimals: _adjustInputDecimals()),
-          ),
-          const SizedBox(width: 8),
-          item(
-            '调整后累计收益',
-            '${totalPnl >= 0 ? '+' : ''}${_formatInputNumber(totalPnl, decimals: 2)}',
-            color: pnlColor,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTradeInputFields() {
     if (_isTrade && _isAdjust) {
       return Column(
@@ -3040,11 +2679,21 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               hint: '0.00',
               keyboardType: TextInputType.numberWithOptions(
                 decimal: true,
-                signed: _adjustType == 'pnl',
+                signed: false,
               ),
             ),
           ),
-          _buildAdjustPreview(),
+          const SizedBox(height: 8),
+          _buildInputCell(
+            label: '备注',
+            focused: _noteFocusNode.hasFocus,
+            field: _buildTextField(
+              key: _noteFieldKey,
+              controller: _noteController,
+              focusNode: _noteFocusNode,
+              hint: '可选，补充本次修正说明',
+            ),
+          ),
         ],
       );
     }
@@ -3104,24 +2753,22 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       ),
                     ),
                   ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildInputCell(
-                label: '金额',
-                focused: _amountFocusNode.hasFocus,
-                field: _buildNumberField(
-                  key: _amountFieldKey,
-                  controller: _amountController,
-                  focusNode: _amountFocusNode,
-                  hint: '0.00',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: false,
-                  ),
-                ),
-              ),
-            ),
           ],
+        ),
+        const SizedBox(height: 8),
+        _buildInputCell(
+          label: '金额',
+          focused: _amountFocusNode.hasFocus,
+          field: _buildNumberField(
+            key: _amountFieldKey,
+            controller: _amountController,
+            focusNode: _amountFocusNode,
+            hint: '0.00',
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: false,
+            ),
+          ),
         ),
       ],
     );
@@ -3153,6 +2800,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (action == 'sell') return '确认卖出';
     if (action == 'adjust') return '保存调整';
     return '保存';
+  }
+
+  String _dialogTitle() {
+    if (_isAdd) return '添加资产';
+    final name = (widget.item?.displayName ?? '').trim();
+    final suffix = name.isEmpty ? '' : ' · $name';
+    final action = _currentActionMode();
+    if (action == 'sell') return '减仓$suffix';
+    if (action == 'adjust') return '修正$suffix';
+    return '加仓$suffix';
   }
 
   Widget _buildCashSelector({
@@ -3216,8 +2873,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     selected == null
                         ? '请选择账户'
                         : selected.id == -999
-                        ? selected.name
-                        : '${selected.name} · ${selected.curr} ${_formatInputNumber(selected.amount)}',
+                        ? selected.displayName
+                        : '${selected.displayName} · ${selected.curr} ${_formatInputNumber(selected.amount)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: _dm(
@@ -3288,25 +2945,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         !_saving &&
         _isSaveInputReady() &&
         (!needsCashSource || _selectedCashAssetId != null);
-    final currentItem = widget.item;
-    final isCurrentFund =
-        currentItem != null &&
-        _isFundAsset(assetType: currentItem.assetType, code: currentItem.code);
-    final summaryQtyText = currentItem == null
-        ? '--'
-        : '${_formatInputNumber(currentItem.qty, decimals: isCurrentFund ? 4 : 0)}${isCurrentFund ? '份' : '股'}';
-    final summaryCurrency = currentItem == null
-        ? 'CNY'
-        : _displayCurrencyLabel(currentItem.curr);
-    final summaryCostText = currentItem == null
-        ? '--'
-        : _formatInputNumber(
-            currentItem.price,
-            decimals: isCurrentFund ? 4 : 3,
-          );
-    final summaryAdjustmentText = currentItem == null
-        ? '--'
-        : '${currentItem.adjustment >= 0 ? '+' : ''}${_formatInputNumber(currentItem.adjustment, decimals: 2)}';
 
     final centered =
         widget.presentation == InvestTradeDialogPresentation.centered;
@@ -3341,97 +2979,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _isAdd ? '添加资产' : '编辑资产',
+                  _dialogTitle(),
                   style: _dm(
-                    size: 13,
-                    weight: FontWeight.w400,
-                    color: _tokens.textMuted,
-                    letterSpacing: 0.02,
+                    size: 16,
+                    weight: FontWeight.w700,
+                    color: _tokens.text,
+                    letterSpacing: -0.01,
                   ),
                 ),
-                _isAdd
-                    ? InkWell(
-                        onTap: _saving ? null : _closeDialog,
-                        customBorder: const CircleBorder(),
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: _tokens.surface2,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.close,
-                            size: 14,
-                            color: _tokens.textMuted,
-                          ),
-                        ),
-                      )
-                    : PopupMenuButton<String>(
-                        onSelected: _saving ? null : _onMoreMenuSelect,
-                        enabled: !_saving,
-                        color: _tokens.surface2,
-                        elevation: 10,
-                        tooltip: '更多操作',
-                        offset: const Offset(0, 28),
-                        constraints: const BoxConstraints(
-                          minWidth: 116,
-                          maxWidth: 116,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(
-                            color: _tokens.borderActive,
-                            width: 1,
-                          ),
-                        ),
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'corrective_delete',
-                            height: 34,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.delete_outline,
-                                  size: 16,
-                                  color: _tokens.red,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '删除资产',
-                                  style: _dm(
-                                    size: 12,
-                                    color: _tokens.red,
-                                    weight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: _tokens.surface2,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _tokens.border),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '···',
-                            style: _dm(
-                              size: 14,
-                              weight: FontWeight.w600,
-                              color: _tokens.textMuted,
-                            ),
-                          ),
-                        ),
-                      ),
+                const SizedBox(width: 24, height: 24),
               ],
             ),
           ),
@@ -3454,16 +3010,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                             style: _dm(size: 11, color: _tokens.red),
                           ),
                         ),
-                    ] else ...[
-                      _buildEditSummarySchemeBCard(
-                        currentItem: currentItem!,
-                        summaryQtyText: summaryQtyText,
-                        summaryCurrency: summaryCurrency,
-                        summaryCostText: summaryCostText,
-                        summaryAdjustmentText: summaryAdjustmentText,
-                      ),
                     ],
-                    if (_isTrade) ...[
+                    if (_isTrade && !_isDirectAdjustEntry) ...[
                       const SizedBox(height: 10),
                       _buildTradeToggle(),
                     ],

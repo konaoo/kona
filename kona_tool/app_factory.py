@@ -447,6 +447,7 @@ def create_app_components(
             portfolio_add_handler=portfolio_payload_handlers["portfolio_add"],
             portfolio_update_handler=portfolio_payload_handlers["portfolio_update"],
             portfolio_modify_handler=portfolio_payload_handlers["portfolio_modify"],
+            portfolio_adjustment_event_handler=portfolio_payload_handlers["portfolio_adjustment_event"],
             snapshot_save_handler=portfolio_payload_handlers["snapshot_save"],
             snapshot_trigger_handler=portfolio_payload_handlers["snapshot_trigger"],
             snapshot_fix_handler=portfolio_payload_handlers["snapshot_fix"],
@@ -457,6 +458,7 @@ def create_app_components(
             portfolio_sell_handler=portfolio_payload_handlers["portfolio_sell"],
             portfolio_sell_to_cash_handler=portfolio_payload_handlers["portfolio_sell_to_cash"],
             portfolio_undo_handler=portfolio_payload_handlers["portfolio_undo"],
+            portfolio_transactions_handler=portfolio_payload_handlers["portfolio_transactions"],
         )
     )
     app.register_blueprint(create_system_blueprint(db, wiring.system_manager))

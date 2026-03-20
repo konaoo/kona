@@ -855,16 +855,52 @@ class ApiService {
     double qty,
     double price,
     double adjustment, {
+    String? note,
     String? requestId,
   }) async {
     try {
-      final response = await _post(ApiConfig.portfolioModify, {
+      final payload = <String, dynamic>{
         'code': code,
         'qty': qty,
         'price': price,
         'adjustment': adjustment,
         'request_id': requestId ?? _newRequestId(),
-      });
+      };
+      final cleanNote = (note ?? '').trim();
+      if (cleanNote.isNotEmpty) {
+        payload['note'] = cleanNote;
+      }
+      final response = await _post(ApiConfig.portfolioModify, payload);
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  Future<AssetActionResult> addPortfolioAdjustmentEvent(
+    String code,
+    String eventType,
+    double amount, {
+    String? note,
+    String? curr,
+    String? requestId,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'code': code,
+        'event_type': eventType,
+        'amount': amount,
+        'request_id': requestId ?? _newRequestId(),
+      };
+      final cleanNote = (note ?? '').trim();
+      if (cleanNote.isNotEmpty) {
+        payload['note'] = cleanNote;
+      }
+      final cleanCurr = (curr ?? '').trim();
+      if (cleanCurr.isNotEmpty) {
+        payload['curr'] = cleanCurr;
+      }
+      final response = await _post(ApiConfig.portfolioAdjustmentEvent, payload);
       return _okResultOrFailure(response);
     } catch (e) {
       return _failureResult(e);
@@ -1111,6 +1147,15 @@ class ApiService {
     final data = await _get('/api/assets/$assetType/$assetId/adjustments');
     if (data is Map && data['adjustments'] is List) {
       return data['adjustments'] as List<dynamic>;
+    }
+    return [];
+  }
+
+  /// 获取投资持仓交易记录
+  Future<List<dynamic>> getPortfolioTransactions(String code) async {
+    final data = await _get('${ApiConfig.portfolioTransactions}?code=$code');
+    if (data is Map && data['records'] is List) {
+      return data['records'] as List<dynamic>;
     }
     return [];
   }

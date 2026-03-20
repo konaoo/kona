@@ -352,7 +352,7 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                           child: Text(
-                            '确定删除「${widget.asset.name}」吗？',
+                            '确定删除「${widget.asset.displayName}」吗？',
                             style: _dm(size: 13, color: _kTextMuted),
                           ),
                         ),

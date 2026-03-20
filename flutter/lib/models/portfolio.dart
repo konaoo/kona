@@ -1,3 +1,5 @@
+import '../utils/asset_name_utils.dart';
+
 /// 投资组合项目模型
 class PortfolioItem {
   final int? id;
@@ -190,6 +192,8 @@ class PortfolioItem {
       if (quoteChangePct != null) 'quote_change_pct': quoteChangePct,
     };
   }
+
+  String get displayName => formatAssetDisplayName(name);
 
   /// 获取市场类型
   String get marketType {

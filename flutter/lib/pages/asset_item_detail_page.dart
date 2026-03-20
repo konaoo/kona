@@ -614,7 +614,7 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
 
               return Column(
                 children: [
-                  _buildHeader(context, asset.name),
+                  _buildHeader(context, asset.displayName),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),

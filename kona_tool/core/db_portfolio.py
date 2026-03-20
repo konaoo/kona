@@ -23,11 +23,9 @@ except ImportError:  # 兼容被单文件动态加载的测试场景
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
 PORTFOLIO_ADJUSTMENT_EVENT_TYPES = (
-    "realized_pnl",
     "dividend",
     "fee",
     "tax",
-    "manual_adjustment",
 )
 
 
@@ -237,7 +235,46 @@ class PortfolioDatabaseMixin:
         codes: List[str],
         user_id: str = None,
     ) -> Dict[str, float]:
-        """按 code 批量汇总收益事件流水金额。"""
+        """按 code 批量汇总分红/手续费/税金流水金额。"""
+        clean_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
+        if not clean_codes:
+            return {}
+
+        placeholders = ",".join("?" for _ in clean_codes)
+        event_types = ("dividend", "fee", "tax")
+        type_placeholders = ",".join("?" for _ in event_types)
+        if user_id:
+            cursor.execute(
+                f"""
+                SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
+                FROM portfolio_adjustment_ledger
+                WHERE user_id = ? AND event_type IN ({type_placeholders}) AND code IN ({placeholders})
+                GROUP BY code
+                """,
+                (user_id, *event_types, *clean_codes),
+            )
+        else:
+            cursor.execute(
+                f"""
+                SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
+                FROM portfolio_adjustment_ledger
+                WHERE (user_id IS NULL OR user_id = '') AND event_type IN ({type_placeholders}) AND code IN ({placeholders})
+                GROUP BY code
+                """,
+                (*event_types, *clean_codes),
+            )
+        return {
+            str(row["code"]): float(row["total_amount"] or 0.0)
+            for row in cursor.fetchall()
+        }
+
+    def _fetch_portfolio_realized_pnl_sums(
+        self,
+        cursor,
+        codes: List[str],
+        user_id: str = None,
+    ) -> Dict[str, float]:
+        """按 code 批量汇总减仓已实现盈亏。"""
         clean_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
         if not clean_codes:
             return {}
@@ -246,9 +283,9 @@ class PortfolioDatabaseMixin:
         if user_id:
             cursor.execute(
                 f"""
-                SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
-                FROM portfolio_adjustment_ledger
-                WHERE user_id = ? AND code IN ({placeholders})
+                SELECT code, COALESCE(SUM(pnl), 0.0) AS total_pnl
+                FROM transactions
+                WHERE user_id = ? AND type = '减仓' AND code IN ({placeholders})
                 GROUP BY code
                 """,
                 (user_id, *clean_codes),
@@ -256,15 +293,15 @@ class PortfolioDatabaseMixin:
         else:
             cursor.execute(
                 f"""
-                SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
-                FROM portfolio_adjustment_ledger
-                WHERE (user_id IS NULL OR user_id = '') AND code IN ({placeholders})
+                SELECT code, COALESCE(SUM(pnl), 0.0) AS total_pnl
+                FROM transactions
+                WHERE (user_id IS NULL OR user_id = '') AND type = '减仓' AND code IN ({placeholders})
                 GROUP BY code
                 """,
                 clean_codes,
             )
         return {
-            str(row["code"]): float(row["total_amount"] or 0.0)
+            str(row["code"]): float(row["total_pnl"] or 0.0)
             for row in cursor.fetchall()
         }
 
@@ -276,14 +313,18 @@ class PortfolioDatabaseMixin:
         legacy_adjustment: float = 0.0,
         user_id: str = None,
     ) -> Dict[str, float]:
-        """返回单只持仓的旧 adjustment、流水 adjustment 和总 adjustment。"""
+        """返回单只持仓的旧 adjustment、现金收益事件和已实现盈亏汇总。"""
         ledger_map = self._fetch_portfolio_adjustment_ledger_sums(cursor, [code], user_id)
+        realized_map = self._fetch_portfolio_realized_pnl_sums(cursor, [code], user_id)
         ledger_adjustment = float(ledger_map.get(str(code or "").strip(), 0.0))
+        realized_pnl_adjustment = float(realized_map.get(str(code or "").strip(), 0.0))
         legacy_value = float(legacy_adjustment or 0.0)
-        total_adjustment = legacy_value + ledger_adjustment
+        total_adjustment = legacy_value + ledger_adjustment + realized_pnl_adjustment
         return {
             "legacy_adjustment": legacy_value,
             "ledger_adjustment": ledger_adjustment,
+            "cash_event_adjustment": ledger_adjustment,
+            "realized_pnl_adjustment": realized_pnl_adjustment,
             "total_adjustment": total_adjustment,
         }
 
@@ -332,6 +373,131 @@ class PortfolioDatabaseMixin:
             ),
         )
         return int(cursor.lastrowid or 0)
+
+    def _append_portfolio_correction_log(
+        self,
+        cursor,
+        *,
+        code: str,
+        correction_type: str,
+        before_qty: float | None,
+        after_qty: float | None,
+        before_price: float | None,
+        after_price: float | None,
+        note: str = "",
+        user_id: str = None,
+        legacy_ledger_id: int | None = None,
+        created_at: str | None = None,
+    ) -> int:
+        created_time = str(created_at or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(
+            """
+            INSERT INTO portfolio_correction_logs (
+                user_id,
+                code,
+                correction_type,
+                before_qty,
+                after_qty,
+                before_price,
+                after_price,
+                note,
+                legacy_ledger_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            """,
+            (
+                user_id or "",
+                str(code or "").strip(),
+                str(correction_type or "").strip() or "holding",
+                before_qty,
+                after_qty,
+                before_price,
+                after_price,
+                str(note or "").strip(),
+                legacy_ledger_id,
+                created_time,
+            ),
+        )
+        return int(cursor.lastrowid or 0)
+
+    def _infer_portfolio_correction_type(
+        self,
+        *,
+        before_qty: float | None,
+        after_qty: float | None,
+        before_price: float | None,
+        after_price: float | None,
+        note: str = "",
+    ) -> str:
+        clean_note = str(note or "").strip()
+        has_cost = "成本" in clean_note
+        has_qty = "数量" in clean_note
+        if has_cost and has_qty:
+            return "holding"
+        if has_cost:
+            return "cost_price"
+        if has_qty:
+            return "quantity"
+        qty_changed = (
+            before_qty is not None
+            and after_qty is not None
+            and abs(float(after_qty) - float(before_qty)) > 1e-6
+        )
+        price_changed = (
+            before_price is not None
+            and after_price is not None
+            and abs(float(after_price) - float(before_price)) > 1e-9
+        )
+        if qty_changed and not price_changed:
+            return "quantity"
+        if price_changed and not qty_changed:
+            return "cost_price"
+        return "holding"
+
+    def _migrate_portfolio_corrections_schema(self, cursor) -> None:
+        """把旧 manual_adjustment 迁到修正审计表。"""
+        cursor.execute(
+            """
+            SELECT id, user_id, code, note, created_at
+            FROM portfolio_adjustment_ledger
+            WHERE event_type = 'manual_adjustment'
+            ORDER BY id ASC
+            """
+        )
+        rows = cursor.fetchall()
+        migrated = 0
+        for row in rows:
+            legacy_id = int(row["id"])
+            cursor.execute(
+                "SELECT id FROM portfolio_correction_logs WHERE legacy_ledger_id = ?",
+                (legacy_id,),
+            )
+            if cursor.fetchone():
+                continue
+            self._append_portfolio_correction_log(
+                cursor,
+                code=str(row["code"] or ""),
+                correction_type=self._infer_portfolio_correction_type(
+                    before_qty=None,
+                    after_qty=None,
+                    before_price=None,
+                    after_price=None,
+                    note=str(row["note"] or ""),
+                ),
+                before_qty=None,
+                after_qty=None,
+                before_price=None,
+                after_price=None,
+                note=str(row["note"] or ""),
+                user_id=str(row["user_id"] or ""),
+                legacy_ledger_id=legacy_id,
+                created_at=str(row["created_at"] or ""),
+            )
+            migrated += 1
+        if migrated > 0:
+            logger.info("Migrated %s manual adjustment rows to portfolio_correction_logs", migrated)
 
     def get_portfolio(
         self,
@@ -388,6 +554,11 @@ class PortfolioDatabaseMixin:
             [row["code"] for row in rows],
             user_id,
         )
+        realized_sums = self._fetch_portfolio_realized_pnl_sums(
+            cursor,
+            [row["code"] for row in rows],
+            user_id,
+        )
 
         for row in rows:
             code = row["code"]
@@ -395,7 +566,8 @@ class PortfolioDatabaseMixin:
             asset_type_value = row["asset_type"] if "asset_type" in row.keys() else ""
             legacy_adjustment = float(row["adjustment"] or 0.0)
             ledger_adjustment = float(ledger_sums.get(code, 0.0))
-            total_adjustment = legacy_adjustment + ledger_adjustment
+            realized_pnl_adjustment = float(realized_sums.get(code, 0.0))
+            total_adjustment = legacy_adjustment + ledger_adjustment + realized_pnl_adjustment
             data.append(
                 {
                     "code": code,
@@ -407,6 +579,8 @@ class PortfolioDatabaseMixin:
                     "adjustment_total": total_adjustment,
                     "legacy_adjustment": legacy_adjustment,
                     "ledger_adjustment": ledger_adjustment,
+                    "cash_event_adjustment": ledger_adjustment,
+                    "realized_pnl_adjustment": realized_pnl_adjustment,
                     "asset_type": asset_type_value,
                     "category_type": infer_category_type(code, name, asset_type_value),
                     "logo_url": row["logo_url"] if "logo_url" in row.keys() else None,
@@ -647,6 +821,7 @@ class PortfolioDatabaseMixin:
         qty: float,
         price: float,
         adjustment: float | None = None,
+        note: str = "",
         user_id: str = None,
         return_detail: bool = False,
     ):
@@ -696,29 +871,25 @@ class PortfolioDatabaseMixin:
             )
             ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
             old_total_adjustment = float(adjustment_breakdown["total_adjustment"])
-            if adjustment is None:
-                next_legacy_adjustment = before_asset["adjustment"]
-            else:
-                # 兼容旧客户端：它传过来的 adjustment 通常是“总调整值”，这里折回主表的兼容字段。
-                next_legacy_adjustment = float(adjustment) - ledger_adjustment
+            next_legacy_adjustment = before_asset["adjustment"]
 
             if user_id:
                 cursor.execute(
                     """
                     UPDATE portfolio
-                    SET qty = ?, price = ?, adjustment = ?, updated_at = datetime('now','localtime')
+                    SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND user_id = ?
                     """,
-                    (qty, price, next_legacy_adjustment, code, user_id),
+                    (qty, price, code, user_id),
                 )
             else:
                 cursor.execute(
                     """
                     UPDATE portfolio
-                    SET qty = ?, price = ?, adjustment = ?, updated_at = datetime('now','localtime')
+                    SET qty = ?, price = ?, updated_at = datetime('now','localtime')
                     WHERE code = ? AND (user_id IS NULL OR user_id = '')
                     """,
-                    (qty, price, next_legacy_adjustment, code),
+                    (qty, price, code),
                 )
 
             if cursor.rowcount <= 0:
@@ -726,18 +897,44 @@ class PortfolioDatabaseMixin:
                     return {"ok": False, "code": "ASSET_NOT_FOUND", "error": "Asset not found"}
                 return False
 
+            clean_note = str(note or "").strip()
+            qty_changed = abs(float(qty) - before_asset["qty"]) > 1e-6
+            price_changed = abs(float(price) - before_asset["price"]) > 1e-9
+            correction_log_id = None
+            if qty_changed or price_changed or clean_note:
+                correction_log_id = self._append_portfolio_correction_log(
+                    cursor,
+                    code=code,
+                    correction_type=self._infer_portfolio_correction_type(
+                        before_qty=before_asset["qty"],
+                        after_qty=float(qty),
+                        before_price=before_asset["price"],
+                        after_price=float(price),
+                        note=clean_note,
+                    ),
+                    before_qty=before_asset["qty"],
+                    after_qty=float(qty),
+                    before_price=before_asset["price"],
+                    after_price=float(price),
+                    note=clean_note,
+                    user_id=user_id,
+                )
+
             conn.commit()
             logger.info(
-                "Asset modified: %s, qty=%s, price=%s, legacy_adj=%s, total_adj_before=%s",
+                "Asset modified: %s, qty=%s, price=%s, legacy_adj=%s, total_adj_before=%s, note=%s, correction_log_id=%s",
                 code,
                 qty,
                 price,
                 next_legacy_adjustment,
                 old_total_adjustment,
+                clean_note,
+                correction_log_id,
             )
             if return_detail:
                 return {
                     "ok": True,
+                    "correction_log_id": correction_log_id,
                     "before_asset": before_asset,
                     "after_asset": {
                         "code": code,
@@ -746,9 +943,11 @@ class PortfolioDatabaseMixin:
                         "price": float(price),
                         "curr": before_asset["curr"],
                         "adjustment": float(next_legacy_adjustment),
-                        "adjustment_total": float(next_legacy_adjustment + ledger_adjustment),
+                        "adjustment_total": float(old_total_adjustment),
                         "legacy_adjustment": float(next_legacy_adjustment),
                         "ledger_adjustment": float(ledger_adjustment),
+                        "cash_event_adjustment": float(adjustment_breakdown["cash_event_adjustment"]),
+                        "realized_pnl_adjustment": float(adjustment_breakdown["realized_pnl_adjustment"]),
                         "asset_type": before_asset["asset_type"],
                     },
                 }
@@ -758,6 +957,118 @@ class PortfolioDatabaseMixin:
             conn.rollback()
             if return_detail:
                 return {"ok": False, "code": "ASSET_MODIFY_FAILED", "error": "Failed to modify asset"}
+            return False
+        finally:
+            conn.close()
+
+    def add_portfolio_adjustment_event(
+        self,
+        code: str,
+        event_type: str,
+        amount: float,
+        note: str = "",
+        curr: str | None = None,
+        user_id: str = None,
+        return_detail: bool = False,
+    ):
+        """新增一条投资收益事件流水。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            if user_id:
+                cursor.execute(
+                    """
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?
+                    """,
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT name, qty, price, curr, adjustment, asset_type
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    """,
+                    (code,),
+                )
+            row = cursor.fetchone()
+            if not row:
+                if return_detail:
+                    return {"ok": False, "code": "ASSET_NOT_FOUND", "error": "Asset not found"}
+                return False
+
+            normalized_type = str(event_type or "").strip()
+            normalized_amount = float(amount or 0.0)
+            clean_note = str(note or "").strip()
+            before_asset = {
+                "code": code,
+                "name": row["name"],
+                "qty": float(row["qty"]),
+                "price": float(row["price"]),
+                "curr": row["curr"],
+                "adjustment": float(row["adjustment"] or 0.0),
+                "asset_type": row["asset_type"] if "asset_type" in row.keys() else "a",
+            }
+            adjustment_breakdown = self._get_portfolio_adjustment_breakdown(
+                cursor,
+                code,
+                legacy_adjustment=before_asset["adjustment"],
+                user_id=user_id,
+            )
+            old_ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
+            old_realized_pnl_adjustment = float(adjustment_breakdown["realized_pnl_adjustment"])
+            old_total_adjustment = float(adjustment_breakdown["total_adjustment"])
+
+            ledger_event_id = self._append_portfolio_adjustment_event(
+                cursor,
+                code=code,
+                event_type=normalized_type,
+                amount=normalized_amount,
+                curr=curr or before_asset["curr"],
+                user_id=user_id,
+                note=clean_note,
+                source="manual_adjust_dialog",
+            )
+
+            conn.commit()
+            if return_detail:
+                return {
+                    "ok": True,
+                    "ledger_event_id": ledger_event_id,
+                    "before_asset": before_asset,
+                    "after_asset": {
+                        "code": code,
+                        "name": before_asset["name"],
+                        "qty": before_asset["qty"],
+                        "price": before_asset["price"],
+                        "curr": before_asset["curr"],
+                        "adjustment": before_asset["adjustment"],
+                        "adjustment_total": old_total_adjustment + normalized_amount,
+                        "legacy_adjustment": before_asset["adjustment"],
+                        "ledger_adjustment": old_ledger_adjustment + normalized_amount,
+                        "cash_event_adjustment": old_ledger_adjustment + normalized_amount,
+                        "realized_pnl_adjustment": old_realized_pnl_adjustment,
+                        "asset_type": before_asset["asset_type"],
+                    },
+                }
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to add portfolio adjustment event: code=%s event_type=%s err=%s",
+                code,
+                event_type,
+                exc,
+            )
+            conn.rollback()
+            if return_detail:
+                return {
+                    "ok": False,
+                    "code": "PORTFOLIO_ADJUSTMENT_EVENT_FAILED",
+                    "error": "Failed to add portfolio adjustment event",
+                }
             return False
         finally:
             conn.close()
@@ -861,7 +1172,31 @@ class PortfolioDatabaseMixin:
                 )
             tx_deleted = cursor.rowcount
 
-            if portfolio_deleted <= 0 and tx_deleted <= 0:
+            if user_id:
+                cursor.execute(
+                    "DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND user_id = ?",
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                    (code,),
+                )
+            ledger_deleted = cursor.rowcount
+
+            if user_id:
+                cursor.execute(
+                    "DELETE FROM portfolio_correction_logs WHERE code = ? AND user_id = ?",
+                    (code, user_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM portfolio_correction_logs WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                    (code,),
+                )
+            correction_deleted = cursor.rowcount
+
+            if portfolio_deleted <= 0 and tx_deleted <= 0 and ledger_deleted <= 0 and correction_deleted <= 0:
                 logger.info("Corrective delete noop: %s", code)
 
             if user_id:
@@ -875,16 +1210,20 @@ class PortfolioDatabaseMixin:
 
             conn.commit()
             logger.info(
-                "Corrective delete done: code=%s from_date=%s portfolio=%s tx=%s snapshots=%s",
+                "Corrective delete done: code=%s from_date=%s portfolio=%s tx=%s ledger=%s correction=%s snapshots=%s",
                 code,
                 from_date,
                 portfolio_deleted,
                 tx_deleted,
+                ledger_deleted,
+                correction_deleted,
                 snapshots_deleted,
             )
             return {
                 "portfolio": int(portfolio_deleted),
                 "transactions": int(tx_deleted),
+                "ledger": int(ledger_deleted),
+                "corrections": int(correction_deleted),
                 "snapshots": int(snapshots_deleted),
                 "from_date": from_date,
             }
@@ -1065,6 +1404,7 @@ class PortfolioDatabaseMixin:
                 user_id=user_id,
             )
             old_ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
+            old_realized_pnl_adjustment = float(adjustment_breakdown["realized_pnl_adjustment"])
             old_total_adjustment = float(adjustment_breakdown["total_adjustment"])
 
             if qty > old_qty + 1e-6:
@@ -1083,6 +1423,8 @@ class PortfolioDatabaseMixin:
                 "adjustment_total": old_total_adjustment,
                 "legacy_adjustment": old_adj,
                 "ledger_adjustment": old_ledger_adjustment,
+                "cash_event_adjustment": old_ledger_adjustment,
+                "realized_pnl_adjustment": old_realized_pnl_adjustment,
                 "asset_type": asset_type,
             }
 
@@ -1134,7 +1476,9 @@ class PortfolioDatabaseMixin:
                     "adjustment": old_adj,
                     "adjustment_total": old_total_adjustment + pnl,
                     "legacy_adjustment": old_adj,
-                    "ledger_adjustment": old_ledger_adjustment + pnl,
+                    "ledger_adjustment": old_ledger_adjustment,
+                    "cash_event_adjustment": old_ledger_adjustment,
+                    "realized_pnl_adjustment": old_realized_pnl_adjustment + pnl,
                     "asset_type": asset_type,
                 }
 
@@ -1155,17 +1499,6 @@ class PortfolioDatabaseMixin:
                 ),
             )
             tx_id = int(cursor.lastrowid or 0)
-            ledger_event_id = self._append_portfolio_adjustment_event(
-                cursor,
-                code=code,
-                event_type="realized_pnl",
-                amount=pnl,
-                curr=curr,
-                note="减仓已实现盈亏",
-                source="sell_asset",
-                related_tx_id=tx_id,
-                user_id=user_id,
-            )
 
             conn.commit()
             logger.info("Sell: %s, qty=%s, price=%s, pnl=%s", code, qty, price, pnl)
@@ -1173,7 +1506,6 @@ class PortfolioDatabaseMixin:
                 return {
                     "ok": True,
                     "tx_id": tx_id,
-                    "ledger_event_id": ledger_event_id,
                     "before_asset": before_asset,
                     "after_asset": after_asset,
                 }
@@ -1498,6 +1830,7 @@ class PortfolioDatabaseMixin:
         before_asset = operation.get("before_asset")
         tx_id = operation.get("tx_id")
         ledger_event_id = operation.get("ledger_event_id")
+        correction_log_id = operation.get("correction_log_id")
         cash_asset_id = operation.get("cash_asset_id")
         cash_before_amount = operation.get("cash_before_amount")
 
@@ -1594,6 +1927,23 @@ class PortfolioDatabaseMixin:
                         cursor.execute(
                             "DELETE FROM portfolio_adjustment_ledger WHERE id = ? AND (user_id IS NULL OR user_id = '')",
                             (ledger_event_id_int,),
+                        )
+
+            if correction_log_id is not None:
+                try:
+                    correction_log_id_int = int(correction_log_id)
+                except (TypeError, ValueError):
+                    correction_log_id_int = 0
+                if correction_log_id_int > 0:
+                    if user_id:
+                        cursor.execute(
+                            "DELETE FROM portfolio_correction_logs WHERE id = ? AND user_id = ?",
+                            (correction_log_id_int, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            "DELETE FROM portfolio_correction_logs WHERE id = ? AND (user_id IS NULL OR user_id = '')",
+                            (correction_log_id_int,),
                         )
 
             if cash_asset_id is not None and cash_before_amount is not None:
@@ -1722,6 +2072,95 @@ class PortfolioDatabaseMixin:
         except Exception as exc:
             logger.error("Failed to get today buy transactions date=%s: %s", date_str, exc)
             return result
+        finally:
+            conn.close()
+
+    def get_portfolio_transactions(self, code: str, user_id: str = None) -> list:
+        """获取指定 code 的全部交易记录、收益事件和修正审计，按时间倒序返回。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+        event_type_labels = {
+            "dividend": "分红",
+            "fee": "手续费",
+            "tax": "税金",
+        }
+        correction_type_labels = {
+            "cost_price": "成本修正",
+            "quantity": "数量修正",
+            "holding": "持仓修正",
+        }
+        try:
+            # 交易记录
+            cursor.execute(
+                """
+                SELECT type, price, qty, amount, pnl, time
+                FROM transactions
+                WHERE code = ?
+                """
+                + f" {user_condition}"
+                + " ORDER BY time DESC",
+                (code,) + user_param,
+            )
+            records = []
+            for row in cursor.fetchall():
+                records.append({
+                    "type": row["type"],
+                    "price": float(row["price"] or 0),
+                    "qty": float(row["qty"] or 0),
+                    "amount": float(row["amount"] or 0),
+                    "pnl": float(row["pnl"] or 0),
+                    "time": str(row["time"] or ""),
+                })
+
+            # 调整台账
+            cursor.execute(
+                """
+                SELECT event_type, amount, note, created_at
+                FROM portfolio_adjustment_ledger
+                WHERE code = ? AND event_type IN ('dividend', 'fee', 'tax')
+                """
+                + f" {user_condition}"
+                + " ORDER BY created_at DESC",
+                (code,) + user_param,
+            )
+            for row in cursor.fetchall():
+                raw_type = str(row["event_type"] or "")
+                records.append({
+                    "type": event_type_labels.get(raw_type, raw_type),
+                    "amount": float(row["amount"] or 0),
+                    "note": str(row["note"] or ""),
+                    "time": str(row["created_at"] or ""),
+                })
+
+            cursor.execute(
+                """
+                SELECT correction_type, before_qty, after_qty, before_price, after_price, note, created_at
+                FROM portfolio_correction_logs
+                WHERE code = ?
+                """
+                + f" {user_condition}"
+                + " ORDER BY created_at DESC",
+                (code,) + user_param,
+            )
+            for row in cursor.fetchall():
+                raw_type = str(row["correction_type"] or "")
+                records.append({
+                    "type": correction_type_labels.get(raw_type, "持仓修正"),
+                    "note": str(row["note"] or ""),
+                    "before_qty": row["before_qty"],
+                    "after_qty": row["after_qty"],
+                    "before_price": row["before_price"],
+                    "after_price": row["after_price"],
+                    "time": str(row["created_at"] or ""),
+                })
+
+            records.sort(key=lambda r: r.get("time", ""), reverse=True)
+            return records
+        except Exception as exc:
+            logger.error("Failed to get portfolio transactions code=%s: %s", code, exc)
+            return []
         finally:
             conn.close()
 

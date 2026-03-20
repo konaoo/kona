@@ -26,9 +26,7 @@ def _first_positive(values: Iterable[float]) -> float:
 
 
 def _compute_display_cost_price(price: float, qty: float, adjustment: float) -> float:
-    if abs(qty) <= 1e-9:
-        return price
-    return (price * qty - adjustment) / qty
+    return price
 
 
 def build_portfolio_items_with_metrics(

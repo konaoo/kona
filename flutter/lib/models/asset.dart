@@ -1,3 +1,5 @@
+import '../utils/asset_name_utils.dart';
+
 /// 资产模型（现金、其他资产、负债）
 class Asset {
   final int? id;
@@ -29,6 +31,8 @@ class Asset {
       'curr': curr,
     };
   }
+
+  String get displayName => formatAssetDisplayName(name);
 
   static double _parseDouble(dynamic value) {
     if (value == null) return 0;

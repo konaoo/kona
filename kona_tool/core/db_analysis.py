@@ -805,9 +805,17 @@ class AnalysisDatabaseMixin:
 
             rows = cursor.fetchall()
             ledger_sums = {}
+            realized_sums = {}
             fetch_ledger_sums = getattr(self, "_fetch_portfolio_adjustment_ledger_sums", None)
             if callable(fetch_ledger_sums):
                 ledger_sums = fetch_ledger_sums(
+                    cursor,
+                    [row["code"] for row in rows],
+                    user_id,
+                )
+            fetch_realized_sums = getattr(self, "_fetch_portfolio_realized_pnl_sums", None)
+            if callable(fetch_realized_sums):
+                realized_sums = fetch_realized_sums(
                     cursor,
                     [row["code"] for row in rows],
                     user_id,
@@ -818,6 +826,7 @@ class AnalysisDatabaseMixin:
                 code = str(row["code"] or "")
                 legacy_adjustment = float(row["adjustment"] or 0.0)
                 ledger_adjustment = float(ledger_sums.get(code, 0.0))
+                realized_pnl_adjustment = float(realized_sums.get(code, 0.0))
                 data.append(
                     {
                         "code": code,
@@ -825,10 +834,11 @@ class AnalysisDatabaseMixin:
                         "qty": float(row["qty"]),
                         "cost_price": float(row["price"]),
                         "curr": row["curr"],
-                        "adjustment": legacy_adjustment + ledger_adjustment,
-                        "adjustment_total": legacy_adjustment + ledger_adjustment,
+                        "adjustment": legacy_adjustment + ledger_adjustment + realized_pnl_adjustment,
+                        "adjustment_total": legacy_adjustment + ledger_adjustment + realized_pnl_adjustment,
                         "legacy_adjustment": legacy_adjustment,
                         "ledger_adjustment": ledger_adjustment,
+                        "realized_pnl_adjustment": realized_pnl_adjustment,
                         "market": self._detect_market(code),
                     }
                 )

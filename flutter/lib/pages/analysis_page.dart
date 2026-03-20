@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../config/theme.dart';
+import '../utils/asset_name_utils.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../providers/app_state.dart';
@@ -1336,7 +1337,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.name,
+                  item.displayName,
                   style: _S.rankName.copyWith(
                     color: AppTheme.textPrimary,
                     fontSize: 13,
@@ -1719,7 +1720,7 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.name,
+                  item.displayName,
                   style: _S.rankName.copyWith(color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 2),
@@ -1830,4 +1831,6 @@ class _RankItem {
     required this.pnlRate,
     required this.currencySymbol,
   });
+
+  String get displayName => formatAssetDisplayName(name);
 }

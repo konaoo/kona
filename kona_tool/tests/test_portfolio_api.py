@@ -29,6 +29,7 @@ class PortfolioApiTests(unittest.TestCase):
     def setUp(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM portfolio_correction_logs")
         cursor.execute("DELETE FROM portfolio_adjustment_ledger")
         cursor.execute("DELETE FROM cash_assets")
         cursor.execute("DELETE FROM other_assets")
@@ -101,7 +102,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('price') or 0.0), -1.23, places=6)
 
-    def test_portfolio_modify_without_adjustment_preserves_realized_pnl_ledger(self):
+    def test_portfolio_modify_without_adjustment_preserves_realized_pnl_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600011',
             'name': '测试修改持仓',
@@ -134,7 +135,8 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(target.get('price') or 0.0), 11.0, places=6)
         self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 4.0, places=6)
         self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 0.0, places=6)
-        self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 4.0, places=6)
+        self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(target.get('realized_pnl_adjustment') or 0.0), 4.0, places=6)
 
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
@@ -151,9 +153,220 @@ class PortfolioApiTests(unittest.TestCase):
         )
         ledger_rows = cursor.fetchall()
         conn.close()
-        self.assertEqual(len(ledger_rows), 1)
-        self.assertEqual(ledger_rows[0]['event_type'], 'realized_pnl')
-        self.assertAlmostEqual(float(ledger_rows[0]['amount'] or 0.0), 4.0, places=6)
+        self.assertEqual(len(ledger_rows), 0)
+
+    def test_portfolio_transactions_include_sell_and_dividend_only_once(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600021',
+            'name': '测试交易记录',
+            'price': 10.0,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        sell_resp = self.client.post('/api/portfolio/sell', json={
+            'code': 'sh600021',
+            'price': 12.0,
+            'qty': 2.0,
+            'request_id': 'req-portfolio-transactions-sell',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio_adjustment_ledger
+            (user_id, code, event_type, amount, curr, note, source, created_at, updated_at)
+            VALUES ('', ?, 'dividend', 8.5, 'CNY', '测试分红', 'test', '2026-03-20 08:00:00', '2026-03-20 08:00:00')
+            """,
+            ('sh600021',),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get('/api/portfolio/transactions?code=sh600021')
+        self.assertEqual(resp.status_code, 200)
+        records = (resp.get_json() or {}).get('records') or []
+        self.assertEqual([item.get('type') for item in records], ['减仓', '分红'])
+        self.assertAlmostEqual(float(records[0].get('pnl') or 0.0), 4.0, places=6)
+
+    def test_portfolio_modify_with_note_writes_correction_log(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600022',
+            'name': '测试修正备注',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600022',
+            'qty': 6.0,
+            'price': 9.5,
+            'note': '更正初始录入数量和成本',
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+        self.assertEqual((modify_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600022'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('qty') or 0.0), 6.0, places=6)
+        self.assertAlmostEqual(float(target.get('price') or 0.0), 9.5, places=6)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 0.0, places=6)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT correction_type, before_qty, after_qty, before_price, after_price, note
+            FROM portfolio_correction_logs
+            WHERE code = ?
+            ORDER BY id DESC
+            """,
+            ('sh600022',),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['correction_type'], 'holding')
+        self.assertAlmostEqual(float(rows[0]['before_qty'] or 0.0), 5.0, places=6)
+        self.assertAlmostEqual(float(rows[0]['after_qty'] or 0.0), 6.0, places=6)
+        self.assertAlmostEqual(float(rows[0]['before_price'] or 0.0), 10.0, places=6)
+        self.assertAlmostEqual(float(rows[0]['after_price'] or 0.0), 9.5, places=6)
+        self.assertEqual(rows[0]['note'], '更正初始录入数量和成本')
+
+    def test_portfolio_modify_does_not_write_trade_transaction(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600025',
+            'name': '测试修正不写交易',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        modify_resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600025',
+            'qty': 8.0,
+            'price': 9.5,
+            'note': '补录初始份额',
+            'request_id': 'req-modify-with-note-no-buy',
+        })
+        self.assertEqual(modify_resp.status_code, 200)
+        self.assertEqual((modify_resp.get_json() or {}).get('status'), 'ok')
+
+        resp = self.client.get('/api/portfolio/transactions?code=sh600025')
+        self.assertEqual(resp.status_code, 200)
+        records = (resp.get_json() or {}).get('records') or []
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].get('type'), '持仓修正')
+        self.assertEqual(records[0].get('note'), '补录初始份额')
+
+    def test_portfolio_adjustment_event_updates_total_adjustment_and_transactions(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600023',
+            'name': '测试收益事件',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        dividend_resp = self.client.post('/api/portfolio/adjustment_event', json={
+            'code': 'sh600023',
+            'event_type': 'dividend',
+            'amount': 8.0,
+            'note': '补记现金分红',
+            'request_id': 'req-adjustment-event-dividend',
+        })
+        self.assertEqual(dividend_resp.status_code, 200)
+        self.assertEqual((dividend_resp.get_json() or {}).get('status'), 'ok')
+
+        fee_resp = self.client.post('/api/portfolio/adjustment_event', json={
+            'code': 'sh600023',
+            'event_type': 'fee',
+            'amount': 2.0,
+            'note': '补记手续费',
+            'request_id': 'req-adjustment-event-fee',
+        })
+        self.assertEqual(fee_resp.status_code, 200)
+        self.assertEqual((fee_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600023'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 6.0, places=6)
+
+        metrics_resp = self.client.get('/api/portfolio?with_metrics=1')
+        self.assertEqual(metrics_resp.status_code, 200)
+        metric_items = metrics_resp.get_json() or []
+        metric_target = next((item for item in metric_items if item.get('code') == 'sh600023'), None)
+        self.assertIsNotNone(metric_target)
+        self.assertAlmostEqual(float(metric_target.get('display_cost_price') or 0.0), 10.0, places=6)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT event_type, amount, note
+            FROM portfolio_adjustment_ledger
+            WHERE code = ?
+            ORDER BY id
+            """,
+            ('sh600023',),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        self.assertEqual([(row['event_type'], float(row['amount'])) for row in rows], [
+            ('dividend', 8.0),
+            ('fee', -2.0),
+        ])
+        self.assertEqual(rows[0]['note'], '补记现金分红')
+        self.assertEqual(rows[1]['note'], '补记手续费')
+
+        tx_resp = self.client.get('/api/portfolio/transactions?code=sh600023')
+        self.assertEqual(tx_resp.status_code, 200)
+        records = (tx_resp.get_json() or {}).get('records') or []
+        self.assertEqual([item.get('type') for item in records], ['手续费', '分红'])
+
+    def test_portfolio_adjustment_event_allows_empty_note(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600026',
+            'name': '测试收益事件空备注',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        dividend_resp = self.client.post('/api/portfolio/adjustment_event', json={
+            'code': 'sh600026',
+            'event_type': 'dividend',
+            'amount': 8.0,
+            'request_id': 'req-adjustment-event-empty-note',
+        })
+        self.assertEqual(dividend_resp.status_code, 200)
+        self.assertEqual((dividend_resp.get_json() or {}).get('status'), 'ok')
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT event_type, amount, note
+            FROM portfolio_adjustment_ledger
+            WHERE code = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            ('sh600026',),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(row['event_type'], 'dividend')
+        self.assertAlmostEqual(float(row['amount']), 8.0, places=6)
+        self.assertEqual(row['note'], '')
 
     def test_add_buy_sell_reject_non_positive_price(self):
         bad_add = self.client.post('/api/portfolio/add', json={
@@ -310,7 +523,7 @@ class PortfolioApiTests(unittest.TestCase):
         cursor.execute("SELECT COUNT(1) AS c FROM portfolio_adjustment_ledger WHERE code = ?", ('sh600012',))
         before_cnt = int(cursor.fetchone()['c'] or 0)
         conn.close()
-        self.assertEqual(before_cnt, 1)
+        self.assertEqual(before_cnt, 0)
 
         undo_resp = self.client.post('/api/portfolio/undo', json={'undo_token': undo_token})
         self.assertEqual(undo_resp.status_code, 200)

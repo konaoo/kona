@@ -59,14 +59,20 @@ class _SaveStateAppState extends AppState {
   int modifyCalls = 0;
   int searchCalls = 0;
   int sellWithCashCalls = 0;
+  int adjustmentEventCalls = 0;
 
   String? lastModifyCode;
   double? lastModifyQty;
   double? lastModifyPrice;
   double? lastModifyAdjustment;
+  String? lastModifyNote;
   String? lastBuyCode;
   double? lastBuyPrice;
   double? lastBuyQty;
+  String? lastAdjustmentEventCode;
+  String? lastAdjustmentEventType;
+  double? lastAdjustmentEventAmount;
+  String? lastAdjustmentEventNote;
 
   @override
   Future<List<dynamic>> searchStocks(String query) async {
@@ -106,6 +112,7 @@ class _SaveStateAppState extends AppState {
     required double qty,
     required double price,
     required double adjustment,
+    String? note,
     bool awaitRefresh = true,
   }) async {
     modifyCalls += 1;
@@ -113,6 +120,23 @@ class _SaveStateAppState extends AppState {
     lastModifyQty = qty;
     lastModifyPrice = price;
     lastModifyAdjustment = adjustment;
+    lastModifyNote = note;
+    return result;
+  }
+
+  @override
+  Future<AssetActionResult> addInvestmentAdjustmentEvent({
+    required String code,
+    required String eventType,
+    required double amount,
+    String? note,
+    bool awaitRefresh = true,
+  }) async {
+    adjustmentEventCalls += 1;
+    lastAdjustmentEventCode = code;
+    lastAdjustmentEventType = eventType;
+    lastAdjustmentEventAmount = amount;
+    lastAdjustmentEventNote = note;
     return result;
   }
 
@@ -440,12 +464,8 @@ void main() {
     await tester.tap(find.text('调整'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('累计收益').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('成本价').last);
-    await tester.pumpAndSettle();
-
     await tester.enterText(keyFinder('invest_adjust_amount_field'), '8.5');
+    await tester.enterText(keyFinder('invest_note_field'), '更正历史拆分成本');
     await tester.pumpAndSettle();
 
     await tester.tap(keyFinder('invest_submit_button'));
@@ -454,8 +474,48 @@ void main() {
     expect(appState.modifyCalls, 1);
     expect(appState.lastModifyCode, 'gb_tsla');
     expect(appState.lastModifyQty, 5);
-    expect(appState.lastModifyPrice, 10);
-    expect(appState.lastModifyAdjustment, 7.5);
+    expect(appState.lastModifyPrice, 8.5);
+    expect(appState.lastModifyAdjustment, 0);
+    expect(appState.lastModifyNote, '更正历史拆分成本');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('trade adjust dividend calls adjustment event api', (
+    WidgetTester tester,
+  ) async {
+    final appState = _SaveStateAppState(
+      result: const AssetActionResult.success(),
+    );
+    final item = PortfolioItem(
+      code: 'gb_tsla',
+      name: 'Tesla',
+      qty: 5,
+      price: 10,
+      curr: 'USD',
+      assetType: 'us',
+    );
+    await pumpDialog(tester, appState, mode: 'trade', item: item);
+
+    await tester.tap(find.text('调整'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成本价').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('分红').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(keyFinder('invest_adjust_amount_field'), '12.5');
+    await tester.enterText(keyFinder('invest_note_field'), '补录现金分红');
+    await tester.pumpAndSettle();
+
+    await tester.tap(keyFinder('invest_submit_button'));
+    await tester.pumpAndSettle();
+
+    expect(appState.adjustmentEventCalls, 1);
+    expect(appState.lastAdjustmentEventCode, 'gb_tsla');
+    expect(appState.lastAdjustmentEventType, 'dividend');
+    expect(appState.lastAdjustmentEventAmount, 12.5);
+    expect(appState.lastAdjustmentEventNote, '补录现金分红');
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
   });
