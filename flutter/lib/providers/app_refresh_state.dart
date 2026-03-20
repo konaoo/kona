@@ -394,6 +394,22 @@ class AppRefreshState {
     await _savePortfolioEnvelope(bindings: bindings);
   }
 
+  Future<List<dynamic>> loadCachedHistory({
+    required AppRefreshBindings bindings,
+  }) async {
+    final historyEnvelope = await bindings.syncState.loadDomainEnvelope(
+      domain: 'history',
+      username: bindings.username(),
+      userId: bindings.userId(),
+      legacyCacheKeys: _legacyCacheKeys,
+    );
+    final cachedHistory = bindings.syncState.asMap(historyEnvelope?['data']);
+    if (cachedHistory['items'] is List) {
+      return List<dynamic>.from(cachedHistory['items'] as List);
+    }
+    return const <dynamic>[];
+  }
+
   Future<void> saveHomeCache({
     required AppRefreshBindings bindings,
     required List<dynamic> history,

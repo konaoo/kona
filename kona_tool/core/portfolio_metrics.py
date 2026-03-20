@@ -38,6 +38,7 @@ def build_portfolio_items_with_metrics(
     market_statuses: Dict[str, Dict[str, float]],
     convert_amount: Callable[[float, str, str, Dict[str, float]], float],
     today_buys: Dict[str, Dict[str, float]] | None = None,
+    latest_nav_dates: Dict[str, str | None] | None = None,
 ) -> List[Dict]:
     """为实时持仓补齐统一指标口径。"""
     enriched: List[Dict] = []
@@ -69,6 +70,7 @@ def build_portfolio_items_with_metrics(
         current_price = _first_positive([quoted_current_price, raw_cost_price])
 
         nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund
+        latest_nav_date = str((latest_nav_dates or {}).get(code) or "").strip() or None
         quote_ready = quote_price > 0
         quote_pending = (not nav_update_pending) and (not quote_ready)
 
@@ -129,6 +131,7 @@ def build_portfolio_items_with_metrics(
                 "day_pnl_aggregate": day_pnl_aggregate,
                 "day_pnl_rate_aggregate": day_pnl_rate_aggregate,
                 "nav_update_pending": nav_update_pending,
+                "latest_nav_date": latest_nav_date,
                 "quote_ready": quote_ready,
                 "quote_pending": quote_pending,
                 "day_pnl_display_enabled": day_pnl_display_enabled,

@@ -121,6 +121,10 @@ class AppRefreshCoordinatorState {
     await _refreshState.savePortfolioToCache(bindings: _bindings);
   }
 
+  Future<List<dynamic>> loadCachedHistory() async {
+    return _refreshState.loadCachedHistory(bindings: _bindings);
+  }
+
   Future<void> saveHomeCache(
     List<dynamic> history, {
     Map<String, dynamic>? overview,

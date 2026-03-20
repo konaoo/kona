@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -48,27 +50,47 @@ class _AssetHistoryPageState extends State<AssetHistoryPage> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _hydrateHistory();
   }
 
-  Future<void> _loadHistory() async {
+  Future<void> _hydrateHistory() async {
+    final appState = context.read<AppState>();
+    final cached = await appState.loadCachedHistory();
+    if (!mounted) return;
+    if (cached.isNotEmpty) {
+      _applyHistory(cached);
+      Future<void>(() async {
+        await _refreshHistory();
+      });
+      return;
+    }
+    await _refreshHistory();
+  }
+
+  Future<void> _refreshHistory() async {
     try {
       final list = await ApiService().getHistory();
-      final stats = AppOverviewState();
-      stats.calculateHistoryStats(list, notify: false);
-      if (mounted) {
-        setState(() {
-          _allHistory = list;
-          _monthChange = stats.monthChange;
-          _yearChange = stats.yearChange;
-          _historyPeak = stats.historyPeak;
-          _loading = false;
-          _rebuildCache();
-        });
-      }
+      if (!mounted) return;
+      _applyHistory(list);
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      if (_allHistory.isEmpty) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  void _applyHistory(List<dynamic> list) {
+    final stats = AppOverviewState();
+    stats.calculateHistoryStats(list, notify: false);
+    setState(() {
+      _allHistory = list;
+      _monthChange = stats.monthChange;
+      _yearChange = stats.yearChange;
+      _historyPeak = stats.historyPeak;
+      _loading = false;
+      _rebuildCache();
+    });
   }
 
   // 排序 + 过滤只在数据变化或 period 切换时执行一次
@@ -178,16 +200,31 @@ class _AssetHistoryPageState extends State<AssetHistoryPage> {
   // ── 模式切换 Tab ──────────────────────────────────
   Widget _buildModeTab() {
     return Container(
-      height: 36,
+      height: 40,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: AppTheme.surface2,
+        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.isLight ? const Color(0xFFF3F6FB) : AppTheme.surface2,
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x14222C40)
+              : Colors.white.withValues(alpha: 0.06),
+          width: 0.8,
+        ),
+        boxShadow: AppTheme.isLight
+            ? [
+                BoxShadow(
+                  color: const Color(0x0A222C40),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
       ),
       child: Row(
         children: [
-          _modeTabItem('asset', '资产'),
-          _modeTabItem('pnl', '盈亏'),
+          _modeTabItem('asset', '总资产趋势'),
+          _modeTabItem('pnl', '盈亏趋势'),
         ],
       ),
     );
@@ -204,8 +241,27 @@ class _AssetHistoryPageState extends State<AssetHistoryPage> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            color: active ? AppTheme.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            color: active
+                ? AppTheme.accent
+                : (AppTheme.isLight ? Colors.white.withValues(alpha: 0.55) : Colors.transparent),
+            border: active
+                ? null
+                : Border.all(
+                    color: AppTheme.isLight
+                        ? const Color(0x10222C40)
+                        : Colors.transparent,
+                    width: 0.6,
+                  ),
+            boxShadow: active && AppTheme.isLight
+                ? [
+                    BoxShadow(
+                      color: AppTheme.accent.withValues(alpha: 0.18),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
           ),
           alignment: Alignment.center,
           child: Text(

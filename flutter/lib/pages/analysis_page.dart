@@ -808,8 +808,16 @@ class _AnalysisPageState extends State<AnalysisPage> {
           height: 28,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: AppTheme.isLight
+                ? const Color(0xFFDDE4F1)
+                : Colors.black.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: AppTheme.isLight
+                  ? const Color(0x1A222C40)
+                  : Colors.transparent,
+              width: 0.6,
+            ),
           ),
           child: Row(
             children: [
@@ -1399,6 +1407,15 @@ class _AnalysisPageState extends State<AnalysisPage> {
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
+          boxShadow: isSelected && AppTheme.isLight
+              ? [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           text,

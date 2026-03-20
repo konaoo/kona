@@ -511,12 +511,8 @@ class HomePageState extends State<HomePage> {
 
               // Meta row: sync text + market pill
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text(
-                    '同步于刚刚',
-                    style: _S.heroMetaText.copyWith(color: AppTheme.textMuted),
-                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -541,6 +537,36 @@ class HomePageState extends State<HomePage> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.only(top: 10),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: AppTheme.borderSubtle.withValues(alpha: 0.3),
+                      width: 0.4,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '同步于刚刚',
+                      style: _S.heroMetaText.copyWith(
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    Text(
+                      '总资产趋势 >>',
+                      style: _S.heroMetaText.copyWith(
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -760,14 +786,14 @@ class HomePageState extends State<HomePage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30,
-        height: 30,
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
           color: AppTheme.surface2,
         ),
-        child: Icon(icon, size: 15, color: AppTheme.textSecondary),
+        child: Icon(icon, size: 13, color: AppTheme.textSecondary),
       ),
     );
   }

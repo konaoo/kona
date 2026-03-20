@@ -25,6 +25,7 @@ class PortfolioItem {
   final double? dayPnlAggregate;
   final double? dayPnlRateAggregate;
   final bool? navUpdatePending;
+  final String? latestNavDate;
   final bool? dayPnlDisplayEnabled;
   final bool? dayPnlAggregateEnabled;
   final bool? marketOpen;
@@ -66,6 +67,7 @@ class PortfolioItem {
     this.dayPnlAggregate,
     this.dayPnlRateAggregate,
     this.navUpdatePending,
+    this.latestNavDate,
     this.dayPnlDisplayEnabled,
     this.dayPnlAggregateEnabled,
     this.marketOpen,
@@ -117,6 +119,9 @@ class PortfolioItem {
       dayPnlAggregate: _parseDoubleOrNull(json['day_pnl_aggregate']),
       dayPnlRateAggregate: _parseDoubleOrNull(json['day_pnl_rate_aggregate']),
       navUpdatePending: _parseBoolOrNull(json['nav_update_pending']),
+      latestNavDate: _parseString(
+        json['latest_nav_date'] ?? json['latestNavDate'],
+      ),
       dayPnlDisplayEnabled: _parseBoolOrNull(json['day_pnl_display_enabled']),
       dayPnlAggregateEnabled: _parseBoolOrNull(
         json['day_pnl_aggregate_enabled'],
@@ -164,6 +169,7 @@ class PortfolioItem {
       if (dayPnlRateAggregate != null)
         'day_pnl_rate_aggregate': dayPnlRateAggregate,
       if (navUpdatePending != null) 'nav_update_pending': navUpdatePending,
+      if (latestNavDate != null) 'latest_nav_date': latestNavDate,
       if (dayPnlDisplayEnabled != null)
         'day_pnl_display_enabled': dayPnlDisplayEnabled,
       if (dayPnlAggregateEnabled != null)

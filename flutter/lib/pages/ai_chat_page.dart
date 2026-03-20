@@ -29,6 +29,8 @@ class _AiChatPageState extends State<AiChatPage> {
   bool _isStreaming = false;
   bool _isHydrating = true;
   VoidCallback? _cancelStream;
+  Timer? _typingStatusTimer;
+  int _typingStatusIndex = 0;
   int _aiCreditsBalance = 0;
   String _userGroupText = '加入咔咔用户群';
   String _userGroupImageUrl = '';
@@ -45,6 +47,12 @@ class _AiChatPageState extends State<AiChatPage> {
     Color(0xFF5B8DEF),
   ];
 
+  static const _typingStatusTexts = [
+    '小咔正在整理你的数据...',
+    '小咔正在分析你的问题...',
+    '小咔正在生成回答...',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +64,7 @@ class _AiChatPageState extends State<AiChatPage> {
   @override
   void dispose() {
     _cancelStream?.call();
+    _typingStatusTimer?.cancel();
     _inputController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -153,6 +162,24 @@ class _AiChatPageState extends State<AiChatPage> {
     );
   }
 
+  void _startTypingStatusRotation() {
+    _typingStatusTimer?.cancel();
+    _typingStatusIndex = 0;
+    _typingStatusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted || !_isStreaming) return;
+      setState(() {
+        _typingStatusIndex =
+            (_typingStatusIndex + 1) % _typingStatusTexts.length;
+      });
+    });
+  }
+
+  void _stopTypingStatusRotation() {
+    _typingStatusTimer?.cancel();
+    _typingStatusTimer = null;
+    _typingStatusIndex = 0;
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -177,6 +204,7 @@ class _AiChatPageState extends State<AiChatPage> {
       _messages.add(ChatMessage(role: 'assistant', content: ''));
       _isStreaming = true;
     });
+    _startTypingStatusRotation();
     await _persistHistory();
     _scrollToBottom();
 
@@ -207,6 +235,7 @@ class _AiChatPageState extends State<AiChatPage> {
             _messages.removeLast();
           }
         });
+        _stopTypingStatusRotation();
         _persistHistory();
       },
       onError: (error) {
@@ -221,6 +250,7 @@ class _AiChatPageState extends State<AiChatPage> {
             );
           }
         });
+        _stopTypingStatusRotation();
         _persistHistory();
       },
       onCreditsRequired: ({
@@ -229,6 +259,7 @@ class _AiChatPageState extends State<AiChatPage> {
         required String userGroupText,
         required String userGroupImageUrl,
       }) {
+        _stopTypingStatusRotation();
         _applyCreditsRequiredState(
           message: message,
           aiCreditsBalance: aiCreditsBalance,
@@ -736,26 +767,12 @@ class _AiChatPageState extends State<AiChatPage> {
   }
 
   Widget _buildTypingIndicator() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(AppTheme.accent),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '思考中…',
-          style: GoogleFonts.dmSans(
-            fontSize: 13,
-            color: AppTheme.textSecondary,
-          ),
-        ),
-      ],
+    return Text(
+      _typingStatusTexts[_typingStatusIndex],
+      style: GoogleFonts.dmSans(
+        fontSize: 13,
+        color: AppTheme.textSecondary,
+      ),
     );
   }
 

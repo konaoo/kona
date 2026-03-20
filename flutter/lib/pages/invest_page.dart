@@ -252,6 +252,28 @@ class InvestPageState extends State<InvestPage> {
     return _fmtPct(value);
   }
 
+  String? _readLatestNavDate(dynamic item) {
+    if (item == null) return null;
+    if (item is PortfolioItem) {
+      final value = item.latestNavDate?.trim();
+      return (value == null || value.isEmpty) ? null : value;
+    }
+    if (item is Map) {
+      final value =
+          (item['latest_nav_date'] ?? item['latestNavDate'])?.toString().trim();
+      return (value == null || value.isEmpty) ? null : value;
+    }
+    return null;
+  }
+
+  String? _formatLatestNavDateLine(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) return null;
+    final match = RegExp(r'(\d{4})-(\d{2})-(\d{2})').firstMatch(text);
+    if (match == null) return '最新净值 $text';
+    return '最新净值 ${match.group(2)}-${match.group(3)}';
+  }
+
   double? _readPositionPct(dynamic item) {
     if (item == null) return null;
     if (item is PortfolioItem) return item.positionPct;
@@ -794,6 +816,8 @@ class InvestPageState extends State<InvestPage> {
     final holdingPnlPct = (item.totalPnlRate as num?)?.toDouble();
 
     final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
+    final latestNavDate = _readLatestNavDate(item);
+    final latestNavDateLine = _formatLatestNavDateLine(latestNavDate);
     final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
     final dailyPnl =
         (item.dayPnlDisplay as num?)?.toDouble() ??
@@ -825,11 +849,9 @@ class InvestPageState extends State<InvestPage> {
     final mvLabel = mv == null
         ? '--'
         : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}';
-    final currentPriceLabel = navUpdatePending
-        ? '待净值更新'
-        : (currentPrice > 0
-              ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
-              : '--');
+    final currentPriceLabel = currentPrice > 0
+        ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
+        : '--';
     final costPriceLabel = displayCostPrice == 0
         ? '--'
         : '$sym${_formatDisplayPrice(displayCostPrice, item: item)}';
@@ -843,11 +865,11 @@ class InvestPageState extends State<InvestPage> {
         : AppState.getPnlColor(holdingPnl);
 
     final dayPnlValue = navUpdatePending
-        ? '+0'
+        ? '--'
         : (dayPnlEnabled ? _fmtPnlNullable(dailyPnl, sym) : '--');
     final totalPnlValue = _fmtPnlNullable(holdingPnl, sym);
     final badgeLabel = navUpdatePending
-        ? '+0%'
+        ? '--'
         : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--');
     final badgeColor = navUpdatePending
         ? AppTheme.textMuted
@@ -864,7 +886,9 @@ class InvestPageState extends State<InvestPage> {
 
     String maskMoney(String value) {
       if (!appState.amountHidden) return value;
-      if (value == '--' || value == '待净值更新') return value;
+      if (value == '--' || value == '待净值更新') {
+        return value;
+      }
       return '****';
     }
 
@@ -1020,14 +1044,82 @@ class InvestPageState extends State<InvestPage> {
                             Flexible(
                               child: Builder(
                                 builder: (context) {
-                                  if (navUpdatePending || currentPrice <= 0) {
-                                    return Text(
-                                      currentPriceLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _S.cardPriceVal.copyWith(
-                                        color: AppTheme.textMuted,
-                                      ),
+                                  if (currentPrice <= 0) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          navUpdatePending ? '最新净值' : currentPriceLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: _S.cardPriceVal.copyWith(
+                                            color: AppTheme.textMuted,
+                                          ),
+                                        ),
+                                        if (latestNavDateLine != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            latestNavDateLine,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _S.cardMiniLabel.copyWith(
+                                              color: AppTheme.textMuted,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    );
+                                  }
+                                  if (navUpdatePending) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (appState.amountHidden)
+                                          Text(
+                                            '****',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _S.cardPriceVal.copyWith(
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          )
+                                        else
+                                          RichText(
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            text: TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text: sym,
+                                                  style: _S.cardPriceSym.copyWith(
+                                                    color: AppTheme.textSecondary,
+                                                  ),
+                                                ),
+                                                const TextSpan(text: ' '),
+                                                TextSpan(
+                                                  text: _formatDisplayPrice(
+                                                    currentPrice,
+                                                    item: item,
+                                                  ),
+                                                  style: _S.cardPriceVal.copyWith(
+                                                    color: AppTheme.textPrimary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        if (latestNavDateLine != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            latestNavDateLine,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _S.cardMiniLabel.copyWith(
+                                              color: AppTheme.textMuted,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     );
                                   }
                                   if (appState.amountHidden) {

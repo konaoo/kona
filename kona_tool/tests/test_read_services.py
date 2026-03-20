@@ -76,6 +76,7 @@ class ReadServicesTests(unittest.TestCase):
             batch_get_prices_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09)},
             rates_getter=lambda: {"USD": 7.2, "CNY": 1.0},
             convert_amount=lambda amount, from_curr, to_curr, rates: rates.get(from_curr, 1.0) if to_curr == "CNY" else amount,
+            fund_latest_nav_date_getter=lambda code: None,
             market_status_getter=lambda now_utc, force_refresh=False: {
                 "markets": {"us": {"open": True, "trading_day": True, "reason": "open"}}
             },
@@ -470,6 +471,7 @@ class ReadServicesTests(unittest.TestCase):
             batch_get_prices_getter=lambda codes: {"sh600001": (12.0, 11.0, 1.0, 0.1)},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
+            fund_latest_nav_date_getter=lambda code: None,
             market_status_getter=lambda now_utc, force_refresh=False: {
                 "markets": {"a": {"open": True, "trading_day": True, "reason": "open"}}
             },
@@ -494,6 +496,7 @@ class ReadServicesTests(unittest.TestCase):
             batch_get_prices_getter=lambda codes: {"sh600002": (12.0, 11.0, 1.0, 0.1)},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
+            fund_latest_nav_date_getter=lambda code: None,
             market_status_getter=lambda now_utc, force_refresh=False: {
                 "markets": {"a": {"open": False, "trading_day": False, "reason": "closed"}}
             },
@@ -503,6 +506,36 @@ class ReadServicesTests(unittest.TestCase):
         item = result[0]
         self.assertAlmostEqual(item["total_pnl"], 400.0)
         self.assertAlmostEqual(item["total_pnl_rate"], 400.0 / 1200.0 * 100, places=4)
+
+    def test_portfolio_read_service_includes_latest_nav_date_for_otc_fund(self):
+        db = _FakeDb()
+        db.portfolio_items = [
+            {
+                "code": "f_110017",
+                "name": "基金A",
+                "qty": 10,
+                "price": 1.23,
+                "adjustment": 0,
+                "curr": "CNY",
+                "asset_type": "fund",
+            }
+        ]
+        service = PortfolioReadService(
+            db=db,
+            batch_get_prices_getter=lambda codes: {"f_110017": (1.25, 1.24, 0.01, 0.8)},
+            rates_getter=lambda: {},
+            convert_amount=lambda amount, f, t, rates: amount,
+            fund_latest_nav_date_getter=lambda code: "2026-03-19" if code == "f_110017" else None,
+            market_status_getter=lambda now_utc, force_refresh=False: {
+                "markets": {"fund": {"open": False, "trading_day": False, "reason": "fund"}}
+            },
+        )
+
+        with self.app.test_request_context("/api/portfolio"):
+            result = service.build_metrics_payload(user_id="u_1")
+
+        self.assertEqual(result[0]["latest_nav_date"], "2026-03-19")
+        self.assertTrue(result[0]["nav_update_pending"])
 
 
 if __name__ == "__main__":

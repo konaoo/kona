@@ -123,11 +123,16 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
   Widget _buildSegmentedTab() {
     final isAdd = _mode == 'add';
     final addActiveBg = AppTheme.isLight
-        ? const Color(0x2216A34A)
+        ? const Color(0x1416A34A)
         : const Color(0x262ECC8A);
     final subActiveBg = AppTheme.isLight
-        ? const Color(0x22E45656)
+        ? const Color(0x14E45656)
         : const Color(0x1EF05A55);
+    final lightShadow = BoxShadow(
+      color: const Color(0x12222C40),
+      blurRadius: 10,
+      offset: const Offset(0, 3),
+    );
 
     return Container(
       height: 38,
@@ -147,14 +152,16 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                 decoration: BoxDecoration(
                   color: isAdd ? addActiveBg : Colors.transparent,
                   borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isAdd
+                        ? (AppTheme.isLight
+                              ? const Color(0x3316A34A)
+                              : Colors.transparent)
+                        : Colors.transparent,
+                    width: 0.8,
+                  ),
                   boxShadow: isAdd
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
+                      ? (AppTheme.isLight ? [lightShadow] : <BoxShadow>[])
                       : [],
                 ),
                 alignment: Alignment.center,
@@ -180,14 +187,16 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                 decoration: BoxDecoration(
                   color: !isAdd ? subActiveBg : Colors.transparent,
                   borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: !isAdd
+                        ? (AppTheme.isLight
+                              ? const Color(0x33E45656)
+                              : Colors.transparent)
+                        : Colors.transparent,
+                    width: 0.8,
+                  ),
                   boxShadow: !isAdd
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
+                      ? (AppTheme.isLight ? [lightShadow] : <BoxShadow>[])
                       : [],
                 ),
                 alignment: Alignment.center,
@@ -473,43 +482,54 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
     final isAdd = _mode == 'add';
     final okColor = isAdd ? _kGreen : _kRed;
     final sym = _currencySymbol();
+    final localTheme = AppTheme.isLight
+        ? Theme.of(context).copyWith(
+            textSelectionTheme: TextSelectionThemeData(
+              cursorColor: AppTheme.accent,
+              selectionHandleColor: AppTheme.accent,
+              selectionColor: AppTheme.accent.withValues(alpha: 0.12),
+            ),
+          )
+        : Theme.of(context);
 
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: _kSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _kBorder),
-                boxShadow: AppTheme.isLight
-                    ? const [
-                        BoxShadow(
-                          color: Color(0x26222C48),
-                          blurRadius: 40,
-                          offset: Offset(0, 16),
-                        ),
-                      ]
-                    : const [
-                        BoxShadow(
-                          color: Color(0xB3000000),
-                          blurRadius: 64,
-                          offset: Offset(0, 24),
-                        ),
-                      ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+    return Theme(
+      data: localTheme,
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _kSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _kBorder),
+                  boxShadow: AppTheme.isLight
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x26222C48),
+                            blurRadius: 40,
+                            offset: Offset(0, 16),
+                          ),
+                        ]
+                      : const [
+                          BoxShadow(
+                            color: Color(0xB3000000),
+                            blurRadius: 64,
+                            offset: Offset(0, 24),
+                          ),
+                        ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // ── 标题行 ──
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
@@ -849,7 +869,8 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                       ],
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

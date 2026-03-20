@@ -109,6 +109,7 @@ class AppWiring:
     asset_trends_getter: Callable[[Any, int], Any]
     price_runtime_metrics_getter: Callable[[], Any]
     price_source_health_getter: Callable[[], Any]
+    fund_latest_nav_date_getter: Callable[[str], Any]
 
     # 快照/分析/组合
     calculate_portfolio_stats: Callable[..., Any]
@@ -290,6 +291,7 @@ def create_app_components(
         batch_get_prices_getter=wiring.batch_get_prices_getter,
         rates_getter=wiring.forex_rates_getter,
         convert_amount=portfolio_runtime.convert_amount,
+        fund_latest_nav_date_getter=wiring.fund_latest_nav_date_getter,
         market_status_getter=lambda now_utc, force_refresh=False: market_runtime.get_market_status_cached(
             now_utc=now_utc,
             force_refresh=force_refresh,

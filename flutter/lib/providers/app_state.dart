@@ -480,6 +480,10 @@ class AppState extends ChangeNotifier {
     await _refreshCoordinatorState.saveHomeCache(history, overview: overview);
   }
 
+  Future<List<dynamic>> loadCachedHistory() async {
+    return _refreshCoordinatorState.loadCachedHistory();
+  }
+
   // ============================================================
   // 10) 认证、资料与生物识别
   // ============================================================

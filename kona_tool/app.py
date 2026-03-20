@@ -31,6 +31,7 @@ from core.market_calendar import all_markets_closed, get_market_statuses
 from core.news import news_fetcher
 from core.parser import parse_code
 from core.policy_runtime import is_policy_enabled, get_policy_limit_per_min
+from core.fund import get_fund_latest_nav_date
 from core.price import (
     batch_get_prices,
     batch_get_prices_fast,
@@ -85,6 +86,7 @@ _wiring = AppWiring(
     asset_trends_getter=lambda items, points: batch_get_asset_trends(items, points=points),
     price_runtime_metrics_getter=lambda: get_price_runtime_metrics(),
     price_source_health_getter=lambda: get_price_source_health(),
+    fund_latest_nav_date_getter=lambda code: get_fund_latest_nav_date(code),
     calculate_portfolio_stats=calculate_portfolio_stats,
     background_snapshot_runner=lambda: take_snapshot(),
     take_snapshot_for_user=lambda user_id: take_snapshot(user_id),

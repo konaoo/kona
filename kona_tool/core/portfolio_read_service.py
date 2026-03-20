@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Tuple
 
 from .portfolio_metrics import build_portfolio_items_with_metrics
+from .price import is_exchange_fund_code
 from .request_trace import trace_request_stage
 
 
@@ -20,12 +21,14 @@ class PortfolioReadService:
         batch_get_prices_getter: Callable[[List[str]], Dict[str, Tuple[float, float, float, float]]],
         rates_getter: Callable[[], Dict[str, float]],
         convert_amount: Callable[[float, str, str, Dict[str, float]], float],
+        fund_latest_nav_date_getter: Callable[[str], str | None],
         market_status_getter: Callable[..., Dict[str, Any]],
     ) -> None:
         self.db = db
         self.batch_get_prices_getter = batch_get_prices_getter
         self.rates_getter = rates_getter
         self.convert_amount = convert_amount
+        self.fund_latest_nav_date_getter = fund_latest_nav_date_getter
         self.market_status_getter = market_status_getter
 
     def _enrich_items_with_metrics(
@@ -54,6 +57,19 @@ class PortfolioReadService:
         date_str = resolved_now.astimezone(_ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
         with trace_request_stage("portfolio.today_buys"):
             today_buys = self.db.get_today_buy_transactions(date_str, user_id)
+        nav_date_codes = [
+            code
+            for code in dict.fromkeys(codes)
+            if code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+        ]
+        if nav_date_codes:
+            with trace_request_stage("portfolio.nav_dates", code_count=len(nav_date_codes)):
+                latest_nav_dates = {
+                    code: self.fund_latest_nav_date_getter(code)
+                    for code in nav_date_codes
+                }
+        else:
+            latest_nav_dates = {}
         with trace_request_stage("portfolio.assemble", item_count=len(items)):
             return build_portfolio_items_with_metrics(
                 items,
@@ -62,6 +78,7 @@ class PortfolioReadService:
                 market_statuses,
                 self.convert_amount,
                 today_buys,
+                latest_nav_dates,
             )
 
     def build_metrics_payload(
