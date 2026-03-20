@@ -266,12 +266,24 @@ class InvestPageState extends State<InvestPage> {
     return null;
   }
 
-  String? _formatLatestNavDateLine(String? value) {
+  String? _formatLatestNavDateText(String? value) {
     final text = (value ?? '').trim();
     if (text.isEmpty) return null;
     final match = RegExp(r'(\d{4})-(\d{2})-(\d{2})').firstMatch(text);
-    if (match == null) return '最新净值 $text';
-    return '最新净值 ${match.group(2)}-${match.group(3)}';
+    if (match == null) return text;
+    return '${match.group(2)}-${match.group(3)}';
+  }
+
+  bool _isDateToday(String? value) {
+    final text = (value ?? '').trim();
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(text);
+    if (match == null) return false;
+    final year = int.tryParse(match.group(1) ?? '');
+    final month = int.tryParse(match.group(2) ?? '');
+    final day = int.tryParse(match.group(3) ?? '');
+    if (year == null || month == null || day == null) return false;
+    final now = DateTime.now();
+    return now.year == year && now.month == month && now.day == day;
   }
 
   double? _readPositionPct(dynamic item) {
@@ -817,7 +829,7 @@ class InvestPageState extends State<InvestPage> {
 
     final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
     final latestNavDate = _readLatestNavDate(item);
-    final latestNavDateLine = _formatLatestNavDateLine(latestNavDate);
+    final latestNavDateText = _formatLatestNavDateText(latestNavDate);
     final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
     final dailyPnl =
         (item.dayPnlDisplay as num?)?.toDouble() ??
@@ -836,6 +848,8 @@ class InvestPageState extends State<InvestPage> {
     // Currency symbol
     final sym = item.currencySymbol as String? ?? '¥';
     final isFund = _isFundAsset(item);
+    final shouldShowFundDayPnlPlaceholder =
+        isFund && latestNavDate != null && !_isDateToday(latestNavDate);
     final qtyUnit = isFund ? '份' : '股';
     final name = (item.name as String? ?? '').trim();
     final code = (item.code as String? ?? '').trim();
@@ -857,19 +871,22 @@ class InvestPageState extends State<InvestPage> {
         : '$sym${_formatDisplayPrice(displayCostPrice, item: item)}';
 
     final dailyValueColor =
-        navUpdatePending || !dayPnlEnabled || dailyPnl == null
+        shouldShowFundDayPnlPlaceholder ||
+            navUpdatePending ||
+            !dayPnlEnabled ||
+            dailyPnl == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dailyPnl);
     final holdingValueColor = holdingPnl == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(holdingPnl);
 
-    final dayPnlValue = navUpdatePending
+    final dayPnlValue = shouldShowFundDayPnlPlaceholder || navUpdatePending
         ? '--'
         : (dayPnlEnabled ? _fmtPnlNullable(dailyPnl, sym) : '--');
     final totalPnlValue = _fmtPnlNullable(holdingPnl, sym);
-    final badgeLabel = navUpdatePending
-        ? '--'
+    final badgeLabel = shouldShowFundDayPnlPlaceholder || navUpdatePending
+        ? null
         : (dayPnlEnabled ? _fmtPctNullable(dailyPnlPct) : '--');
     final badgeColor = navUpdatePending
         ? AppTheme.textMuted
@@ -1056,10 +1073,10 @@ class InvestPageState extends State<InvestPage> {
                                             color: AppTheme.textMuted,
                                           ),
                                         ),
-                                        if (latestNavDateLine != null) ...[
+                                        if (latestNavDateText != null) ...[
                                           const SizedBox(height: 2),
                                           Text(
-                                            latestNavDateLine,
+                                            '最新净值 $latestNavDateText',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: _S.cardMiniLabel.copyWith(
@@ -1071,8 +1088,9 @@ class InvestPageState extends State<InvestPage> {
                                     );
                                   }
                                   if (navUpdatePending) {
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                    return Row(
+                                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                                      textBaseline: TextBaseline.alphabetic,
                                       children: [
                                         if (appState.amountHidden)
                                           Text(
@@ -1108,14 +1126,16 @@ class InvestPageState extends State<InvestPage> {
                                               ],
                                             ),
                                           ),
-                                        if (latestNavDateLine != null) ...[
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            latestNavDateLine,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: _S.cardMiniLabel.copyWith(
-                                              color: AppTheme.textMuted,
+                                        if (latestNavDateText != null) ...[
+                                          const SizedBox(width: 8),
+                                          Flexible(
+                                            child: Text(
+                                              '最新净值 $latestNavDateText',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _S.cardMiniLabel.copyWith(
+                                                color: AppTheme.textMuted,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -1159,23 +1179,25 @@ class InvestPageState extends State<InvestPage> {
                                 },
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
+                            if (badgeLabel != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: badgeBg,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  badgeLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _S.cardBadge.copyWith(color: badgeColor),
+                                ),
                               ),
-                              decoration: BoxDecoration(
-                                color: badgeBg,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                badgeLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _S.cardBadge.copyWith(color: badgeColor),
-                              ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
