@@ -24,6 +24,7 @@ const marketStore = useMarketStore()
 const selectedTab = ref('all')
 const holdingsView = ref<'card' | 'row'>('card')
 const trendMap = ref<Record<string, TrendItem>>({})
+let staticRefreshTimer: number | null = null
 
 // Computed for rates and conversions
 const rates = computed(() => marketStore.rates)
@@ -273,6 +274,36 @@ async function loadAssetTrends() {
   }
 }
 
+async function refreshInvestReadState() {
+  try {
+    await store.refreshStaticOnly()
+    await loadAssetTrends()
+    void store.refreshQuotesOnly()
+  } catch (e) {
+    console.error('Failed to refresh invest data', e)
+  }
+}
+
+function clearStaticRefreshTimer() {
+  if (typeof window === 'undefined' || staticRefreshTimer == null) return
+  window.clearInterval(staticRefreshTimer)
+  staticRefreshTimer = null
+}
+
+function startInvestAutoRefresh() {
+  store.startAutoRefresh()
+  if (typeof window === 'undefined') return
+  clearStaticRefreshTimer()
+  staticRefreshTimer = window.setInterval(() => {
+    void refreshInvestReadState()
+  }, 60_000)
+}
+
+function stopInvestAutoRefresh() {
+  store.stopAutoRefresh()
+  clearStaticRefreshTimer()
+}
+
 watch(
   () => (rows.value || []).map((row: any) => `${row?.code || ''}:${row?.name || ''}`).join('|'),
   () => {
@@ -281,18 +312,12 @@ watch(
 )
 
 onMounted(async () => {
-  try {
-    await store.refreshStaticOnly()
-    await loadAssetTrends()
-    void store.refreshQuotesOnly()
-    store.startAutoRefresh()
-  } catch (e) {
-    console.error('Failed to load invest data', e)
-  }
+  await refreshInvestReadState()
+  startInvestAutoRefresh()
 })
 
 onBeforeUnmount(() => {
-  store.stopAutoRefresh()
+  stopInvestAutoRefresh()
 })
 
 // Modal states
@@ -313,13 +338,7 @@ function openEditTradeModal(row: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
 }
 
 const handleTradeSuccess = async () => {
-  try {
-    await store.refreshStaticOnly()
-    await loadAssetTrends()
-    void store.refreshQuotesOnly()
-  } catch (e) {
-    console.error('Failed to reload invest data', e)
-  }
+  await refreshInvestReadState()
 }
 </script>
 
