@@ -49,7 +49,7 @@ class _S {
     fontWeight: FontWeight.w600,
   );
   static final calPnl = GoogleFonts.jetBrainsMono(
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: FontWeight.w700,
   );
   static final calSumLabel = GoogleFonts.dmSans(
@@ -1096,7 +1096,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ),
           const SizedBox(height: 1),
           SizedBox(
-            height: 10,
+            height: 12,
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
