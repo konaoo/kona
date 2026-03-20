@@ -20,6 +20,24 @@ class PortfolioMetricsService {
     return item.costCny ?? _metricWithRate(item.cost, item.rateToCny);
   }
 
+  static double? resolveFloatPnlCny(PortfolioItem item) {
+    final valueCny = resolveValueCny(item);
+    final costCny = resolveCostCny(item);
+    if (valueCny == null || costCny == null) return null;
+    return valueCny - costCny.abs();
+  }
+
+  static double resolvePositiveAdjustmentCny(PortfolioItem item) {
+    final adjustmentCny = _metricWithRate(item.adjustment, item.rateToCny) ?? 0;
+    return adjustmentCny > 0 ? adjustmentCny : 0;
+  }
+
+  static double? resolveTotalPnlDenominatorCny(PortfolioItem item) {
+    final costCny = resolveCostCny(item);
+    if (costCny == null) return null;
+    return costCny.abs() + resolvePositiveAdjustmentCny(item);
+  }
+
   static double? resolveDayPnlAggregateCny(PortfolioItem item) {
     return item.dayPnlAggregateCny ??
         _metricWithRate(item.dayPnlAggregate, item.rateToCny);
@@ -82,7 +100,7 @@ class PortfolioMetricsService {
   }
 
   static double calcInvestHoldingPnl(Iterable<PortfolioItem> items) {
-    return sumMetricIgnoreNull(items, resolveTotalPnlCny);
+    return sumMetricIgnoreNull(items, resolveFloatPnlCny);
   }
 
   static double calcInvestDayPnlRate(Iterable<PortfolioItem> items) {
@@ -115,6 +133,25 @@ class PortfolioMetricsService {
     if (!hasMetrics || totalCostAbs <= 0) return 0;
     final holdingPnl = calcInvestHoldingPnl(items);
     return holdingPnl / totalCostAbs * 100;
+  }
+
+  static double calcInvestTotalPnl(Iterable<PortfolioItem> items) {
+    return sumMetricIgnoreNull(items, resolveTotalPnlCny);
+  }
+
+  static double calcInvestTotalPnlRate(Iterable<PortfolioItem> items) {
+    double totalPnlDenominator = 0;
+    var hasMetrics = false;
+    for (final item in items) {
+      final denominatorCny = resolveTotalPnlDenominatorCny(item);
+      if (denominatorCny != null) {
+        totalPnlDenominator += denominatorCny;
+        hasMetrics = true;
+      }
+    }
+    if (!hasMetrics || totalPnlDenominator <= 0) return 0;
+    final totalPnl = calcInvestTotalPnl(items);
+    return totalPnl / totalPnlDenominator * 100;
   }
 
   static double? calcDayPnlRateNullable(double? pnl, double? totalValue) {

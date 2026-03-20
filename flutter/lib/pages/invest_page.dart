@@ -259,8 +259,9 @@ class InvestPageState extends State<InvestPage> {
       return (value == null || value.isEmpty) ? null : value;
     }
     if (item is Map) {
-      final value =
-          (item['latest_nav_date'] ?? item['latestNavDate'])?.toString().trim();
+      final value = (item['latest_nav_date'] ?? item['latestNavDate'])
+          ?.toString()
+          .trim();
       return (value == null || value.isEmpty) ? null : value;
     }
     return null;
@@ -394,11 +395,19 @@ class InvestPageState extends State<InvestPage> {
     );
     final holdPnlCny = PortfolioMetricsService.sumMetricOrNull(
       items,
+      PortfolioMetricsService.resolveFloatPnlCny,
+    );
+    final totalPnlCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
       (item) => item.totalPnlCny,
     );
     final costAbsCny = PortfolioMetricsService.sumAbsMetricOrNull(
       items,
       (item) => item.costCny,
+    );
+    final totalPnlDenominatorCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      PortfolioMetricsService.resolveTotalPnlDenominatorCny,
     );
     final dayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
       dayPnlCny,
@@ -408,12 +417,19 @@ class InvestPageState extends State<InvestPage> {
       holdPnlCny,
       costAbsCny,
     );
+    final totalPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
+      totalPnlCny,
+      totalPnlDenominatorCny,
+    );
     final dayColor = dayPnlCny == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dayPnlCny);
     final holdColor = holdPnlCny == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(holdPnlCny);
+    final totalColor = totalPnlCny == null
+        ? AppTheme.textMuted
+        : AppState.getPnlColor(totalPnlCny);
 
     return Container(
       width: double.infinity,
@@ -544,14 +560,18 @@ class InvestPageState extends State<InvestPage> {
                 ),
                 _statItem(
                   '累计盈亏',
-                  holdPnlCny == null ? '--' : appState.formatPnlInt(holdPnlCny),
-                  holdColor,
+                  totalPnlCny == null
+                      ? '--'
+                      : appState.formatPnlInt(totalPnlCny),
+                  totalColor,
                   true,
                 ),
                 _statItem(
                   '累计盈亏率',
-                  holdPnlRate == null ? '--' : appState.formatPct(holdPnlRate),
-                  holdColor,
+                  totalPnlRate == null
+                      ? '--'
+                      : appState.formatPct(totalPnlRate),
+                  totalColor,
                   false,
                 ),
               ],
@@ -920,7 +940,9 @@ class InvestPageState extends State<InvestPage> {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.isLight ? AppTheme.border : AppTheme.borderSubtle),
+          border: Border.all(
+            color: AppTheme.isLight ? AppTheme.border : AppTheme.borderSubtle,
+          ),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -941,7 +963,9 @@ class InvestPageState extends State<InvestPage> {
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      accentColor.withValues(alpha: AppTheme.isLight ? 0.85 : 0.45),
+                      accentColor.withValues(
+                        alpha: AppTheme.isLight ? 0.85 : 0.45,
+                      ),
                       Colors.transparent,
                     ],
                   ),
@@ -1063,10 +1087,13 @@ class InvestPageState extends State<InvestPage> {
                                 builder: (context) {
                                   if (currentPrice <= 0) {
                                     return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          navUpdatePending ? '最新净值' : currentPriceLabel,
+                                          navUpdatePending
+                                              ? '最新净值'
+                                              : currentPriceLabel,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: _S.cardPriceVal.copyWith(
@@ -1089,7 +1116,8 @@ class InvestPageState extends State<InvestPage> {
                                   }
                                   if (navUpdatePending) {
                                     return Row(
-                                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.baseline,
                                       textBaseline: TextBaseline.alphabetic,
                                       children: [
                                         if (appState.amountHidden)
@@ -1109,9 +1137,11 @@ class InvestPageState extends State<InvestPage> {
                                               children: [
                                                 TextSpan(
                                                   text: sym,
-                                                  style: _S.cardPriceSym.copyWith(
-                                                    color: AppTheme.textSecondary,
-                                                  ),
+                                                  style: _S.cardPriceSym
+                                                      .copyWith(
+                                                        color: AppTheme
+                                                            .textSecondary,
+                                                      ),
                                                 ),
                                                 const TextSpan(text: ' '),
                                                 TextSpan(
@@ -1119,9 +1149,11 @@ class InvestPageState extends State<InvestPage> {
                                                     currentPrice,
                                                     item: item,
                                                   ),
-                                                  style: _S.cardPriceVal.copyWith(
-                                                    color: AppTheme.textPrimary,
-                                                  ),
+                                                  style: _S.cardPriceVal
+                                                      .copyWith(
+                                                        color: AppTheme
+                                                            .textPrimary,
+                                                      ),
                                                 ),
                                               ],
                                             ),
@@ -1194,7 +1226,9 @@ class InvestPageState extends State<InvestPage> {
                                   badgeLabel,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: _S.cardBadge.copyWith(color: badgeColor),
+                                  style: _S.cardBadge.copyWith(
+                                    color: badgeColor,
+                                  ),
                                 ),
                               ),
                             ],

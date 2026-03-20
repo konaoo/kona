@@ -19,6 +19,10 @@ export type PortfolioMarketSummary = {
   totalRate: number
 }
 
+type PortfolioMarketBucket = PortfolioMarketSummary & {
+  totalPnlDenominator: number
+}
+
 function finiteOrNull(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return value
@@ -38,6 +42,17 @@ export function resolvePositionValueCny(row: PositionRow): number | null {
 
 export function resolvePositionCostCny(row: PositionRow): number | null {
   return finiteOrNull(row.costCny) ?? metricWithRate(row.cost, row.rateToCny)
+}
+
+export function resolvePositionPositiveAdjustmentCny(row: PositionRow): number {
+  const adjustmentCny = metricWithRate(row.adjustment, row.rateToCny) ?? 0
+  return adjustmentCny > 0 ? adjustmentCny : 0
+}
+
+export function resolvePositionTotalPnlDenominatorCny(row: PositionRow): number | null {
+  const costCny = resolvePositionCostCny(row)
+  if (costCny == null) return null
+  return Math.abs(costCny) + resolvePositionPositiveAdjustmentCny(row)
 }
 
 export function resolvePositionDayPnlCny(row: PositionRow): number | null {
@@ -62,12 +77,14 @@ export function calcHoldingPnlRate(totalPnl: number, totalCostAbs: number): numb
 export function buildPortfolioSummary(rows: PositionRow[]): PortfolioSummary {
   let totalValue = 0
   let totalCostAbs = 0
+  let totalPnlDenominator = 0
   let todayPnl = 0
   let totalPnl = 0
 
   for (const row of rows) {
     totalValue += resolvePositionValueCny(row) ?? 0
     totalCostAbs += Math.abs(resolvePositionCostCny(row) ?? 0)
+    totalPnlDenominator += resolvePositionTotalPnlDenominatorCny(row) ?? 0
     todayPnl += resolvePositionDayPnlCny(row) ?? 0
     totalPnl += resolvePositionTotalPnlCny(row) ?? 0
   }
@@ -82,12 +99,12 @@ export function buildPortfolioSummary(rows: PositionRow[]): PortfolioSummary {
     floatPnl,
     floatRate: calcHoldingPnlRate(floatPnl, totalCostAbs),
     totalPnl,
-    totalRate: calcHoldingPnlRate(totalPnl, totalCostAbs)
+    totalRate: calcHoldingPnlRate(totalPnl, totalPnlDenominator)
   }
 }
 
 export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummary[] {
-  const totals: Record<MarketCode, PortfolioMarketSummary> = {
+  const totals: Record<MarketCode, PortfolioMarketBucket> = {
     a: {
       market: 'a',
       name: MARKET_META.a.name,
@@ -96,6 +113,7 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       cost: 0,
       dayPnl: 0,
       totalPnl: 0,
+      totalPnlDenominator: 0,
       dayRate: 0,
       totalRate: 0
     },
@@ -107,6 +125,7 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       cost: 0,
       dayPnl: 0,
       totalPnl: 0,
+      totalPnlDenominator: 0,
       dayRate: 0,
       totalRate: 0
     },
@@ -118,6 +137,7 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       cost: 0,
       dayPnl: 0,
       totalPnl: 0,
+      totalPnlDenominator: 0,
       dayRate: 0,
       totalRate: 0
     },
@@ -129,6 +149,7 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       cost: 0,
       dayPnl: 0,
       totalPnl: 0,
+      totalPnlDenominator: 0,
       dayRate: 0,
       totalRate: 0
     }
@@ -142,14 +163,16 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
     bucket.cost += Math.abs(resolvePositionCostCny(row) ?? 0)
     bucket.dayPnl += resolvePositionDayPnlCny(row) ?? 0
     bucket.totalPnl += resolvePositionTotalPnlCny(row) ?? 0
+    bucket.totalPnlDenominator += resolvePositionTotalPnlDenominatorCny(row) ?? 0
   }
 
   return (Object.keys(totals) as MarketCode[]).map(market => {
     const bucket = totals[market]
+    const { totalPnlDenominator, ...summary } = bucket
     return {
-      ...bucket,
+      ...summary,
       dayRate: calcDayPnlRate(bucket.dayPnl, bucket.mv),
-      totalRate: calcHoldingPnlRate(bucket.totalPnl, bucket.cost)
+      totalRate: calcHoldingPnlRate(bucket.totalPnl, totalPnlDenominator)
     }
   })
 }

@@ -361,7 +361,7 @@ const handleTradeSuccess = async () => {
                 </div>
               </div>
               <div class="stat-item">
-                <span class="sl">持仓收益</span>
+                <span class="sl">持仓盈亏</span>
                 <div class="sv-group" :class="valueClass(investTotal.floatPnl)">
                   <span class="sv-amt">{{ formatCurrency(investTotal.floatPnl, true, true) }}</span>
                   <span class="sv-pct">{{ formatPct(investTotal.floatRate) }}</span>
