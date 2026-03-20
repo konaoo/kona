@@ -37,6 +37,7 @@ Future<T?> showInvestTradeSheet<T>({
   required String mode,
   PortfolioItem? item,
   BuildContext? hostContext,
+  Future<void> Function()? onPortfolioChanged,
   String? initialTradeMode,
   InvestTradeDialogPresentation presentation =
       InvestTradeDialogPresentation.sheet,
@@ -54,6 +55,7 @@ Future<T?> showInvestTradeSheet<T>({
           mode: mode,
           item: item,
           hostContext: hostContext,
+          onPortfolioChanged: onPortfolioChanged,
           initialTradeMode: initialTradeMode,
           presentation: presentation,
         ),
@@ -77,6 +79,7 @@ Future<T?> showInvestTradeSheet<T>({
         mode: mode,
         item: item,
         hostContext: hostContext,
+        onPortfolioChanged: onPortfolioChanged,
         initialTradeMode: initialTradeMode,
         presentation: presentation,
       ),
@@ -141,6 +144,7 @@ class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
   final BuildContext? hostContext;
+  final Future<void> Function()? onPortfolioChanged;
   final String? initialTradeMode;
   final InvestTradeDialogPresentation presentation;
 
@@ -149,6 +153,7 @@ class InvestTradeDialog extends StatefulWidget {
     required this.mode,
     this.item,
     this.hostContext,
+    this.onPortfolioChanged,
     this.initialTradeMode,
     this.presentation = InvestTradeDialogPresentation.sheet,
   });
@@ -636,6 +641,16 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (code.isNotEmpty) {
         unawaited(_prefillFundNavForCode(code));
       }
+    }
+  }
+
+  Future<void> _notifyPortfolioChanged() async {
+    final callback = widget.onPortfolioChanged;
+    if (callback == null) return;
+    try {
+      await callback();
+    } catch (_) {
+      // 刷新失败不应影响已成功的写操作，页面下次进入时会重新拉取。
     }
   }
 
@@ -1251,6 +1266,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return;
     }
 
+    await _notifyPortfolioChanged();
+    if (!mounted || !toastContext.mounted) return;
     _closeDialog();
 
     final undoToken = result.data?['undo_token']?.toString();
@@ -1267,6 +1284,8 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             );
             if (!toastContext.mounted) return;
             if (undoResult.ok) {
+              await _notifyPortfolioChanged();
+              if (!toastContext.mounted) return;
               TopToast.showInfo(toastContext, '已撤销');
             } else {
               TopToast.showError(toastContext, undoResult.message ?? '撤销失败');

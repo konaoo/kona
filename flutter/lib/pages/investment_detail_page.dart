@@ -32,7 +32,10 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
     _loadTransactions();
   }
 
-  Future<void> _loadTransactions() async {
+  Future<void> _loadTransactions({bool forceRemote = false}) async {
+    if (forceRemote) {
+      _cache.remove(_cacheKey);
+    }
     // 有缓存先展示，后台静默刷新
     final cached = _cache[_cacheKey];
     if (cached != null && mounted) {
@@ -66,7 +69,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
   Future<void> _refreshData() async {
     final appState = context.read<AppState>();
     await appState.refreshPortfolio();
-    await _loadTransactions();
+    await _loadTransactions(forceRemote: true);
   }
 
   PortfolioItem get _currentItem {
@@ -707,9 +710,9 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 mode: 'buy',
                 item: _currentItem,
                 hostContext: context,
+                onPortfolioChanged: _refreshData,
                 presentation: InvestTradeDialogPresentation.centered,
               );
-              _refreshData();
             },
           ),
         ),
@@ -724,9 +727,9 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 mode: 'sell',
                 item: _currentItem,
                 hostContext: context,
+                onPortfolioChanged: _refreshData,
                 presentation: InvestTradeDialogPresentation.centered,
               );
-              _refreshData();
             },
           ),
         ),
@@ -741,10 +744,10 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 mode: 'trade',
                 item: _currentItem,
                 hostContext: context,
+                onPortfolioChanged: _refreshData,
                 initialTradeMode: 'adjust',
                 presentation: InvestTradeDialogPresentation.centered,
               );
-              _refreshData();
             },
           ),
         ),
@@ -925,12 +928,20 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
       final beforePrice = ((rec['before_price'] as num?) ?? 0).toDouble();
       final afterPrice = ((rec['after_price'] as num?) ?? 0).toDouble();
       if (beforePrice > 0 || afterPrice > 0) {
-        detail =
-            '${_formatAmount(beforePrice, decimals: beforePrice.abs() < 10 ? 3 : 2, trimTrailingZeros: true)} -> '
-            '${_formatAmount(afterPrice, decimals: afterPrice.abs() < 10 ? 3 : 2, trimTrailingZeros: true)}';
-        if (note.trim().isNotEmpty) {
-          detail = '$detail · ${note.trim()}';
-        }
+        detail = _buildCorrectionDetail(
+          label: '成本价',
+          beforeText: _formatAmount(
+            beforePrice,
+            decimals: beforePrice.abs() < 10 ? 3 : 2,
+            trimTrailingZeros: true,
+          ),
+          afterText: _formatAmount(
+            afterPrice,
+            decimals: afterPrice.abs() < 10 ? 3 : 2,
+            trimTrailingZeros: true,
+          ),
+          note: note,
+        );
       } else {
         detail = note;
       }
@@ -938,12 +949,37 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
       final beforeQty = ((rec['before_qty'] as num?) ?? 0).toDouble();
       final afterQty = ((rec['after_qty'] as num?) ?? 0).toDouble();
       if (beforeQty > 0 || afterQty > 0) {
-        detail = '${_formatDisplayQty(beforeQty)}股 -> ${_formatDisplayQty(afterQty)}股';
-        if (note.trim().isNotEmpty) {
-          detail = '$detail · ${note.trim()}';
-        }
+        detail = _buildCorrectionDetail(
+          label: '持仓数量',
+          beforeText: '${_formatDisplayQty(beforeQty)}股',
+          afterText: '${_formatDisplayQty(afterQty)}股',
+          note: note,
+        );
       } else {
         detail = note;
+      }
+    } else if (type == '持仓修正') {
+      final beforePrice = ((rec['before_price'] as num?) ?? 0).toDouble();
+      final afterPrice = ((rec['after_price'] as num?) ?? 0).toDouble();
+      final beforeQty = ((rec['before_qty'] as num?) ?? 0).toDouble();
+      final afterQty = ((rec['after_qty'] as num?) ?? 0).toDouble();
+      final parts = <String>[];
+      if (beforePrice > 0 || afterPrice > 0) {
+        parts.add(
+          '成本价 ${_formatAmount(beforePrice, decimals: beforePrice.abs() < 10 ? 3 : 2, trimTrailingZeros: true)} -> '
+          '${_formatAmount(afterPrice, decimals: afterPrice.abs() < 10 ? 3 : 2, trimTrailingZeros: true)}',
+        );
+      }
+      if (beforeQty > 0 || afterQty > 0) {
+        parts.add(
+          '持仓数量 ${_formatDisplayQty(beforeQty)}股 -> ${_formatDisplayQty(afterQty)}股',
+        );
+      }
+      detail = parts.join(' · ');
+      if (note.trim().isNotEmpty) {
+        detail = detail.isEmpty ? note.trim() : '$detail · ${note.trim()}';
+      } else {
+        detail = detail.isEmpty ? '持仓信息已修正' : detail;
       }
     } else {
       detail = note;
@@ -1046,6 +1082,18 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
       if (note.contains('数量')) return '数量修正';
     }
     return rawType;
+  }
+
+  String _buildCorrectionDetail({
+    required String label,
+    required String beforeText,
+    required String afterText,
+    required String note,
+  }) {
+    final trimmedNote = note.trim();
+    final base = '$label $beforeText -> $afterText';
+    if (trimmedNote.isEmpty) return base;
+    return '$base · $trimmedNote';
   }
 
   String _formatTransactionAmount(String type, double amount, String sym) {

@@ -34,8 +34,11 @@
 - [资产识别与价格逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产识别与价格逻辑.md)
   作用：看代码怎么识别 A股、港股、美股、基金，以及分别去哪取价格
 
+- [投资持仓修正与收益事件迁移说明](/Users/kona/Desktop/kaka/kona_repo/docs/投资持仓修正与收益事件迁移说明.md)
+  作用：看现在投资持仓的真实口径，区分交易、收益事件、修正记录，以及线上补数与旧 `adjustment` 迁移策略
+
 - [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
-  作用：看成本价、adjustment、当日盈亏、累计盈亏、快照和分析页口径
+  作用：看旧口径怎么演变过来，以及历史快照和累计盈亏背景
 
 - [接口与页面对照图](/Users/kona/Desktop/kaka/kona_repo/docs/接口与页面对照图.md)
   作用：看某个页面到底吃哪些接口、后端入口在哪
@@ -50,8 +53,11 @@
 - [资产同步与盈亏算法口径](/Users/kona/Desktop/kaka/kona_repo/docs/资产同步与盈亏算法口径.md)
   作用：看资产、收益、刷新这类核心口径
 
+- [投资持仓修正与收益事件迁移说明](/Users/kona/Desktop/kaka/kona_repo/docs/投资持仓修正与收益事件迁移说明.md)
+  作用：看投资详情页、修正记录、分红/手续费、旧 adjustment 兼容和迁移策略
+
 - [资产收益计算逻辑](/Users/kona/Desktop/kaka/kona_repo/docs/资产收益计算逻辑.md)
-  作用：看成本、摊薄后成本、当日盈亏、累计盈亏和历史快照的关系
+  作用：看旧口径背景、快照口径和历史说明
 
 - [接口与页面对照图](/Users/kona/Desktop/kaka/kona_repo/docs/接口与页面对照图.md)
   作用：看页面、状态和接口之间的对应关系
