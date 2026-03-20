@@ -37,6 +37,9 @@ class MockApiService implements ApiService {
   void setToken(String token) {}
 
   @override
+  void setAuthTokens({String? accessToken, String? refreshToken}) {}
+
+  @override
   void clearToken() {}
 
   @override
