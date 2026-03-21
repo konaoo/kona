@@ -79,6 +79,10 @@ class CalendarWeekendTests(unittest.TestCase):
         conn = db_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM daily_snapshots")
+        try:
+            cursor.execute("DELETE FROM daily_snapshot_market_breakdowns")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
 
@@ -329,6 +333,39 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("day", "u1", year=2026, month=12)
 
         self.assertEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+
+    def test_day_view_uses_effective_breakdown_total_over_snapshot_day_pnl(self):
+        _insert_snapshot("2026-03-20", 31017.66, -1611.46, updated_at="2026-03-20 22:02:25")
+        _insert_snapshot("2026-03-21", 29441.75, 0.0, updated_at="2026-03-21 08:01:10")
+
+        conn = db_module.db.get_connection()
+        cursor = conn.cursor()
+        for market, pnl in {
+            "a": -1231.0,
+            "hk": 623.68,
+            "us": -793.89,
+            "fund": -526.0,
+            "unallocated": 0.0,
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshot_market_breakdowns
+                (date, user_id, market, day_pnl, source, confidence, updated_at)
+                VALUES (?, ?, ?, ?, 'exact', 1.0, ?)
+                """,
+                ("2026-03-20", "u1", market, pnl, "2026-03-21 08:01:10"),
+            )
+        conn.commit()
+        conn.close()
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 3, 22)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=3)
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("3-20"), -1927.21)
+        self.assertEqual(items.get("3-21"), 0)
 
 
 if __name__ == "__main__":

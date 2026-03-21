@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Ensure kona_tool is on sys.path so app.py can import config/core
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +35,7 @@ class ApiBaselineTests(unittest.TestCase):
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM daily_snapshots")
+        cursor.execute("DELETE FROM daily_snapshot_market_breakdowns")
         cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
         conn.close()
@@ -447,6 +448,76 @@ class ApiBaselineTests(unittest.TestCase):
                                     stats = app_module.calculate_portfolio_stats(None)
 
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
+
+    def test_calculate_stats_attributes_us_overnight_to_previous_trading_day(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'gb_goog',
+            'name': '谷歌',
+            'price': 10.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={'gb_goog': (12.0, 10.0, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'USD': 7.0}):
+                with patch(
+                    'core.snapshot.get_market_statuses',
+                    return_value={
+                        'a': {'open': False, 'reason': 'holiday_or_weekend'},
+                        'hk': {'open': False, 'reason': 'holiday_or_weekend'},
+                        'us': {'open': True, 'reason': 'open_session'},
+                        'fund': {'open': False, 'reason': 'holiday_or_weekend'},
+                    },
+                ):
+                    with patch('core.snapshot.is_trading_day', create=True, side_effect=lambda market, date: market == 'us'):
+                        stats = app_module.calculate_portfolio_stats(
+                            None,
+                            now_utc=datetime(2026, 3, 21, 2, 0, tzinfo=timezone.utc),
+                        )
+
+        self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-20')
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 14.0, places=2)
+        self.assertAlmostEqual(
+            float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('us') or 0.0),
+            14.0,
+            places=2,
+        )
+        self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
+
+    def test_calculate_stats_attributes_otc_fund_to_latest_nav_date(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'f_110017',
+            'name': '基金A',
+            'price': 1.2,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={'f_110017': (1.25, 1.24, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                with patch('core.snapshot.get_fund_latest_nav_date', return_value='2026-03-20'):
+                    with patch(
+                        'core.snapshot.get_market_statuses',
+                        return_value={
+                            'a': {'open': False, 'reason': 'holiday_or_weekend'},
+                            'hk': {'open': False, 'reason': 'holiday_or_weekend'},
+                            'us': {'open': False, 'reason': 'holiday_or_weekend'},
+                            'fund': {'open': False, 'reason': 'holiday_or_weekend'},
+                        },
+                    ):
+                        with patch('core.snapshot.is_trading_day', create=True, return_value=False):
+                            stats = app_module.calculate_portfolio_stats(
+                                None,
+                                now_utc=datetime(2026, 3, 23, 2, 0, tzinfo=timezone.utc),
+                            )
+
+        self.assertAlmostEqual(
+            float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('fund') or 0.0),
+            0.1,
+            places=2,
+        )
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
+        self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
 
 if __name__ == '__main__':

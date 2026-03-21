@@ -1,6 +1,6 @@
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 import unittest
@@ -198,6 +198,48 @@ class ReadServicesTests(unittest.TestCase):
         today_item = next((i for i in result["items"] if i["label"] == today_label), None)
         self.assertIsNotNone(today_item)
         self.assertAlmostEqual(today_item["pnl"], 77.0)
+
+    def test_calendar_effective_date_cell_uses_stats_getter(self):
+        """跨时区夜盘应覆盖到收益归属日，不是北京时间今天。"""
+        today = datetime.now()
+        effective_dt = today - timedelta(days=1)
+        effective_label = f"{effective_dt.month}-{effective_dt.day}"
+        today_label = f"{today.month}-{today.day}"
+
+        db = _FakeDb()
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+            "items": [
+                {"label": effective_label, "pnl": 10.0},
+                {"label": today_label, "pnl": 0.0},
+            ],
+            "total_pnl": 10.0,
+            "total_rate": 1.0,
+            "period": {"time_type": "day", "year": effective_dt.year, "month": effective_dt.month},
+        }
+
+        service = AnalysisReadService(
+            db=db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {
+                "day_pnl": -794.0,
+                "day_pnl_effective_date": effective_dt.strftime("%Y-%m-%d"),
+                "total_invest": 1000.0,
+            },
+        )
+
+        with self.app.test_request_context("/api/analysis/calendar?type=day"):
+            result = service.build_calendar_payload(
+                time_type="day",
+                user_id="u_1",
+                year=effective_dt.year,
+                month=effective_dt.month,
+            )
+
+        effective_item = next((i for i in result["items"] if i["label"] == effective_label), None)
+        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
+        self.assertIsNotNone(effective_item)
+        self.assertAlmostEqual(effective_item["pnl"], -794.0)
+        self.assertAlmostEqual(today_item["pnl"], 0.0)
 
     def test_calendar_past_month_not_affected_by_stats_getter(self):
         """查的是历史月份，今天那格不应被 stats_getter 修改"""

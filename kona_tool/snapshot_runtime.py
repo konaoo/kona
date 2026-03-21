@@ -6,8 +6,6 @@
 - 后台定时任务单次执行与循环调度
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 import threading
 import time
@@ -51,23 +49,34 @@ class SnapshotRuntime:
         try:
             stats = self.calculate_portfolio_stats(user_id)
             snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
-            saved = self.db.save_daily_snapshot(stats, user_id, snapshot_date=snapshot_date)
+            snapshot_payload = {
+                **stats,
+                "day_pnl": float(stats.get("snapshot_day_pnl", 0.0) or 0.0),
+            }
+            saved = self.db.save_daily_snapshot(snapshot_payload, user_id, snapshot_date=snapshot_date)
             if saved:
-                snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
-                breakdown_ok = self.db.save_daily_snapshot_market_breakdown(
-                    date_str=snapshot_date,
-                    day_pnl_by_market=stats.get("day_pnl_by_market") or {},
-                    total_day_pnl=float(stats.get("day_pnl", 0.0) or 0.0),
-                    user_id=user_id,
-                    source="exact",
-                    confidence=1.0,
-                )
-                if not breakdown_ok:
-                    self.logger.warning(
-                        "Snapshot market breakdown save failed: user_id=%s date=%s",
-                        user_id,
-                        snapshot_date,
+                breakdown_dates = set((stats.get("day_pnl_breakdowns_by_date") or {}).keys())
+                breakdown_dates.add(snapshot_date)
+                for effective_date in sorted(breakdown_dates):
+                    market_map = (
+                        (stats.get("day_pnl_breakdowns_by_date") or {}).get(effective_date)
+                        if effective_date != snapshot_date
+                        else stats.get("snapshot_day_pnl_by_market")
+                    ) or {}
+                    breakdown_ok = self.db.save_daily_snapshot_market_breakdown(
+                        date_str=effective_date,
+                        day_pnl_by_market=market_map,
+                        total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
+                        user_id=user_id,
+                        source="exact",
+                        confidence=1.0,
                     )
+                    if not breakdown_ok:
+                        self.logger.warning(
+                            "Snapshot market breakdown save failed: user_id=%s date=%s",
+                            user_id,
+                            effective_date,
+                        )
         except Exception as exc:
             self.logger.warning("Snapshot save failed: %s", exc)
 

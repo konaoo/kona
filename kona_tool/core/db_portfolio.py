@@ -12,10 +12,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 try:
+    from .day_pnl_attribution import effective_date_from_transaction_time
     from .market_calendar import market_from_asset
     from .parser import parse_code
     from .logo_utils import suggest_logo_url
 except ImportError:  # 兼容被单文件动态加载的测试场景
+    from core.day_pnl_attribution import effective_date_from_transaction_time
     from core.market_calendar import market_from_asset
     from core.parser import parse_code
     from core.logo_utils import suggest_logo_url
@@ -2046,34 +2048,62 @@ class PortfolioDatabaseMixin:
 
         Returns: {code: {"qty": float, "amount": float}}
         """
-        result: Dict[str, Dict[str, float]] = {}
+        return self.get_buy_transactions_by_effective_date(date_str, user_id=user_id)
+
+    def get_buy_transactions_grouped_by_effective_date(
+        self,
+        user_id: str = None,
+    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """按市场本地日期聚合加仓记录。
+
+        Returns:
+            {
+                "2026-03-20": {
+                    "AAPL": {"qty": 1.0, "amount": 100.0}
+                }
+            }
+        """
+        result: Dict[str, Dict[str, Dict[str, float]]] = {}
         conn = self.get_connection()
         cursor = conn.cursor()
-        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
         try:
             cursor.execute(
                 """
-                SELECT code, SUM(qty) AS total_qty, SUM(amount) AS total_amount
+                SELECT time, code, qty, amount
                 FROM transactions
-                WHERE type = '加仓' AND time LIKE ?
+                WHERE type = '加仓' AND
                 """
-                + f" {user_condition}"
-                + " GROUP BY code",
-                (f"{date_str}%",) + user_param,
+                + f" {user_condition}",
+                user_param,
             )
             for row in cursor.fetchall():
-                code = str(row["code"] or "")
-                qty = float(row["total_qty"] or 0.0)
-                amount = float(row["total_amount"] or 0.0)
-                if qty > 0:
-                    result[code] = {"qty": qty, "amount": amount}
+                raw_code = str(row["code"] or "")
+                normalized_code = parse_code(raw_code, "").get("code") or raw_code
+                code = str(normalized_code or raw_code)
+                market = str(market_from_asset(code) or "a").lower()
+                effective_date = effective_date_from_transaction_time(row["time"], market)
+                if not effective_date:
+                    continue
+                by_code = result.setdefault(effective_date, {})
+                bucket = by_code.setdefault(code, {"qty": 0.0, "amount": 0.0})
+                bucket["qty"] += float(row["qty"] or 0.0)
+                bucket["amount"] += float(row["amount"] or 0.0)
             return result
         except Exception as exc:
-            logger.error("Failed to get today buy transactions date=%s: %s", date_str, exc)
+            logger.error("Failed to get buy transactions grouped by effective date: %s", exc)
             return result
         finally:
             conn.close()
+
+    def get_buy_transactions_by_effective_date(
+        self,
+        date_str: str,
+        user_id: str = None,
+    ) -> Dict[str, Dict[str, float]]:
+        grouped = self.get_buy_transactions_grouped_by_effective_date(user_id=user_id)
+        return grouped.get(str(date_str or "").strip(), {})
 
     def get_portfolio_transactions(self, code: str, user_id: str = None) -> list:
         """获取指定 code 的全部交易记录、收益事件和修正审计，按时间倒序返回。"""
@@ -2177,33 +2207,114 @@ class PortfolioDatabaseMixin:
 
     def get_realized_pnl_by_date(self, date_str: str, user_id: str = None) -> Dict[str, float]:
         """获取指定日期按市场聚合的已实现盈亏。"""
-        result = {k: 0.0 for k in DEFAULT_MARKETS}
+        grouped = self.get_realized_pnl_grouped_by_effective_date(user_id=user_id)
+        normalized = str(date_str or "").strip()
+        return grouped.get(normalized, {k: 0.0 for k in DEFAULT_MARKETS})
+
+    def get_realized_pnl_grouped_by_effective_date(
+        self,
+        user_id: str = None,
+    ) -> Dict[str, Dict[str, float]]:
+        """按市场本地日期聚合已实现盈亏。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        grouped: Dict[str, Dict[str, float]] = {}
         user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
 
         try:
             cursor.execute(
                 """
-                SELECT code, pnl
+                SELECT time, code, pnl
                 FROM transactions
-                WHERE type = '减仓' AND time LIKE ?
+                WHERE type = '减仓'
                 """
                 + f" {user_condition}",
-                (f"{date_str}%",) + user_param,
+                user_param,
             )
             for row in cursor.fetchall():
                 raw_code = str(row["code"] or "")
                 normalized = parse_code(raw_code, "").get("code") or raw_code
                 code = str(normalized or raw_code)
                 market = str(market_from_asset(code) or "a").lower()
-                if market not in result:
+                if market not in DEFAULT_MARKETS:
                     market = "a"
-                result[market] += float(row["pnl"] or 0.0)
-            return result
+                effective_date = effective_date_from_transaction_time(row["time"], market)
+                if not effective_date:
+                    continue
+                bucket = grouped.setdefault(effective_date, {k: 0.0 for k in DEFAULT_MARKETS})
+                bucket[market] += float(row["pnl"] or 0.0)
+            return grouped
         except Exception as exc:
-            logger.error("Failed to get realized pnl by date=%s: %s", date_str, exc)
-            return result
+            logger.error("Failed to get realized pnl grouped by effective date: %s", exc)
+            return grouped
+        finally:
+            conn.close()
+
+    def get_position_qty_as_of_effective_date(
+        self,
+        code: str,
+        effective_date: str,
+        user_id: str = None,
+    ) -> float:
+        """反推出某只资产在 effective_date 当日收盘后的持仓数量。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        try:
+            current_row = self._fetch_portfolio_row_by_code(cursor, code, user_id)
+            qty = float(current_row["qty"] or 0.0) if current_row else 0.0
+            cursor.execute(
+                """
+                SELECT time, type, qty
+                FROM transactions
+                WHERE code = ?
+                """
+                + f" {user_condition}"
+                + " ORDER BY time DESC, id DESC",
+                (code,) + user_param,
+            )
+            market = str(market_from_asset(code) or "a").lower()
+            for row in cursor.fetchall():
+                tx_effective_date = effective_date_from_transaction_time(row["time"], market)
+                if not tx_effective_date or tx_effective_date <= effective_date:
+                    continue
+                tx_qty = float(row["qty"] or 0.0)
+                tx_type = str(row["type"] or "").strip()
+                if tx_type == "加仓":
+                    qty -= tx_qty
+                elif tx_type == "减仓":
+                    qty += tx_qty
+
+            cursor.execute(
+                """
+                SELECT before_qty, after_qty
+                FROM portfolio_correction_logs
+                WHERE code = ?
+                  AND correction_type IN ('quantity', 'holding')
+                  AND created_at > ?
+                """
+                + f" {user_condition}"
+                + " ORDER BY created_at DESC, id DESC",
+                (code, f"{effective_date} 23:59:59") + user_param,
+            )
+            for row in cursor.fetchall():
+                before_qty = row["before_qty"]
+                after_qty = row["after_qty"]
+                if before_qty is None or after_qty is None:
+                    continue
+                qty = float(before_qty)
+
+            return max(0.0, qty)
+        except Exception as exc:
+            logger.error(
+                "Failed to reconstruct position qty code=%s effective_date=%s: %s",
+                code,
+                effective_date,
+                exc,
+            )
+            return 0.0
         finally:
             conn.close()

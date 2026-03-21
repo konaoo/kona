@@ -2,8 +2,6 @@
 市场交易日历模块。
 统一提供 A/HK/US/Fund 开休市判断，并支持本地覆盖文件修正。
 """
-from __future__ import annotations
-
 import json
 import logging
 import re
@@ -408,6 +406,23 @@ def is_markets_closed_on_date(markets: Optional[Iterable[str]], target_date: Any
         if is_trading_day(m, d):
             return False
     return True
+
+
+def get_previous_trading_day(market: str, target_date: Any) -> Optional[date]:
+    """
+    返回 target_date 之前最近一个交易日（不包含当天）。
+
+    这里主要给“美股夜盘归前一交易日”和“周末展示仍需归到上个交易日”使用。
+    """
+    d = _normalize_date(target_date)
+    for offset in range(1, 15):
+        candidate = d.fromordinal(d.toordinal() - offset)
+        try:
+            if is_trading_day(market, candidate):
+                return candidate
+        except Exception:
+            continue
+    return None
 
 
 def market_from_asset(asset: Any) -> str:

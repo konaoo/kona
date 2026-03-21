@@ -3543,3 +3543,25 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 ### 验收重点
 - `f_511360` 不再显示“待净值更新”
 - 日内盈亏可用且 `market_trading_day` 来自 A 股
+
+## 2026-03-21-01
+
+### 这版一句话
+
+把“日收益归哪一天”这件事彻底收正：美股夜盘归前一交易日，场外基金按净值对应日入账。
+
+### 主要变化
+- [kona_tool/core/day_pnl_attribution.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/day_pnl_attribution.py)：新增统一的日收益归属日计算层，集中处理美股夜盘和场外基金净值日期。
+- [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py) / [kona_tool/snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/snapshot_runtime.py)：快照改为按归属日写入市场拆分，不再把周五美股夜盘硬写到北京时间周六。
+- [kona_tool/core/db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py) / [kona_tool/core/analysis_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py)：分析页历史日历、月度、年度读取改为优先认归属日拆分数据，今天这格也改成覆盖真正的归属日。
+- [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) / [kona_tool/core/market_calendar.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/market_calendar.py)：补齐按归属日汇总买入、已实现盈亏和前一交易日判断的基础能力。
+- [kona_tool/tests/test_api_baseline.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_api_baseline.py) / [kona_tool/tests/test_calendar_weekend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_calendar_weekend.py) / [kona_tool/tests/test_read_services.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_read_services.py)：新增美股周五夜盘、场外基金净值归属日和分析页日历覆盖的回归测试。
+
+### 影响范围
+- 分析页“当日 / 本月 / 本年 / 收益日历”口径
+- 快照写入、市场拆分、场外基金日收益归属
+
+### 验收重点
+- 周五夜里到周六凌晨的美股收益，应继续记在周五，不应落成周六历史收益
+- 场外基金不进实时今日收益，但拿到新净值后应落到 `latest_nav_date`
+- `python3 -m unittest tests/test_read_services.py tests/test_calendar_weekend.py tests/test_market_breakdown.py tests/test_api_baseline.py tests/test_portfolio_metrics_contract.py tests/test_portfolio_api.py` 通过

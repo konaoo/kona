@@ -123,8 +123,146 @@ def _is_snapshot_updated_on_same_date(date_str: Any, updated_at: Any) -> bool:
         return False
 
 
+def _round_pnl(value: Any) -> float:
+    try:
+        return round(float(value or 0.0), 2)
+    except Exception:
+        return 0.0
+
+
+def _build_months_by_year(date_values: List[str], now: datetime) -> Dict[int, set]:
+    months_by_year: Dict[int, set] = {}
+    for date_str in date_values:
+        parts = str(date_str or "").split("-")
+        if len(parts) != 3:
+            continue
+        y = int(parts[0])
+        m = int(parts[1])
+        months_by_year.setdefault(y, set()).add(m)
+    months_by_year.setdefault(now.year, set()).add(now.month)
+    return months_by_year
+
+
 class AnalysisDatabaseMixin:
     """给 DatabaseManager 提供分析页相关方法。"""
+
+    def _normalize_snapshot_rows_legacy(self, rows: List[Any]) -> List[Dict[str, Any]]:
+        normalized = []
+        prev_total = None
+        for row in rows:
+            date_str = str(row["date"])
+            is_market_closed = _get_is_market_closed_date(date_str)
+            closed_at_snapshot = False
+            if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
+                closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
+            pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
+            if is_market_closed:
+                pnl = 0.0
+            elif (
+                (pnl == 0 or pnl == -0.0)
+                and (not closed_at_snapshot)
+                and row["total_pnl"] is not None
+                and prev_total is not None
+            ):
+                pnl = float(row["total_pnl"]) - prev_total
+            if (not is_market_closed) and row["total_pnl"] is not None:
+                prev_total = float(row["total_pnl"])
+            normalized.append(
+                {
+                    "date": date_str,
+                    "pnl": _round_pnl(pnl),
+                    "total_invest": float(row["total_invest"] or 0.0),
+                }
+            )
+        return normalized
+
+    def _fetch_breakdown_totals_by_date(
+        self,
+        cursor: Any,
+        *,
+        user_condition: str,
+        user_param: tuple,
+        start_date: str,
+        end_date: str,
+    ) -> Dict[str, float]:
+        cursor.execute(
+            f"""
+            SELECT date, SUM(day_pnl) AS total_day_pnl
+            FROM daily_snapshot_market_breakdowns
+            WHERE date >= ? AND date <= ? AND {user_condition}
+            GROUP BY date
+            ORDER BY date ASC
+            """,
+            (start_date, end_date) + user_param,
+        )
+        return {
+            str(row["date"]): _round_pnl(row["total_day_pnl"])
+            for row in cursor.fetchall()
+            if row["date"]
+        }
+
+    def _fetch_all_calendar_dates(
+        self,
+        cursor: Any,
+        *,
+        user_condition: str,
+        user_param: tuple,
+    ) -> List[str]:
+        cursor.execute(
+            f"""
+            SELECT date
+            FROM daily_snapshots
+            WHERE {user_condition}
+            UNION
+            SELECT date
+            FROM daily_snapshot_market_breakdowns
+            WHERE {user_condition}
+            ORDER BY date ASC
+            """,
+            user_param + user_param,
+        )
+        return [str(row["date"]) for row in cursor.fetchall() if row["date"]]
+
+    def _build_effective_pnl_series(
+        self,
+        cursor: Any,
+        *,
+        user_condition: str,
+        user_param: tuple,
+        start_date: str,
+        end_date: str,
+    ) -> List[Dict[str, Any]]:
+        cursor.execute(
+            f"""
+            SELECT date, total_pnl, day_pnl, total_invest, updated_at
+            FROM daily_snapshots
+            WHERE date >= ? AND date <= ? AND {user_condition}
+            ORDER BY date ASC
+            """,
+            (start_date, end_date) + user_param,
+        )
+        legacy_rows = self._normalize_snapshot_rows_legacy(cursor.fetchall())
+        legacy_by_date = {str(row["date"]): row for row in legacy_rows}
+        breakdown_totals = self._fetch_breakdown_totals_by_date(
+            cursor,
+            user_condition=user_condition,
+            user_param=user_param,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        all_dates = sorted(set(legacy_by_date.keys()) | set(breakdown_totals.keys()))
+        result: List[Dict[str, Any]] = []
+        for date_str in all_dates:
+            legacy = legacy_by_date.get(date_str) or {}
+            pnl = breakdown_totals.get(date_str, legacy.get("pnl", 0.0))
+            result.append(
+                {
+                    "date": date_str,
+                    "pnl": _round_pnl(pnl),
+                    "total_invest": float(legacy.get("total_invest") or 0.0),
+                }
+            )
+        return result
 
     def get_pnl_overview(self, period: str = "day", user_id: str = None) -> Dict[str, Any]:
         """
@@ -143,36 +281,6 @@ class AnalysisDatabaseMixin:
         try:
             today = _get_datetime_now()
             today_str = today.strftime("%Y-%m-%d")
-
-            def _normalize_snapshot_rows(rows):
-                normalized = []
-                prev_total = None
-                for row in rows:
-                    date_str = str(row["date"])
-                    is_market_closed = _get_is_market_closed_date(date_str)
-                    closed_at_snapshot = False
-                    if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
-                        closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
-                    pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
-                    if is_market_closed:
-                        pnl = 0.0
-                    elif (
-                        (pnl == 0 or pnl == -0.0)
-                        and (not closed_at_snapshot)
-                        and row["total_pnl"] is not None
-                        and prev_total is not None
-                    ):
-                        pnl = float(row["total_pnl"]) - prev_total
-                    if (not is_market_closed) and row["total_pnl"] is not None:
-                        prev_total = float(row["total_pnl"])
-                    normalized.append(
-                        {
-                            "date": date_str,
-                            "pnl": round(float(pnl), 2),
-                            "total_invest": float(row["total_invest"] or 0.0),
-                        }
-                    )
-                return normalized
 
             def _fetch_prev_snapshot(date_str: str):
                 cursor.execute(
@@ -208,20 +316,17 @@ class AnalysisDatabaseMixin:
 
             if period == "month":
                 month_start = today.strftime("%Y-%m-01")
-                cursor.execute(
-                    f"""
-                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
-                    WHERE date >= ? AND date <= ? AND {user_condition}
-                    ORDER BY date ASC
-                    """,
-                    (month_start, today_str) + user_param,
+                normalized_rows = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date=month_start,
+                    end_date=today_str,
                 )
-                rows = cursor.fetchall()
-                normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(month_start)
                 prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
-                    pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                    pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
                     latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
                     # 分母用期末持仓成本：反映"当前账户里这么多钱，赚了多少比例"
                     base = latest_invest or prev_invest or 1
@@ -234,20 +339,17 @@ class AnalysisDatabaseMixin:
 
             if period == "year":
                 year_start = today.strftime("%Y-01-01")
-                cursor.execute(
-                    f"""
-                    SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
-                    WHERE date >= ? AND date <= ? AND {user_condition}
-                    ORDER BY date ASC
-                    """,
-                    (year_start, today_str) + user_param,
+                normalized_rows = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date=year_start,
+                    end_date=today_str,
                 )
-                rows = cursor.fetchall()
-                normalized_rows = _normalize_snapshot_rows(rows)
                 prev = _fetch_prev_snapshot(year_start)
                 prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
-                    pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                    pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
                     latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
                     # 分母用期末持仓成本
                     base = latest_invest or prev_invest or 1
@@ -258,18 +360,15 @@ class AnalysisDatabaseMixin:
                     }
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
 
-            cursor.execute(
-                f"""
-                SELECT date, total_pnl, day_pnl, total_invest, updated_at FROM daily_snapshots
-                WHERE date <= ? AND {user_condition}
-                ORDER BY date ASC
-                """,
-                (today_str,) + user_param,
+            normalized_rows = self._build_effective_pnl_series(
+                cursor,
+                user_condition=user_condition,
+                user_param=user_param,
+                start_date="0001-01-01",
+                end_date=today_str,
             )
-            rows = cursor.fetchall()
-            normalized_rows = _normalize_snapshot_rows(rows)
             if normalized_rows:
-                pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
                 latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
                 first_invest = float(normalized_rows[0]["total_invest"] or 0.0)
                 # 分母用期末持仓成本
@@ -307,30 +406,6 @@ class AnalysisDatabaseMixin:
             items = []
             total_pnl = 0.0
             rate_base = 0.0
-
-            def _normalize_snapshot_rows(rows):
-                normalized = []
-                prev_total = None
-                for row in rows:
-                    date_str = str(row["date"])
-                    is_market_closed = _get_is_market_closed_date(date_str)
-                    closed_at_snapshot = False
-                    if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
-                        closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
-                    pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
-                    if is_market_closed:
-                        pnl = 0.0
-                    elif (
-                        (pnl == 0 or pnl == -0.0)
-                        and (not closed_at_snapshot)
-                        and row["total_pnl"] is not None
-                        and prev_total is not None
-                    ):
-                        pnl = float(row["total_pnl"]) - prev_total
-                    if (not is_market_closed) and row["total_pnl"] is not None:
-                        prev_total = float(row["total_pnl"])
-                    normalized.append({"date": date_str, "pnl": round(float(pnl), 2)})
-                return normalized
 
             def _fetch_prev_invest(date_str: str) -> float:
                 cursor.execute(
@@ -374,25 +449,12 @@ class AnalysisDatabaseMixin:
                 row = cursor.fetchone()
                 return float(row["total_invest"] or 0.0) if row else 0.0
 
-            cursor.execute(
-                f"""
-                SELECT date
-                FROM daily_snapshots
-                WHERE {user_condition}
-                ORDER BY date ASC
-                """,
-                user_param,
+            all_dates = self._fetch_all_calendar_dates(
+                cursor,
+                user_condition=user_condition,
+                user_param=user_param,
             )
-            all_dates = [str(row["date"]) for row in cursor.fetchall() if row["date"]]
-            months_by_year: Dict[int, set] = {}
-            for date_str in all_dates:
-                parts = date_str.split("-")
-                if len(parts) != 3:
-                    continue
-                y = int(parts[0])
-                m = int(parts[1])
-                months_by_year.setdefault(y, set()).add(m)
-            months_by_year.setdefault(now.year, set()).add(now.month)
+            months_by_year = _build_months_by_year(all_dates, now)
 
             selectable_years = sorted(months_by_year.keys())
             selectable_months_by_year = {str(y): sorted(list(months_by_year[y])) for y in selectable_years}
@@ -456,18 +518,14 @@ class AnalysisDatabaseMixin:
                 if target_year == now.year and target_month == now.month:
                     month_end = min(month_end, today_str)
 
-                cursor.execute(
-                    f"""
-                    SELECT date, day_pnl, total_pnl, updated_at
-                    FROM daily_snapshots
-                    WHERE date >= ? AND date <= ? AND {user_condition}
-                    ORDER BY date ASC
-                    """,
-                    (month_start, month_end) + user_param,
+                normalized_rows = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date=month_start,
+                    end_date=month_end,
                 )
-                rows = cursor.fetchall()
-                normalized_rows = _normalize_snapshot_rows(rows)
-                total_pnl = round(sum(float(row["pnl"] or 0.0) for row in normalized_rows), 2)
+                total_pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
                 for row in normalized_rows:
                     day = int(str(row["date"]).split("-")[2])
                     items.append({"label": f"{target_month}-{day}", "pnl": row["pnl"]})
@@ -506,26 +564,23 @@ class AnalysisDatabaseMixin:
 
                 year_start = f"{target_year:04d}-01-01"
                 year_end = today_str if target_year == now.year else f"{target_year:04d}-12-31"
-                cursor.execute(
-                    f"""
-                    SELECT date, day_pnl, total_pnl, updated_at
-                    FROM daily_snapshots
-                    WHERE date >= ? AND date <= ? AND {user_condition}
-                    ORDER BY date ASC
-                    """,
-                    (year_start, year_end) + user_param,
+                normalized_rows = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date=year_start,
+                    end_date=year_end,
                 )
-                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
                 month_totals: Dict[int, float] = {}
                 for row in normalized_rows:
                     m = int(str(row["date"]).split("-")[1])
-                    month_totals[m] = round(month_totals.get(m, 0.0) + float(row["pnl"] or 0.0), 2)
+                    month_totals[m] = _round_pnl(month_totals.get(m, 0.0) + float(row["pnl"] or 0.0))
                 month_limit = now.month if target_year == now.year else 12
 
                 for m in range(1, month_limit + 1):
                     pnl = float(month_totals.get(m, 0.0) or 0.0)
                     items.append({"label": f"{m}月", "pnl": pnl})
-                    total_pnl = round(total_pnl + pnl, 2)
+                    total_pnl = _round_pnl(total_pnl + pnl)
                 period_base = _fetch_last_invest(year_end)
                 if period_base <= 0:
                     period_base = _fetch_prev_invest(year_start)
@@ -534,26 +589,23 @@ class AnalysisDatabaseMixin:
 
             elif time_type == "year":
                 period = {"time_type": "year"}
-                cursor.execute(
-                    f"""
-                    SELECT date, day_pnl, total_pnl, updated_at
-                    FROM daily_snapshots
-                    WHERE date <= ? AND {user_condition}
-                    ORDER BY date ASC
-                    """,
-                    (today_str,) + user_param,
+                normalized_rows = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date="0001-01-01",
+                    end_date=today_str,
                 )
-                normalized_rows = _normalize_snapshot_rows(cursor.fetchall())
                 if normalized_rows:
                     year_totals: Dict[int, float] = {}
                     for row in normalized_rows:
                         y = int(str(row["date"]).split("-")[0])
-                        year_totals[y] = round(year_totals.get(y, 0.0) + float(row["pnl"] or 0.0), 2)
+                        year_totals[y] = _round_pnl(year_totals.get(y, 0.0) + float(row["pnl"] or 0.0))
                     start_year = int(str(normalized_rows[0]["date"]).split("-")[0])
                     for y in range(start_year, now.year + 1):
                         pnl = float(year_totals.get(y, 0.0) or 0.0)
                         items.append({"label": str(y), "pnl": pnl})
-                        total_pnl = round(total_pnl + pnl, 2)
+                        total_pnl = _round_pnl(total_pnl + pnl)
                 period_base = _fetch_last_invest(today_str)
                 if period_base <= 0:
                     period_base = _fetch_first_invest()
@@ -620,16 +672,11 @@ class AnalysisDatabaseMixin:
 
         try:
             now = _get_datetime_now()
-            cursor.execute(
-                f"""
-                SELECT date
-                FROM daily_snapshots
-                WHERE {user_condition}
-                ORDER BY date ASC
-                """,
-                user_param,
+            all_dates = self._fetch_all_calendar_dates(
+                cursor,
+                user_condition=user_condition,
+                user_param=user_param,
             )
-            all_dates = [str(r["date"]) for r in cursor.fetchall() if r["date"]]
 
             if not all_dates:
                 return {
@@ -639,14 +686,7 @@ class AnalysisDatabaseMixin:
                     "items": [],
                 }
 
-            months_by_year: Dict[int, set] = {}
-            for date_str in all_dates:
-                parts = date_str.split("-")
-                if len(parts) != 3:
-                    continue
-                y = int(parts[0])
-                m = int(parts[1])
-                months_by_year.setdefault(y, set()).add(m)
+            months_by_year = _build_months_by_year(all_dates, now)
 
             selectable_years = sorted(months_by_year.keys())
             latest_year = selectable_years[-1]
@@ -686,16 +726,13 @@ class AnalysisDatabaseMixin:
             if target_year == now.year and target_month == now.month:
                 month_end = min(month_end, now.strftime("%Y-%m-%d"))
 
-            cursor.execute(
-                f"""
-                SELECT date, day_pnl
-                FROM daily_snapshots
-                WHERE date >= ? AND date <= ? AND {user_condition}
-                ORDER BY date ASC
-                """,
-                (month_start, month_end) + user_param,
+            effective_series = self._build_effective_pnl_series(
+                cursor,
+                user_condition=user_condition,
+                user_param=user_param,
+                start_date=month_start,
+                end_date=month_end,
             )
-            snapshot_rows = cursor.fetchall()
 
             cursor.execute(
                 f"""
@@ -722,10 +759,14 @@ class AnalysisDatabaseMixin:
                 source = str(row["source"] or "").strip().lower() or "estimated"
                 data["sources"].add(source)
 
+            effective_total_by_date = {
+                str(row["date"]): _round_pnl(row["pnl"])
+                for row in effective_series
+            }
             items: List[Dict[str, Any]] = []
-            for row in snapshot_rows:
-                date_str = str(row["date"])
-                day_total = round(float(row["day_pnl"] or 0.0), 2)
+            all_period_dates = sorted(set(effective_total_by_date.keys()) | set(by_date.keys()))
+            for date_str in all_period_dates:
+                day_total = effective_total_by_date.get(date_str, 0.0)
                 breakdown = by_date.get(date_str)
                 if not breakdown:
                     markets = {m: None for m in MARKET_BREAKDOWN_MARKETS}

@@ -1,7 +1,5 @@
 """分析页读侧服务。"""
 
-from __future__ import annotations
-
 import logging
 import time as _time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
@@ -113,12 +111,18 @@ class AnalysisReadService:
         # 仅在查询日视图且是当月时，把今天那格替换为实时值
         if time_type == "day" and self.stats_getter is not None:
             period = result.get("period") or {}
-            now = _dt.now()
-            if int(period.get("year") or 0) == now.year and int(period.get("month") or 0) == now.month:
+            if int(period.get("year") or 0) > 0 and int(period.get("month") or 0) > 0:
                 try:
                     stats = self.stats_getter(user_id)
                     realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
-                    today_label = f"{now.month}-{now.day}"
+                    effective_date = str(stats.get("day_pnl_effective_date") or "").strip()
+                    if effective_date:
+                        effective_dt = _dt.strptime(effective_date[:10], "%Y-%m-%d")
+                    else:
+                        effective_dt = _dt.now()
+                    if int(period.get("year") or 0) != effective_dt.year or int(period.get("month") or 0) != effective_dt.month:
+                        return result
+                    today_label = f"{effective_dt.month}-{effective_dt.day}"
                     items = list(result.get("items") or [])
                     replaced = False
                     for item in items:
@@ -153,12 +157,18 @@ class AnalysisReadService:
 
         # 当月视图：把今天那条的 total_pnl 替换为实时值（per-market 拆分仍为快照）
         if self.stats_getter is not None:
-            now = _dt.now()
-            if int(result.get("year") or 0) == now.year and int(result.get("month") or 0) == now.month:
+            if int(result.get("year") or 0) > 0 and int(result.get("month") or 0) > 0:
                 try:
                     stats = self.stats_getter(user_id)
                     realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
-                    today_str = now.strftime("%Y-%m-%d")
+                    effective_date = str(stats.get("day_pnl_effective_date") or "").strip()
+                    if effective_date:
+                        effective_dt = _dt.strptime(effective_date[:10], "%Y-%m-%d")
+                    else:
+                        effective_dt = _dt.now()
+                    if int(result.get("year") or 0) != effective_dt.year or int(result.get("month") or 0) != effective_dt.month:
+                        return result
+                    today_str = effective_dt.strftime("%Y-%m-%d")
                     items = list(result.get("items") or [])
                     new_items = []
                     replaced = False
