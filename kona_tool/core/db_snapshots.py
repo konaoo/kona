@@ -21,6 +21,53 @@ MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 class SnapshotDatabaseMixin:
     """给 DatabaseManager 提供快照、历史与同步版本相关方法。"""
 
+    def has_daily_snapshot(self, date_str: str, user_id: str = None) -> bool:
+        """判断指定日期是否已有主快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM daily_snapshots
+                WHERE date = ? AND user_id = ?
+                LIMIT 1
+                """,
+                (str(date_str or ""), uid),
+            )
+            return cursor.fetchone() is not None
+        finally:
+            conn.close()
+
+    def get_daily_snapshot_market_breakdown_map(
+        self,
+        date_str: str,
+        user_id: str = None,
+    ) -> Dict[str, float]:
+        """读取指定日期的分市场拆分。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                SELECT market, day_pnl
+                FROM daily_snapshot_market_breakdowns
+                WHERE date = ? AND user_id = ?
+                """,
+                (str(date_str or ""), uid),
+            )
+            result = {market: 0.0 for market in MARKET_BREAKDOWN_MARKETS}
+            for row in cursor.fetchall():
+                market = str(row["market"] or "").strip().lower()
+                if market in result:
+                    result[market] = float(row["day_pnl"] or 0.0)
+            return result
+        finally:
+            conn.close()
+
     def _ensure_daily_snapshots_schema(self, cursor) -> None:
         """
         统一 daily_snapshots 表结构到：
@@ -141,6 +188,120 @@ class SnapshotDatabaseMixin:
             return True
         except Exception as exc:
             logger.error("Failed to save market breakdown date=%s user_id=%s: %s", date_str, uid, exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_daily_snapshot_market_breakdown_partial(
+        self,
+        date_str: str,
+        market_updates: Dict[str, float],
+        user_id: str = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """只更新指定市场，不覆盖同一天的其他市场拆分。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            clean_updates = {}
+            for raw_market, raw_value in (market_updates or {}).items():
+                market = str(raw_market or "").strip().lower()
+                if market not in MARKET_BREAKDOWN_MARKETS:
+                    continue
+                clean_updates[market] = round(float(raw_value or 0.0), 2)
+
+            if not clean_updates:
+                return True
+
+            market_meta = meta_by_market or {}
+            for market, value in clean_updates.items():
+                payload = market_meta.get(market)
+                meta_json = None
+                if payload is not None:
+                    try:
+                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    except Exception:
+                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
+                cursor.execute(
+                    """
+                    INSERT INTO daily_snapshot_market_breakdowns
+                    (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    ON CONFLICT(date, user_id, market) DO UPDATE SET
+                        day_pnl = excluded.day_pnl,
+                        source = excluded.source,
+                        confidence = excluded.confidence,
+                        meta_json = excluded.meta_json,
+                        updated_at = datetime('now','localtime')
+                    """,
+                    (
+                        str(date_str or ""),
+                        uid,
+                        market,
+                        value,
+                        str(source or "exact"),
+                        float(confidence),
+                        meta_json,
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to partially save market breakdown date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def sync_daily_snapshot_day_pnl_from_breakdown(
+        self,
+        date_str: str,
+        user_id: str = None,
+    ) -> bool:
+        """按分市场拆分回写指定日期的主快照 day_pnl。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(day_pnl), 0.0) AS total
+                FROM daily_snapshot_market_breakdowns
+                WHERE date = ? AND user_id = ?
+                """,
+                (str(date_str or ""), uid),
+            )
+            row = cursor.fetchone()
+            total = round(float((row["total"] if row else 0.0) or 0.0), 2)
+            cursor.execute(
+                """
+                UPDATE daily_snapshots
+                SET day_pnl = ?, updated_at = datetime('now','localtime')
+                WHERE date = ? AND user_id = ?
+                """,
+                (total, str(date_str or ""), uid),
+            )
+            updated = int(cursor.rowcount or 0)
+            conn.commit()
+            return updated > 0
+        except Exception as exc:
+            logger.error(
+                "Failed to sync day_pnl from breakdown date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                exc,
+            )
             conn.rollback()
             return False
         finally:

@@ -25,6 +25,7 @@ from .price import batch_get_prices, get_forex_rates, is_exchange_fund_code
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
+LATE_SETTLEMENT_MARKETS = ("us", "fund")
 MARKET_TIMEZONES = {
     "a": "Asia/Shanghai",
     "hk": "Asia/Hong_Kong",
@@ -104,6 +105,104 @@ def _round_market_breakdown(data: Dict[str, float] | None) -> Dict[str, float]:
     for market in DEFAULT_MARKETS:
         normalized[market] = round(float((data or {}).get(market, 0.0) or 0.0), 2)
     return normalized
+
+
+def _pick_latest_prior_effective_date(
+    day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]],
+    *,
+    snapshot_date: str,
+    market: str,
+) -> str | None:
+    candidates = []
+    for effective_date, market_map in (day_pnl_breakdowns_by_date or {}).items():
+        if not effective_date or effective_date >= snapshot_date:
+            continue
+        value = float((market_map or {}).get(market, 0.0) or 0.0)
+        if abs(value) < 0.005:
+            continue
+        candidates.append(str(effective_date))
+    return max(candidates) if candidates else None
+
+
+def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None) -> None:
+    """把晚到收益按市场局部结算到对应有效日期，避免整天覆盖历史。"""
+    snapshot_date = str(stats.get("snapshot_date") or "").strip()
+    day_pnl_breakdowns_by_date = stats.get("day_pnl_breakdowns_by_date") or {}
+    if not snapshot_date or not day_pnl_breakdowns_by_date:
+        return
+
+    latest_prior_dates = {
+        market: _pick_latest_prior_effective_date(
+            day_pnl_breakdowns_by_date,
+            snapshot_date=snapshot_date,
+            market=market,
+        )
+        for market in LATE_SETTLEMENT_MARKETS
+    }
+
+    handled_dates = set()
+    for market in LATE_SETTLEMENT_MARKETS:
+        effective_date = latest_prior_dates.get(market)
+        if not effective_date:
+            continue
+        if not db_obj.has_daily_snapshot(effective_date, user_id=user_id):
+            continue
+        market_map = day_pnl_breakdowns_by_date.get(effective_date) or {}
+        value = round(float(market_map.get(market, 0.0) or 0.0), 2)
+        if abs(value) < 0.005:
+            continue
+        ok = db_obj.save_daily_snapshot_market_breakdown_partial(
+            date_str=effective_date,
+            market_updates={market: value},
+            user_id=user_id,
+            source="exact",
+            confidence=1.0,
+        )
+        if not ok:
+            logger_obj.warning(
+                "Late settlement save failed: user=%s date=%s market=%s",
+                user_id,
+                effective_date,
+                market,
+            )
+            continue
+        handled_dates.add(effective_date)
+
+    for effective_date in sorted(handled_dates):
+        ok = db_obj.sync_daily_snapshot_day_pnl_from_breakdown(effective_date, user_id=user_id)
+        if not ok:
+            logger_obj.warning(
+                "Late settlement sync failed: user=%s date=%s",
+                user_id,
+                effective_date,
+            )
+
+
+def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None = None) -> bool:
+    """保存当天快照，并按市场局部结算晚到收益。"""
+    snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+    snapshot_payload = {
+        **stats,
+        "day_pnl": float(stats.get("snapshot_day_pnl", 0.0) or 0.0),
+    }
+    success = db_obj.save_daily_snapshot(snapshot_payload, user_id, snapshot_date=snapshot_date)
+    if not success:
+        return False
+
+    market_map = stats.get("snapshot_day_pnl_by_market") or _empty_market_breakdown()
+    breakdown_ok = db_obj.save_daily_snapshot_market_breakdown(
+        date_str=snapshot_date,
+        day_pnl_by_market=market_map,
+        total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
+        user_id=user_id,
+        source="exact",
+        confidence=1.0,
+    )
+    if not breakdown_ok:
+        logger_obj.warning("Market breakdown save failed: user=%s date=%s", user_id, snapshot_date)
+
+    _persist_late_effective_date_settlements(db_obj, logger_obj, stats, user_id)
+    return True
 
 
 def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, Any]:
@@ -318,27 +417,9 @@ def take_snapshot(user_id: str = None) -> bool:
         success_any = False
         for uid in user_ids:
             stats = calculate_portfolio_stats(uid)
-            snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
-            snapshot_payload = {
-                **stats,
-                "day_pnl": float(stats.get("snapshot_day_pnl", 0.0) or 0.0),
-            }
-            success = db.save_daily_snapshot(snapshot_payload, uid, snapshot_date=snapshot_date)
+            success = persist_snapshot_stats(db, logger, stats, uid)
             success_any = success_any or success
             if success:
-                # 自动快照只允许落当天 snapshot_date，避免当前实时统计里的历史 effective_date
-                # 反向污染已经落地的历史快照。历史修复和专项回填必须单独走明确流程。
-                market_map = stats.get("snapshot_day_pnl_by_market") or _empty_market_breakdown()
-                breakdown_ok = db.save_daily_snapshot_market_breakdown(
-                    date_str=snapshot_date,
-                    day_pnl_by_market=market_map,
-                    total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
-                    user_id=uid,
-                    source="exact",
-                    confidence=1.0,
-                )
-                if not breakdown_ok:
-                    logger.warning("Market breakdown save failed: user=%s date=%s", uid, snapshot_date)
                 logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
             else:
                 logger.error(f"Failed to save snapshot to database: user={uid}")

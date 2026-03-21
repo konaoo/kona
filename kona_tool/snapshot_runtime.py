@@ -11,6 +11,11 @@ import threading
 import time
 from typing import Any, Callable
 
+try:
+    from core.snapshot import persist_snapshot_stats
+except ImportError:  # pragma: no cover
+    from kona_tool.core.snapshot import persist_snapshot_stats
+
 
 class SnapshotRuntime:
     """封装快照保存和后台调度的运行时逻辑。"""
@@ -48,28 +53,7 @@ class SnapshotRuntime:
         """保存用户当日快照。"""
         try:
             stats = self.calculate_portfolio_stats(user_id)
-            snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
-            snapshot_payload = {
-                **stats,
-                "day_pnl": float(stats.get("snapshot_day_pnl", 0.0) or 0.0),
-            }
-            saved = self.db.save_daily_snapshot(snapshot_payload, user_id, snapshot_date=snapshot_date)
-            if saved:
-                market_map = stats.get("snapshot_day_pnl_by_market") or {}
-                breakdown_ok = self.db.save_daily_snapshot_market_breakdown(
-                    date_str=snapshot_date,
-                    day_pnl_by_market=market_map,
-                    total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
-                    user_id=user_id,
-                    source="exact",
-                    confidence=1.0,
-                )
-                if not breakdown_ok:
-                    self.logger.warning(
-                        "Snapshot market breakdown save failed: user_id=%s date=%s",
-                        user_id,
-                        snapshot_date,
-                    )
+            persist_snapshot_stats(self.db, self.logger, stats, user_id)
         except Exception as exc:
             self.logger.warning("Snapshot save failed: %s", exc)
 

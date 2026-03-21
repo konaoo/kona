@@ -147,6 +147,23 @@ class MarketBreakdownTests(unittest.TestCase):
         self.assertIsNone(markets.get("fund"))
         self.assertIsNone(markets.get("unallocated"))
 
+    def test_main_calendar_ignores_breakdown_only_date(self):
+        self._insert_snapshot("2026-02-18", total_pnl=120.0, day_pnl=50.0, user_id="")
+        app_module.db.save_daily_snapshot_market_breakdown(
+            date_str="2026-02-19",
+            day_pnl_by_market={"a": 10.0, "hk": 20.0, "us": 30.0, "fund": 40.0},
+            total_day_pnl=100.0,
+            user_id="",
+            source="exact",
+            confidence=1.0,
+        )
+
+        resp = self.client.get("/api/analysis/calendar?type=day&year=2026&month=2")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        items = body.get("items") or []
+        self.assertFalse(any(str(item.get("label")) == "2-19" for item in items))
+
     def test_backfill_script_estimated_with_unallocated(self):
         self._insert_snapshot("2026-02-18", total_pnl=120.0, day_pnl=50.0, user_id="u_est")
         script_path = KONA_TOOL / "scripts" / "backfill_market_breakdown.py"

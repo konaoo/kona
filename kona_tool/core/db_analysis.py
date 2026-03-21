@@ -31,6 +31,12 @@ def _is_weekend_date(date_str: str) -> bool:
 
 
 def _is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MARKETS) -> bool:
+    """
+    兼容旧调用方保留这个导出。
+
+    第一轮收益审计修复后，历史日收益不再依赖“休市日强制归零”来猜值，
+    但 db.py/部分单测仍会 import 这个函数做兼容 patch。
+    """
     try:
         return is_markets_closed_on_date(markets, date_str)
     except Exception:
@@ -73,54 +79,10 @@ def _get_datetime_now() -> datetime:
 
 
 def _get_is_market_closed_date(date_str: str, markets: Tuple[str, ...] = DEFAULT_MARKETS) -> bool:
-    db_module = _get_db_module()
-    override = getattr(db_module, "_is_market_closed_date", None) if db_module else None
-    if override is not None and override is not _is_market_closed_date:
-        try:
-            return override(date_str, markets)
-        except TypeError:
-            return override(date_str)
-        except Exception:
-            pass
+    """
+    兼容旧测试和旧调用方保留这个 wrapper。
+    """
     return _is_market_closed_date(date_str, markets)
-
-
-def _is_market_closed_at_snapshot_time(
-    updated_at: Any, markets: Tuple[str, ...] = DEFAULT_MARKETS
-) -> bool:
-    """
-    判断快照写入时刻是否处于全市场休市。
-    用于避免在非交易时段快照里用 total_pnl 反推 day_pnl。
-    """
-    if not updated_at:
-        return False
-    try:
-        raw = str(updated_at).strip()
-        if not raw:
-            return False
-        snapshot_time = dt.datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S").replace(
-            tzinfo=dt.timezone.utc
-        )
-        return all_markets_closed(markets, now=snapshot_time)
-    except Exception:
-        return False
-
-
-def _is_snapshot_updated_on_same_date(date_str: Any, updated_at: Any) -> bool:
-    """
-    仅当 updated_at 与快照日期同日时，才认为它可用于快照写入时刻判断。
-    避免后续运维操作改写 updated_at 导致历史交易日被误判为休市时写入。
-    """
-    if not date_str or not updated_at:
-        return False
-    try:
-        d = str(date_str).strip()[:10]
-        ts = str(updated_at).strip()[:10]
-        if not d or not ts:
-            return False
-        return d == ts
-    except Exception:
-        return False
 
 
 def _round_pnl(value: Any) -> float:
@@ -148,58 +110,16 @@ class AnalysisDatabaseMixin:
 
     def _normalize_snapshot_rows_legacy(self, rows: List[Any]) -> List[Dict[str, Any]]:
         normalized = []
-        prev_total = None
         for row in rows:
-            date_str = str(row["date"])
-            is_market_closed = _get_is_market_closed_date(date_str)
-            closed_at_snapshot = False
-            if _is_snapshot_updated_on_same_date(date_str, row["updated_at"]):
-                closed_at_snapshot = _is_market_closed_at_snapshot_time(row["updated_at"])
             pnl = float(row["day_pnl"]) if row["day_pnl"] is not None else 0.0
-            if is_market_closed:
-                pnl = 0.0
-            elif (
-                (pnl == 0 or pnl == -0.0)
-                and (not closed_at_snapshot)
-                and row["total_pnl"] is not None
-                and prev_total is not None
-            ):
-                pnl = float(row["total_pnl"]) - prev_total
-            if (not is_market_closed) and row["total_pnl"] is not None:
-                prev_total = float(row["total_pnl"])
             normalized.append(
                 {
-                    "date": date_str,
+                    "date": str(row["date"]),
                     "pnl": _round_pnl(pnl),
                     "total_invest": float(row["total_invest"] or 0.0),
                 }
             )
         return normalized
-
-    def _fetch_breakdown_totals_by_date(
-        self,
-        cursor: Any,
-        *,
-        user_condition: str,
-        user_param: tuple,
-        start_date: str,
-        end_date: str,
-    ) -> Dict[str, float]:
-        cursor.execute(
-            f"""
-            SELECT date, SUM(day_pnl) AS total_day_pnl
-            FROM daily_snapshot_market_breakdowns
-            WHERE date >= ? AND date <= ? AND {user_condition}
-            GROUP BY date
-            ORDER BY date ASC
-            """,
-            (start_date, end_date) + user_param,
-        )
-        return {
-            str(row["date"]): _round_pnl(row["total_day_pnl"])
-            for row in cursor.fetchall()
-            if row["date"]
-        }
 
     def _fetch_all_calendar_dates(
         self,
@@ -213,13 +133,9 @@ class AnalysisDatabaseMixin:
             SELECT date
             FROM daily_snapshots
             WHERE {user_condition}
-            UNION
-            SELECT date
-            FROM daily_snapshot_market_breakdowns
-            WHERE {user_condition}
             ORDER BY date ASC
             """,
-            user_param + user_param,
+            user_param,
         )
         return [str(row["date"]) for row in cursor.fetchall() if row["date"]]
 
@@ -242,27 +158,7 @@ class AnalysisDatabaseMixin:
             (start_date, end_date) + user_param,
         )
         legacy_rows = self._normalize_snapshot_rows_legacy(cursor.fetchall())
-        legacy_by_date = {str(row["date"]): row for row in legacy_rows}
-        breakdown_totals = self._fetch_breakdown_totals_by_date(
-            cursor,
-            user_condition=user_condition,
-            user_param=user_param,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        all_dates = sorted(set(legacy_by_date.keys()) | set(breakdown_totals.keys()))
-        result: List[Dict[str, Any]] = []
-        for date_str in all_dates:
-            legacy = legacy_by_date.get(date_str) or {}
-            pnl = breakdown_totals.get(date_str, legacy.get("pnl", 0.0))
-            result.append(
-                {
-                    "date": date_str,
-                    "pnl": _round_pnl(pnl),
-                    "total_invest": float(legacy.get("total_invest") or 0.0),
-                }
-            )
-        return result
+        return legacy_rows
 
     def get_pnl_overview(self, period: str = "day", user_id: str = None) -> Dict[str, Any]:
         """

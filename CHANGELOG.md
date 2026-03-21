@@ -3586,3 +3586,45 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 - 周五夜里到周六凌晨的美股收益，应继续记在周五，不应落成周六历史收益
 - 场外基金不进实时今日收益，但拿到新净值后应落到 `latest_nav_date`
 - `python3 -m unittest tests/test_read_services.py tests/test_calendar_weekend.py tests/test_market_breakdown.py tests/test_api_baseline.py tests/test_portfolio_metrics_contract.py tests/test_portfolio_api.py` 通过
+
+## 2026-03-21-02
+
+### 这版一句话
+
+历史收益读侧改成只认 `daily_snapshots.day_pnl`，不再拿拆分表覆盖，也不再拿累计盈亏差额猜日收益。
+
+### 主要变化
+- [kona_tool/core/db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py)：历史收益序列只从 `daily_snapshots.day_pnl` 读取，不再默认用 `daily_snapshot_market_breakdowns` 合计覆盖主快照，也不再用 `total_pnl` 差额反推 `day_pnl`。
+- [kona_tool/tests/test_calendar_weekend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_calendar_weekend.py)：把周末 / 历史日历合同改成“快照写什么就读什么”，明确禁止历史读侧偷偷猜值。
+- [kona_tool/tests/test_market_breakdown.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_breakdown.py)：新增合同，只有 breakdown 没有 snapshot 的日期，不允许进入主收益日历。
+- [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)：补齐 overview 合同，确认月度 / 全部只认有效日期里的 `day_pnl`，并忽略未来快照。
+
+### 影响范围
+- 分析页收益日历
+- 分析页 `本月 / 本年 / 全部` 汇总
+- `daily_snapshots` 与 `daily_snapshot_market_breakdowns` 的历史职责边界
+
+### 验收重点
+- 历史收益日历应优先认 `daily_snapshots.day_pnl`
+- breakdown 只能做解释，不应反向覆盖主快照
+- `python3 -m unittest tests/test_calendar_weekend.py tests/test_market_breakdown.py tests/test_analysis_api.py` 通过
+## 2026-03-21-03
+
+### 这版一句话
+
+补齐收益归属日第二轮的历史落账闭环：美股夜盘和场外基金晚到收益按市场局部结算，不再整天覆盖旧历史。
+
+### 主要变化
+- **快照写入新增“局部结算”能力**：后端 [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py) 现在在保存当天 `snapshot_date` 快照后，会只把晚到的 `us / fund` 收益结算到对应 `effective_date`，不再把整天 `A/HK/US/Fund` 全量重写。
+- **数据库支持局部更新与主快照同步**：后端 [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) 新增按市场局部更新 `daily_snapshot_market_breakdowns` 和按拆分回写 `daily_snapshots.day_pnl` 的能力，为后续美股跨周六、场外基金 T+1 净值落账提供安全落点。
+- **快照运行时复用统一保存逻辑**：后端 [kona_tool/snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/snapshot_runtime.py) 改成复用同一套快照保存函数，避免自动快照和接口快照两条链继续跑出不同口径。
+- **补齐回归测试**：新增“只结算最新一日的美股/基金晚到收益，不覆盖更早历史日”的集成测试，以及快照运行时的局部结算测试。
+
+### 影响范围
+- 后端：自动快照写入、快照运行时、历史日收益落账
+- 数据层：`daily_snapshots`、`daily_snapshot_market_breakdowns`
+
+### 验收重点
+- 美股周五夜盘在周六保存快照时，应只回写周五的 `us` 收益，不应把更早历史日整天覆盖掉
+- 场外基金 T+1 净值只应补基金那一块，不应顺手清掉当天已有的 A/HK/US 拆分
+- `snapshot_runtime` 和 `take_snapshot()` 应走同一套保存规则

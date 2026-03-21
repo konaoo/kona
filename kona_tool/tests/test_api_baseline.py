@@ -580,6 +580,119 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
+    def test_take_snapshot_settles_latest_prior_us_and_fund_without_overwriting_older_dates(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES
+            ('2026-03-19', 100.0, 80.0, 20.0, 0.0, 0.0, 5.0, -1250.87, 'u_settle'),
+            ('2026-03-20', 100.0, 80.0, 20.0, 0.0, 0.0, 5.0, -1611.46, 'u_settle')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        app_module.db.save_daily_snapshot_market_breakdown(
+            date_str="2026-03-19",
+            day_pnl_by_market={
+                "a": 2281.0,
+                "hk": -2117.12,
+                "us": -525.75,
+                "fund": -889.0,
+                "unallocated": 0.0,
+            },
+            total_day_pnl=-1250.87,
+            user_id="u_settle",
+            source="exact",
+            confidence=1.0,
+        )
+        app_module.db.save_daily_snapshot_market_breakdown(
+            date_str="2026-03-20",
+            day_pnl_by_market={
+                "a": -1231.0,
+                "hk": 623.68,
+                "us": -478.14,
+                "fund": -526.0,
+                "unallocated": 0.0,
+            },
+            total_day_pnl=-1611.46,
+            user_id="u_settle",
+            source="exact",
+            confidence=1.0,
+        )
+
+        fake_stats = {
+            "snapshot_date": "2026-03-21",
+            "total_asset": 100.0,
+            "total_invest": 80.0,
+            "total_cash": 20.0,
+            "total_other": 0.0,
+            "total_liability": 0.0,
+            "total_pnl": 5.0,
+            "day_pnl": -2772.45,
+            "snapshot_day_pnl": 0.0,
+            "snapshot_day_pnl_by_market": {
+                "a": 0.0,
+                "hk": 0.0,
+                "us": 0.0,
+                "fund": 0.0,
+                "unallocated": 0.0,
+            },
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-19": {
+                    "a": 0.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": -34.64,
+                },
+                "2026-03-20": {
+                    "a": 0.0,
+                    "hk": 0.0,
+                    "us": -794.26,
+                    "fund": -1370.87,
+                },
+                "2026-03-21": {
+                    "a": 0.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": 0.0,
+                },
+            },
+        }
+
+        with patch.object(snapshot_module, "calculate_portfolio_stats", return_value=fake_stats):
+            ok = snapshot_module.take_snapshot(user_id="u_settle")
+        self.assertTrue(ok)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT day_pnl FROM daily_snapshots WHERE date = '2026-03-19' AND user_id = 'u_settle'"
+        )
+        self.assertAlmostEqual(float(cursor.fetchone()["day_pnl"] or 0.0), -1250.87, places=2)
+        cursor.execute(
+            "SELECT day_pnl FROM daily_snapshots WHERE date = '2026-03-20' AND user_id = 'u_settle'"
+        )
+        self.assertAlmostEqual(float(cursor.fetchone()["day_pnl"] or 0.0), -2772.45, places=2)
+        cursor.execute(
+            """
+            SELECT market, day_pnl
+            FROM daily_snapshot_market_breakdowns
+            WHERE date = '2026-03-20' AND user_id = 'u_settle'
+            ORDER BY market ASC
+            """
+        )
+        rows = {row["market"]: float(row["day_pnl"] or 0.0) for row in cursor.fetchall()}
+        conn.close()
+
+        self.assertAlmostEqual(rows["a"], -1231.0, places=2)
+        self.assertAlmostEqual(rows["hk"], 623.68, places=2)
+        self.assertAlmostEqual(rows["us"], -794.26, places=2)
+        self.assertAlmostEqual(rows["fund"], -1370.87, places=2)
+
 
 if __name__ == '__main__':
     unittest.main()

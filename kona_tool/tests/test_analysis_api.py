@@ -206,6 +206,49 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertIsNotNone(today_item)
         self.assertAlmostEqual(float(today_item.get('pnl', 0)), 41.0)
 
+    def test_analysis_overview_month_uses_snapshot_day_pnl_not_breakdown_sum(self):
+        fixed_now = datetime(2026, 3, 22, 12, 0, 0)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES ('2026-03-19', 1, 1000, 1, 0, 0, 100, -1250.87, '', '2026-03-19 23:00:00')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES ('2026-03-20', 1, 1000, 1, 0, 0, 100, -1611.46, '', '2026-03-20 23:00:00')
+            """
+        )
+        for market, pnl in {
+            "a": 0.0,
+            "hk": 0.0,
+            "us": 0.0,
+            "fund": -34.64,
+            "unallocated": 0.0,
+        }.items():
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO daily_snapshot_market_breakdowns
+                (date, user_id, market, day_pnl, source, confidence, updated_at)
+                VALUES ('2026-03-19', '', ?, ?, 'exact', 1.0, '2026-03-21 00:00:00')
+                """,
+                (market, pnl),
+            )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            resp = self.client.get('/api/analysis/overview?period=month')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl', 0)), -2862.33, places=2)
+
     def test_analysis_overview_year_matches_calendar_month_total_with_future_row(self):
         fixed_now = datetime(2026, 2, 13, 14, 0, 0)
         today = fixed_now.date()
@@ -287,7 +330,6 @@ class AnalysisApiTests(unittest.TestCase):
         fixed_now = datetime(2026, 2, 13, 14, 0, 0)
         today = fixed_now.date()
         future_date = today + timedelta(days=1)
-        prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
 
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
@@ -295,15 +337,7 @@ class AnalysisApiTests(unittest.TestCase):
             """
             INSERT OR REPLACE INTO daily_snapshots
             (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-            VALUES (?, 1, 1000, 1, 0, 0, 0, 0, '')
-            """,
-            (prev_year.strftime('%Y-%m-%d'),),
-        )
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO daily_snapshots
-            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-            VALUES (?, 1, 1000, 1, 0, 0, 21000, 0, '')
+            VALUES (?, 1, 1000, 1, 0, 0, 21000, 21000, '')
             """,
             (today.strftime('%Y-%m-%d'),),
         )
@@ -311,16 +345,15 @@ class AnalysisApiTests(unittest.TestCase):
             """
             INSERT OR REPLACE INTO daily_snapshots
             (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-            VALUES (?, 1, 1000, 1, 0, 0, -745, 0, '')
+            VALUES (?, 1, 1000, 1, 0, 0, -745, -745, '')
             """,
             (future_date.strftime('%Y-%m-%d'),),
         )
         conn.commit()
         conn.close()
 
-        with patch("core.db_analysis._get_is_market_closed_date", return_value=False):
-            with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
-                resp = self.client.get('/api/analysis/overview?period=all')
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            resp = self.client.get('/api/analysis/overview?period=all')
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
         all_pnl = float((payload.get('all') or {}).get('pnl', 0))

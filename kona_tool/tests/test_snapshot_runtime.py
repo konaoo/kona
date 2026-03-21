@@ -14,14 +14,30 @@ class _FakeDb:
     def __init__(self):
         self.saved_stats = []
         self.saved_breakdowns = []
+        self.partial_breakdowns = []
+        self.synced_dates = []
+        self.snapshot_dates = {"2026-03-13"}
 
     def save_daily_snapshot(self, stats, user_id, snapshot_date=None):
         self.saved_stats.append({"stats": stats, "user_id": user_id, "snapshot_date": snapshot_date})
+        if snapshot_date:
+            self.snapshot_dates.add(snapshot_date)
         return True
 
     def save_daily_snapshot_market_breakdown(self, **kwargs):
         self.saved_breakdowns.append(kwargs)
         return True
+
+    def save_daily_snapshot_market_breakdown_partial(self, **kwargs):
+        self.partial_breakdowns.append(kwargs)
+        return True
+
+    def sync_daily_snapshot_day_pnl_from_breakdown(self, date_str, user_id=None):
+        self.synced_dates.append({"date_str": date_str, "user_id": user_id})
+        return True
+
+    def has_daily_snapshot(self, date_str, user_id=None):
+        return date_str in self.snapshot_dates
 
 
 class _FakeLogger:
@@ -73,7 +89,12 @@ class SnapshotRuntimeTests(unittest.TestCase):
         return {
             "snapshot_date": "2026-03-14",
             "day_pnl": 12.34,
-            "day_pnl_by_market": {"a": 12.34},
+            "snapshot_day_pnl": 0.0,
+            "snapshot_day_pnl_by_market": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0, "unallocated": 0.0},
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-13": {"us": -20.0, "fund": -10.0},
+                "2026-03-14": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0},
+            },
             "user_id": user_id,
         }
 
@@ -85,6 +106,10 @@ class SnapshotRuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.db.saved_breakdowns), 1)
         self.assertEqual(self.db.saved_breakdowns[0]["date_str"], "2026-03-14")
         self.assertEqual(self.db.saved_breakdowns[0]["user_id"], "u_1")
+        self.assertEqual(len(self.db.partial_breakdowns), 2)
+        self.assertEqual({item["market_updates"].keys().__iter__().__next__() for item in self.db.partial_breakdowns}, {"us", "fund"})
+        self.assertEqual(len(self.db.synced_dates), 1)
+        self.assertEqual(self.db.synced_dates[0]["date_str"], "2026-03-13")
 
     def test_async_snapshot_uses_sync_path_in_testing_mode(self):
         testing_runtime = create_snapshot_runtime(
