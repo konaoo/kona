@@ -384,51 +384,24 @@ def create_portfolio_payload_handlers(
             meta_by_market = data.get("market_breakdown_meta")
             if not isinstance(meta_by_market, dict):
                 meta_by_market = None
-            breakdowns_by_date = data.get("day_pnl_breakdowns_by_date")
-            if isinstance(breakdowns_by_date, dict):
-                breakdown_dates = set(str(k).strip() for k in breakdowns_by_date.keys() if str(k).strip())
-                breakdown_dates.add(snapshot_date)
-                with trace_request_stage("snapshot.save.market_breakdown", item_count=len(breakdown_dates)):
-                    for effective_date in sorted(breakdown_dates):
-                        market_map = (
-                            breakdowns_by_date.get(effective_date)
-                            if effective_date != snapshot_date
-                            else data.get("snapshot_day_pnl_by_market")
-                        ) or {}
-                        breakdown_ok = db.save_daily_snapshot_market_breakdown(
-                            date_str=effective_date,
-                            day_pnl_by_market=market_map,
-                            total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
-                            user_id=user_id,
-                            source=source,
-                            confidence=confidence,
-                            meta_by_market=meta_by_market,
-                        )
-                        if not breakdown_ok:
-                            logger.warning(
-                                "Failed to save market breakdown in /api/snapshot/save: user_id=%s date=%s",
-                                user_id,
-                                effective_date,
-                            )
-            else:
-                day_pnl_by_market = data.get("snapshot_day_pnl_by_market") or data.get("day_pnl_by_market")
-                if isinstance(day_pnl_by_market, dict):
-                    with trace_request_stage("snapshot.save.market_breakdown", item_count=len(day_pnl_by_market)):
-                        breakdown_ok = db.save_daily_snapshot_market_breakdown(
-                            date_str=snapshot_date,
-                            day_pnl_by_market=day_pnl_by_market,
-                            total_day_pnl=float(snapshot_payload.get("day_pnl", 0.0) or 0.0),
-                            user_id=user_id,
-                            source=source,
-                            confidence=confidence,
-                            meta_by_market=meta_by_market,
-                        )
-                    if not breakdown_ok:
-                        logger.warning(
-                            "Failed to save market breakdown in /api/snapshot/save: user_id=%s date=%s",
-                            user_id,
-                            snapshot_date,
-                        )
+            day_pnl_by_market = data.get("snapshot_day_pnl_by_market") or data.get("day_pnl_by_market")
+            if isinstance(day_pnl_by_market, dict):
+                with trace_request_stage("snapshot.save.market_breakdown", item_count=len(day_pnl_by_market)):
+                    breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                        date_str=snapshot_date,
+                        day_pnl_by_market=day_pnl_by_market,
+                        total_day_pnl=float(snapshot_payload.get("day_pnl", 0.0) or 0.0),
+                        user_id=user_id,
+                        source=source,
+                        confidence=confidence,
+                        meta_by_market=meta_by_market,
+                    )
+                if not breakdown_ok:
+                    logger.warning(
+                        "Failed to save market breakdown in /api/snapshot/save: user_id=%s date=%s",
+                        user_id,
+                        snapshot_date,
+                    )
             return jsonify({"status": "ok"})
         return jsonify({"error": "Failed to save snapshot"}), 500
 

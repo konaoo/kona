@@ -227,6 +227,61 @@ class SnapshotContractTests(unittest.TestCase):
         data = resp.get_json() or {}
         self.assertEqual(data.get("status"), "ok")
 
+    def test_snapshot_save_only_writes_snapshot_date_breakdown(self):
+        payload = {
+            "date": "2026-03-21",
+            "total_asset": 100.0,
+            "total_invest": 80.0,
+            "total_cash": 20.0,
+            "total_other": 0.0,
+            "total_liability": 0.0,
+            "total_pnl": 5.0,
+            "day_pnl": 1.0,
+            "snapshot_day_pnl": 1.0,
+            "snapshot_day_pnl_by_market": {
+                "a": 1.0,
+                "hk": 0.0,
+                "us": 0.0,
+                "fund": 0.0,
+                "unallocated": 0.0,
+            },
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-20": {
+                    "a": 9.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": 0.0,
+                    "unallocated": 0.0,
+                },
+                "2026-03-21": {
+                    "a": 1.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": 0.0,
+                    "unallocated": 0.0,
+                },
+            },
+        }
+        resp = self.client.post("/api/snapshot/save", json=payload)
+        self.assertEqual(resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT date, market, day_pnl
+            FROM daily_snapshot_market_breakdowns
+            ORDER BY date ASC, market ASC
+            """
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0]["date"], "2026-03-21")
+        self.assertTrue(all(row["date"] == "2026-03-21" for row in rows))
+        total = sum(float(row["day_pnl"] or 0.0) for row in rows)
+        self.assertAlmostEqual(total, 1.0, places=2)
+
     def test_snapshot_trigger_contract(self):
         with patch("app.take_snapshot", return_value=True):
             resp = self.client.post("/api/snapshot/trigger", json={})

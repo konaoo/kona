@@ -38,18 +38,13 @@ class AnalysisReadService:
     def _get_day_overview(self, user_id: str | None) -> Dict[str, Any]:
         """获取当日盈亏。
 
-        全市场休市时直接走快照（价格不再变化，快照即最终值）；
-        开市时实时拉取，超时（默认 5 秒）或失败则 fallback 到快照。
+        当日概览统一认实时统计层：
+        - 开市时显示盘中实时值
+        - 休市后显示最后一个有效收益日的最终值
+
+        只有 stats_getter 超时或失败时，才 fallback 到快照。
         """
         if self.stats_getter is not None:
-            # 全市场休市：无需实时拉取，直接用快照
-            if self.all_markets_closed_getter is not None:
-                try:
-                    if self.all_markets_closed_getter():
-                        return self.db.get_pnl_overview("day", user_id)
-                except Exception:
-                    pass  # 状态判断失败，继续尝试实时拉取
-
             try:
                 t0 = _time.monotonic()
                 future = _stats_executor.submit(self.stats_getter, user_id)

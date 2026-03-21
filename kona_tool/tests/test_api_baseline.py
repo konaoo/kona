@@ -18,6 +18,7 @@ os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test.db")
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
+from core import snapshot as snapshot_module  # noqa: E402
 
 
 class ApiBaselineTests(unittest.TestCase):
@@ -271,6 +272,66 @@ class ApiBaselineTests(unittest.TestCase):
         target = next((item for item in items if item.get('code') == 'sh900901'), None)
         self.assertIsNotNone(target)
         self.assertEqual(target.get('curr'), 'USD')
+
+    def test_take_snapshot_only_writes_snapshot_date_breakdown(self):
+        fake_stats = {
+            "snapshot_date": "2026-03-21",
+            "total_asset": 100.0,
+            "total_invest": 80.0,
+            "total_cash": 20.0,
+            "total_other": 0.0,
+            "total_liability": 0.0,
+            "total_pnl": 5.0,
+            "day_pnl": -10.0,
+            "snapshot_day_pnl": 1.0,
+            "snapshot_day_pnl_by_market": {
+                "a": 1.0,
+                "hk": 0.0,
+                "us": 0.0,
+                "fund": 0.0,
+                "unallocated": 0.0,
+            },
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-20": {
+                    "a": -10.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": 0.0,
+                    "unallocated": 0.0,
+                },
+                "2026-03-21": {
+                    "a": 1.0,
+                    "hk": 0.0,
+                    "us": 0.0,
+                    "fund": 0.0,
+                    "unallocated": 0.0,
+                },
+            },
+        }
+
+        with patch.object(snapshot_module, "calculate_portfolio_stats", return_value=fake_stats):
+            ok = snapshot_module.take_snapshot(user_id="u_test")
+        self.assertTrue(ok)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT date, market, day_pnl
+            FROM daily_snapshot_market_breakdowns
+            WHERE user_id = ?
+            ORDER BY date ASC, market ASC
+            """,
+            ("u_test",),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0]["date"], "2026-03-21")
+        self.assertTrue(all(row["date"] == "2026-03-21" for row in rows))
+        total = sum(float(row["day_pnl"] or 0.0) for row in rows)
+        self.assertAlmostEqual(total, 1.0, places=2)
 
     def test_portfolio_add_sz_b_share_forces_hkd_currency(self):
         add_resp = self.client.post('/api/portfolio/add', json={

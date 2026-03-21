@@ -1,3 +1,24 @@
+## 2026-03-21-01
+
+### 这版一句话
+
+统一分析页“当日总计盈亏”和收益日历口径，并封住自动快照反向污染历史日期的问题。
+
+### 主要变化
+- **分析页当日口径统一**：后端 [kona_tool/core/analysis_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py) 的 `period=day` 现在在休市时仍然认实时统计层里的“最后一个有效收益日最终值”，不再退回“今天自然日快照”，避免顶部 `当日总计盈亏` 和收益日历互相打架。
+- **自动快照不再顺手重写历史日**：后端 [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py)、[kona_tool/snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/snapshot_runtime.py)、[kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py) 现在只允许写 `snapshot_date` 当天的市场拆分；当前实时统计里带出来的更早 `effective_date` 不再自动落库，历史修复必须单独走明确流程。
+- **补齐回归测试**：新增接口保存和后台自动快照的测试，确保未来不会再把 `3/19` 这种已落地历史快照被 `3/21` 的实时统计回写覆盖。
+- **线上 `kona` 数据收口**：恢复 `2026-03-19` 的原始历史拆分，保留 `2026-03-20 = -2772.45` 的最终值，同时继续保持 `2026-03-21 = 0`，让分析页顶部概览、收益日历和快照表重新一致。
+
+### 影响范围
+- 后端：分析页 `period=day` 顶部概览、自动快照写入、`/api/snapshot/save`
+- 线上数据：`kona` 账号 `2026-03-19`、`2026-03-20`、`2026-03-21` 的分析快照与分市场拆分
+
+### 验收重点
+- 分析页顶部 `当日总计盈亏` 和收益日历 `3/20` 应同时显示 `-2772.45`
+- `3/19` 应恢复为 `-1250.87`，`3/21` 应保持 `0`
+- 后续自动快照不应再把当前实时统计顺手写回更早历史日期
+
 ## 2026-03-20-10
 
 ### 这版一句话

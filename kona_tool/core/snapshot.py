@@ -326,24 +326,19 @@ def take_snapshot(user_id: str = None) -> bool:
             success = db.save_daily_snapshot(snapshot_payload, uid, snapshot_date=snapshot_date)
             success_any = success_any or success
             if success:
-                breakdown_dates = set((stats.get("day_pnl_breakdowns_by_date") or {}).keys())
-                breakdown_dates.add(snapshot_date)
-                for effective_date in sorted(breakdown_dates):
-                    market_map = (
-                        (stats.get("day_pnl_breakdowns_by_date") or {}).get(effective_date)
-                        if effective_date != snapshot_date
-                        else stats.get("snapshot_day_pnl_by_market")
-                    ) or _empty_market_breakdown()
-                    breakdown_ok = db.save_daily_snapshot_market_breakdown(
-                        date_str=effective_date,
-                        day_pnl_by_market=market_map,
-                        total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
-                        user_id=uid,
-                        source="exact",
-                        confidence=1.0,
-                    )
-                    if not breakdown_ok:
-                        logger.warning("Market breakdown save failed: user=%s date=%s", uid, effective_date)
+                # 自动快照只允许落当天 snapshot_date，避免当前实时统计里的历史 effective_date
+                # 反向污染已经落地的历史快照。历史修复和专项回填必须单独走明确流程。
+                market_map = stats.get("snapshot_day_pnl_by_market") or _empty_market_breakdown()
+                breakdown_ok = db.save_daily_snapshot_market_breakdown(
+                    date_str=snapshot_date,
+                    day_pnl_by_market=market_map,
+                    total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
+                    user_id=uid,
+                    source="exact",
+                    confidence=1.0,
+                )
+                if not breakdown_ok:
+                    logger.warning("Market breakdown save failed: user=%s date=%s", uid, snapshot_date)
                 logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
             else:
                 logger.error(f"Failed to save snapshot to database: user={uid}")

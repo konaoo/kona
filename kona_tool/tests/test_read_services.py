@@ -303,8 +303,8 @@ class ReadServicesTests(unittest.TestCase):
         # _FakeDb.get_pnl_overview 返回 {"pnl": 12.34, ...}
         self.assertAlmostEqual(result["day"]["pnl"], 12.34)
 
-    def test_overview_day_skips_stats_getter_when_all_markets_closed(self):
-        """全市场休市时应直接走快照，不调用 stats_getter"""
+    def test_overview_day_still_uses_stats_getter_when_all_markets_closed(self):
+        """全市场休市后，当日概览仍应显示最后一个有效收益日的最终值"""
         stats_called = []
 
         def tracking_stats_getter(user_id):
@@ -321,10 +321,8 @@ class ReadServicesTests(unittest.TestCase):
         with self.app.test_request_context("/api/analysis/overview?period=day"):
             result = service.build_overview_payload(period="day", user_id="u_1")
 
-        # stats_getter 不应被调用
-        self.assertEqual(stats_called, [])
-        # 返回快照值
-        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
+        self.assertEqual(stats_called, ["u_1"])
+        self.assertAlmostEqual(result["day"]["pnl"], 99.0)
 
     def test_overview_day_uses_stats_getter_when_markets_open(self):
         """有市场开市时应调用 stats_getter 获取实时数据"""
