@@ -343,6 +343,16 @@ class DatabaseSchemaManager:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portfolio_legacy_adjustment_states (
+                user_id TEXT PRIMARY KEY,
+                ignore_legacy_adjustment INTEGER NOT NULL DEFAULT 0,
+                note TEXT NOT NULL DEFAULT '',
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -424,6 +434,10 @@ class DatabaseSchemaManager:
         cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_correction_logs_legacy_ledger"
             " ON portfolio_correction_logs(legacy_ledger_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_legacy_adjustment_states_ignore"
+            " ON portfolio_legacy_adjustment_states(ignore_legacy_adjustment)"
         )
 
     def _create_snapshot_indexes(self, cursor: Any) -> None:

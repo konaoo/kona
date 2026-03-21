@@ -307,12 +307,78 @@ class PortfolioDatabaseMixin:
             for row in cursor.fetchall()
         }
 
+    def _is_portfolio_legacy_adjustment_ignored(
+        self,
+        cursor,
+        user_id: str = None,
+    ) -> bool:
+        """判断指定用户是否已切到“不再读取 legacy adjustment”的新口径。"""
+        uid = user_id or ""
+        cursor.execute(
+            """
+            SELECT ignore_legacy_adjustment
+            FROM portfolio_legacy_adjustment_states
+            WHERE user_id = ?
+            LIMIT 1
+            """,
+            (uid,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        try:
+            return bool(int(row["ignore_legacy_adjustment"] or 0))
+        except Exception:
+            return False
+
+    def set_portfolio_legacy_adjustment_ignored(
+        self,
+        ignored: bool,
+        user_id: str = None,
+        note: str = "",
+    ) -> bool:
+        """设置指定用户是否忽略 legacy adjustment。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            cursor.execute(
+                """
+                INSERT INTO portfolio_legacy_adjustment_states
+                (user_id, ignore_legacy_adjustment, note, updated_at)
+                VALUES (?, ?, ?, datetime('now','localtime'))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    ignore_legacy_adjustment = excluded.ignore_legacy_adjustment,
+                    note = excluded.note,
+                    updated_at = datetime('now','localtime')
+                """,
+                (
+                    uid,
+                    1 if ignored else 0,
+                    str(note or ""),
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to set legacy adjustment mode: user_id=%s ignored=%s err=%s",
+                uid,
+                ignored,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
     def _get_portfolio_adjustment_breakdown(
         self,
         cursor,
         code: str,
         *,
         legacy_adjustment: float = 0.0,
+        include_legacy_adjustment: bool = True,
         user_id: str = None,
     ) -> Dict[str, float]:
         """返回单只持仓的旧 adjustment、现金收益事件和已实现盈亏汇总。"""
@@ -320,7 +386,7 @@ class PortfolioDatabaseMixin:
         realized_map = self._fetch_portfolio_realized_pnl_sums(cursor, [code], user_id)
         ledger_adjustment = float(ledger_map.get(str(code or "").strip(), 0.0))
         realized_pnl_adjustment = float(realized_map.get(str(code or "").strip(), 0.0))
-        legacy_value = float(legacy_adjustment or 0.0)
+        legacy_value = float(legacy_adjustment or 0.0) if include_legacy_adjustment else 0.0
         total_adjustment = legacy_value + ledger_adjustment + realized_pnl_adjustment
         return {
             "legacy_adjustment": legacy_value,
@@ -551,6 +617,7 @@ class PortfolioDatabaseMixin:
         data = []
         from .asset_type import infer_category_type
         rows = cursor.fetchall()
+        include_legacy_adjustment = not self._is_portfolio_legacy_adjustment_ignored(cursor, user_id)
         ledger_sums = self._fetch_portfolio_adjustment_ledger_sums(
             cursor,
             [row["code"] for row in rows],
@@ -566,7 +633,11 @@ class PortfolioDatabaseMixin:
             code = row["code"]
             name = row["name"]
             asset_type_value = row["asset_type"] if "asset_type" in row.keys() else ""
-            legacy_adjustment = float(row["adjustment"] or 0.0)
+            legacy_adjustment = (
+                float(row["adjustment"] or 0.0)
+                if include_legacy_adjustment
+                else 0.0
+            )
             ledger_adjustment = float(ledger_sums.get(code, 0.0))
             realized_pnl_adjustment = float(realized_sums.get(code, 0.0))
             total_adjustment = legacy_adjustment + ledger_adjustment + realized_pnl_adjustment
@@ -583,6 +654,7 @@ class PortfolioDatabaseMixin:
                     "ledger_adjustment": ledger_adjustment,
                     "cash_event_adjustment": ledger_adjustment,
                     "realized_pnl_adjustment": realized_pnl_adjustment,
+                    "legacy_adjustment_ignored": not include_legacy_adjustment,
                     "asset_type": asset_type_value,
                     "category_type": infer_category_type(code, name, asset_type_value),
                     "logo_url": row["logo_url"] if "logo_url" in row.keys() else None,
@@ -637,11 +709,14 @@ class PortfolioDatabaseMixin:
 
         row = cursor.fetchone()
         breakdown = None
+        include_legacy_adjustment = True
         if row:
+            include_legacy_adjustment = not self._is_portfolio_legacy_adjustment_ignored(cursor, user_id)
             breakdown = self._get_portfolio_adjustment_breakdown(
                 cursor,
                 code,
                 legacy_adjustment=float(row["adjustment"] or 0.0),
+                include_legacy_adjustment=include_legacy_adjustment,
                 user_id=user_id,
             )
         conn.close()
@@ -656,11 +731,17 @@ class PortfolioDatabaseMixin:
                 "adjustment_total": float((breakdown or {}).get("total_adjustment", row["adjustment"] or 0.0)),
                 "legacy_adjustment": float((breakdown or {}).get("legacy_adjustment", row["adjustment"] or 0.0)),
                 "ledger_adjustment": float((breakdown or {}).get("ledger_adjustment", 0.0)),
+                "legacy_adjustment_ignored": not include_legacy_adjustment,
                 "asset_type": row["asset_type"] if "asset_type" in row.keys() else "",
             }
         return None
 
-    def add_asset(self, data: Dict[str, Any], user_id: str = None) -> bool:
+    def add_asset(
+        self,
+        data: Dict[str, Any],
+        user_id: str = None,
+        allow_legacy_adjustment_write: bool = False,
+    ) -> bool:
         """添加或更新资产。"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -672,12 +753,12 @@ class PortfolioDatabaseMixin:
 
             if user_id:
                 cursor.execute(
-                    "SELECT id, name FROM portfolio WHERE code = ? AND user_id = ?",
+                    "SELECT id, name, adjustment FROM portfolio WHERE code = ? AND user_id = ?",
                     (data["code"], user_id),
                 )
             else:
                 cursor.execute(
-                    "SELECT id, name FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
+                    "SELECT id, name, adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
                     (data["code"],),
                 )
             existing = cursor.fetchone()
@@ -685,6 +766,11 @@ class PortfolioDatabaseMixin:
             if existing:
                 existing_name = str(existing["name"] or "").strip()
                 next_name = existing_name or incoming_name or data["code"]
+                next_adjustment = (
+                    float(data.get("adjustment", 0.0))
+                    if allow_legacy_adjustment_write
+                    else float(existing["adjustment"] or 0.0)
+                )
                 if user_id:
                     cursor.execute(
                         """
@@ -697,7 +783,7 @@ class PortfolioDatabaseMixin:
                             data["qty"],
                             data["price"],
                             data.get("curr", "CNY"),
-                            data.get("adjustment", 0.0),
+                            next_adjustment,
                             data.get("asset_type", "a"),
                             data["code"],
                             user_id,
@@ -715,13 +801,14 @@ class PortfolioDatabaseMixin:
                             data["qty"],
                             data["price"],
                             data.get("curr", "CNY"),
-                            data.get("adjustment", 0.0),
+                            next_adjustment,
                             data.get("asset_type", "a"),
                             data["code"],
                         ),
                     )
             else:
                 next_name = incoming_name or data["code"]
+                next_adjustment = float(data.get("adjustment", 0.0)) if allow_legacy_adjustment_write else 0.0
                 if user_id:
                     cursor.execute(
                         """
@@ -734,7 +821,7 @@ class PortfolioDatabaseMixin:
                             data["qty"],
                             data["price"],
                             data.get("curr", "CNY"),
-                            data.get("adjustment", 0.0),
+                            next_adjustment,
                             data.get("asset_type", "a"),
                             user_id,
                         ),
@@ -751,7 +838,7 @@ class PortfolioDatabaseMixin:
                             data["qty"],
                             data["price"],
                             data.get("curr", "CNY"),
-                            data.get("adjustment", 0.0),
+                            next_adjustment,
                             data.get("asset_type", "a"),
                         ),
                     )
@@ -771,10 +858,20 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def update_asset(self, code: str, field: str, value: float, user_id: str = None) -> bool:
+    def update_asset(
+        self,
+        code: str,
+        field: str,
+        value: float,
+        user_id: str = None,
+        allow_legacy_adjustment_write: bool = False,
+    ) -> bool:
         """更新资产字段。"""
         if field not in self.VALID_FIELDS:
             logger.error("Invalid field name: %s", field)
+            return False
+        if field == "adjustment" and not allow_legacy_adjustment_write:
+            logger.warning("Blocked legacy adjustment update: code=%s user_id=%s", code, user_id or "")
             return False
 
         conn = self.get_connection()

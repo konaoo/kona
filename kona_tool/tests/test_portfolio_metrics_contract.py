@@ -232,6 +232,34 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 20.0, places=6)
         self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 40.0, places=6)
 
+    def test_portfolio_metrics_ignore_legacy_adjustment_after_migration_switch(self):
+        _seed_user("u_ledger_cutover", "ledger_cutover_user")
+        _seed_portfolio("u_ledger_cutover", code="sh600009", qty=10.0, price=10.0, adjustment=5.0)
+        _seed_portfolio_adjustment_event("u_ledger_cutover", "sh600009", 15.0)
+        app_module.db.set_portfolio_legacy_adjustment_ignored(
+            True,
+            user_id="u_ledger_cutover",
+            note="切到新口径",
+        )
+        headers = _auth_headers("u_ledger_cutover", "ledger_cutover_user")
+
+        with patch(
+            "app.batch_get_prices",
+            return_value={"sh600009": (12.0, 11.0, 1.0, 0.1)},
+        ), patch(
+            "app.get_market_statuses",
+            return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
+        ):
+            resp = self.client.get("/api/portfolio?with_metrics=1", headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        item = (resp.get_json() or [])[0]
+        self.assertTrue(bool(item.get("legacy_adjustment_ignored")))
+        self.assertAlmostEqual(float(item.get("legacy_adjustment") or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(item.get("ledger_adjustment") or 0.0), 15.0, places=6)
+        self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 15.0, places=6)
+        self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 35.0, places=6)
+
     def test_today_buy_is_excluded_from_day_pnl_by_bookkeeping_rule(self):
         _seed_user("u_today_buy", "today_buy_user")
         _seed_portfolio(

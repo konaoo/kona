@@ -3628,3 +3628,24 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 - 美股周五夜盘在周六保存快照时，应只回写周五的 `us` 收益，不应把更早历史日整天覆盖掉
 - 场外基金 T+1 净值只应补基金那一块，不应顺手清掉当天已有的 A/HK/US 拆分
 - `snapshot_runtime` 和 `take_snapshot()` 应走同一套保存规则
+
+## 2026-03-21-04
+
+### 这版一句话
+
+封住 legacy adjustment 的新增写入口：从现在开始，正常新增/更新持仓不再继续往 `portfolio.adjustment` 写旧口径数据。
+
+### 主要变化
+- [kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py)：`/api/portfolio/add` 不再接收前端传入的 `adjustment`，`/api/portfolio/update` 直接拒绝更新 `field=adjustment`。
+- [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)：`add_asset()` / `update_asset()` 默认不再写 legacy adjustment；只有显式传 `allow_legacy_adjustment_write=True` 的导入/回放路径才允许写。
+- [kona_tool/migrate.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/migrate.py)：历史 CSV / JSON 导入脚本显式声明允许写 legacy adjustment，避免把“普通新增”与“历史导入”混成一条链。
+- [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) / [kona_tool/tests/test_portfolio_schema_migration.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_schema_migration.py)：补齐合同测试，保证外部请求封口、数据库默认保守、特殊导入必须显式 opt-in。
+
+### 影响范围
+- 后端：`/api/portfolio/add`、`/api/portfolio/update`
+- 数据层：`portfolio.adjustment` 不再接受新的普通写入
+
+### 验收重点
+- 新增持仓时，即使请求里带 `adjustment`，也不应再写入 legacy adjustment
+- 普通更新接口不应再允许 `field=adjustment`
+- 历史导入脚本仍可在显式声明下保留老字段写入

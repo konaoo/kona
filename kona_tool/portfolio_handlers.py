@@ -84,7 +84,6 @@ def create_portfolio_payload_handlers(
             with trace_request_stage("portfolio.add.validate"):
                 qty = float(data.get('qty'))
                 price = float(data.get('price'))
-                adjustment = float(data.get('adjustment', 0.0))
         except (TypeError, ValueError):
             return idempotent_response(
                 'portfolio_add',
@@ -94,7 +93,7 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
-        if (not math.isfinite(qty)) or (not math.isfinite(price)) or (not math.isfinite(adjustment)):
+        if (not math.isfinite(qty)) or (not math.isfinite(price)):
             return idempotent_response(
                 'portfolio_add',
                 user_id,
@@ -116,7 +115,7 @@ def create_portfolio_payload_handlers(
         data['name'] = normalized['name']
         data['qty'] = qty
         data['price'] = price
-        data['adjustment'] = adjustment
+        data['adjustment'] = 0.0
         data['asset_type'] = normalized['asset_type']
 
         with trace_request_stage("portfolio.add.write", asset_type=data.get('asset_type')):
@@ -170,6 +169,14 @@ def create_portfolio_payload_handlers(
                         user_id,
                         request_id,
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
+                        400,
+                    )
+                if field == 'adjustment':
+                    return idempotent_response(
+                        'portfolio_update',
+                        user_id,
+                        request_id,
+                        {"error": "Legacy adjustment updates are disabled", "code": "UNSUPPORTED_FIELD"},
                         400,
                     )
             with trace_request_stage("portfolio.update.write", field=data.get('field')):

@@ -52,7 +52,7 @@ def migrate_csv_to_db():
                 'adjustment': float(row.get('adjustment', 0) or 0)
             }
             
-            if db.add_asset(asset):
+            if db.add_asset(asset, allow_legacy_adjustment_write=True):
                 count += 1
         
         print(f"Successfully imported {count} records to database")
@@ -96,7 +96,7 @@ def migrate_json_to_db():
                 'adjustment': float(item.get('adjustment', 0) or 0)
             }
             
-            if db.add_asset(asset):
+            if db.add_asset(asset, allow_legacy_adjustment_write=True):
                 count += 1
         
         print(f"Successfully imported {count} records to database")

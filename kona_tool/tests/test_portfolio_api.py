@@ -38,6 +38,7 @@ class PortfolioApiTests(unittest.TestCase):
         cursor.execute("DELETE FROM liabilities")
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM portfolio_legacy_adjustment_states")
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
@@ -157,6 +158,50 @@ class PortfolioApiTests(unittest.TestCase):
         conn.close()
         self.assertEqual(len(ledger_rows), 0)
 
+    def test_portfolio_add_ignores_legacy_adjustment_payload(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600012',
+            'name': '测试新增旧调整额',
+            'price': 10.0,
+            'qty': 10.0,
+            'adjustment': 123.45,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        self.assertEqual((add_resp.get_json() or {}).get('status'), 'ok')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600012'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 0.0, places=6)
+
+    def test_portfolio_update_rejects_legacy_adjustment_field(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600013',
+            'name': '测试更新旧调整额',
+            'price': 8.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        update_resp = self.client.post('/api/portfolio/update', json={
+            'code': 'sh600013',
+            'field': 'adjustment',
+            'val': 9.9,
+        })
+        self.assertEqual(update_resp.status_code, 400)
+        body = update_resp.get_json() or {}
+        self.assertEqual(body.get('code'), 'UNSUPPORTED_FIELD')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600013'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 0.0, places=6)
+
     def test_portfolio_transactions_include_sell_and_dividend_only_once(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600021',
@@ -239,6 +284,39 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(rows[0]['before_price'] or 0.0), 10.0, places=6)
         self.assertAlmostEqual(float(rows[0]['after_price'] or 0.0), 9.5, places=6)
         self.assertEqual(rows[0]['note'], '更正初始录入数量和成本')
+
+    def test_portfolio_list_can_ignore_legacy_adjustment_after_migration_switch(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600023',
+            'name': '测试新口径列表',
+            'price': 10.0,
+            'qty': 5.0,
+            'adjustment': 6.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
+            VALUES ('', 'sh600023', 'dividend', 4.0, 'CNY', '', 'test')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        app_module.db.set_portfolio_legacy_adjustment_ignored(True, note='切到新口径')
+
+        list_resp = self.client.get('/api/portfolio')
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.get_json() or []
+        target = next((item for item in items if item.get('code') == 'sh600023'), None)
+        self.assertIsNotNone(target)
+        self.assertTrue(bool(target.get('legacy_adjustment_ignored')))
+        self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 4.0, places=6)
+        self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 4.0, places=6)
 
     def test_portfolio_modify_does_not_write_trade_transaction(self):
         add_resp = self.client.post('/api/portfolio/add', json={

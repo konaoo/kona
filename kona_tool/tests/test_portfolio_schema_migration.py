@@ -27,12 +27,20 @@ class PortfolioSchemaMigrationTests(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio_adjustment_ledger'"
             )
             table = cursor.fetchone()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio_legacy_adjustment_states'"
+            )
+            state_table = cursor.fetchone()
             cursor.execute("PRAGMA index_list(portfolio_adjustment_ledger)")
             indexes = [str(row[1]) for row in cursor.fetchall()]
+            cursor.execute("PRAGMA index_list(portfolio_legacy_adjustment_states)")
+            state_indexes = [str(row[1]) for row in cursor.fetchall()]
             conn.close()
 
             self.assertIsNotNone(table)
+            self.assertIsNotNone(state_table)
             self.assertIn("idx_portfolio_adjustment_ledger_user_code", indexes)
+            self.assertIn("idx_portfolio_legacy_adjustment_states_ignore", state_indexes)
 
     def test_old_code_unique_schema_migrates_to_user_scoped_unique(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,6 +113,81 @@ class PortfolioSchemaMigrationTests(unittest.TestCase):
             count = int(cursor.fetchone()["c"] or 0)
             conn.close()
             self.assertEqual(count, 2)
+
+    def test_add_asset_default_preserves_existing_legacy_adjustment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "preserve_adjustment.db"
+            db = DatabaseManager(str(db_path))
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("sh600000", "浦发银行", 10.0, 10.0, "CNY", 88.8, "a", "u_keep"),
+            )
+            conn.commit()
+            conn.close()
+
+            ok = db.add_asset(
+                {
+                    "code": "sh600000",
+                    "name": "浦发银行",
+                    "qty": 12.0,
+                    "price": 11.0,
+                    "curr": "CNY",
+                    "adjustment": 999.0,
+                    "asset_type": "a",
+                },
+                user_id="u_keep",
+            )
+            self.assertTrue(ok)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT qty, price, adjustment FROM portfolio WHERE code = ? AND user_id = ?",
+                ("sh600000", "u_keep"),
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+            self.assertAlmostEqual(float(row["qty"] or 0.0), 12.0, places=6)
+            self.assertAlmostEqual(float(row["price"] or 0.0), 11.0, places=6)
+            self.assertAlmostEqual(float(row["adjustment"] or 0.0), 88.8, places=6)
+
+    def test_add_asset_requires_explicit_opt_in_to_write_legacy_adjustment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "explicit_adjustment.db"
+            db = DatabaseManager(str(db_path))
+
+            ok = db.add_asset(
+                {
+                    "code": "sh600001",
+                    "name": "测试股票",
+                    "qty": 5.0,
+                    "price": 9.0,
+                    "curr": "CNY",
+                    "adjustment": 123.0,
+                    "asset_type": "a",
+                },
+                user_id="u_new",
+                allow_legacy_adjustment_write=True,
+            )
+            self.assertTrue(ok)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT adjustment FROM portfolio WHERE code = ? AND user_id = ?",
+                ("sh600001", "u_new"),
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+            self.assertAlmostEqual(float(row["adjustment"] or 0.0), 123.0, places=6)
 
 
 if __name__ == "__main__":

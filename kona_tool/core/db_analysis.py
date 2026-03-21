@@ -741,6 +741,10 @@ class AnalysisDatabaseMixin:
                 return []
 
             rows = cursor.fetchall()
+            include_legacy_adjustment = True
+            should_ignore_legacy = getattr(self, "_is_portfolio_legacy_adjustment_ignored", None)
+            if callable(should_ignore_legacy):
+                include_legacy_adjustment = not should_ignore_legacy(cursor, user_id)
             ledger_sums = {}
             realized_sums = {}
             fetch_ledger_sums = getattr(self, "_fetch_portfolio_adjustment_ledger_sums", None)
@@ -761,7 +765,11 @@ class AnalysisDatabaseMixin:
             data = []
             for row in rows:
                 code = str(row["code"] or "")
-                legacy_adjustment = float(row["adjustment"] or 0.0)
+                legacy_adjustment = (
+                    float(row["adjustment"] or 0.0)
+                    if include_legacy_adjustment
+                    else 0.0
+                )
                 ledger_adjustment = float(ledger_sums.get(code, 0.0))
                 realized_pnl_adjustment = float(realized_sums.get(code, 0.0))
                 data.append(
@@ -776,6 +784,7 @@ class AnalysisDatabaseMixin:
                         "legacy_adjustment": legacy_adjustment,
                         "ledger_adjustment": ledger_adjustment,
                         "realized_pnl_adjustment": realized_pnl_adjustment,
+                        "legacy_adjustment_ignored": not include_legacy_adjustment,
                         "market": self._detect_market(code),
                     }
                 )

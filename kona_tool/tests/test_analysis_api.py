@@ -482,6 +482,37 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('pnl') or 0.0), 15.0, places=2)
 
+    def test_analysis_rank_ignores_legacy_adjustment_after_migration_switch(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600014',
+            'name': '排行新口径',
+            'price': 10.0,
+            'qty': 10.0,
+            'adjustment': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        app_module.db.set_portfolio_legacy_adjustment_ignored(True, note='切到新口径')
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
+            VALUES ('', 'sh600014', 'dividend', 15.0, 'CNY', '', 'test')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600014': (0.0, 10.0, 0.0, 0.0)}):
+            rank_resp = self.client.get('/api/analysis/rank?type=all')
+        self.assertEqual(rank_resp.status_code, 200)
+        payload = rank_resp.get_json() or {}
+        items = (payload.get('gain') or []) + (payload.get('loss') or [])
+        target = next((item for item in items if item.get('code') == 'sh600014'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('pnl') or 0.0), 15.0, places=2)
+
 
 if __name__ == '__main__':
     unittest.main()
