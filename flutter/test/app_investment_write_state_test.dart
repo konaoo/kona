@@ -28,6 +28,7 @@ class _FakeInvestmentApiService implements ApiService {
     String? curr,
     String? assetType,
     String? requestId,
+    int? ledgerId,
   }) async {
     if (failBuyWithCash) {
       return const AssetActionResult.failure('买入失败');

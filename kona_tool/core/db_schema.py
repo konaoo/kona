@@ -29,6 +29,7 @@ class DatabaseSchemaManager:
         db_manager._ensure_b_share_currency(cursor)
         db_manager._ensure_admin_api_policies_defaults(cursor)
         db_manager._backfill_user_daily_activity(cursor)
+        self._ensure_ledger_schema(cursor)
 
     def _create_tables(self, cursor: Any) -> None:
         cursor.execute(
@@ -353,6 +354,40 @@ class DatabaseSchemaManager:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS investment_ledgers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                sort_order INTEGER DEFAULT 0,
+                is_default INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                UNIQUE(user_id, name)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ledger_daily_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                ledger_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                total_market_value REAL DEFAULT 0,
+                total_cost REAL DEFAULT 0,
+                total_pnl REAL DEFAULT 0,
+                total_pnl_rate REAL DEFAULT 0,
+                day_pnl REAL DEFAULT 0,
+                holdings_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                UNIQUE(user_id, ledger_id, date),
+                FOREIGN KEY (ledger_id) REFERENCES investment_ledgers(id)
+            )
+            """
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -364,6 +399,9 @@ class DatabaseSchemaManager:
         _ensure_column("portfolio", "user_id", "user_id TEXT NOT NULL DEFAULT ''")
         _ensure_column("portfolio", "logo_url", "logo_url TEXT")
         _ensure_column("transactions", "user_id", "user_id TEXT")
+        _ensure_column("transactions", "curr", "curr TEXT")
+        _ensure_column("transactions", "market", "market TEXT")
+        _ensure_column("transactions", "effective_date", "effective_date TEXT")
         _ensure_column("cash_assets", "user_id", "user_id TEXT")
         _ensure_column("other_assets", "user_id", "user_id TEXT")
         _ensure_column("liabilities", "user_id", "user_id TEXT")
@@ -398,6 +436,14 @@ class DatabaseSchemaManager:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_transactions_user_effective_date"
+            " ON transactions(user_id, effective_date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_transactions_user_market_effective_date"
+            " ON transactions(user_id, market, effective_date)"
+        )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cash_assets_user_id ON cash_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_other_assets_user_id ON other_assets(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_liabilities_user_id ON liabilities(user_id)")
@@ -482,3 +528,77 @@ class DatabaseSchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_daily_activity_date ON user_daily_activity(activity_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_daily_activity_user_id ON user_daily_activity(user_id)")
         cursor.execute("DROP TABLE IF EXISTS email_verification_codes")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_investment_ledgers_user_id ON investment_ledgers(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_daily_snapshots_user_ledger_date"
+            " ON ledger_daily_snapshots(user_id, ledger_id, date)"
+        )
+
+    def _ensure_ledger_schema(self, cursor: Any) -> None:
+        """多账本迁移：为现有表添加 ledger_id 列，为现有用户创建默认账本。"""
+
+        def _has_column(table: str, column: str) -> bool:
+            cursor.execute(f"PRAGMA table_info({table})")
+            return column in [row[1] for row in cursor.fetchall()]
+
+        # 已迁移过则跳过
+        if _has_column("portfolio", "ledger_id"):
+            return
+
+        # 1. 为每个现有用户创建默认账本
+        cursor.execute(
+            "SELECT DISTINCT user_id FROM portfolio WHERE COALESCE(user_id, '') != ''"
+        )
+        user_ids = [row[0] for row in cursor.fetchall()]
+        for uid in user_ids:
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO investment_ledgers (user_id, name, is_default, sort_order)
+                VALUES (?, '默认账本', 1, 0)
+                """,
+                (uid,),
+            )
+
+        # 2. 为四张表添加 ledger_id 列
+        for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
+            cursor.execute(
+                f"ALTER TABLE {table} ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 0"
+            )
+
+        # 3. 将现有数据的 ledger_id 更新为对应用户的默认账本 ID
+        for uid in user_ids:
+            cursor.execute(
+                "SELECT id FROM investment_ledgers WHERE user_id = ? AND is_default = 1",
+                (uid,),
+            )
+            row = cursor.fetchone()
+            if row:
+                ledger_id = row[0]
+                for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
+                    user_col_condition = "user_id = ?" if table != "transactions" else "user_id = ?"
+                    cursor.execute(
+                        f"UPDATE {table} SET ledger_id = ? WHERE {user_col_condition}",
+                        (ledger_id, uid),
+                    )
+
+        # 4. 重建 portfolio 唯一约束为 (code, user_id, ledger_id)
+        #    SQLite 不支持 ALTER TABLE 改约束，需要重建表
+        cursor.execute("DROP INDEX IF EXISTS idx_portfolio_code_user_unique")
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_code_user_ledger_unique"
+            " ON portfolio(code, user_id, ledger_id)"
+        )
+
+        # 5. 为新列添加索引
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_ledger_id ON portfolio(ledger_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_ledger_id ON transactions(ledger_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_adjustment_ledger_ledger_id"
+            " ON portfolio_adjustment_ledger(ledger_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portfolio_correction_logs_ledger_id"
+            " ON portfolio_correction_logs(ledger_id)"
+        )

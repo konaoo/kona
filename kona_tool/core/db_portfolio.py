@@ -34,24 +34,77 @@ PORTFOLIO_ADJUSTMENT_EVENT_TYPES = (
 class PortfolioDatabaseMixin:
     """给 DatabaseManager 提供持仓、交易与组合兼容迁移相关方法。"""
 
-    def _fetch_portfolio_row_by_code(self, cursor, code: str, user_id: str = None):
+    def _build_transaction_identity(
+        self,
+        *,
+        code: str,
+        curr: str = "",
+        asset_type: str = "",
+        tx_time: str = "",
+    ) -> Dict[str, str]:
+        raw_code = str(code or "").strip()
+        normalized = parse_code(raw_code, str(curr or "").strip())
+        normalized_code = str(normalized.get("code") or raw_code or "").strip()
+        normalized_curr = str(normalized.get("curr") or curr or "").strip().upper()
+        raw_asset_type = str(asset_type or "").strip().lower()
+        if raw_asset_type in DEFAULT_MARKETS:
+            market = raw_asset_type
+        else:
+            market = str(
+                market_from_asset({
+                    "code": normalized_code,
+                    "asset_type": raw_asset_type,
+                })
+                or "a"
+            ).lower()
+        if market not in DEFAULT_MARKETS:
+            market = "a"
+        effective_date = effective_date_from_transaction_time(tx_time, market) if tx_time else None
+        return {
+            "code": raw_code,
+            "curr": normalized_curr,
+            "market": market,
+            "effective_date": str(effective_date or "").strip(),
+        }
+
+    def _resolve_transaction_row_identity(self, row: Any, fallback_code: str = "") -> Dict[str, str]:
+        code = str(row["code"] or "").strip() if "code" in row.keys() else str(fallback_code or "").strip()
+        curr = str(row["curr"] or "").strip().upper() if "curr" in row.keys() else ""
+        raw_market = str(row["market"] or "").strip().lower() if "market" in row.keys() else ""
+        raw_effective_date = str(row["effective_date"] or "").strip() if "effective_date" in row.keys() else ""
+        tx_time = str(row["time"] or "").strip() if "time" in row.keys() else ""
+        identity = self._build_transaction_identity(
+            code=code,
+            curr=curr,
+            asset_type=raw_market,
+            tx_time=tx_time,
+        )
+        if raw_market in DEFAULT_MARKETS:
+            identity["market"] = raw_market
+        if raw_effective_date:
+            identity["effective_date"] = raw_effective_date[:10]
+        return identity
+
+    def _fetch_portfolio_row_by_code(self, cursor, code: str, user_id: str = None, ledger_id: int | None = None):
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
         if user_id:
             cursor.execute(
-                """
+                f"""
                 SELECT name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE code = ? AND user_id = ?
+                WHERE code = ? AND user_id = ?{ledger_condition}
                 """,
-                (code, user_id),
+                (code, user_id) + ledger_param,
             )
         else:
             cursor.execute(
-                """
+                f"""
                 SELECT name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                 """,
-                (code,),
+                (code,) + ledger_param,
             )
         return cursor.fetchone()
 
@@ -61,6 +114,7 @@ class PortfolioDatabaseMixin:
         code: str,
         user_id: str = None,
         legacy_codes: Optional[List[str]] = None,
+        ledger_id: int | None = None,
     ) -> tuple[str, Any]:
         candidates: List[str] = []
         seen: set[str] = set()
@@ -72,7 +126,7 @@ class PortfolioDatabaseMixin:
             candidates.append(candidate)
 
         for candidate in candidates:
-            row = self._fetch_portfolio_row_by_code(cursor, candidate, user_id)
+            row = self._fetch_portfolio_row_by_code(cursor, candidate, user_id, ledger_id=ledger_id)
             if row:
                 return candidate, row
         return str(code or "").strip(), None
@@ -372,6 +426,193 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
+    def _build_portfolio_legacy_adjustment_migration_report(
+        self,
+        cursor,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
+        """生成单个用户的 legacy adjustment 迁移盘点结果。"""
+        uid = user_id or ""
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+
+        cursor.execute(
+            f"""
+            SELECT code, name, qty, price, curr, adjustment, asset_type
+            FROM portfolio
+            WHERE {user_condition}
+            ORDER BY ABS(COALESCE(adjustment, 0.0)) DESC, code ASC
+            """,
+            user_param,
+        )
+        portfolio_rows = cursor.fetchall()
+        codes = [str(row["code"] or "").strip() for row in portfolio_rows if str(row["code"] or "").strip()]
+
+        ledger_sums = self._fetch_portfolio_adjustment_ledger_sums(cursor, codes, user_id) if codes else {}
+        realized_sums = self._fetch_portfolio_realized_pnl_sums(cursor, codes, user_id) if codes else {}
+
+        tx_meta: Dict[str, Dict[str, Any]] = {}
+        correction_meta: Dict[str, Dict[str, Any]] = {}
+
+        if codes:
+            placeholders = ",".join("?" for _ in codes)
+            if user_id:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        code,
+                        COUNT(1) AS tx_count,
+                        MIN(time) AS first_tx_time,
+                        MAX(time) AS last_tx_time
+                    FROM transactions
+                    WHERE user_id = ? AND code IN ({placeholders})
+                    GROUP BY code
+                    """,
+                    (user_id, *codes),
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        code,
+                        COUNT(1) AS tx_count,
+                        MIN(time) AS first_tx_time,
+                        MAX(time) AS last_tx_time
+                    FROM transactions
+                    WHERE (user_id IS NULL OR user_id = '') AND code IN ({placeholders})
+                    GROUP BY code
+                    """,
+                    codes,
+                )
+            tx_meta = {
+                str(row["code"]): {
+                    "tx_count": int(row["tx_count"] or 0),
+                    "first_tx_time": str(row["first_tx_time"] or ""),
+                    "last_tx_time": str(row["last_tx_time"] or ""),
+                }
+                for row in cursor.fetchall()
+            }
+
+            if user_id:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        code,
+                        COUNT(1) AS correction_count,
+                        MIN(created_at) AS first_correction_time,
+                        MAX(created_at) AS last_correction_time
+                    FROM portfolio_correction_logs
+                    WHERE user_id = ? AND code IN ({placeholders})
+                    GROUP BY code
+                    """,
+                    (user_id, *codes),
+                )
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        code,
+                        COUNT(1) AS correction_count,
+                        MIN(created_at) AS first_correction_time,
+                        MAX(created_at) AS last_correction_time
+                    FROM portfolio_correction_logs
+                    WHERE (user_id IS NULL OR user_id = '') AND code IN ({placeholders})
+                    GROUP BY code
+                    """,
+                    codes,
+                )
+            correction_meta = {
+                str(row["code"]): {
+                    "correction_count": int(row["correction_count"] or 0),
+                    "first_correction_time": str(row["first_correction_time"] or ""),
+                    "last_correction_time": str(row["last_correction_time"] or ""),
+                }
+                for row in cursor.fetchall()
+            }
+
+        positions: List[Dict[str, Any]] = []
+        nonzero_legacy_position_count = 0
+        nonzero_legacy_adjustment_total = 0.0
+        for row in portfolio_rows:
+            code = str(row["code"] or "").strip()
+            legacy_adjustment = float(row["adjustment"] or 0.0)
+            has_nonzero_legacy = abs(legacy_adjustment) > 1e-9
+            if has_nonzero_legacy:
+                nonzero_legacy_position_count += 1
+                nonzero_legacy_adjustment_total += legacy_adjustment
+
+            tx_info = tx_meta.get(code, {})
+            correction_info = correction_meta.get(code, {})
+            positions.append(
+                {
+                    "code": code,
+                    "name": str(row["name"] or ""),
+                    "qty": float(row["qty"] or 0.0),
+                    "price": float(row["price"] or 0.0),
+                    "curr": str(row["curr"] or ""),
+                    "asset_type": str(row["asset_type"] or ""),
+                    "legacy_adjustment": legacy_adjustment,
+                    "ledger_adjustment": float(ledger_sums.get(code, 0.0)),
+                    "realized_pnl_adjustment": float(realized_sums.get(code, 0.0)),
+                    "has_nonzero_legacy_adjustment": has_nonzero_legacy,
+                    "tx_count": int(tx_info.get("tx_count") or 0),
+                    "first_tx_time": str(tx_info.get("first_tx_time") or ""),
+                    "last_tx_time": str(tx_info.get("last_tx_time") or ""),
+                    "correction_count": int(correction_info.get("correction_count") or 0),
+                    "first_correction_time": str(correction_info.get("first_correction_time") or ""),
+                    "last_correction_time": str(correction_info.get("last_correction_time") or ""),
+                    "migration_hint": "需要人工迁移" if has_nonzero_legacy else "可直接切新口径",
+                }
+            )
+
+        ready_to_ignore_now = nonzero_legacy_position_count == 0
+        return {
+            "user_id": uid,
+            "legacy_adjustment_ignored": self._is_portfolio_legacy_adjustment_ignored(cursor, user_id),
+            "position_count": len(portfolio_rows),
+            "nonzero_legacy_position_count": nonzero_legacy_position_count,
+            "nonzero_legacy_adjustment_total": nonzero_legacy_adjustment_total,
+            "ready_to_ignore_now": ready_to_ignore_now,
+            "migration_status": "可直接切新口径" if ready_to_ignore_now else "仍需人工迁移",
+            "positions": positions,
+        }
+
+    def get_portfolio_legacy_adjustment_migration_report(
+        self,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
+        """获取单个用户的 legacy adjustment 迁移盘点结果。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            return self._build_portfolio_legacy_adjustment_migration_report(cursor, user_id)
+        finally:
+            conn.close()
+
+    def list_portfolio_legacy_adjustment_migration_reports(self) -> List[Dict[str, Any]]:
+        """列出当前库里所有有持仓或迁移状态记录的用户盘点结果。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT DISTINCT user_id
+                FROM (
+                    SELECT COALESCE(user_id, '') AS user_id FROM portfolio
+                    UNION
+                    SELECT COALESCE(user_id, '') AS user_id FROM portfolio_legacy_adjustment_states
+                )
+                ORDER BY CASE WHEN user_id = '' THEN 0 ELSE 1 END, user_id ASC
+                """
+            )
+            user_ids = [str(row["user_id"] or "") for row in cursor.fetchall()]
+            return [
+                self._build_portfolio_legacy_adjustment_migration_report(cursor, uid or None)
+                for uid in user_ids
+            ]
+        finally:
+            conn.close()
+
     def _get_portfolio_adjustment_breakdown(
         self,
         cursor,
@@ -408,6 +649,7 @@ class PortfolioDatabaseMixin:
         note: str = "",
         source: str = "manual",
         related_tx_id: int | None = None,
+        ledger_id: int = 0,
     ) -> int:
         """写入一条投资收益事件流水。"""
         normalized_type = str(event_type or "").strip()
@@ -425,9 +667,10 @@ class PortfolioDatabaseMixin:
                 note,
                 source,
                 related_tx_id,
+                ledger_id,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
             """,
             (
                 user_id or "",
@@ -438,6 +681,7 @@ class PortfolioDatabaseMixin:
                 str(note or ""),
                 str(source or "manual"),
                 related_tx_id,
+                ledger_id,
             ),
         )
         return int(cursor.lastrowid or 0)
@@ -456,6 +700,7 @@ class PortfolioDatabaseMixin:
         user_id: str = None,
         legacy_ledger_id: int | None = None,
         created_at: str | None = None,
+        ledger_id: int = 0,
     ) -> int:
         created_time = str(created_at or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
@@ -470,10 +715,11 @@ class PortfolioDatabaseMixin:
                 after_price,
                 note,
                 legacy_ledger_id,
+                ledger_id,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
             """,
             (
                 user_id or "",
@@ -485,6 +731,7 @@ class PortfolioDatabaseMixin:
                 after_price,
                 str(note or "").strip(),
                 legacy_ledger_id,
+                ledger_id,
                 created_time,
             ),
         )
@@ -567,51 +814,201 @@ class PortfolioDatabaseMixin:
         if migrated > 0:
             logger.info("Migrated %s manual adjustment rows to portfolio_correction_logs", migrated)
 
+    # ─── 账本 CRUD ────────────────────────────────────
+
+    def get_default_ledger_id(self, user_id: str) -> int:
+        """返回用户的默认账本 ID，不存在时自动创建。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id FROM investment_ledgers WHERE user_id = ? AND is_default = 1",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return int(row[0])
+            # 自动创建默认账本
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order)
+                VALUES (?, '默认账本', 1, 0)
+                """,
+                (user_id,),
+            )
+            conn.commit()
+            return int(cursor.lastrowid or 0)
+        finally:
+            conn.close()
+
+    def get_ledgers(self, user_id: str) -> List[Dict[str, Any]]:
+        """获取用户的所有账本列表。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, user_id, name, description, sort_order, is_default, created_at, updated_at
+                FROM investment_ledgers
+                WHERE user_id = ?
+                ORDER BY sort_order, id
+                """,
+                (user_id,),
+            )
+            return [
+                {
+                    "id": row["id"],
+                    "user_id": row["user_id"],
+                    "name": row["name"],
+                    "description": row["description"] or "",
+                    "sort_order": row["sort_order"],
+                    "is_default": bool(row["is_default"]),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                for row in cursor.fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def create_ledger(self, user_id: str, name: str, description: str = "") -> Dict[str, Any]:
+        """创建新账本，返回 {"ok": True, "ledger_id": ...} 或错误。"""
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            return {"ok": False, "code": "INVALID_NAME", "error": "账本名称不能为空"}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, description, sort_order, is_default)
+                VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM investment_ledgers WHERE user_id = ?), 0)
+                """,
+                (user_id, clean_name, str(description or "").strip(), user_id),
+            )
+            conn.commit()
+            return {"ok": True, "ledger_id": int(cursor.lastrowid or 0)}
+        except Exception as exc:
+            conn.rollback()
+            if "UNIQUE constraint failed" in str(exc):
+                return {"ok": False, "code": "DUPLICATE_NAME", "error": "同名账本已存在"}
+            logger.error("Failed to create ledger: %s", exc)
+            return {"ok": False, "code": "CREATE_FAILED", "error": "创建账本失败"}
+        finally:
+            conn.close()
+
+    def update_ledger(self, ledger_id: int, user_id: str, name: str, description: str = "") -> Dict[str, Any]:
+        """更新账本信息。"""
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            return {"ok": False, "code": "INVALID_NAME", "error": "账本名称不能为空"}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE investment_ledgers
+                SET name = ?, description = ?, updated_at = datetime('now','localtime')
+                WHERE id = ? AND user_id = ?
+                """,
+                (clean_name, str(description or "").strip(), ledger_id, user_id),
+            )
+            if cursor.rowcount <= 0:
+                return {"ok": False, "code": "NOT_FOUND", "error": "账本不存在"}
+            conn.commit()
+            return {"ok": True}
+        except Exception as exc:
+            conn.rollback()
+            if "UNIQUE constraint failed" in str(exc):
+                return {"ok": False, "code": "DUPLICATE_NAME", "error": "同名账本已存在"}
+            logger.error("Failed to update ledger: %s", exc)
+            return {"ok": False, "code": "UPDATE_FAILED", "error": "更新账本失败"}
+        finally:
+            conn.close()
+
+    def delete_ledger(self, ledger_id: int, user_id: str) -> Dict[str, Any]:
+        """删除账本（非默认 + 无持仓才允许）。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id, is_default FROM investment_ledgers WHERE id = ? AND user_id = ?",
+                (ledger_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {"ok": False, "code": "NOT_FOUND", "error": "账本不存在"}
+            if row["is_default"]:
+                return {"ok": False, "code": "IS_DEFAULT", "error": "默认账本不能删除"}
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM portfolio WHERE ledger_id = ? AND user_id = ? AND qty > 0",
+                (ledger_id, user_id),
+            )
+            if (cursor.fetchone() or {}).get("cnt", 0) > 0:
+                return {"ok": False, "code": "HAS_HOLDINGS", "error": "账本下还有持仓，不能删除"}
+            cursor.execute(
+                "DELETE FROM investment_ledgers WHERE id = ? AND user_id = ?",
+                (ledger_id, user_id),
+            )
+            conn.commit()
+            return {"ok": True}
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed to delete ledger: %s", exc)
+            return {"ok": False, "code": "DELETE_FAILED", "error": "删除账本失败"}
+        finally:
+            conn.close()
+
+    # ─── 持仓查询 ────────────────────────────────────
+
     def get_portfolio(
         self,
         asset_type: str = "all",
         user_id: str = None,
         include_closed: bool = False,
+        ledger_id: int | None = None,
     ) -> List[Dict[str, Any]]:
         """获取持仓数据，支持按类型筛选。"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        logger.info("get_portfolio called with asset_type: %s, user_id: %s", asset_type, user_id)
+        logger.info("get_portfolio called with asset_type: %s, user_id: %s, ledger_id: %s", asset_type, user_id, ledger_id)
 
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
         qty_condition = "" if include_closed else " AND qty > 0"
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         if asset_type == "all":
             cursor.execute(
                 f"""
-                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url, ledger_id
                 FROM portfolio
-                WHERE {user_condition}{qty_condition}
+                WHERE {user_condition}{qty_condition}{ledger_condition}
                 ORDER BY code
                 """,
-                user_param,
+                user_param + ledger_param,
             )
         elif asset_type in ("a", "us", "hk", "fund"):
             cursor.execute(
                 f"""
-                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url, ledger_id
                 FROM portfolio
-                WHERE {user_condition}{qty_condition} AND asset_type = ?
+                WHERE {user_condition}{qty_condition}{ledger_condition} AND asset_type = ?
                 ORDER BY code
                 """,
-                user_param + (asset_type,),
+                user_param + ledger_param + (asset_type,),
             )
         else:
             cursor.execute(
                 f"""
-                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url
+                SELECT code, name, qty, price, curr, adjustment, asset_type, logo_url, ledger_id
                 FROM portfolio
-                WHERE {user_condition}{qty_condition}
+                WHERE {user_condition}{qty_condition}{ledger_condition}
                 ORDER BY code
                 """,
-                user_param,
+                user_param + ledger_param,
             )
 
         data = []
@@ -658,6 +1055,7 @@ class PortfolioDatabaseMixin:
                     "asset_type": asset_type_value,
                     "category_type": infer_category_type(code, name, asset_type_value),
                     "logo_url": row["logo_url"] if "logo_url" in row.keys() else None,
+                    "ledger_id": int(row["ledger_id"]) if "ledger_id" in row.keys() and row["ledger_id"] else 0,
                 }
             )
 
@@ -683,28 +1081,30 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def get_asset(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
+    def get_asset(self, code: str, user_id: str = None, ledger_id: int | None = None) -> Optional[Dict[str, Any]]:
         """获取单个资产信息。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         if user_id:
             cursor.execute(
-                """
+                f"""
                 SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE code = ? AND user_id = ?
+                WHERE code = ? AND user_id = ?{ledger_condition}
                 """,
-                (code, user_id),
+                (code, user_id) + ledger_param,
             )
         else:
             cursor.execute(
-                """
+                f"""
                 SELECT code, name, qty, price, curr, adjustment, asset_type
                 FROM portfolio
-                WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                 """,
-                (code,),
+                (code,) + ledger_param,
             )
 
         row = cursor.fetchone()
@@ -741,25 +1141,30 @@ class PortfolioDatabaseMixin:
         data: Dict[str, Any],
         user_id: str = None,
         allow_legacy_adjustment_write: bool = False,
+        ledger_id: int | None = None,
     ) -> bool:
         """添加或更新资产。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        resolved_ledger_id = ledger_id if ledger_id is not None else int(data.get("ledger_id") or 0)
 
         try:
             incoming_name = str(data.get("name") or "").strip()
             if not data.get("logo_url"):
                 data["logo_url"] = suggest_logo_url(data.get("code"), incoming_name)
 
+            ledger_condition = " AND ledger_id = ?" if resolved_ledger_id else ""
+            ledger_param = (resolved_ledger_id,) if resolved_ledger_id else ()
+
             if user_id:
                 cursor.execute(
-                    "SELECT id, name, adjustment FROM portfolio WHERE code = ? AND user_id = ?",
-                    (data["code"], user_id),
+                    f"SELECT id, name, adjustment FROM portfolio WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (data["code"], user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    "SELECT id, name, adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (data["code"],),
+                    f"SELECT id, name, adjustment FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (data["code"],) + ledger_param,
                 )
             existing = cursor.fetchone()
 
@@ -812,8 +1217,8 @@ class PortfolioDatabaseMixin:
                 if user_id:
                     cursor.execute(
                         """
-                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                         """,
                         (
                             data["code"],
@@ -824,13 +1229,14 @@ class PortfolioDatabaseMixin:
                             next_adjustment,
                             data.get("asset_type", "a"),
                             user_id,
+                            resolved_ledger_id,
                         ),
                     )
                 else:
                     cursor.execute(
                         """
-                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, ledger_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                         """,
                         (
                             data["code"],
@@ -840,7 +1246,21 @@ class PortfolioDatabaseMixin:
                             data.get("curr", "CNY"),
                             next_adjustment,
                             data.get("asset_type", "a"),
+                            resolved_ledger_id,
                         ),
+                    )
+                if not allow_legacy_adjustment_write:
+                    self._append_portfolio_correction_log(
+                        cursor,
+                        code=str(data["code"] or "").strip(),
+                        correction_type="opening_balance",
+                        before_qty=0.0,
+                        after_qty=float(data["qty"] or 0.0),
+                        before_price=None,
+                        after_price=float(data["price"] or 0.0),
+                        note="初始持仓录入",
+                        user_id=user_id,
+                        ledger_id=resolved_ledger_id,
                     )
 
             conn.commit()
@@ -865,6 +1285,7 @@ class PortfolioDatabaseMixin:
         value: float,
         user_id: str = None,
         allow_legacy_adjustment_write: bool = False,
+        ledger_id: int | None = None,
     ) -> bool:
         """更新资产字段。"""
         if field not in self.VALID_FIELDS:
@@ -876,20 +1297,22 @@ class PortfolioDatabaseMixin:
 
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 user_condition = "AND user_id = ?"
-                params_suffix = (code, user_id)
+                params_suffix = (code, user_id) + ledger_param
             else:
                 user_condition = "AND (user_id IS NULL OR user_id = '')"
-                params_suffix = (code,)
+                params_suffix = (code,) + ledger_param
 
             if field == "adjustment":
                 cursor.execute(
                     f"""
                     UPDATE portfolio SET adjustment = COALESCE(adjustment, 0) + ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? {user_condition}
+                    WHERE code = ? {user_condition}{ledger_condition}
                     """,
                     (value,) + params_suffix,
                 )
@@ -897,7 +1320,7 @@ class PortfolioDatabaseMixin:
                 cursor.execute(
                     f"""
                     UPDATE portfolio SET {field} = ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? {user_condition}
+                    WHERE code = ? {user_condition}{ledger_condition}
                     """,
                     (value,) + params_suffix,
                 )
@@ -923,29 +1346,32 @@ class PortfolioDatabaseMixin:
         note: str = "",
         user_id: str = None,
         return_detail: bool = False,
+        ledger_id: int | None = None,
     ):
         """修正资产数据。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (code,),
+                    (code,) + ledger_param,
                 )
             old_row = cursor.fetchone()
             if not old_row:
@@ -974,21 +1400,21 @@ class PortfolioDatabaseMixin:
 
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     UPDATE portfolio
                     SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (qty, price, code, user_id),
+                    (qty, price, code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     UPDATE portfolio
                     SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (qty, price, code),
+                    (qty, price, code) + ledger_param,
                 )
 
             if cursor.rowcount <= 0:
@@ -1017,6 +1443,7 @@ class PortfolioDatabaseMixin:
                     after_price=float(price),
                     note=clean_note,
                     user_id=user_id,
+                    ledger_id=ledger_id or 0,
                 )
 
             conn.commit()
@@ -1069,29 +1496,32 @@ class PortfolioDatabaseMixin:
         curr: str | None = None,
         user_id: str = None,
         return_detail: bool = False,
+        ledger_id: int | None = None,
     ):
         """新增一条投资收益事件流水。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (code,),
+                    (code,) + ledger_param,
                 )
             row = cursor.fetchone()
             if not row:
@@ -1130,6 +1560,7 @@ class PortfolioDatabaseMixin:
                 user_id=user_id,
                 note=clean_note,
                 source="manual_adjust_dialog",
+                ledger_id=ledger_id or 0,
             )
 
             conn.commit()
@@ -1172,18 +1603,23 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def delete_asset(self, code: str, user_id: str = None) -> bool:
+    def delete_asset(self, code: str, user_id: str = None, ledger_id: int | None = None) -> bool:
         """删除资产。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
-                cursor.execute("DELETE FROM portfolio WHERE code = ? AND user_id = ?", (code, user_id))
+                cursor.execute(
+                    f"DELETE FROM portfolio WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (code, user_id) + ledger_param,
+                )
             else:
                 cursor.execute(
-                    "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (code,),
+                    f"DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (code,) + ledger_param,
                 )
             conn.commit()
             logger.info("Asset deleted: %s", code)
@@ -1195,103 +1631,136 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def delete_asset_corrective(self, code: str, user_id: str = None) -> Optional[Dict[str, Any]]:
+    def delete_asset_corrective(self, code: str, user_id: str = None, ledger_id: int | None = None) -> Optional[Dict[str, Any]]:
         """删除资产并清理该资产交易历史与受影响快照区间。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT time FROM transactions
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     ORDER BY time ASC
                     LIMIT 1
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
                 )
                 tx_row = cursor.fetchone()
                 cursor.execute(
-                    """
-                    SELECT created_at, updated_at
-                    FROM portfolio
-                    WHERE code = ? AND user_id = ?
+                    f"""
+                    SELECT created_at
+                    FROM portfolio_correction_logs
+                    WHERE code = ? AND user_id = ?{ledger_condition}
+                    ORDER BY created_at ASC, id ASC
                     LIMIT 1
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
+                )
+                correction_row = cursor.fetchone()
+                cursor.execute(
+                    f"""
+                    SELECT created_at, updated_at
+                    FROM portfolio
+                    WHERE code = ? AND user_id = ?{ledger_condition}
+                    LIMIT 1
+                    """,
+                    (code, user_id) + ledger_param,
                 )
                 pf_row = cursor.fetchone()
             else:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT time FROM transactions
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     ORDER BY time ASC
                     LIMIT 1
                     """,
-                    (code,),
+                    (code,) + ledger_param,
                 )
                 tx_row = cursor.fetchone()
                 cursor.execute(
-                    """
-                    SELECT created_at, updated_at
-                    FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    f"""
+                    SELECT created_at
+                    FROM portfolio_correction_logs
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
+                    ORDER BY created_at ASC, id ASC
                     LIMIT 1
                     """,
-                    (code,),
+                    (code,) + ledger_param,
+                )
+                correction_row = cursor.fetchone()
+                cursor.execute(
+                    f"""
+                    SELECT created_at, updated_at
+                    FROM portfolio
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
+                    LIMIT 1
+                    """,
+                    (code,) + ledger_param,
                 )
                 pf_row = cursor.fetchone()
 
             from_date = datetime.now().strftime("%Y-%m-%d")
+            candidate_dates: List[str] = []
             tx_time = str(tx_row["time"]) if tx_row and tx_row["time"] else ""
-            if len(tx_time) >= 10:
-                from_date = tx_time[:10]
-            elif pf_row:
-                pf_time = str(pf_row["updated_at"] or pf_row["created_at"] or "")
-                if len(pf_time) >= 10:
-                    from_date = pf_time[:10]
+            correction_time = str(correction_row["created_at"]) if correction_row and correction_row["created_at"] else ""
+            pf_created_at = str(pf_row["created_at"] or "") if pf_row else ""
+            pf_updated_at = str(pf_row["updated_at"] or "") if pf_row else ""
+            for raw_value in (tx_time, correction_time, pf_created_at, pf_updated_at):
+                if len(raw_value) >= 10:
+                    candidate_dates.append(raw_value[:10])
+            if candidate_dates:
+                from_date = min(candidate_dates)
 
             if user_id:
-                cursor.execute("DELETE FROM portfolio WHERE code = ? AND user_id = ?", (code, user_id))
+                cursor.execute(
+                    f"DELETE FROM portfolio WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (code, user_id) + ledger_param,
+                )
             else:
                 cursor.execute(
-                    "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (code,),
+                    f"DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (code,) + ledger_param,
                 )
             portfolio_deleted = cursor.rowcount
 
             if user_id:
-                cursor.execute("DELETE FROM transactions WHERE code = ? AND user_id = ?", (code, user_id))
+                cursor.execute(
+                    f"DELETE FROM transactions WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (code, user_id) + ledger_param,
+                )
             else:
                 cursor.execute(
-                    "DELETE FROM transactions WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (code,),
+                    f"DELETE FROM transactions WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (code,) + ledger_param,
                 )
             tx_deleted = cursor.rowcount
 
             if user_id:
                 cursor.execute(
-                    "DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND user_id = ?",
-                    (code, user_id),
+                    f"DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    "DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (code,),
+                    f"DELETE FROM portfolio_adjustment_ledger WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (code,) + ledger_param,
                 )
             ledger_deleted = cursor.rowcount
 
             if user_id:
                 cursor.execute(
-                    "DELETE FROM portfolio_correction_logs WHERE code = ? AND user_id = ?",
-                    (code, user_id),
+                    f"DELETE FROM portfolio_correction_logs WHERE code = ? AND user_id = ?{ledger_condition}",
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    "DELETE FROM portfolio_correction_logs WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                    (code,),
+                    f"DELETE FROM portfolio_correction_logs WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                    (code,) + ledger_param,
                 )
             correction_deleted = cursor.rowcount
 
@@ -1340,29 +1809,32 @@ class PortfolioDatabaseMixin:
         qty: float,
         user_id: str = None,
         return_detail: bool = False,
+        ledger_id: int | None = None,
     ):
         """加仓。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (code,),
+                    (code,) + ledger_param,
                 )
             row = cursor.fetchone()
 
@@ -1393,34 +1865,47 @@ class PortfolioDatabaseMixin:
 
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (new_qty, new_price, code, user_id),
+                    (new_qty, new_price, code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (new_qty, new_price, code),
+                    (new_qty, new_price, code) + ledger_param,
                 )
 
+            tx_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tx_identity = self._build_transaction_identity(
+                code=code,
+                curr=curr,
+                asset_type=asset_type,
+                tx_time=tx_time,
+            )
             cursor.execute(
                 """
-                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
-                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?)
+                INSERT INTO transactions (
+                    time, code, name, type, price, qty, amount, pnl, curr, market, effective_date, user_id, ledger_id
+                )
+                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?, ?, ?, ?, ?)
                 """,
                 (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    code,
+                    tx_time,
+                    tx_identity["code"],
                     name,
                     price,
                     qty,
                     price * qty,
+                    tx_identity["curr"],
+                    tx_identity["market"],
+                    tx_identity["effective_date"],
                     user_id,
+                    ledger_id or 0,
                 ),
             )
             tx_id = int(cursor.lastrowid or 0)
@@ -1459,29 +1944,32 @@ class PortfolioDatabaseMixin:
         qty: float,
         user_id: str = None,
         return_detail: bool = False,
+        ledger_id: int | None = None,
     ):
         """减仓。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if user_id:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND user_id = ?
+                    WHERE code = ? AND user_id = ?{ledger_condition}
                     """,
-                    (code, user_id),
+                    (code, user_id) + ledger_param,
                 )
             else:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT name, qty, price, curr, adjustment, asset_type
                     FROM portfolio
-                    WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                    WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                     """,
-                    (code,),
+                    (code,) + ledger_param,
                 )
             row = cursor.fetchone()
 
@@ -1532,39 +2020,39 @@ class PortfolioDatabaseMixin:
             if new_qty < 0.001:
                 if user_id:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio
                         SET qty = 0, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND user_id = ?
+                        WHERE code = ? AND user_id = ?{ledger_condition}
                         """,
-                        (code, user_id),
+                        (code, user_id) + ledger_param,
                     )
                 else:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio
                         SET qty = 0, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                         """,
-                        (code,),
+                        (code,) + ledger_param,
                     )
                 after_asset = None
             else:
                 if user_id:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio SET qty = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND user_id = ?
+                        WHERE code = ? AND user_id = ?{ledger_condition}
                         """,
-                        (new_qty, code, user_id),
+                        (new_qty, code, user_id) + ledger_param,
                     )
                 else:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio SET qty = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                         """,
-                        (new_qty, code),
+                        (new_qty, code) + ledger_param,
                     )
                 after_asset = {
                     "code": code,
@@ -1581,20 +2069,33 @@ class PortfolioDatabaseMixin:
                     "asset_type": asset_type,
                 }
 
+            tx_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tx_identity = self._build_transaction_identity(
+                code=code,
+                curr=curr,
+                asset_type=asset_type,
+                tx_time=tx_time,
+            )
             cursor.execute(
                 """
-                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
-                VALUES (?, ?, ?, '减仓', ?, ?, ?, ?, ?)
+                INSERT INTO transactions (
+                    time, code, name, type, price, qty, amount, pnl, curr, market, effective_date, user_id, ledger_id
+                )
+                VALUES (?, ?, ?, '减仓', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    code,
+                    tx_time,
+                    tx_identity["code"],
                     name,
                     price,
                     qty,
                     price * qty,
                     pnl,
+                    tx_identity["curr"],
+                    tx_identity["market"],
+                    tx_identity["effective_date"],
                     user_id,
+                    ledger_id or 0,
                 ),
             )
             tx_id = int(cursor.lastrowid or 0)
@@ -1627,6 +2128,7 @@ class PortfolioDatabaseMixin:
         cash_add_amount: float,
         user_id: str = None,
         return_detail: bool = False,
+        ledger_id: int | None = None,
     ) -> Dict[str, Any]:
         """减仓并回款到现金账户。"""
         conn = self.get_connection()
@@ -1660,7 +2162,7 @@ class PortfolioDatabaseMixin:
             if not cash_row:
                 return {"ok": False, "code": "CASH_ASSET_NOT_FOUND", "error": "Cash account not found"}
 
-            sell_detail = self.sell_asset(code, price, qty, user_id=user_id, return_detail=True)
+            sell_detail = self.sell_asset(code, price, qty, user_id=user_id, return_detail=True, ledger_id=ledger_id)
             if not sell_detail or not sell_detail.get("ok"):
                 return sell_detail or {"ok": False, "code": "ASSET_SELL_FAILED", "error": "Failed to sell asset"}
 
@@ -1725,10 +2227,13 @@ class PortfolioDatabaseMixin:
         cash_deduct_amount: float,
         user_id: str = None,
         legacy_codes: Optional[List[str]] = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Any]:
         """使用现金账户买入。"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if qty <= 0 or price <= 0:
@@ -1796,6 +2301,7 @@ class PortfolioDatabaseMixin:
                 code,
                 user_id,
                 legacy_codes=legacy_codes,
+                ledger_id=ledger_id,
             )
 
             before_asset = None
@@ -1820,19 +2326,19 @@ class PortfolioDatabaseMixin:
                 new_price = (old_qty * old_price + qty * price) / new_qty if new_qty > 0 else 0
                 if user_id:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND user_id = ?
+                        WHERE code = ? AND user_id = ?{ledger_condition}
                         """,
-                        (new_qty, new_price, target_code, user_id),
+                        (new_qty, new_price, target_code, user_id) + ledger_param,
                     )
                 else:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio SET qty = ?, price = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                         """,
-                        (new_qty, new_price, target_code),
+                        (new_qty, new_price, target_code) + ledger_param,
                     )
                 after_asset = {
                     "code": target_code,
@@ -1852,18 +2358,18 @@ class PortfolioDatabaseMixin:
                 if user_id:
                     cursor.execute(
                         """
-                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now','localtime'))
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, datetime('now','localtime'))
                         """,
-                        (target_code, tx_name, qty, price, next_curr, next_asset_type, user_id),
+                        (target_code, tx_name, qty, price, next_curr, next_asset_type, user_id, ledger_id or 0),
                     )
                 else:
                     cursor.execute(
                         """
-                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now','localtime'))
+                        INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, ledger_id, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?, datetime('now','localtime'))
                         """,
-                        (target_code, tx_name, qty, price, next_curr, next_asset_type),
+                        (target_code, tx_name, qty, price, next_curr, next_asset_type, ledger_id or 0),
                     )
                 after_asset = {
                     "code": target_code,
@@ -1875,19 +2381,32 @@ class PortfolioDatabaseMixin:
                     "asset_type": next_asset_type,
                 }
 
+            tx_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tx_identity = self._build_transaction_identity(
+                code=target_code,
+                curr=after_asset.get("curr") if after_asset else "",
+                asset_type=after_asset.get("asset_type") if after_asset else "",
+                tx_time=tx_time,
+            )
             cursor.execute(
                 """
-                INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, user_id)
-                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?)
+                INSERT INTO transactions (
+                    time, code, name, type, price, qty, amount, pnl, curr, market, effective_date, user_id, ledger_id
+                )
+                VALUES (?, ?, ?, '加仓', ?, ?, ?, 0, ?, ?, ?, ?, ?)
                 """,
                 (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    target_code,
+                    tx_time,
+                    tx_identity["code"],
                     tx_name,
                     price,
                     qty,
                     price * qty,
+                    tx_identity["curr"],
+                    tx_identity["market"],
+                    tx_identity["effective_date"],
                     user_id,
+                    ledger_id or 0,
                 ),
             )
             tx_id = int(cursor.lastrowid or 0)
@@ -2168,7 +2687,7 @@ class PortfolioDatabaseMixin:
         try:
             cursor.execute(
                 """
-                SELECT time, code, qty, amount
+                SELECT time, code, qty, amount, curr, market, effective_date
                 FROM transactions
                 WHERE type = '加仓' AND
                 """
@@ -2176,11 +2695,9 @@ class PortfolioDatabaseMixin:
                 user_param,
             )
             for row in cursor.fetchall():
-                raw_code = str(row["code"] or "")
-                normalized_code = parse_code(raw_code, "").get("code") or raw_code
-                code = str(normalized_code or raw_code)
-                market = str(market_from_asset(code) or "a").lower()
-                effective_date = effective_date_from_transaction_time(row["time"], market)
+                identity = self._resolve_transaction_row_identity(row)
+                code = identity["code"]
+                effective_date = identity["effective_date"]
                 if not effective_date:
                     continue
                 by_code = result.setdefault(effective_date, {})
@@ -2202,18 +2719,21 @@ class PortfolioDatabaseMixin:
         grouped = self.get_buy_transactions_grouped_by_effective_date(user_id=user_id)
         return grouped.get(str(date_str or "").strip(), {})
 
-    def get_portfolio_transactions(self, code: str, user_id: str = None) -> list:
+    def get_portfolio_transactions(self, code: str, user_id: str = None, ledger_id: int | None = None) -> list:
         """获取指定 code 的全部交易记录、收益事件和修正审计，按时间倒序返回。"""
         conn = self.get_connection()
         cursor = conn.cursor()
         user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
         event_type_labels = {
             "dividend": "分红",
             "fee": "手续费",
             "tax": "税金",
         }
         correction_type_labels = {
+            "opening_balance": "初始持仓",
             "cost_price": "成本修正",
             "quantity": "数量修正",
             "holding": "持仓修正",
@@ -2226,9 +2746,9 @@ class PortfolioDatabaseMixin:
                 FROM transactions
                 WHERE code = ?
                 """
-                + f" {user_condition}"
+                + f" {user_condition}{ledger_condition}"
                 + " ORDER BY time DESC, id DESC",
-                (code,) + user_param,
+                (code,) + user_param + ledger_param,
             )
             records = []
             for row in cursor.fetchall():
@@ -2249,9 +2769,9 @@ class PortfolioDatabaseMixin:
                 FROM portfolio_adjustment_ledger
                 WHERE code = ? AND event_type IN ('dividend', 'fee', 'tax')
                 """
-                + f" {user_condition}"
+                + f" {user_condition}{ledger_condition}"
                 + " ORDER BY created_at DESC, id DESC",
-                (code,) + user_param,
+                (code,) + user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 raw_type = str(row["event_type"] or "")
@@ -2269,9 +2789,9 @@ class PortfolioDatabaseMixin:
                 FROM portfolio_correction_logs
                 WHERE code = ?
                 """
-                + f" {user_condition}"
+                + f" {user_condition}{ledger_condition}"
                 + " ORDER BY created_at DESC, id DESC",
-                (code,) + user_param,
+                (code,) + user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 raw_type = str(row["correction_type"] or "")
@@ -2322,7 +2842,7 @@ class PortfolioDatabaseMixin:
         try:
             cursor.execute(
                 """
-                SELECT time, code, pnl
+                SELECT time, code, pnl, curr, market, effective_date
                 FROM transactions
                 WHERE type = '减仓'
                 """
@@ -2330,13 +2850,9 @@ class PortfolioDatabaseMixin:
                 user_param,
             )
             for row in cursor.fetchall():
-                raw_code = str(row["code"] or "")
-                normalized = parse_code(raw_code, "").get("code") or raw_code
-                code = str(normalized or raw_code)
-                market = str(market_from_asset(code) or "a").lower()
-                if market not in DEFAULT_MARKETS:
-                    market = "a"
-                effective_date = effective_date_from_transaction_time(row["time"], market)
+                identity = self._resolve_transaction_row_identity(row)
+                market = identity["market"]
+                effective_date = identity["effective_date"]
                 if not effective_date:
                     continue
                 bucket = grouped.setdefault(effective_date, {k: 0.0 for k in DEFAULT_MARKETS})
@@ -2365,7 +2881,7 @@ class PortfolioDatabaseMixin:
             qty = float(current_row["qty"] or 0.0) if current_row else 0.0
             cursor.execute(
                 """
-                SELECT time, type, qty
+                SELECT time, type, qty, curr, market, effective_date
                 FROM transactions
                 WHERE code = ?
                 """
@@ -2373,9 +2889,8 @@ class PortfolioDatabaseMixin:
                 + " ORDER BY time DESC, id DESC",
                 (code,) + user_param,
             )
-            market = str(market_from_asset(code) or "a").lower()
             for row in cursor.fetchall():
-                tx_effective_date = effective_date_from_transaction_time(row["time"], market)
+                tx_effective_date = self._resolve_transaction_row_identity(row, fallback_code=code)["effective_date"]
                 if not tx_effective_date or tx_effective_date <= effective_date:
                     continue
                 tx_qty = float(row["qty"] or 0.0)
@@ -2390,7 +2905,7 @@ class PortfolioDatabaseMixin:
                 SELECT before_qty, after_qty
                 FROM portfolio_correction_logs
                 WHERE code = ?
-                  AND correction_type IN ('quantity', 'holding')
+                  AND correction_type IN ('opening_balance', 'quantity', 'holding')
                   AND created_at > ?
                 """
                 + f" {user_condition}"

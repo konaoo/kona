@@ -86,9 +86,10 @@ class PortfolioReadService:
         *,
         user_id: str | None,
         now_utc: datetime | None = None,
+        ledger_id: int | None = None,
     ) -> List[Dict[str, Any]]:
         with trace_request_stage("portfolio.db", query="get_portfolio", item_scope="all"):
-            items = self.db.get_portfolio(user_id=user_id)
+            items = self.db.get_portfolio(user_id=user_id, ledger_id=ledger_id)
         return self._enrich_items_with_metrics(items, user_id=user_id, now_utc=now_utc)
 
     def build_portfolio_payload(
@@ -97,9 +98,10 @@ class PortfolioReadService:
         asset_type: str,
         user_id: str | None,
         with_metrics: bool,
+        ledger_id: int | None = None,
     ) -> List[Dict[str, Any]]:
         with trace_request_stage("portfolio.db", query="get_portfolio", item_scope=asset_type):
-            items = self.db.get_portfolio(asset_type, user_id)
+            items = self.db.get_portfolio(asset_type, user_id, ledger_id=ledger_id)
         if not with_metrics:
             return items
         return self._enrich_items_with_metrics(items, user_id=user_id)

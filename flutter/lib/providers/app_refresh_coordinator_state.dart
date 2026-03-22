@@ -172,8 +172,8 @@ class AppRefreshCoordinatorState {
     }
   }
 
-  Future<void> refreshPortfolio() async {
-    await _refreshState.refreshPortfolio(bindings: _bindings);
+  Future<void> refreshPortfolio({int? ledgerId}) async {
+    await _refreshState.refreshPortfolio(bindings: _bindings, ledgerId: ledgerId);
   }
 
   Future<void> loadExchangeRates() async {

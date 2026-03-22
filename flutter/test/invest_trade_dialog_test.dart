@@ -64,7 +64,6 @@ class _SaveStateAppState extends AppState {
   String? lastModifyCode;
   double? lastModifyQty;
   double? lastModifyPrice;
-  double? lastModifyAdjustment;
   String? lastModifyNote;
   String? lastBuyCode;
   double? lastBuyPrice;
@@ -90,6 +89,7 @@ class _SaveStateAppState extends AppState {
     String? curr,
     String? assetType,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     buyWithCashCalls += 1;
     lastBuyCode = code;
@@ -111,15 +111,14 @@ class _SaveStateAppState extends AppState {
     required String code,
     required double qty,
     required double price,
-    required double adjustment,
     String? note,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     modifyCalls += 1;
     lastModifyCode = code;
     lastModifyQty = qty;
     lastModifyPrice = price;
-    lastModifyAdjustment = adjustment;
     lastModifyNote = note;
     return result;
   }
@@ -131,6 +130,7 @@ class _SaveStateAppState extends AppState {
     required double amount,
     String? note,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     adjustmentEventCalls += 1;
     lastAdjustmentEventCode = code;
@@ -147,6 +147,7 @@ class _SaveStateAppState extends AppState {
     required double qty,
     required int cashAssetId,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     sellWithCashCalls += 1;
     return result;
@@ -475,7 +476,6 @@ void main() {
     expect(appState.lastModifyCode, 'gb_tsla');
     expect(appState.lastModifyQty, 5);
     expect(appState.lastModifyPrice, 8.5);
-    expect(appState.lastModifyAdjustment, 0);
     expect(appState.lastModifyNote, '更正历史拆分成本');
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();

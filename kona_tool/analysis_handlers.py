@@ -35,9 +35,11 @@ def create_analysis_payload_handlers(
         """
         period = request.args.get('period', 'all')
         user_id = g.user_id
+        ledger_id = request.args.get('ledger_id', type=int)
         return analysis_read_service.build_overview_payload(
             period=period,
             user_id=user_id,
+            ledger_id=ledger_id,
         )
 
     def build_analysis_calendar_payload():
@@ -68,11 +70,13 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
+        ledger_id = request.args.get('ledger_id', type=int)
         result = analysis_read_service.build_calendar_payload(
             time_type=time_type,
             user_id=user_id,
             year=year,
             month=month,
+            ledger_id=ledger_id,
         )
         if result.get('code') == 'INVALID_CALENDAR_PERIOD':
             return result, 400
@@ -100,10 +104,12 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
+        ledger_id = request.args.get('ledger_id', type=int)
         result = analysis_read_service.build_market_breakdown_payload(
             user_id=user_id,
             year=year,
             month=month,
+            ledger_id=ledger_id,
         )
         if result.get('code') == 'INVALID_CALENDAR_PERIOD':
             return result, 400
@@ -122,9 +128,11 @@ def create_analysis_payload_handlers(
         """
         market = request.args.get('market', 'all')
         user_id = g.user_id
+        ledger_id = request.args.get('ledger_id', type=int)
         return analysis_read_service.build_rank_payload(
             market=market,
             user_id=user_id,
+            ledger_id=ledger_id,
         )
 
     return {

@@ -307,6 +307,74 @@ class SnapshotDatabaseMixin:
         finally:
             conn.close()
 
+    def save_ledger_daily_snapshot(
+        self,
+        *,
+        user_id: str,
+        ledger_id: int,
+        date_str: str,
+        total_market_value: float = 0,
+        total_cost: float = 0,
+        total_pnl: float = 0,
+        total_pnl_rate: float = 0,
+        day_pnl: float = 0,
+        holdings_count: int = 0,
+    ) -> bool:
+        """保存单个账本的每日快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO ledger_daily_snapshots (
+                    user_id, ledger_id, date,
+                    total_market_value, total_cost, total_pnl, total_pnl_rate,
+                    day_pnl, holdings_count, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                ON CONFLICT(user_id, ledger_id, date) DO UPDATE SET
+                    total_market_value = excluded.total_market_value,
+                    total_cost = excluded.total_cost,
+                    total_pnl = excluded.total_pnl,
+                    total_pnl_rate = excluded.total_pnl_rate,
+                    day_pnl = excluded.day_pnl,
+                    holdings_count = excluded.holdings_count,
+                    created_at = datetime('now','localtime')
+                """,
+                (
+                    user_id, ledger_id, date_str,
+                    round(total_market_value, 2), round(total_cost, 2),
+                    round(total_pnl, 2), round(total_pnl_rate, 2),
+                    round(day_pnl, 2), holdings_count,
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("Failed to save ledger daily snapshot: ledger=%s date=%s err=%s", ledger_id, date_str, exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def get_ledger_history(self, user_id: str, ledger_id: int, limit: int = 365) -> List[Dict[str, Any]]:
+        """获取指定账本的历史快照数据。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count
+                FROM ledger_daily_snapshots
+                WHERE user_id = ? AND ledger_id = ?
+                ORDER BY date ASC
+                LIMIT ?
+                """,
+                (user_id, ledger_id, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
     def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None, snapshot_date: str = None) -> bool:
         """保存每日资产快照。"""
         conn = self.get_connection()

@@ -36,6 +36,10 @@ def create_portfolio_blueprint(
     portfolio_sell_to_cash_handler,
     portfolio_undo_handler,
     portfolio_transactions_handler,
+    ledgers_list_handler=None,
+    ledger_create_handler=None,
+    ledger_update_handler=None,
+    ledger_delete_handler=None,
 ):
     bp = Blueprint("portfolio_routes", __name__)
 
@@ -118,5 +122,29 @@ def create_portfolio_blueprint(
     @optional_auth
     def get_portfolio_transactions():
         return _jsonify_result(portfolio_transactions_handler())
+
+    if ledgers_list_handler:
+        @bp.route("/api/portfolio/ledgers", methods=["GET"])
+        @optional_auth
+        def list_ledgers():
+            return _jsonify_result(ledgers_list_handler())
+
+    if ledger_create_handler:
+        @bp.route("/api/portfolio/ledgers", methods=["POST"])
+        @optional_auth
+        def create_ledger():
+            return _jsonify_result(ledger_create_handler())
+
+    if ledger_update_handler:
+        @bp.route("/api/portfolio/ledgers/<int:ledger_id>", methods=["PUT"])
+        @optional_auth
+        def update_ledger(ledger_id):
+            return _jsonify_result(ledger_update_handler(ledger_id))
+
+    if ledger_delete_handler:
+        @bp.route("/api/portfolio/ledgers/<int:ledger_id>", methods=["DELETE"])
+        @optional_auth
+        def delete_ledger(ledger_id):
+            return _jsonify_result(ledger_delete_handler(ledger_id))
 
     return bp

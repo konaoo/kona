@@ -272,6 +272,66 @@ class AppState extends ChangeNotifier {
   Map<String, PriceInfo> get prices => _portfolioViewState.prices;
   String get currentCategory => _portfolioViewState.currentCategory;
   bool get portfolioLoaded => _refreshCoordinatorState.portfolioLoaded;
+
+  // ─── 账本状态 ─────────────────────────────────────
+  List<Map<String, dynamic>> _ledgers = [];
+  int? _currentLedgerId;
+  List<Map<String, dynamic>> get ledgers => _ledgers;
+  int? get currentLedgerId => _currentLedgerId;
+
+  /// 切换当前账本，null 表示全部
+  void switchLedger(int? ledgerId) {
+    if (_currentLedgerId == ledgerId) return;
+    _currentLedgerId = ledgerId;
+    notifyListeners();
+    unawaited(refreshPortfolio(ledgerId: ledgerId));
+  }
+
+  /// 加载账本列表
+  Future<void> loadLedgers() async {
+    if (!isLoggedIn) return;
+    try {
+      final data = await _api.getLedgers();
+      _ledgers = data.cast<Map<String, dynamic>>();
+      if (_ledgers.isNotEmpty && _currentLedgerId == null) {
+        final defaultLedger = _ledgers.firstWhere(
+          (l) => l['is_default'] == 1 || l['is_default'] == true,
+          orElse: () => _ledgers.first,
+        );
+        _currentLedgerId = defaultLedger['id'] as int?;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to load ledgers: $e');
+    }
+  }
+
+  /// 创建账本
+  Future<AssetActionResult> createLedger(String name, {String description = ''}) async {
+    final result = await _api.createLedger(name, description: description);
+    if (result.ok) await loadLedgers();
+    return result;
+  }
+
+  /// 更新账本
+  Future<AssetActionResult> updateLedger(int id, String name, {String description = ''}) async {
+    final result = await _api.updateLedger(id, name, description: description);
+    if (result.ok) await loadLedgers();
+    return result;
+  }
+
+  /// 删除账本
+  Future<AssetActionResult> deleteLedger(int id) async {
+    final result = await _api.deleteLedger(id);
+    if (result.ok) {
+      if (_currentLedgerId == id) {
+        _currentLedgerId = _ledgers
+            .firstWhere((l) => l['is_default'] == 1 || l['is_default'] == true, orElse: () => _ledgers.first)['id'] as int?;
+      }
+      await loadLedgers();
+    }
+    return result;
+  }
   AppAsyncFlowResult? get lastHydrateResult =>
       _refreshCoordinatorState.lastHydrateResult;
   AppAsyncFlowResult? get lastRefreshResult =>
@@ -538,11 +598,15 @@ class AppState extends ChangeNotifier {
     required String username,
     required String password,
   }) async {
-    return _sessionState.login(
+    final success = await _sessionState.login(
       username: username,
       password: password,
       bindings: _sessionBindings,
     );
+    if (success) {
+      unawaited(loadLedgers());
+    }
+    return success;
   }
 
   /// 邀请码注册
@@ -633,6 +697,7 @@ class AppState extends ChangeNotifier {
         (_lastSessionRestoreResult?.stage == 'refresh-restored' ||
             _lastSessionRestoreResult?.stage == 'token-restored')) {
       unawaited(_validateSessionInBackground());
+      unawaited(loadLedgers());
     }
   }
 
@@ -815,8 +880,8 @@ class AppState extends ChangeNotifier {
   }
 
   /// 获取投资持仓交易记录
-  Future<List<dynamic>> getInvestmentTransactions(String code) {
-    return _api.getPortfolioTransactions(code);
+  Future<List<dynamic>> getInvestmentTransactions(String code, {int? ledgerId}) {
+    return _api.getPortfolioTransactions(code, ledgerId: ledgerId ?? _currentLedgerId);
   }
 
   // ============================================================
@@ -849,6 +914,7 @@ class AppState extends ChangeNotifier {
     String? curr,
     String? assetType,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.addInvestment(
       code: code,
@@ -859,6 +925,7 @@ class AppState extends ChangeNotifier {
       assetType: assetType,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -872,6 +939,7 @@ class AppState extends ChangeNotifier {
     String? curr,
     String? assetType,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.buyInvestmentWithCash(
       code: code,
@@ -883,6 +951,7 @@ class AppState extends ChangeNotifier {
       curr: curr,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -893,6 +962,7 @@ class AppState extends ChangeNotifier {
     required double qty,
     required int cashAssetId,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.sellInvestmentToCash(
       code: code,
@@ -901,6 +971,7 @@ class AppState extends ChangeNotifier {
       cashAssetId: cashAssetId,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -910,6 +981,7 @@ class AppState extends ChangeNotifier {
     required double price,
     required double qty,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.buyInvestment(
       code: code,
@@ -917,6 +989,7 @@ class AppState extends ChangeNotifier {
       qty: qty,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -926,6 +999,7 @@ class AppState extends ChangeNotifier {
     required double price,
     required double qty,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.sellInvestment(
       code: code,
@@ -933,6 +1007,7 @@ class AppState extends ChangeNotifier {
       qty: qty,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -941,18 +1016,18 @@ class AppState extends ChangeNotifier {
     required String code,
     required double qty,
     required double price,
-    required double adjustment,
     String? note,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.modifyInvestment(
       code: code,
       qty: qty,
       price: price,
-      adjustment: adjustment,
       note: note,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -963,6 +1038,7 @@ class AppState extends ChangeNotifier {
     required double amount,
     String? note,
     bool awaitRefresh = true,
+    int? ledgerId,
   }) async {
     return _investmentWriteState.addInvestmentAdjustmentEvent(
       code: code,
@@ -971,6 +1047,7 @@ class AppState extends ChangeNotifier {
       note: note,
       awaitRefresh: awaitRefresh,
       bindings: _investmentWriteBindings,
+      ledgerId: ledgerId ?? _currentLedgerId,
     );
   }
 
@@ -1010,8 +1087,8 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   /// 刷新投资组合
-  Future<void> refreshPortfolio() async {
-    await _refreshCoordinatorState.refreshPortfolio();
+  Future<void> refreshPortfolio({int? ledgerId}) async {
+    await _refreshCoordinatorState.refreshPortfolio(ledgerId: ledgerId ?? _currentLedgerId);
   }
 
   /// 加载汇率

@@ -15,6 +15,7 @@ class _TradeApiStub implements ApiService {
     double price,
     double qty, {
     String? requestId,
+    int? ledgerId,
   }) async {
     return buyResult;
   }
@@ -25,6 +26,7 @@ class _TradeApiStub implements ApiService {
     double price,
     double qty, {
     String? requestId,
+    int? ledgerId,
   }) async {
     return sellResult;
   }

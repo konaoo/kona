@@ -106,6 +106,15 @@ class _S {
     fontSize: 12.5,
     fontWeight: FontWeight.w600,
   );
+  // Ledger switcher
+  static final ledgerChip = GoogleFonts.dmSans(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+  );
+  static final ledgerChipActive = GoogleFonts.dmSans(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+  );
 }
 
 // Market tag colours
@@ -342,6 +351,193 @@ class InvestPageState extends State<InvestPage> {
     );
   }
 
+  // ─── Ledger Switcher ─────────────────────────────
+  Widget _buildLedgerSwitcher(AppState appState) {
+    final ledgers = appState.ledgers;
+    final currentId = appState.currentLedgerId;
+    return SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: ledgers.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final ledger = ledgers[index];
+                final id = ledger['id'] as int?;
+                final name = (ledger['name'] as String?) ?? '账本';
+                final isActive = id == currentId;
+                return GestureDetector(
+                  onTap: () => appState.switchLedger(id),
+                  onLongPress: () => _showLedgerActions(appState, ledger),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppTheme.accent.withValues(alpha: 0.15)
+                          : (AppTheme.isLight
+                              ? const Color(0x08222C40)
+                              : const Color(0x14FFFFFF)),
+                      borderRadius: BorderRadius.circular(16),
+                      border: isActive
+                          ? Border.all(color: AppTheme.accent, width: 1.2)
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      name,
+                      style: (isActive
+                              ? _S.ledgerChipActive
+                              : _S.ledgerChip)
+                          .copyWith(
+                        color:
+                            isActive ? AppTheme.accent : AppTheme.textMuted,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => _showCreateLedgerDialog(appState),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppTheme.isLight
+                    ? const Color(0x0A222C40)
+                    : const Color(0x14FFFFFF),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.add, size: 16, color: AppTheme.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateLedgerDialog(AppState appState) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建账本'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '账本名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              final result = await appState.createLedger(name);
+              if (!mounted) return;
+              if (!result.ok) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(result.message ?? '创建失败')),
+                );
+              }
+            },
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLedgerActions(AppState appState, Map<String, dynamic> ledger) {
+    final id = ledger['id'] as int?;
+    final name = (ledger['name'] as String?) ?? '';
+    final isDefault = ledger['is_default'] == 1 || ledger['is_default'] == true;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('重命名'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameLedgerDialog(appState, id!, name);
+              },
+            ),
+            if (!isDefault)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title:
+                    const Text('删除', style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final result = await appState.deleteLedger(id!);
+                  if (!mounted) return;
+                  if (!result.ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text(result.message ?? '删除失败，账本下可能还有持仓')),
+                    );
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRenameLedgerDialog(AppState appState, int id, String currentName) {
+    final controller = TextEditingController(text: currentName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名账本'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '账本名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty || name == currentName) {
+                Navigator.pop(ctx);
+                return;
+              }
+              Navigator.pop(ctx);
+              final result = await appState.updateLedger(id, name);
+              if (!mounted) return;
+              if (!result.ok) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(result.message ?? '重命名失败')),
+                );
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── Build ───────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -365,6 +561,7 @@ class InvestPageState extends State<InvestPage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 10),
+                    _buildLedgerSwitcher(appState),
                     _buildHeroCard(appState),
                     const SizedBox(height: 12),
                     _buildCategoryTabs(appState),
@@ -393,6 +590,10 @@ class InvestPageState extends State<InvestPage> {
       items,
       (item) => item.dayPnlAggregateCny,
     );
+    final dayPnlBaseCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      PortfolioMetricsService.resolveDayPnlBaseCny,
+    );
     final holdPnlCny = PortfolioMetricsService.sumMetricOrNull(
       items,
       PortfolioMetricsService.resolveFloatPnlCny,
@@ -411,7 +612,7 @@ class InvestPageState extends State<InvestPage> {
     );
     final dayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
       dayPnlCny,
-      totalValueCny,
+      dayPnlBaseCny,
     );
     final holdPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
       holdPnlCny,
@@ -656,13 +857,13 @@ class InvestPageState extends State<InvestPage> {
     final filtered = appState.filteredPortfolio;
     if (filtered.isEmpty) return const SizedBox.shrink();
 
-    final catValueCny = PortfolioMetricsService.sumMetricOrNull(
-      filtered,
-      (item) => item.valueCny,
-    );
     final catDayPnl = PortfolioMetricsService.sumMetricOrNull(
       filtered,
       (item) => item.dayPnlAggregateCny,
+    );
+    final catDayPnlBase = PortfolioMetricsService.sumMetricOrNull(
+      filtered,
+      PortfolioMetricsService.resolveDayPnlBaseCny,
     );
     final catHoldPnl = PortfolioMetricsService.sumMetricOrNull(
       filtered,
@@ -674,7 +875,7 @@ class InvestPageState extends State<InvestPage> {
     );
     final catDayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
       catDayPnl,
-      catValueCny,
+      catDayPnlBase,
     );
     final catHoldPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
       catHoldPnl,

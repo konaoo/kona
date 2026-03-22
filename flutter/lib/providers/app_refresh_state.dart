@@ -572,9 +572,9 @@ class AppRefreshState {
     }
   }
 
-  Future<void> refreshPortfolio({required AppRefreshBindings bindings}) async {
+  Future<void> refreshPortfolio({required AppRefreshBindings bindings, int? ledgerId}) async {
     try {
-      final data = await _api.getPortfolio(withMetrics: true);
+      final data = await _api.getPortfolio(withMetrics: true, ledgerId: ledgerId);
       bindings.replacePortfolio(
         (data).map((e) => PortfolioItem.fromJson(e)).toList(),
       );

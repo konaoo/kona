@@ -100,6 +100,16 @@ def _add_market_breakdown(
     bucket[normalized_market] += float(amount or 0.0)
 
 
+def _add_day_pnl_base(
+    day_pnl_bases_by_date: Dict[str, float],
+    effective_date: str | None,
+    amount: float,
+) -> None:
+    if not effective_date:
+        return
+    day_pnl_bases_by_date[effective_date] = float(day_pnl_bases_by_date.get(effective_date, 0.0) or 0.0) + float(amount or 0.0)
+
+
 def _round_market_breakdown(data: Dict[str, float] | None) -> Dict[str, float]:
     normalized = _empty_market_breakdown()
     for market in DEFAULT_MARKETS:
@@ -235,6 +245,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     invest_mv = 0.0
     total_pnl = 0.0
     day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]] = {}
+    day_pnl_bases_by_date: Dict[str, float] = {}
     now_utc = now_utc or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
         now_utc = now_utc.replace(tzinfo=timezone.utc)
@@ -317,6 +328,11 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
             ):
                 item_day_pnl = (cur_price - yclose_ref) * effective_qty * rate
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
+                _add_day_pnl_base(
+                    day_pnl_bases_by_date,
+                    effective_date,
+                    yclose_ref * effective_qty * rate,
+                )
         else:
             effective_date = resolve_exchange_effective_date(
                 market=market,
@@ -335,9 +351,12 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
                         (cur_price - yclose_ref) * pre_trade_qty
                         + (cur_price - effective_avg_price) * effective_buy_qty
                     ) * rate
+                    item_day_base = yclose_ref * pre_trade_qty * rate
                 else:
                     item_day_pnl = (cur_price - yclose_ref) * qty * rate
+                    item_day_base = yclose_ref * qty * rate
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
+                _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
 
         # 累加
         invest_mv += item_mv
@@ -372,11 +391,17 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     active_effective_date = max(active_effective_candidates) if active_effective_candidates else snapshot_date
     realtime_day_pnl_by_market = _round_market_breakdown(day_pnl_breakdowns_by_date.get(active_effective_date))
     realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
+    realtime_day_pnl_base = round(float(day_pnl_bases_by_date.get(active_effective_date) or 0.0), 2)
     snapshot_day_pnl_by_market = _round_market_breakdown(day_pnl_breakdowns_by_date.get(snapshot_date))
     snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
+    snapshot_day_pnl_base = round(float(day_pnl_bases_by_date.get(snapshot_date) or 0.0), 2)
     rounded_breakdowns_by_date = {
         date_str: _round_market_breakdown(market_map)
         for date_str, market_map in sorted(day_pnl_breakdowns_by_date.items())
+    }
+    rounded_bases_by_date = {
+        date_str: round(float(base or 0.0), 2)
+        for date_str, base in sorted(day_pnl_bases_by_date.items())
     }
     
     return {
@@ -387,17 +412,92 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         'total_asset': round(total_asset, 2),
         'total_pnl': round(total_pnl, 2),
         'day_pnl': realtime_day_pnl,
+        'day_pnl_base': realtime_day_pnl_base,
         'day_pnl_effective_date': active_effective_date,
         'day_pnl_by_market': realtime_day_pnl_by_market,
         'snapshot_day_pnl': snapshot_day_pnl,
+        'snapshot_day_pnl_base': snapshot_day_pnl_base,
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
         'day_pnl_breakdowns_by_date': rounded_breakdowns_by_date,
+        'day_pnl_bases_by_date': rounded_bases_by_date,
         'snapshot_date': snapshot_date,
     }
 
 def is_weekend() -> bool:
     """判断是否周末"""
     return datetime.now().weekday() >= 5
+
+
+def _save_ledger_snapshots(user_id: str | None, stats: Dict[str, Any]) -> None:
+    """为指定用户的每个账本计算并保存快照。"""
+    if not user_id:
+        return
+    snapshot_date = str(stats.get("snapshot_date") or "")
+    if not snapshot_date:
+        return
+    try:
+        ledgers = db.get_ledgers(user_id)
+        if not ledgers:
+            return
+        # Fetch prices and rates once for all ledgers
+        all_portfolio = db.get_portfolio(user_id=user_id, include_closed=True)
+        all_codes = [p["code"] for p in all_portfolio]
+        prices = batch_get_prices(all_codes) if all_codes else {}
+        rates = get_forex_rates()
+
+        for ledger in ledgers:
+            lid = ledger["id"]
+            ledger_portfolio = db.get_portfolio(user_id=user_id, ledger_id=lid)
+            if not ledger_portfolio:
+                db.save_ledger_daily_snapshot(
+                    user_id=user_id, ledger_id=lid, date_str=snapshot_date,
+                )
+                continue
+
+            ledger_invest_mv = 0.0
+            ledger_total_cost = 0.0
+            ledger_day_pnl = 0.0
+            ledger_total_pnl = 0.0
+            for asset in ledger_portfolio:
+                code = asset["code"]
+                qty = float(asset["qty"])
+                cost_price = float(asset["price"])
+                curr = asset["curr"]
+                adj = float(asset["adjustment"] or 0)
+                rate = _rate_to_cny(curr, rates)
+
+                price_data = prices.get(code, (0, 0, 0, 0))
+                cur_price = price_data[0]
+                yclose = price_data[1]
+                if cur_price <= 0:
+                    cur_price = yclose if yclose > 0 else (cost_price if cost_price > 0 else 0.0)
+                if yclose <= 0:
+                    yclose = cost_price if cost_price > 0 else 0.0
+
+                item_mv = cur_price * qty * rate
+                item_cost = cost_price * qty * rate
+                item_day_pnl = (cur_price - yclose) * qty * rate if yclose > 0 else 0.0
+                item_total_pnl = (cur_price - cost_price) * qty * rate + adj * rate
+
+                ledger_invest_mv += item_mv
+                ledger_total_cost += item_cost
+                ledger_day_pnl += item_day_pnl
+                ledger_total_pnl += item_total_pnl
+
+            pnl_rate = (ledger_total_pnl / ledger_total_cost * 100) if ledger_total_cost > 0 else 0.0
+            db.save_ledger_daily_snapshot(
+                user_id=user_id,
+                ledger_id=lid,
+                date_str=snapshot_date,
+                total_market_value=ledger_invest_mv,
+                total_cost=ledger_total_cost,
+                total_pnl=ledger_total_pnl,
+                total_pnl_rate=pnl_rate,
+                day_pnl=ledger_day_pnl,
+                holdings_count=len(ledger_portfolio),
+            )
+    except Exception as e:
+        logger.warning("Failed to save per-ledger snapshots: user=%s err=%s", user_id, e)
 
 
 def take_snapshot(user_id: str = None) -> bool:
@@ -423,6 +523,9 @@ def take_snapshot(user_id: str = None) -> bool:
                 logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
             else:
                 logger.error(f"Failed to save snapshot to database: user={uid}")
+
+            # Save per-ledger snapshots
+            _save_ledger_snapshots(uid, stats)
 
         return success_any
     except Exception as e:
