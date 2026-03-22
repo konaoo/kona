@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../config/theme.dart';
 import '../providers/app_state.dart';
+import '../widgets/invest_trade_dialog.dart';
 import '../widgets/top_toast.dart';
 
 class PortfolioScreenshotImportPage extends StatefulWidget {
@@ -18,26 +19,12 @@ class PortfolioScreenshotImportPage extends StatefulWidget {
 class _PortfolioScreenshotImportPageState
     extends State<PortfolioScreenshotImportPage> {
   final ImagePicker _imagePicker = ImagePicker();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
-  final TextEditingController _qtyController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
 
   bool _recognizing = false;
-  bool _saving = false;
   String? _errorText;
   String? _selectedImageName;
   List<Map<String, dynamic>> _candidates = const [];
   Map<String, dynamic>? _selectedCandidate;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _codeController.dispose();
-    _qtyController.dispose();
-    _priceController.dispose();
-    super.dispose();
-  }
 
   TextStyle _dm({
     double? size,
@@ -65,8 +52,16 @@ class _PortfolioScreenshotImportPageState
     );
   }
 
+  String _candidateKey(Map<String, dynamic> item) {
+    final code = item['code']?.toString().trim() ?? '';
+    final name = item['name']?.toString().trim() ?? '';
+    final qty = item['qty']?.toString().trim() ?? '';
+    final price = item['price']?.toString().trim() ?? '';
+    return '$code|$name|$qty|$price';
+  }
+
   Future<void> _pickAndParseScreenshot() async {
-    if (_recognizing || _saving) return;
+    if (_recognizing) return;
     final file = await _imagePicker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
@@ -90,15 +85,14 @@ class _PortfolioScreenshotImportPageState
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .where((item) {
-            final code = item['code']?.toString().trim() ?? '';
             final name = item['name']?.toString().trim() ?? '';
-            return code.isNotEmpty && name.isNotEmpty;
+            return name.isNotEmpty;
           })
           .toList();
       setState(() {
         _recognizing = false;
         _candidates = candidates;
-        _selectedCandidate = null;
+        _selectedCandidate = candidates.isEmpty ? null : candidates.first;
       });
       if (candidates.isEmpty) {
         setState(() {
@@ -106,9 +100,8 @@ class _PortfolioScreenshotImportPageState
         });
         return;
       }
-      _applyCandidate(candidates.first);
-      TopToast.showInfo(context, '已生成识别结果，请确认后保存');
-    } catch (e) {
+      TopToast.showInfo(context, '已生成识别结果，请点编辑进入添加资产弹窗');
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _recognizing = false;
@@ -118,187 +111,11 @@ class _PortfolioScreenshotImportPageState
     }
   }
 
-  void _applyCandidate(Map<String, dynamic> item) {
-    final qty = _asDouble(item['qty']);
-    final price = _asDouble(item['price']);
+  void _selectCandidate(Map<String, dynamic> item) {
     setState(() {
       _selectedCandidate = item;
-      _nameController.text = item['name']?.toString() ?? '';
-      _codeController.text = _formatDisplayCode(item['code']?.toString() ?? '');
-      _qtyController.text = qty == null ? '' : _formatNumber(qty);
-      _priceController.text = price == null ? '' : _formatNumber(price);
       _errorText = null;
     });
-  }
-
-  Future<void> _openEditDialog(Map<String, dynamic> item) async {
-    _applyCandidate(item);
-    final nameController = TextEditingController(text: _nameController.text);
-    final qtyController = TextEditingController(text: _qtyController.text);
-    final priceController = TextEditingController(text: _priceController.text);
-    String? dialogError;
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: AppTheme.bgCard,
-              title: Text(
-                '编辑识别结果',
-                style: _dm(
-                  size: 18,
-                  weight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              content: SizedBox(
-                width: 360,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildField(label: '资产名称', controller: nameController),
-                    const SizedBox(height: 12),
-                    _buildField(
-                      label: '数量',
-                      controller: qtyController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildField(
-                      label: '买入价',
-                      controller: priceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    if ((dialogError ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        dialogError!,
-                        style: _dm(
-                          size: 12,
-                          weight: FontWeight.w600,
-                          color: AppTheme.danger,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(
-                    '取消',
-                    style: _dm(size: 13, color: AppTheme.textMuted),
-                  ),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final qty = double.tryParse(qtyController.text.trim());
-                    final price = double.tryParse(priceController.text.trim());
-                    if (name.isEmpty || qty == null || qty <= 0 || price == null || price <= 0) {
-                      setDialogState(() {
-                        dialogError = '请把资产名称、数量、买入价填完整';
-                      });
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop({
-                      'name': name,
-                      'qty': qty,
-                      'price': price,
-                    });
-                  },
-                  child: Text(
-                    '保存修改',
-                    style: _dm(size: 13, weight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    nameController.dispose();
-    qtyController.dispose();
-    priceController.dispose();
-
-    if (result == null || !mounted) return;
-    _updateCandidateDraft(
-      item,
-      name: result['name'] as String,
-      qty: result['qty'] as double,
-      price: result['price'] as double,
-    );
-  }
-
-  void _updateCandidateDraft(
-    Map<String, dynamic> item, {
-    required String name,
-    required double qty,
-    required double price,
-  }) {
-    final rawCode = item['code']?.toString() ?? '';
-    final updated = Map<String, dynamic>.from(item)
-      ..['name'] = name
-      ..['qty'] = qty
-      ..['price'] = price;
-    final nextCandidates = _candidates
-        .map((candidate) => (candidate['code']?.toString() ?? '') == rawCode
-            ? updated
-            : candidate)
-        .toList();
-    setState(() {
-      _candidates = nextCandidates;
-      _selectedCandidate = updated;
-      _nameController.text = name;
-      _codeController.text = _formatDisplayCode(rawCode);
-      _qtyController.text = _formatNumber(qty);
-      _priceController.text = _formatNumber(price);
-      _errorText = null;
-    });
-  }
-
-  Future<void> _submit() async {
-    if (_saving) return;
-    final name = _nameController.text.trim();
-    final code = _codeController.text.trim();
-    final qty = double.tryParse(_qtyController.text.trim());
-    final price = double.tryParse(_priceController.text.trim());
-    if (name.isEmpty || code.isEmpty || qty == null || qty <= 0 || price == null || price <= 0) {
-      setState(() {
-        _errorText = '请先把名称、代码、数量、成本价填完整';
-      });
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _errorText = null;
-    });
-    final candidate = _selectedCandidate;
-    final result = await context.read<AppState>().addInvestment(
-          code: code,
-          name: name,
-          qty: qty,
-          price: price,
-          curr: candidate?['curr']?.toString(),
-          assetType: candidate?['asset_type']?.toString(),
-        );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (!result.ok) {
-      setState(() {
-        _errorText = result.message ?? '保存失败，请稍后重试';
-      });
-      TopToast.showError(context, _errorText!);
-      return;
-    }
-    TopToast.showSuccess(context, '已添加资产');
-    Navigator.of(context).pop(true);
   }
 
   double? _asDouble(dynamic value) {
@@ -334,11 +151,71 @@ class _PortfolioScreenshotImportPageState
     return c;
   }
 
-  String _currencySymbol(String curr) {
-    switch (curr.trim().toUpperCase()) {
-      case 'HKD':
+  bool _candidateIsComplete(Map<String, dynamic> item) {
+    final name = item['name']?.toString().trim() ?? '';
+    final code = item['code']?.toString().trim() ?? '';
+    final qty = _asDouble(item['qty']);
+    final price = _asDouble(item['price']);
+    return name.isNotEmpty &&
+        code.isNotEmpty &&
+        qty != null &&
+        qty > 0 &&
+        price != null &&
+        price > 0;
+  }
+
+  String _typeNameForItem(Map<String, dynamic> item) {
+    final assetType = item['asset_type']?.toString().trim().toLowerCase() ?? '';
+    final code = item['code']?.toString().trim().toLowerCase() ?? '';
+    if (assetType == 'fund' || code.startsWith('f_') || code.startsWith('ft_')) {
+      return '基金';
+    }
+    if (assetType == 'hk' || code.startsWith('hk') || code.endsWith('.hk')) {
+      return '港股';
+    }
+    if (assetType == 'us' || code.startsWith('gb_')) {
+      return '美股';
+    }
+    if (assetType == 'a' ||
+        code.startsWith('sh') ||
+        code.startsWith('sz') ||
+        code.startsWith('bj')) {
+      return 'A股';
+    }
+    return '资产';
+  }
+
+  String _assetTypeForItem(Map<String, dynamic> item) {
+    switch (_typeNameForItem(item)) {
+      case '基金':
+        return 'fund';
+      case '港股':
+        return 'hk';
+      case '美股':
+        return 'us';
+      case 'A股':
+        return 'a';
+      default:
+        return '';
+    }
+  }
+
+  String _currencyCodeForItem(Map<String, dynamic> item) {
+    switch (_typeNameForItem(item)) {
+      case '港股':
+        return 'HKD';
+      case '美股':
+        return 'USD';
+      default:
+        return 'CNY';
+    }
+  }
+
+  String _currencySymbolForItem(Map<String, dynamic> item) {
+    switch (_typeNameForItem(item)) {
+      case '港股':
         return 'HK\$';
-      case 'USD':
+      case '美股':
         return '\$';
       default:
         return '¥';
@@ -346,27 +223,78 @@ class _PortfolioScreenshotImportPageState
   }
 
   String _quantityUnit(Map<String, dynamic> item) {
-    final assetType = item['asset_type']?.toString().trim().toLowerCase() ?? '';
-    final typeName = item['type_name']?.toString().trim() ?? '';
+    final typeName = _typeNameForItem(item);
     final code = item['code']?.toString().trim().toLowerCase() ?? '';
-    final isFund = assetType == 'fund' ||
-        typeName.contains('基金') ||
-        code.startsWith('f_') ||
-        code.startsWith('ft_');
+    final name = item['name']?.toString().trim() ?? '';
+    final isFund =
+        typeName == '基金' || code.startsWith('f_') || code.startsWith('ft_') || name.contains('基金');
     return isFund ? '份' : '股';
+  }
+
+  Map<String, dynamic>? _buildInitialSelectedAsset(Map<String, dynamic> item) {
+    final code = item['code']?.toString().trim() ?? '';
+    final name = item['name']?.toString().trim() ?? '';
+    if (code.isEmpty || name.isEmpty) return null;
+    return {
+      'code': code,
+      'name': name,
+      'currency': _currencyCodeForItem(item),
+      'asset_type': _assetTypeForItem(item),
+      'type_name': _typeNameForItem(item),
+    };
+  }
+
+  String _initialSearchQueryForItem(Map<String, dynamic> item) {
+    final displayCode = _formatDisplayCode(item['code']?.toString() ?? '');
+    if (displayCode.isNotEmpty) return displayCode;
+    return item['name']?.toString().trim() ?? '';
+  }
+
+  Future<void> _openAddAssetDialog(Map<String, dynamic> item) async {
+    _selectCandidate(item);
+    await showInvestTradeSheet<void>(
+      context: context,
+      mode: 'add',
+      presentation: InvestTradeDialogPresentation.centered,
+      initialSelectedAsset: _buildInitialSelectedAsset(item),
+      initialSearchQuery: _initialSearchQueryForItem(item),
+      initialPrice: _asDouble(item['price']),
+      initialQty: _asDouble(item['qty']),
+    );
+  }
+
+  Widget _buildTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: _dm(
+          size: 10,
+          weight: FontWeight.w700,
+          color: AppTheme.accent,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
   }
 
   Widget _buildCandidateCard(Map<String, dynamic> item, bool selected) {
     final confidence = ((_asDouble(item['confidence']) ?? 0) * 100).clamp(0, 100);
-    final currSymbol = _currencySymbol(item['curr']?.toString() ?? 'CNY');
+    final currSymbol = _currencySymbolForItem(item);
     final rawNote = item['note']?.toString().trim() ?? '';
     final note = rawNote.contains('本地演示') ? '' : rawNote;
     final displayCode = _formatDisplayCode(item['code']?.toString() ?? '');
     final qtyValue = _asDouble(item['qty']);
-    final qtyText = qtyValue == null ? '待确认' : _formatNumber(qtyValue);
+    final qtyText = qtyValue == null ? '待补' : _formatNumber(qtyValue);
     final qtyUnit = _quantityUnit(item);
+    final complete = _candidateIsComplete(item);
+
     return InkWell(
-      onTap: () => _applyCandidate(item),
+      onTap: () => _selectCandidate(item),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(14),
@@ -414,11 +342,11 @@ class _PortfolioScreenshotImportPageState
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _buildTag(item['type_name']?.toString() ?? '资产'),
+                          _buildTag(_typeNameForItem(item)),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              displayCode.isEmpty ? '--' : displayCode,
+                              displayCode.isEmpty ? '待补代码' : displayCode,
                               style: _mono(size: 12, color: AppTheme.textMuted),
                             ),
                           ),
@@ -429,12 +357,12 @@ class _PortfolioScreenshotImportPageState
                 ),
                 const SizedBox(width: 12),
                 SizedBox(
-                  width: 124,
+                  width: 132,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '买入价 $currSymbol${item['price'] ?? '待确认'}',
+                        '买入价 $currSymbol${item['price'] ?? '待补'}',
                         style: _dm(size: 12, color: AppTheme.textSecondary),
                       ),
                     ],
@@ -444,16 +372,17 @@ class _PortfolioScreenshotImportPageState
             ),
             const SizedBox(height: 6),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Text(
-                    '当前识别准确率 ${confidence.toStringAsFixed(0)}%，如果有误请编辑修正',
+                    complete
+                        ? '当前识别准确率 ${confidence.toStringAsFixed(0)}%，点编辑可直接带入添加资产弹窗'
+                        : '当前识别准确率 ${confidence.toStringAsFixed(0)}%，有缺项时点编辑进入添加资产弹窗补齐',
                     style: _dm(size: 11, color: AppTheme.textMuted),
                   ),
                 ),
                 IconButton(
-                  onPressed: () => _openEditDialog(item),
+                  onPressed: () => _openAddAssetDialog(item),
                   tooltip: '编辑识别结果',
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
@@ -477,69 +406,10 @@ class _PortfolioScreenshotImportPageState
     );
   }
 
-  Widget _buildTag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppTheme.accent.withValues(alpha: AppTheme.isLight ? 0.12 : 0.18),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: _dm(
-          size: 10,
-          weight: FontWeight.w700,
-          color: AppTheme.accent,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField({
-    required String label,
-    required TextEditingController controller,
-    TextInputType? keyboardType,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: _dm(
-            size: 12,
-            weight: FontWeight.w600,
-            color: AppTheme.textMuted,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: AppTheme.bgCard,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: AppTheme.border),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: AppTheme.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: AppTheme.accent, width: 1.2),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final selectedCode = _selectedCandidate?['code']?.toString() ?? '';
+    final selectedCandidateKey =
+        _selectedCandidate == null ? '' : _candidateKey(_selectedCandidate!);
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
@@ -573,7 +443,9 @@ class _PortfolioScreenshotImportPageState
                     children: [
                       FilledButton.icon(
                         onPressed: _recognizing ? null : _pickAndParseScreenshot,
-                        icon: Icon(_recognizing ? Icons.hourglass_top : Icons.photo_library_outlined),
+                        icon: Icon(
+                          _recognizing ? Icons.hourglass_top : Icons.photo_library_outlined,
+                        ),
                         label: Text(_recognizing ? '正在识别截图' : '上传图片'),
                       ),
                       if ((_selectedImageName ?? '').isNotEmpty) ...[
@@ -591,7 +463,7 @@ class _PortfolioScreenshotImportPageState
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '截图需要包括完整的资产代码/数量/买入价',
+                    '截图最好包含资产名称、代码、数量、买入价；缺的字段可以在添加资产弹窗里补。',
                     style: _dm(size: 13, color: AppTheme.textMuted),
                   ),
                 ],
@@ -613,8 +485,17 @@ class _PortfolioScreenshotImportPageState
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _buildCandidateCard(
                     item,
-                    (item['code']?.toString() ?? '') == selectedCode,
+                    _candidateKey(item) == selectedCandidateKey,
                   ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '点每条结果右侧的编辑，就会直接打开原来的添加资产弹窗；识别到的内容会自动带进去，没有的字段你再手动补。',
+                style: _dm(
+                  size: 12,
+                  weight: FontWeight.w600,
+                  color: AppTheme.textMuted,
                 ),
               ),
             ],
@@ -630,16 +511,6 @@ class _PortfolioScreenshotImportPageState
               ),
             ],
           ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: SizedBox(
-          height: 52,
-          child: FilledButton(
-            onPressed: (_selectedCandidate == null || _saving) ? null : _submit,
-            child: Text(_saving ? '正在保存...' : '确认添加资产'),
-          ),
         ),
       ),
     );

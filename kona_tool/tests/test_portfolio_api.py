@@ -119,9 +119,6 @@ class PortfolioApiTests(unittest.TestCase):
         first = items[0]
         self.assertEqual(first.get('name'), '腾讯控股')
         self.assertEqual(first.get('code'), 'hk00700')
-        self.assertEqual(first.get('curr'), 'HKD')
-        self.assertEqual(first.get('asset_type'), 'hk')
-        self.assertEqual(first.get('type_name'), '港股')
         self.assertAlmostEqual(float(first.get('qty') or 0), 200.0)
         self.assertAlmostEqual(float(first.get('price') or 0), 318.4)
 
@@ -146,6 +143,45 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
         body = resp.get_json() or {}
         self.assertEqual(body.get('code'), 'OCR_PROVIDER_NOT_CONFIGURED')
+
+    def test_portfolio_ocr_parse_asset_keeps_missing_code_empty(self):
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            'parse_portfolio_asset_candidates',
+            return_value=portfolio_handlers.portfolio_ocr.PortfolioOcrParseResult(
+                items=[
+                    {
+                        'name': '江苏银行',
+                        'code': '',
+                        'qty': 3200.0,
+                        'price': 10.092,
+                        'curr': 'CNY',
+                        'asset_type': 'a',
+                        'confidence': 0.78,
+                        'note': '',
+                    }
+                ],
+                warnings=[],
+                raw_text='{"items":[...]}',
+            ),
+        ):
+            resp = self.client.post(
+                '/api/portfolio/ocr_parse_asset',
+                data={
+                    'file': (io.BytesIO(b'fake-image-bytes'), 'holding.png'),
+                },
+                content_type='multipart/form-data',
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        items = body.get('items') or []
+        self.assertEqual(len(items), 1)
+        first = items[0]
+        self.assertEqual(first.get('name'), '江苏银行')
+        self.assertEqual(first.get('code'), '')
+        self.assertAlmostEqual(float(first.get('qty') or 0), 3200.0)
+        self.assertAlmostEqual(float(first.get('price') or 0), 10.092)
 
     def test_portfolio_ocr_prefers_dedicated_ocr_provider_config(self):
         app_module.db.set_runtime_config(

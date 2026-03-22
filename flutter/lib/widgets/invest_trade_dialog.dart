@@ -36,9 +36,14 @@ Future<T?> showInvestTradeSheet<T>({
   required BuildContext context,
   required String mode,
   PortfolioItem? item,
+  Map<String, dynamic>? initialSelectedAsset,
   BuildContext? hostContext,
   Future<void> Function()? onPortfolioChanged,
   String? initialTradeMode,
+  String? initialSearchQuery,
+  double? initialPrice,
+  double? initialQty,
+  bool selectionOnly = false,
   InvestTradeDialogPresentation presentation =
       InvestTradeDialogPresentation.sheet,
 }) {
@@ -54,9 +59,14 @@ Future<T?> showInvestTradeSheet<T>({
         child: InvestTradeDialog(
           mode: mode,
           item: item,
+          initialSelectedAsset: initialSelectedAsset,
           hostContext: hostContext,
           onPortfolioChanged: onPortfolioChanged,
           initialTradeMode: initialTradeMode,
+          initialSearchQuery: initialSearchQuery,
+          initialPrice: initialPrice,
+          initialQty: initialQty,
+          selectionOnly: selectionOnly,
           presentation: presentation,
         ),
       ),
@@ -78,9 +88,14 @@ Future<T?> showInvestTradeSheet<T>({
       child: InvestTradeDialog(
         mode: mode,
         item: item,
+        initialSelectedAsset: initialSelectedAsset,
         hostContext: hostContext,
         onPortfolioChanged: onPortfolioChanged,
         initialTradeMode: initialTradeMode,
+        initialSearchQuery: initialSearchQuery,
+        initialPrice: initialPrice,
+        initialQty: initialQty,
+        selectionOnly: selectionOnly,
         presentation: presentation,
       ),
     ),
@@ -143,18 +158,28 @@ class _SearchCacheEntry {
 class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
+  final Map<String, dynamic>? initialSelectedAsset;
   final BuildContext? hostContext;
   final Future<void> Function()? onPortfolioChanged;
   final String? initialTradeMode;
+  final String? initialSearchQuery;
+  final double? initialPrice;
+  final double? initialQty;
+  final bool selectionOnly;
   final InvestTradeDialogPresentation presentation;
 
   const InvestTradeDialog({
     super.key,
     required this.mode,
     this.item,
+    this.initialSelectedAsset,
     this.hostContext,
     this.onPortfolioChanged,
     this.initialTradeMode,
+    this.initialSearchQuery,
+    this.initialPrice,
+    this.initialQty,
+    this.selectionOnly = false,
     this.presentation = InvestTradeDialogPresentation.sheet,
   });
 
@@ -241,6 +266,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isBuy => widget.mode == 'buy';
   bool get _isSell => widget.mode == 'sell';
   bool get _isTrade => widget.mode == 'trade';
+  bool get _isSelectionOnly => _isAdd && widget.selectionOnly;
   bool get _isAdjust => _tradeMode == 'adjust';
   bool get _isDirectAdjustEntry =>
       _isTrade && widget.initialTradeMode == 'adjust';
@@ -344,6 +370,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         }
       }
     }
+    _applyInitialAddPrefill();
   }
 
   @override
@@ -511,6 +538,43 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     });
     _hideSearchOverlay();
     if (next.isEmpty) return;
+  }
+
+  void _applyInitialAddPrefill() {
+    if (!_isAdd) return;
+    final initialSelectedAsset = widget.initialSelectedAsset;
+    final initialSearchQuery = (widget.initialSearchQuery ?? '').trim();
+    final initialPrice = widget.initialPrice;
+    final initialQty = widget.initialQty;
+
+    if (initialSelectedAsset != null) {
+      _selected = Map<String, dynamic>.from(initialSelectedAsset);
+      _queryController.text = _selected?['name']?.toString() ?? initialSearchQuery;
+      _fundInputMode = 'qty';
+    } else if (initialSearchQuery.isNotEmpty) {
+      _queryController.text = initialSearchQuery;
+    }
+
+    if (initialPrice != null && initialPrice > 0) {
+      _priceController.text = _formatInputNumber(
+        initialPrice,
+        decimals: initialPrice >= 1000 ? 0 : 4,
+      );
+    }
+    if (initialQty != null && initialQty > 0) {
+      _qtyController.text = _formatInputNumber(
+        initialQty,
+        decimals: initialQty >= 1000 ? 0 : 4,
+      );
+      _fundInputMode = 'qty';
+    }
+
+    if (initialSelectedAsset == null && initialSearchQuery.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_onSearchTap());
+      });
+    }
   }
 
   Future<void> _onSearchTap() async {
@@ -997,6 +1061,22 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   Future<void> _submit() async {
     if (_saving) return;
+    if (_isSelectionOnly) {
+      if (_selected == null) {
+        setState(() {
+          _errorText = '请先从搜索结果里选中资产';
+        });
+        return;
+      }
+      Navigator.of(context).pop({
+        'code': _selected?['code']?.toString() ?? '',
+        'name': _selected?['name']?.toString() ?? '',
+        'curr': _selected?['currency']?.toString(),
+        'asset_type': _selected?['asset_type']?.toString(),
+        'type_name': _selected?['type_name']?.toString(),
+      });
+      return;
+    }
     final appState = context.read<AppState>();
     final toastContext = widget.hostContext ?? context;
     final mode = _currentActionMode();
@@ -2809,6 +2889,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   bool _isSaveInputReady() {
+    if (_isSelectionOnly) return _selected != null;
     final mode = _currentActionMode();
     final priceReady = _priceController.text.trim().isNotEmpty;
     final qtyReady = _qtyController.text.trim().isNotEmpty;
@@ -2829,6 +2910,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   String _submitLabel() {
+    if (_isSelectionOnly) return '确认选择';
     if (_isAdd) return '确认添加';
     final action = _currentActionMode();
     if (action == 'sell') return '确认卖出';
@@ -2837,6 +2919,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   String _dialogTitle() {
+    if (_isSelectionOnly) return '选择资产';
     if (_isAdd) return '添加资产';
     final name = (widget.item?.displayName ?? '').trim();
     final suffix = name.isEmpty ? '' : ' · $name';
@@ -3049,7 +3132,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                       const SizedBox(height: 10),
                       _buildTradeToggle(),
                     ],
-                    if (needsCashSource) ...[
+                    if (!_isSelectionOnly && needsCashSource) ...[
                       const SizedBox(height: 10),
                       Text(
                         '资金账户',
@@ -3062,8 +3145,10 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         showAddCashAction: showAddCashAction,
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    _buildTradeInputFields(),
+                    if (!_isSelectionOnly) ...[
+                      const SizedBox(height: 12),
+                      _buildTradeInputFields(),
+                    ],
                     if (_errorText != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),

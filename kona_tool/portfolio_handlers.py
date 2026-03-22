@@ -195,29 +195,17 @@ def create_portfolio_payload_handlers(
         for item in parsed.items:
             code = str(item.get("code") or "").strip()
             name = str(item.get("name") or "").strip()
-            curr = str(item.get("curr") or "").strip()
             normalized = (
-                portfolio_identity_normalizer(code, curr, name)
-                if code or name
-                else {"code": "", "name": name, "curr": curr or "", "asset_type": ""}
+                portfolio_identity_normalizer(code, "", name)
+                if code
+                else {"code": "", "name": name}
             )
-            asset_type = str(item.get("asset_type") or normalized.get("asset_type") or "").strip().lower()
-            type_name = {
-                "a": "A股",
-                "hk": "港股",
-                "us": "美股",
-                "fund": "基金",
-            }.get(asset_type, "资产")
             normalized_items.append(
                 {
                     "name": normalized.get("name") or name,
                     "code": _normalize_ocr_candidate_code(normalized.get("code") or code),
                     "qty": item.get("qty"),
                     "price": item.get("price"),
-                    "currency": normalized.get("curr") or curr,
-                    "curr": normalized.get("curr") or curr,
-                    "asset_type": asset_type,
-                    "type_name": type_name,
                     "confidence": item.get("confidence") or 0.0,
                     "note": item.get("note") or "",
                 }
