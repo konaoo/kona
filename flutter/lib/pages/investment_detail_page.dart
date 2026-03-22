@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -310,8 +311,9 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
 
   // ── 顶部导航栏 ──
   Widget _buildHeader(BuildContext context, PortfolioItem item) {
+    final topPadding = defaultTargetPlatform == TargetPlatform.macOS ? 36.0 : 18.0;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+      padding: EdgeInsets.fromLTRB(18, topPadding, 18, 14),
       child: Row(
         children: [
           Material(

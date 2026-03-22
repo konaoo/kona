@@ -45,6 +45,7 @@ Future<T?> showInvestTradeSheet<T>({
   double? initialPrice,
   double? initialQty,
   bool preserveDraftInputsOnClear = false,
+  bool draftOnly = false,
   bool selectionOnly = false,
   InvestTradeDialogPresentation presentation =
       InvestTradeDialogPresentation.sheet,
@@ -70,6 +71,7 @@ Future<T?> showInvestTradeSheet<T>({
           initialPrice: initialPrice,
           initialQty: initialQty,
           preserveDraftInputsOnClear: preserveDraftInputsOnClear,
+          draftOnly: draftOnly,
           selectionOnly: selectionOnly,
           presentation: presentation,
         ),
@@ -101,6 +103,7 @@ Future<T?> showInvestTradeSheet<T>({
         initialPrice: initialPrice,
         initialQty: initialQty,
         preserveDraftInputsOnClear: preserveDraftInputsOnClear,
+        draftOnly: draftOnly,
         selectionOnly: selectionOnly,
         presentation: presentation,
       ),
@@ -173,6 +176,7 @@ class InvestTradeDialog extends StatefulWidget {
   final double? initialPrice;
   final double? initialQty;
   final bool preserveDraftInputsOnClear;
+  final bool draftOnly;
   final bool selectionOnly;
   final InvestTradeDialogPresentation presentation;
 
@@ -189,6 +193,7 @@ class InvestTradeDialog extends StatefulWidget {
     this.initialPrice,
     this.initialQty,
     this.preserveDraftInputsOnClear = false,
+    this.draftOnly = false,
     this.selectionOnly = false,
     this.presentation = InvestTradeDialogPresentation.sheet,
   });
@@ -277,6 +282,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isSell => widget.mode == 'sell';
   bool get _isTrade => widget.mode == 'trade';
   bool get _isSelectionOnly => _isAdd && widget.selectionOnly;
+  bool get _isDraftOnly => _isAdd && widget.draftOnly;
   bool get _preserveDraftInputsOnClear => widget.preserveDraftInputsOnClear;
   bool get _isAdjust => _tradeMode == 'adjust';
   bool get _isDirectAdjustEntry =>
@@ -580,6 +586,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _fundInputMode = 'qty';
     }
 
+    if (initialPrice != null &&
+        initialPrice > 0 &&
+        initialQty != null &&
+        initialQty > 0) {
+      _syncAmountFromPriceQty();
+    }
+
     if (initialSelectedAsset == null && initialSearchQuery.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -655,13 +668,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     _markOverlaysNeedsBuild();
   }
 
-  void _closeDialog() {
+  void _closeDialog<T>({T? result}) {
     _hideSearchOverlay();
     _hideCashOverlay();
     _hideAdjustTypeOverlay();
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
-      navigator.pop();
+      navigator.pop(result);
       return;
     }
     setState(() {
@@ -1088,6 +1101,58 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       });
       return;
     }
+    if (_isDraftOnly) {
+      final price = double.tryParse(_priceController.text.trim());
+      if (price == null || price <= 0) {
+        setState(() {
+          _errorText = '请输入有效价格';
+        });
+        return;
+      }
+      if (_selected == null) {
+        setState(() {
+          _errorText = '必须从下拉列表选择资产';
+        });
+        return;
+      }
+      final isFund = _isCurrentFundTarget();
+      double? qty;
+      if (isFund && _isFundAmountMode()) {
+        final amount = double.tryParse(_amountController.text.trim());
+        if (amount == null || amount <= 0) {
+          setState(() {
+            _errorText = '请输入有效买入金额';
+          });
+          return;
+        }
+        qty = _deriveFundQtyFromAmountNav();
+        if (qty == null || qty <= 0) {
+          setState(() {
+            _errorText = '金额过小，按当前净值不足以买入最小份额（0.0001）';
+          });
+          return;
+        }
+      } else {
+        qty = double.tryParse(_qtyController.text.trim());
+        if (qty == null || qty <= 0) {
+          setState(() {
+            _errorText = '请输入有效数量';
+          });
+          return;
+        }
+      }
+      _closeDialog(result: {
+        'code': _selected?['code']?.toString() ?? '',
+        'name': _selected?['name']?.toString() ?? '',
+        'curr': _selected?['currency']?.toString(),
+        'asset_type': _selected?['asset_type']?.toString(),
+        'type_name': _selected?['type_name']?.toString(),
+        'price': price,
+        'qty': qty,
+        'amount': double.tryParse(_amountController.text.trim()),
+      });
+      return;
+    }
     final appState = context.read<AppState>();
     final toastContext = widget.hostContext ?? context;
     final mode = _currentActionMode();
@@ -1363,7 +1428,20 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
     await _notifyPortfolioChanged();
     if (!mounted || !toastContext.mounted) return;
-    _closeDialog();
+    Map<String, dynamic>? closeResult;
+    if (_isAdd) {
+      closeResult = {
+        'code': _selected?['code']?.toString() ?? '',
+        'name': _selected?['name']?.toString() ?? '',
+        'curr': _selected?['currency']?.toString(),
+        'asset_type': _selected?['asset_type']?.toString(),
+        'type_name': _selected?['type_name']?.toString(),
+        'price': price,
+        'qty': qty,
+        'amount': double.tryParse(_amountController.text.trim()),
+      };
+    }
+    _closeDialog(result: closeResult);
 
     final undoToken = result.data?['undo_token']?.toString();
     if (undoToken != null && undoToken.isNotEmpty) {
@@ -2926,6 +3004,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   String _submitLabel() {
     if (_isSelectionOnly) return '确认选择';
+    if (_isDraftOnly) return '保存';
     if (_isAdd) return '确认添加';
     final action = _currentActionMode();
     if (action == 'sell') return '确认卖出';
@@ -2944,9 +3023,27 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return '加仓$suffix';
   }
 
-  void _handleDeletePressed() {
+  Future<void> _handleDeletePressed() async {
     final callback = widget.onDeletePressed;
     if (callback == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除识别结果'),
+        content: const Text('删除后这条识别结果会从当前截图列表里移除，确定继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     callback();
     _closeDialog();
   }

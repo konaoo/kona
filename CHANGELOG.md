@@ -1,3 +1,25 @@
+## 2026-03-22-10
+
+### 这版一句话
+
+继续收口 Flutter 投资录入和详情页体验：截图录入复用的添加资产弹窗补齐草稿模式、删除确认和金额联动，mac 端详情页顶部按钮点击区域同步修正。
+
+### 主要变化
+- **添加资产弹窗支持草稿模式**：Flutter [flutter/lib/widgets/invest_trade_dialog.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/widgets/invest_trade_dialog.dart) 现在支持 `draftOnly`，截图录入进入弹窗时会先保存草稿，不直接写库，方便回到截图页统一提交。
+- **截图录入弹窗交互补齐**：同一文件现在支持删除识别结果前二次确认、预填数量和成本价时自动联动金额、清空已选资产时默认保留 OCR 已识别出的数字输入。
+- **弹窗关闭结果可回写上一页**：同一文件关闭时可把当前已确认的 `名称 / 代码 / 数量 / 成本价 / 金额` 带回截图录入页，避免编辑完后页面状态不同步。
+- **mac 详情页顶部点击区域下移**：Flutter [flutter/lib/pages/investment_detail_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/investment_detail_page.dart) 现在在 macOS 下把顶部导航整体下移，避免返回和更多按钮被标题栏区域挡住点不到。
+
+### 影响范围
+- Flutter：截图录入进入后的“添加资产”弹窗
+- Flutter：macOS 投资详情页顶部返回和更多按钮点击区域
+
+### 验收重点
+- 截图录入点“编辑”进入添加资产弹窗后，应先保存草稿，再回到截图页统一提交，不应直接入库
+- 弹窗里删除识别结果时，应先弹确认
+- OCR 已识别出成本价和数量时，金额应自动算出
+- macOS 投资详情页顶部返回按钮和右上角更多按钮应能正常点击
+
 ## 2026-03-22-09
 
 ### 这版一句话
