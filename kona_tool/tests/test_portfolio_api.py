@@ -253,11 +253,11 @@ class PortfolioApiTests(unittest.TestCase):
     def test_portfolio_ocr_prompt_forbids_guessing_missing_code(self):
         prompt = portfolio_handlers.portfolio_ocr._build_ocr_prompt()
 
-        self.assertIn("只有在截图里明确看到了代码，才能填写 code", prompt)
-        self.assertIn("绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码", prompt)
-        self.assertIn("如果截图是表格或列表，优先逐行提取名称、代码、数量、成本价", prompt)
+        self.assertIn("只有截图里明确出现了代码，才能写代码", prompt)
+        self.assertIn("绝对不要根据名称、品牌名、常识、热门股票记忆、价格或市场去猜代码", prompt)
+        self.assertIn("每条资产尽量输出成一行，优先格式：名称 | 代码 | 数量 | 成本价", prompt)
 
-    def test_portfolio_ocr_falls_back_to_transcript_prompt_when_first_pass_empty(self):
+    def test_portfolio_ocr_single_pass_transcript_parses_pipe_rows(self):
         app_module.db.set_runtime_config(
             "ai_providers",
             json.dumps(
@@ -281,11 +281,7 @@ class PortfolioApiTests(unittest.TestCase):
         with patch.object(
             portfolio_handlers.portfolio_ocr,
             "_run_openai_compatible_vision",
-            side_effect=[
-                '{"items":[],"warnings":[]}',
-                "",
-                "江苏银行 |  | 3200 | 10.092",
-            ],
+            return_value="江苏银行 |  | 3200 | 10.092",
         ) as mocked:
             result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
                 db=app_module.db,
@@ -297,15 +293,12 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].get("name"), "江苏银行")
         self.assertEqual(result.items[0].get("code"), "")
-        self.assertEqual(mocked.call_count, 3)
-        first_prompt = mocked.call_args_list[0].kwargs.get("prompt") or ""
-        second_prompt = mocked.call_args_list[1].kwargs.get("prompt") or ""
-        third_prompt = mocked.call_args_list[2].kwargs.get("prompt") or ""
-        self.assertIn("新增资产表单", first_prompt)
-        self.assertIn("真正的资产列表区域", second_prompt)
-        self.assertIn("上半段", third_prompt)
+        self.assertEqual(mocked.call_count, 1)
+        prompt = mocked.call_args.kwargs.get("prompt") or ""
+        self.assertIn("只返回逐行纯文本", prompt)
+        self.assertIn("优先格式：名称 | 代码 | 数量 | 成本价", prompt)
 
-    def test_portfolio_ocr_falls_back_to_transcript_structuring_when_json_stays_empty(self):
+    def test_portfolio_ocr_single_pass_still_accepts_json_when_provider_returns_json(self):
         app_module.db.set_runtime_config(
             "ai_providers",
             json.dumps(
@@ -329,19 +322,12 @@ class PortfolioApiTests(unittest.TestCase):
         with patch.object(
             portfolio_handlers.portfolio_ocr,
             "_run_openai_compatible_vision",
-            side_effect=[
-                '{"items":[],"warnings":[]}',
-                "腾讯控股 00700 100 598.00 -9,000.00",
-            ],
-        ) as mocked_vision, patch.object(
-            portfolio_handlers.portfolio_ocr,
-            "_run_openai_compatible_text",
             return_value=(
                 '{"items":[{"name":"腾讯控股","code":"00700","qty":100,'
                 '"price":598.0,"curr":"HKD","asset_type":"hk",'
-                '"confidence":0.82,"note":"转写兜底成功"}],"warnings":["来自转写兜底"]}'
+                '"confidence":0.82,"note":"直接返回 JSON"}],"warnings":["来自模型 JSON"]}'
             ),
-        ) as mocked_text:
+        ) as mocked_vision:
             result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
                 db=app_module.db,
                 image_bytes=b"fake-image-bytes",
@@ -352,10 +338,8 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].get("name"), "腾讯控股")
         self.assertEqual(result.items[0].get("code"), "00700")
-        self.assertEqual(mocked_vision.call_count, 2)
-        self.assertEqual(mocked_text.call_count, 0)
-        transcript_prompt = mocked_vision.call_args_list[1].kwargs.get("prompt") or ""
-        self.assertIn("真正的资产列表区域", transcript_prompt)
+        self.assertEqual(result.warnings, ["来自模型 JSON"])
+        self.assertEqual(mocked_vision.call_count, 1)
 
     def test_portfolio_ocr_normalize_items_keeps_up_to_twelve_rows(self):
         raw_items = []

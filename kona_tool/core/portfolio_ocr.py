@@ -72,7 +72,6 @@ def parse_portfolio_asset_candidates(
     protocol = str(provider.get("protocol") or "openai").strip().lower()
     api_key = str(provider.get("api_key") or "").strip()
     model = str(provider.get("model") or "").strip()
-    text_model = str(provider.get("text_model") or "").strip() or model
     base_url = str(provider.get("base_url") or "").strip()
     provider_type = str(provider.get("type") or "").strip().lower()
     if not api_key:
@@ -83,7 +82,7 @@ def parse_portfolio_asset_candidates(
         )
 
     image_b64 = base64.b64encode(image_bytes).decode("ascii")
-    prompts = [_build_ocr_prompt()]
+    prompt = _build_ocr_prompt()
 
     def _run_vision(prompt: str) -> str:
         if protocol == "anthropic":
@@ -106,67 +105,30 @@ def parse_portfolio_asset_candidates(
 
     raw_text = ""
     try:
-        last_parse_error: PortfolioOcrError | None = None
-        last_warnings: List[str] = []
-        for idx, prompt in enumerate(prompts):
-            raw_text = _run_vision(prompt)
-            try:
-                payload = _parse_response_json(raw_text)
-            except PortfolioOcrError as exc:
-                last_parse_error = exc
-                if exc.code in {"OCR_INVALID_JSON", "OCR_EMPTY_RESPONSE"}:
-                    break
-                raise
+        raw_text = _run_vision(prompt)
+        stripped = str(raw_text or "").strip()
+        if stripped.startswith("{") or stripped.startswith("```"):
+            payload = _parse_response_json(raw_text)
             items = _normalize_items(payload.get("items"))
             warnings = _normalize_warnings(payload.get("warnings"))
-            last_warnings = warnings
             if items:
                 return PortfolioOcrParseResult(
                     items=items,
                     warnings=warnings,
                     raw_text=raw_text,
                 )
-        merged_transcript_items: List[Dict[str, Any]] = []
-        merged_transcript_warnings: List[str] = []
-        transcript_raw_parts: List[str] = []
-        last_transcript_error: PortfolioOcrError | None = None
-        for transcript_prompt in _build_table_transcript_prompts():
-            transcript = _run_vision(transcript_prompt)
-            transcript_raw_parts.append(transcript)
-            try:
-                transcript_payload = _parse_transcript_to_payload(
-                    transcript=transcript,
-                    protocol=protocol,
-                    api_key=api_key,
-                    model=text_model,
-                    base_url=base_url,
-                    provider_type=provider_type,
-                )
-            except PortfolioOcrError as exc:
-                last_transcript_error = exc
-                if exc.code in {"OCR_EMPTY_RESPONSE", "OCR_INVALID_JSON"}:
-                    continue
-                raise
-            transcript_items = _normalize_items(transcript_payload.get("items"))
-            transcript_warnings = _normalize_warnings(transcript_payload.get("warnings"))
-            merged_transcript_warnings.extend(transcript_warnings)
-            merged_transcript_items = _merge_transcript_items(
-                merged_transcript_items,
-                transcript_items,
-            )
-            if merged_transcript_items:
-                break
-        if merged_transcript_items:
-            merged_warnings = last_warnings + merged_transcript_warnings
+        parsed_items = _parse_transcript_items(raw_text)
+        if parsed_items:
             return PortfolioOcrParseResult(
-                items=merged_transcript_items,
-                warnings=_dedupe_texts(merged_warnings),
-                raw_text="\n\n".join([part for part in transcript_raw_parts if str(part or "").strip()]),
+                items=parsed_items,
+                warnings=[],
+                raw_text=raw_text,
             )
-        if last_transcript_error is not None:
-            raise last_transcript_error
-        if last_parse_error is not None:
-            raise last_parse_error
+        raise PortfolioOcrError(
+            "没识别到可用资产，请换更清晰的截图，或只截持仓列表区域再试",
+            code="OCR_PARSE_FAILED",
+            status_code=502,
+        )
     except PortfolioOcrError:
         raise
     except Exception as exc:
@@ -252,40 +214,24 @@ def _normalize_media_type(*, filename: str, content_type: str) -> str:
 
 def _build_ocr_prompt() -> str:
     return (
-        "你是投资记账产品里的截图识别助手。"
+        "你是投资记账产品里的截图转写助手。"
         "当前任务只服务“添加资产”入口，不是导入交易历史。"
-        "请从用户上传的持仓截图里提取可直接用于“新增资产表单”的候选资产。"
-        "截图可能是单只持仓详情，也可能是深色背景、整页、多行、多列表格的持仓列表。"
-        "不要臆造完整交易记录，不要输出解释性文字。"
+        "请把截图里真正的资产列表尽量逐条抄出来。"
+        "截图可能是单只资产详情，也可能是深色背景、多行、多列、整页持仓列表。"
+        "忽略顶部导航、底部标签栏、账户汇总区、列标题、广告、帮助入口。"
         "\n\n"
-        "严格返回一个 JSON 对象，不要加 markdown 代码块。格式如下：\n"
-        "{\n"
-        '  "items": [\n'
-        "    {\n"
-        '      "name": "资产名称",\n'
-        '      "code": "截图里明确出现的代码；如果截图里没出现，就给空字符串",\n'
-        '      "qty": 123.45,\n'
-        '      "price": 12.34,\n'
-        '      "curr": "CNY/HKD/USD 之一，判断不出就给空字符串",\n'
-        '      "asset_type": "a/hk/us/fund 之一，判断不出就给空字符串",\n'
-        '      "confidence": 0.0,\n'
-        '      "note": "最多一句提醒"\n'
-        "    }\n"
-        "  ],\n"
-        '  "warnings": ["如果截图模糊或字段不确定，在这里给简短提醒"]\n'
-        "}\n\n"
-        "要求：\n"
-        "1. 最多返回 12 条候选资产。\n"
-        "2. 如果同一张图里有多条资产，按从上到下、从左到右的顺序返回。\n"
-        "3. 只有在截图里明确看到了代码，才能填写 code；如果没有明确看到，code 必须是空字符串。\n"
-        "4. 如果数量或成本价看不清，就填 null，不要瞎猜。\n"
-        "5. 绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码。\n"
-        "6. 如果截图是表格或列表，优先逐行提取名称、代码、数量、成本价，缺哪个就留空，不要因为缺一列就整行放弃。\n"
-        "7. 如果表头写的是“成本/现价”，优先把前一个值当作成本价；如果表头写的是“现价/成本”，优先把后一个值当作成本价。\n"
-        "8. 市值、盈亏、涨跌幅、今日盈亏、参考盈亏都不是 price，不要误填到成本价。\n"
-        "9. 如果代码能明确识别，尽量给出标准代码，如：sh600519、hk00700、gb_aapl、f_110017。\n"
-        "10. confidence 取 0 到 1 之间的小数。\n"
-        "11. 只返回 JSON。"
+        "只返回逐行纯文本，不要 markdown，不要 JSON，不要解释。"
+        "每条资产尽量输出成一行，优先格式：名称 | 代码 | 数量 | 成本价。"
+        "\n\n"
+        "规则：\n"
+        "1. 最多转写 12 条资产，按从上到下顺序输出。\n"
+        "2. 如果一只资产在原图里分两行显示，请尽量自己合并成一行。\n"
+        "3. 只有截图里明确出现了代码，才能写代码；没有明确看到就留空，例如：腾讯控股 |  | 100 | 598.00。\n"
+        "4. 绝对不要根据名称、品牌名、常识、热门股票记忆、价格或市场去猜代码。\n"
+        "5. 如果表头是“成本/现价”，优先把前一个值当成本价；如果表头是“现价/成本”，优先把后一个值当成本价。\n"
+        "6. 市值、盈亏、涨跌幅、今日盈亏、参考盈亏都不是成本价，不要抄到最后一列。\n"
+        "7. 如果某个字段看不清，可以留空，但名称尽量保留。\n"
+        "8. 只返回资产列表纯文本。"
     )
 
 
