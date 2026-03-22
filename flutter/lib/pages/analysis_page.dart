@@ -183,9 +183,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
       setState(() => _loading = true);
     }
     try {
+      final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.overviewLoader != null
           ? await widget.overviewLoader!('all')
-          : await _api.getAnalysisOverview(period: 'all');
+          : await _api.getAnalysisOverview(period: 'all', ledgerId: ledgerId);
       if (!mounted) return;
       setState(() {
         _overview = data;
@@ -271,6 +272,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       if (mounted) setState(() {});
     }
     try {
+      final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.calendarLoader != null
           ? await widget.calendarLoader!(
               timeType: _calendarTimeType,
@@ -281,6 +283,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               timeType: _calendarTimeType,
               year: _currentCalendarRequestYear,
               month: _currentCalendarRequestMonth,
+              ledgerId: ledgerId,
             );
       if (!mounted) return;
       setState(() {
@@ -317,9 +320,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
     if (_rankLoading && !force) return;
     setState(() => _rankLoading = true);
     try {
+      final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.rankLoader != null
           ? await widget.rankLoader!(rankType: 'all', market: 'all')
-          : await _api.getAnalysisRank(rankType: 'all', market: 'all');
+          : await _api.getAnalysisRank(rankType: 'all', market: 'all', ledgerId: ledgerId);
       if (!mounted) return;
       setState(() {
         _rankData = data;
@@ -345,19 +349,25 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   String _calendarStorageKey(String cacheKey) {
-    final rawUserId = context.read<AppState>().userId?.trim();
+    final appState = context.read<AppState>();
+    final rawUserId = appState.userId?.trim();
     final userId = (rawUserId == null || rawUserId.isEmpty)
         ? 'guest'
         : rawUserId;
-    return 'analysis_calendar_v1:$userId:$cacheKey';
+    final ledgerId = appState.currentLedgerId;
+    final ledgerSuffix = ledgerId != null ? ':l$ledgerId' : '';
+    return 'analysis_calendar_v1:$userId$ledgerSuffix:$cacheKey';
   }
 
   String _overviewStorageKey() {
-    final rawUserId = context.read<AppState>().userId?.trim();
+    final appState = context.read<AppState>();
+    final rawUserId = appState.userId?.trim();
     final userId = (rawUserId == null || rawUserId.isEmpty)
         ? 'guest'
         : rawUserId;
-    return 'analysis_overview_v1:$userId';
+    final ledgerId = appState.currentLedgerId;
+    final ledgerSuffix = ledgerId != null ? ':l$ledgerId' : '';
+    return 'analysis_overview_v1:$userId$ledgerSuffix';
   }
 
   Future<Map<String, dynamic>?> _loadCalendarFromStorage(String key) async {
@@ -1594,9 +1604,10 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
     if (_loading && !force) return;
     setState(() => _loading = true);
     try {
+      final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.rankLoader != null
           ? await widget.rankLoader!(rankType: 'all', market: 'all')
-          : await _api.getAnalysisRank(rankType: 'all', market: 'all');
+          : await _api.getAnalysisRank(rankType: 'all', market: 'all', ledgerId: ledgerId);
       if (!mounted) return;
       final items = _parseRankItems(data);
       setState(() {

@@ -46,6 +46,7 @@ class AppInvestmentWriteState {
     String? assetType,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     if (price <= 0 || qty <= 0) {
       return const AssetActionResult.failure('请输入有效价格和数量');
@@ -76,6 +77,7 @@ class AppInvestmentWriteState {
       qty,
       curr: normalizedCurr,
       assetType: assetType,
+      ledgerId: ledgerId,
     );
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);
@@ -95,6 +97,7 @@ class AppInvestmentWriteState {
     String? assetType,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     if (price <= 0 || qty <= 0) {
       return const AssetActionResult.failure('请输入有效价格和数量');
@@ -107,6 +110,7 @@ class AppInvestmentWriteState {
           qty: qty,
           awaitRefresh: awaitRefresh,
           bindings: bindings,
+          ledgerId: ledgerId,
         );
       }
       return addInvestment(
@@ -118,6 +122,7 @@ class AppInvestmentWriteState {
         assetType: assetType,
         awaitRefresh: awaitRefresh,
         bindings: bindings,
+        ledgerId: ledgerId,
       );
     }
     if (cashAssetId <= 0) {
@@ -213,6 +218,7 @@ class AppInvestmentWriteState {
       cashAssetId: cashAssetId,
       curr: normalizedCurr,
       assetType: assetType,
+      ledgerId: ledgerId,
     );
     if (!result.ok) {
       final statusCode = result.data?['status_code'];
@@ -254,6 +260,7 @@ class AppInvestmentWriteState {
     required int cashAssetId,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     if (cashAssetId == -999) {
       return sellInvestment(
@@ -262,6 +269,7 @@ class AppInvestmentWriteState {
         qty: qty,
         awaitRefresh: awaitRefresh,
         bindings: bindings,
+        ledgerId: ledgerId,
       );
     }
     final index = _portfolioIndexByCode(code);
@@ -340,6 +348,7 @@ class AppInvestmentWriteState {
       price,
       qty,
       cashAssetId: cashAssetId,
+      ledgerId: ledgerId,
     );
     if (!result.ok) {
       final statusCode = result.data?['status_code'];
@@ -380,6 +389,7 @@ class AppInvestmentWriteState {
     required double qty,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     if (price <= 0 || qty <= 0) {
       return const AssetActionResult.failure('请输入有效价格和数量');
@@ -399,7 +409,7 @@ class AppInvestmentWriteState {
     }
     _recalculatePortfolioTotals(bindings.notifyListeners);
 
-    final result = await _api.buyPortfolioAsset(code, price, qty);
+    final result = await _api.buyPortfolioAsset(code, price, qty, ledgerId: ledgerId);
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);
       return result;
@@ -414,6 +424,7 @@ class AppInvestmentWriteState {
     required double qty,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     if (price <= 0 || qty <= 0) {
       return const AssetActionResult.failure('请输入有效价格和数量');
@@ -437,7 +448,7 @@ class AppInvestmentWriteState {
     }
     _recalculatePortfolioTotals(bindings.notifyListeners);
 
-    final result = await _api.sellPortfolioAsset(code, price, qty);
+    final result = await _api.sellPortfolioAsset(code, price, qty, ledgerId: ledgerId);
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);
       return result;
@@ -450,12 +461,12 @@ class AppInvestmentWriteState {
     required String code,
     required double qty,
     required double price,
-    required double adjustment,
     String? note,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
-    if (qty <= 0 || !price.isFinite || !adjustment.isFinite) {
+    if (qty <= 0 || !price.isFinite) {
       return const AssetActionResult.failure('请输入有效调整参数');
     }
     if (_portfolioIndexByCode(code) < 0) {
@@ -466,7 +477,6 @@ class AppInvestmentWriteState {
       code: code,
       qty: qty,
       price: price,
-      adjustment: adjustment,
       notify: false,
     );
     if (!changed) {
@@ -478,8 +488,8 @@ class AppInvestmentWriteState {
       code,
       qty,
       price,
-      adjustment,
       note: note,
+      ledgerId: ledgerId,
     );
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);
@@ -496,6 +506,7 @@ class AppInvestmentWriteState {
     String? note,
     bool awaitRefresh = true,
     required AppInvestmentWriteBindings bindings,
+    int? ledgerId,
   }) async {
     final index = _portfolioIndexByCode(code);
     if (index < 0) {
@@ -533,6 +544,7 @@ class AppInvestmentWriteState {
       amount,
       note: cleanNote,
       curr: current.curr,
+      ledgerId: ledgerId,
     );
     if (!result.ok) {
       _restorePortfolioSnapshot(snapshot, bindings.notifyListeners);

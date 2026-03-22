@@ -434,6 +434,67 @@ class ApiService {
     throw _mapNetworkError(lastError ?? 'unknown error');
   }
 
+  Future<dynamic> _put(String endpoint, Map<String, dynamic> data) async {
+    var retriedAfterRefresh = false;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client
+            .put(
+              buildApiUri(endpoint),
+              headers: _buildHeaders(),
+              body: jsonEncode(data),
+            )
+            .timeout(const Duration(seconds: ApiConfig.timeout));
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else if (response.statusCode == 401 && !retriedAfterRefresh) {
+          final refreshed = await _refreshAccessToken();
+          if (refreshed) {
+            retriedAfterRefresh = true;
+            continue;
+          }
+          throw _buildAuthFailureException();
+        } else {
+          throw ApiException(_extractErrorMessage(response), statusCode: response.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        throw _mapNetworkError(e);
+      }
+    }
+    throw _mapNetworkError('unknown error');
+  }
+
+  Future<dynamic> _delete(String endpoint) async {
+    var retriedAfterRefresh = false;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client
+            .delete(
+              buildApiUri(endpoint),
+              headers: _buildHeaders(),
+            )
+            .timeout(const Duration(seconds: ApiConfig.timeout));
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else if (response.statusCode == 401 && !retriedAfterRefresh) {
+          final refreshed = await _refreshAccessToken();
+          if (refreshed) {
+            retriedAfterRefresh = true;
+            continue;
+          }
+          throw _buildAuthFailureException();
+        } else {
+          throw ApiException(_extractErrorMessage(response), statusCode: response.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        throw _mapNetworkError(e);
+      }
+    }
+    throw _mapNetworkError('unknown error');
+  }
+
   Future<dynamic> _postRequest(
     String endpoint,
     Map<String, dynamic> data, {
@@ -713,14 +774,61 @@ class ApiService {
   // ============================================================
 
   /// 获取投资组合
-  Future<List<dynamic>> getPortfolio({bool withMetrics = true}) async {
-    final endpoint = withMetrics
-        ? Uri(
-            path: ApiConfig.portfolio,
-            queryParameters: const {'with_metrics': '1'},
-          ).toString()
+  Future<List<dynamic>> getPortfolio({
+    bool withMetrics = true,
+    int? ledgerId,
+  }) async {
+    final params = <String, String>{
+      if (withMetrics) 'with_metrics': '1',
+      if (ledgerId != null) 'ledger_id': ledgerId.toString(),
+    };
+    final endpoint = params.isNotEmpty
+        ? Uri(path: ApiConfig.portfolio, queryParameters: params).toString()
         : ApiConfig.portfolio;
     return await _get(endpoint) ?? [];
+  }
+
+  // ─── 账本 API ─────────────────────────────────────
+
+  /// 获取账本列表
+  Future<List<dynamic>> getLedgers() async {
+    return await _get(ApiConfig.portfolioLedgers) ?? [];
+  }
+
+  /// 创建账本
+  Future<AssetActionResult> createLedger(String name, {String description = ''}) async {
+    try {
+      final response = await _post(ApiConfig.portfolioLedgers, {
+        'name': name,
+        'description': description,
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 更新账本
+  Future<AssetActionResult> updateLedger(int id, String name, {String description = ''}) async {
+    try {
+      final response = await _put('${ApiConfig.portfolioLedgers}/$id', {
+        'name': name,
+        'description': description,
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
+  /// 删除账本
+  Future<AssetActionResult> deleteLedger(int id) async {
+    try {
+      final response = await _delete('${ApiConfig.portfolioLedgers}/$id');
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
   }
 
   /// 搜索股票/基金
@@ -742,6 +850,7 @@ class ApiService {
     String? curr,
     String? assetType,
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final response = await _post(ApiConfig.portfolioAdd, {
@@ -752,6 +861,7 @@ class ApiService {
         if (curr != null && curr.isNotEmpty) 'curr': curr,
         if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -765,6 +875,7 @@ class ApiService {
     double price,
     double qty, {
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final response = await _post(ApiConfig.portfolioBuy, {
@@ -772,6 +883,7 @@ class ApiService {
         'price': price,
         'qty': qty,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -789,6 +901,7 @@ class ApiService {
     String? curr,
     String? assetType,
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final response = await _post(ApiConfig.portfolioBuyWithCash, {
@@ -800,6 +913,7 @@ class ApiService {
         if (curr != null && curr.isNotEmpty) 'curr': curr,
         if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -813,6 +927,7 @@ class ApiService {
     double price,
     double qty, {
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final response = await _post(ApiConfig.portfolioSell, {
@@ -820,6 +935,7 @@ class ApiService {
         'price': price,
         'qty': qty,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -834,6 +950,7 @@ class ApiService {
     double qty, {
     required int cashAssetId,
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final response = await _post(ApiConfig.portfolioSellToCash, {
@@ -842,6 +959,7 @@ class ApiService {
         'qty': qty,
         'cash_asset_id': cashAssetId,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -849,22 +967,22 @@ class ApiService {
     }
   }
 
-  /// 修正资产（数量/成本/调整）
+  /// 修正资产（数量/成本）
   Future<AssetActionResult> modifyPortfolioAsset(
     String code,
     double qty,
-    double price,
-    double adjustment, {
+    double price, {
     String? note,
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final payload = <String, dynamic>{
         'code': code,
         'qty': qty,
         'price': price,
-        'adjustment': adjustment,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       };
       final cleanNote = (note ?? '').trim();
       if (cleanNote.isNotEmpty) {
@@ -884,6 +1002,7 @@ class ApiService {
     String? note,
     String? curr,
     String? requestId,
+    int? ledgerId,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -891,6 +1010,7 @@ class ApiService {
         'event_type': eventType,
         'amount': amount,
         'request_id': requestId ?? _newRequestId(),
+        if (ledgerId != null) 'ledger_id': ledgerId,
       };
       final cleanNote = (note ?? '').trim();
       if (cleanNote.isNotEmpty) {
@@ -1152,8 +1272,11 @@ class ApiService {
   }
 
   /// 获取投资持仓交易记录
-  Future<List<dynamic>> getPortfolioTransactions(String code) async {
-    final data = await _get('${ApiConfig.portfolioTransactions}?code=$code');
+  Future<List<dynamic>> getPortfolioTransactions(String code, {int? ledgerId}) async {
+    final params = <String, String>{'code': code};
+    if (ledgerId != null) params['ledger_id'] = ledgerId.toString();
+    final endpoint = Uri(path: ApiConfig.portfolioTransactions, queryParameters: params).toString();
+    final data = await _get(endpoint);
     if (data is Map && data['records'] is List) {
       return data['records'] as List<dynamic>;
     }
@@ -1167,8 +1290,11 @@ class ApiService {
   /// 获取盈亏概览
   Future<Map<String, dynamic>> getAnalysisOverview({
     String period = 'all',
+    int? ledgerId,
   }) async {
-    return await _get('${ApiConfig.analysisOverview}?period=$period') ?? {};
+    final query = StringBuffer('period=$period');
+    if (ledgerId != null) query.write('&ledger_id=$ledgerId');
+    return await _get('${ApiConfig.analysisOverview}?$query') ?? {};
   }
 
   /// 获取收益日历
@@ -1176,11 +1302,13 @@ class ApiService {
     String timeType = 'day',
     int? year,
     int? month,
+    int? ledgerId,
   }) async {
     final query = <String, String>{
       'type': timeType,
       if (year != null) 'year': '$year',
       if (month != null) 'month': '$month',
+      if (ledgerId != null) 'ledger_id': '$ledgerId',
     };
     final endpoint =
         '${ApiConfig.analysisCalendar}?${Uri(queryParameters: query).query}';
@@ -1191,9 +1319,12 @@ class ApiService {
   Future<Map<String, dynamic>> getAnalysisRank({
     String rankType = 'all',
     String market = 'all',
+    int? ledgerId,
   }) async {
+    final query = StringBuffer('type=$rankType&market=$market');
+    if (ledgerId != null) query.write('&ledger_id=$ledgerId');
     return await _get(
-          '${ApiConfig.analysisRank}?type=$rankType&market=$market',
+          '${ApiConfig.analysisRank}?$query',
         ) ??
         {};
   }

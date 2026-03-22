@@ -35,15 +35,72 @@ def create_portfolio_payload_handlers(
         with trace_request_stage(f"{stage_prefix}.snapshot"):
             snapshot_saver_async(user_id)
 
+    def _resolve_ledger_id(user_id: str | None, raw_value) -> int | None:
+        """从请求中解析 ledger_id。None 表示不过滤（返回全部账本）。"""
+        if raw_value is None or str(raw_value).strip() == '':
+            return None
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return None
+
+    def handle_ledgers_list():
+        user_id = g.user_id
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        ledgers = db.get_ledgers(user_id)
+        if not ledgers:
+            default_id = db.get_default_ledger_id(user_id)
+            ledgers = db.get_ledgers(user_id)
+        return jsonify(ledgers)
+
+    def handle_ledger_create():
+        data = request.json
+        user_id = g.user_id
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        if not data or not data.get('name'):
+            return jsonify({"error": "Missing name"}), 400
+        result = db.create_ledger(user_id, data['name'], data.get('description', ''))
+        if result.get('ok'):
+            return jsonify(result)
+        status = 409 if result.get('code') == 'DUPLICATE_NAME' else 400
+        return jsonify(result), status
+
+    def handle_ledger_update(ledger_id: int):
+        data = request.json
+        user_id = g.user_id
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        if not data or not data.get('name'):
+            return jsonify({"error": "Missing name"}), 400
+        result = db.update_ledger(ledger_id, user_id, data['name'], data.get('description', ''))
+        if result.get('ok'):
+            return jsonify(result)
+        status_map = {'NOT_FOUND': 404, 'DUPLICATE_NAME': 409}
+        return jsonify(result), status_map.get(result.get('code'), 400)
+
+    def handle_ledger_delete(ledger_id: int):
+        user_id = g.user_id
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        result = db.delete_ledger(ledger_id, user_id)
+        if result.get('ok'):
+            return jsonify(result)
+        status_map = {'NOT_FOUND': 404, 'IS_DEFAULT': 400, 'HAS_HOLDINGS': 400}
+        return jsonify(result), status_map.get(result.get('code'), 400)
+
     def build_portfolio_payload():
         asset_type = request.args.get('type', 'all')
         with_metrics = _parse_bool(request.args.get('with_metrics'))
         user_id = g.user_id
-        logger.info(f"API: get_portfolio called with type={asset_type}, user_id={user_id}")
+        ledger_id = _resolve_ledger_id(user_id, request.args.get('ledger_id'))
+        logger.info(f"API: get_portfolio called with type={asset_type}, user_id={user_id}, ledger_id={ledger_id}")
         data = portfolio_read_service.build_portfolio_payload(
             asset_type=asset_type,
             user_id=user_id,
             with_metrics=with_metrics,
+            ledger_id=ledger_id,
         )
         logger.info(f"API: returning {len(data)} records")
         response = jsonify(data)
@@ -56,9 +113,10 @@ def create_portfolio_payload_handlers(
     def handle_portfolio_transactions():
         code = request.args.get('code', '').strip()
         user_id = g.user_id
+        ledger_id = _resolve_ledger_id(user_id, request.args.get('ledger_id'))
         if not code:
             return {"error": "Missing required parameter: code", "code": "MISSING_CODE"}, 400
-        records = db.get_portfolio_transactions(code=code, user_id=user_id)
+        records = db.get_portfolio_transactions(code=code, user_id=user_id, ledger_id=ledger_id)
         return {"records": records}
 
     def handle_portfolio_add():
@@ -118,8 +176,12 @@ def create_portfolio_payload_handlers(
         data['adjustment'] = 0.0
         data['asset_type'] = normalized['asset_type']
 
+        ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        if ledger_id is None and user_id:
+            ledger_id = db.get_default_ledger_id(user_id)
+
         with trace_request_stage("portfolio.add.write", asset_type=data.get('asset_type')):
-            success = db.add_asset(data, user_id)
+            success = db.add_asset(data, user_id, ledger_id=ledger_id)
         if success:
             _save_snapshot_async(user_id, "portfolio.add")
             return idempotent_response('portfolio_add', user_id, request_id, {"status": "ok"})
@@ -232,6 +294,10 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
+            mod_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            if mod_ledger_id is None and user_id:
+                mod_ledger_id = db.get_default_ledger_id(user_id)
+
             with trace_request_stage("portfolio.modify.write"):
                 detail = db.modify_asset(
                     data['code'],
@@ -241,6 +307,7 @@ def create_portfolio_payload_handlers(
                     note=str(data.get('note') or '').strip(),
                     user_id=user_id,
                     return_detail=True,
+                    ledger_id=mod_ledger_id,
                 )
             if detail and detail.get('ok'):
                 operation = {
@@ -321,6 +388,10 @@ def create_portfolio_payload_handlers(
                     )
                 amount = raw_amount if event_type == 'dividend' else -raw_amount
 
+            adj_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            if adj_ledger_id is None and user_id:
+                adj_ledger_id = db.get_default_ledger_id(user_id)
+
             with trace_request_stage("portfolio.adjustment_event.write", event_type=event_type):
                 detail = db.add_portfolio_adjustment_event(
                     code=str(data.get('code') or '').strip(),
@@ -330,6 +401,7 @@ def create_portfolio_payload_handlers(
                     curr=data.get('curr'),
                     user_id=user_id,
                     return_detail=True,
+                    ledger_id=adj_ledger_id,
                 )
 
             if detail and detail.get('ok'):
@@ -448,8 +520,12 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
+        del_ledger_id = _resolve_ledger_id(user_id, (data or {}).get('ledger_id'))
+        if del_ledger_id is None and user_id:
+            del_ledger_id = db.get_default_ledger_id(user_id)
+
         with trace_request_stage("portfolio.delete.write"):
-            success = db.delete_asset(data['code'], user_id)
+            success = db.delete_asset(data['code'], user_id, ledger_id=del_ledger_id)
         if success:
             _save_snapshot_async(user_id, "portfolio.delete")
             return idempotent_response('portfolio_delete', user_id, request_id, {"status": "ok"})
@@ -473,8 +549,12 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
+        delc_ledger_id = _resolve_ledger_id(user_id, (data or {}).get('ledger_id'))
+        if delc_ledger_id is None and user_id:
+            delc_ledger_id = db.get_default_ledger_id(user_id)
+
         with trace_request_stage("portfolio.delete_corrective.write"):
-            result = db.delete_asset_corrective(data['code'], user_id)
+            result = db.delete_asset_corrective(data['code'], user_id, ledger_id=delc_ledger_id)
         if result:
             _save_snapshot_async(user_id, "portfolio.delete_corrective")
             payload = {
@@ -520,8 +600,12 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
+            buy_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            if buy_ledger_id is None and user_id:
+                buy_ledger_id = db.get_default_ledger_id(user_id)
+
             with trace_request_stage("portfolio.buy.write"):
-                detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True)
+                detail = db.buy_asset(data['code'], price, qty, user_id, return_detail=True, ledger_id=buy_ledger_id)
 
             if detail and detail.get('ok'):
                 operation = {
@@ -628,6 +712,10 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
+        bwc_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        if bwc_ledger_id is None and user_id:
+            bwc_ledger_id = db.get_default_ledger_id(user_id)
+
         with trace_request_stage("portfolio.buy_with_cash.write"):
             detail = db.buy_asset_with_cash(
                 code=code,
@@ -640,6 +728,7 @@ def create_portfolio_payload_handlers(
                 cash_deduct_amount=cash_deduct_amount,
                 user_id=user_id,
                 legacy_codes=[raw_code] if raw_code else None,
+                ledger_id=bwc_ledger_id,
             )
         if detail and detail.get('ok'):
             operation_code = (
@@ -723,8 +812,12 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
+            sell_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            if sell_ledger_id is None and user_id:
+                sell_ledger_id = db.get_default_ledger_id(user_id)
+
             with trace_request_stage("portfolio.sell.write"):
-                detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True)
+                detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True, ledger_id=sell_ledger_id)
 
             if detail and detail.get('ok'):
                 operation = {
@@ -818,8 +911,12 @@ def create_portfolio_payload_handlers(
                 404,
             )
 
+        stc_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        if stc_ledger_id is None and user_id:
+            stc_ledger_id = db.get_default_ledger_id(user_id)
+
         with trace_request_stage("portfolio.sell_to_cash.asset_lookup"):
-            asset = db.get_asset(code, user_id)
+            asset = db.get_asset(code, user_id, ledger_id=stc_ledger_id)
         if not asset:
             return idempotent_response(
                 'portfolio_sell_to_cash',
@@ -856,6 +953,7 @@ def create_portfolio_payload_handlers(
                 cash_add_amount=cash_add_amount,
                 user_id=user_id,
                 return_detail=True,
+                ledger_id=stc_ledger_id,
             )
         if detail and detail.get('ok'):
             operation = {
@@ -940,4 +1038,8 @@ def create_portfolio_payload_handlers(
         "portfolio_sell_to_cash": handle_portfolio_sell_to_cash,
         "portfolio_undo": handle_portfolio_undo,
         "portfolio_transactions": handle_portfolio_transactions,
+        "ledgers_list": handle_ledgers_list,
+        "ledger_create": handle_ledger_create,
+        "ledger_update": handle_ledger_update,
+        "ledger_delete": handle_ledger_delete,
     }

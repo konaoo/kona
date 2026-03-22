@@ -41,6 +41,7 @@ class _FakeApiService implements ApiService {
     String? curr,
     String? assetType,
     String? requestId,
+    int? ledgerId,
   }) async {
     return const AssetActionResult.success(data: {'status': 'ok'});
   }
@@ -49,10 +50,10 @@ class _FakeApiService implements ApiService {
   Future<AssetActionResult> modifyPortfolioAsset(
     String code,
     double qty,
-    double price,
-    double adjustment, {
+    double price, {
     String? note,
     String? requestId,
+    int? ledgerId,
   }) async {
     return const AssetActionResult.success(data: {'status': 'ok'});
   }
@@ -132,7 +133,6 @@ void main() {
       code: 'gb_tsla',
       qty: 10,
       price: -2,
-      adjustment: 0,
       awaitRefresh: false,
     );
     expect(modifyResult.ok, isTrue);

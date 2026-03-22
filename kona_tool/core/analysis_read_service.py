@@ -35,7 +35,7 @@ class AnalysisReadService:
         self.all_markets_closed_getter = all_markets_closed_getter
         self.stats_timeout = stats_timeout
 
-    def _get_day_overview(self, user_id: str | None) -> Dict[str, Any]:
+    def _get_day_overview(self, user_id: str | None, ledger_id: int | None = None) -> Dict[str, Any]:
         """获取当日盈亏。
 
         当日概览统一认实时统计层：
@@ -44,7 +44,7 @@ class AnalysisReadService:
 
         只有 stats_getter 超时或失败时，才 fallback 到快照。
         """
-        if self.stats_getter is not None:
+        if ledger_id is None and self.stats_getter is not None:
             try:
                 t0 = _time.monotonic()
                 future = _stats_executor.submit(self.stats_getter, user_id)
@@ -52,11 +52,10 @@ class AnalysisReadService:
                 elapsed = _time.monotonic() - t0
                 logger.info("stats_getter completed in %.3fs", elapsed)
                 pnl = float(stats.get("day_pnl") or 0.0)
-                # 分母用实时 total_invest，与快照口径略有差异，属于设计取舍
-                base = float(stats.get("total_invest") or 0.0) or 1.0
+                base = float(stats.get("day_pnl_base") or stats.get("total_invest") or 0.0)
                 return {
                     "pnl": round(pnl, 2),
-                    "pnl_rate": round(pnl / base * 100, 2),
+                    "pnl_rate": round(pnl / base * 100, 2) if base > 0 else 0.0,
                     "base_value": round(base, 2),
                 }
             except _FuturesTimeoutError:
@@ -66,18 +65,18 @@ class AnalysisReadService:
             except Exception as exc:
                 logger.warning("stats_getter failed (%s), falling back to snapshot", exc)
                 pass  # fallback 到快照
-        return self.db.get_pnl_overview("day", user_id)
+        return self.db.get_pnl_overview("day", user_id, ledger_id=ledger_id)
 
-    def build_overview_payload(self, *, period: str, user_id: str | None):
+    def build_overview_payload(self, *, period: str, user_id: str | None, ledger_id: int | None = None):
         if period == "all":
             with trace_request_stage("analysis.overview.day"):
-                day = self._get_day_overview(user_id)
+                day = self._get_day_overview(user_id, ledger_id=ledger_id)
             with trace_request_stage("analysis.overview.month"):
-                month = self.db.get_pnl_overview("month", user_id)
+                month = self.db.get_pnl_overview("month", user_id, ledger_id=ledger_id)
             with trace_request_stage("analysis.overview.year"):
-                year = self.db.get_pnl_overview("year", user_id)
+                year = self.db.get_pnl_overview("year", user_id, ledger_id=ledger_id)
             with trace_request_stage("analysis.overview.all"):
-                total = self.db.get_pnl_overview("all", user_id)
+                total = self.db.get_pnl_overview("all", user_id, ledger_id=ledger_id)
             return {
                 "day": day,
                 "month": month,
@@ -87,8 +86,8 @@ class AnalysisReadService:
 
         with trace_request_stage("analysis.overview.single", period=period):
             if period == "day":
-                return {"day": self._get_day_overview(user_id)}
-            return {period: self.db.get_pnl_overview(period, user_id)}
+                return {"day": self._get_day_overview(user_id, ledger_id=ledger_id)}
+            return {period: self.db.get_pnl_overview(period, user_id, ledger_id=ledger_id)}
 
     def build_calendar_payload(
         self,
@@ -97,14 +96,15 @@ class AnalysisReadService:
         user_id: str | None,
         year: int | None,
         month: int | None,
+        ledger_id: int | None = None,
     ):
         from datetime import datetime as _dt
 
         with trace_request_stage("analysis.calendar.db", time_type=time_type):
-            result = self.db.get_calendar_data(time_type, user_id, year=year, month=month)
+            result = self.db.get_calendar_data(time_type, user_id, year=year, month=month, ledger_id=ledger_id)
 
-        # 仅在查询日视图且是当月时，把今天那格替换为实时值
-        if time_type == "day" and self.stats_getter is not None:
+        # 仅在查询日视图且是当月时，把今天那格替换为实时值（仅全局视图）
+        if time_type == "day" and ledger_id is None and self.stats_getter is not None:
             period = result.get("period") or {}
             if int(period.get("year") or 0) > 0 and int(period.get("month") or 0) > 0:
                 try:
@@ -139,56 +139,22 @@ class AnalysisReadService:
         user_id: str | None,
         year: int | None,
         month: int | None,
+        ledger_id: int | None = None,
     ):
-        from datetime import datetime as _dt
-
         with trace_request_stage("analysis.market_breakdown.db", time_type="day"):
             result = self.db.get_market_breakdown_calendar_data(
                 time_type="day",
                 user_id=user_id,
                 year=year,
                 month=month,
+                ledger_id=ledger_id,
             )
-
-        # 当月视图：把今天那条的 total_pnl 替换为实时值（per-market 拆分仍为快照）
-        if self.stats_getter is not None:
-            if int(result.get("year") or 0) > 0 and int(result.get("month") or 0) > 0:
-                try:
-                    stats = self.stats_getter(user_id)
-                    realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
-                    effective_date = str(stats.get("day_pnl_effective_date") or "").strip()
-                    if effective_date:
-                        effective_dt = _dt.strptime(effective_date[:10], "%Y-%m-%d")
-                    else:
-                        effective_dt = _dt.now()
-                    if int(result.get("year") or 0) != effective_dt.year or int(result.get("month") or 0) != effective_dt.month:
-                        return result
-                    today_str = effective_dt.strftime("%Y-%m-%d")
-                    items = list(result.get("items") or [])
-                    new_items = []
-                    replaced = False
-                    for item in items:
-                        if item.get("date") == today_str:
-                            new_items.append({**item, "total_pnl": realtime_pnl, "source": "partial_realtime"})
-                            replaced = True
-                        else:
-                            new_items.append(item)
-                    if not replaced:
-                        new_items.append({
-                            "date": today_str,
-                            "markets": {"a": None, "hk": None, "us": None, "fund": None, "unallocated": None},
-                            "total_pnl": realtime_pnl,
-                            "source": "partial_realtime",
-                        })
-                    result = {**result, "items": new_items}
-                except Exception:
-                    pass  # 实时拉取失败，保留快照值
 
         return result
 
-    def build_rank_payload(self, *, market: str, user_id: str | None):
+    def build_rank_payload(self, *, market: str, user_id: str | None, ledger_id: int | None = None):
         with trace_request_stage("analysis.rank.db", market=market):
-            portfolio_data = self.db.get_rank_data("gain", market, user_id)
+            portfolio_data = self.db.get_rank_data("gain", market, user_id, ledger_id=ledger_id)
         if not portfolio_data:
             return {"gain": [], "loss": []}
 

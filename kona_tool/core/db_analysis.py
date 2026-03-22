@@ -108,6 +108,14 @@ def _build_months_by_year(date_values: List[str], now: datetime) -> Dict[int, se
 class AnalysisDatabaseMixin:
     """给 DatabaseManager 提供分析页相关方法。"""
 
+    @staticmethod
+    def _resolve_period_start_base(normalized_rows: List[Dict[str, Any]], prev_invest: float) -> float:
+        if prev_invest > 0:
+            return prev_invest
+        if normalized_rows:
+            return float(normalized_rows[0].get("total_invest") or 0.0)
+        return 0.0
+
     def _normalize_snapshot_rows_legacy(self, rows: List[Any]) -> List[Dict[str, Any]]:
         normalized = []
         for row in rows:
@@ -160,14 +168,80 @@ class AnalysisDatabaseMixin:
         legacy_rows = self._normalize_snapshot_rows_legacy(cursor.fetchall())
         return legacy_rows
 
-    def get_pnl_overview(self, period: str = "day", user_id: str = None) -> Dict[str, Any]:
+    def _get_ledger_pnl_overview(self, period: str, user_id: str, ledger_id: int) -> Dict[str, Any]:
+        """获取指定账本的盈亏概览（查 ledger_daily_snapshots）。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            today = _get_datetime_now()
+            today_str = today.strftime("%Y-%m-%d")
+
+            if period == "day":
+                cursor.execute(
+                    "SELECT day_pnl, total_cost FROM ledger_daily_snapshots WHERE date = ? AND user_id = ? AND ledger_id = ? LIMIT 1",
+                    (today_str, user_id, ledger_id),
+                )
+                row = cursor.fetchone()
+                if row:
+                    pnl = _round_pnl(row["day_pnl"])
+                    base = float(row["total_cost"] or 0)
+                    return {"pnl": pnl, "pnl_rate": round(pnl / base * 100, 2) if base else 0, "base_value": base}
+                return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+
+            # month/year/all: sum day_pnl over period
+            if period == "month":
+                start = today.strftime("%Y-%m-01")
+            elif period == "year":
+                start = today.strftime("%Y-01-01")
+            else:
+                start = "0001-01-01"
+
+            cursor.execute(
+                """SELECT COALESCE(SUM(day_pnl), 0) as total_pnl FROM ledger_daily_snapshots
+                   WHERE date >= ? AND date <= ? AND user_id = ? AND ledger_id = ?""",
+                (start, today_str, user_id, ledger_id),
+            )
+            row = cursor.fetchone()
+            pnl = _round_pnl(row["total_pnl"] if row else 0)
+
+            # Get base from last snapshot before period
+            cursor.execute(
+                """SELECT total_cost FROM ledger_daily_snapshots
+                   WHERE date < ? AND user_id = ? AND ledger_id = ?
+                   ORDER BY date DESC LIMIT 1""",
+                (start, user_id, ledger_id),
+            )
+            prev = cursor.fetchone()
+            base = float(prev["total_cost"] or 0) if prev else 0
+            if not base:
+                cursor.execute(
+                    """SELECT total_cost FROM ledger_daily_snapshots
+                       WHERE date >= ? AND user_id = ? AND ledger_id = ?
+                       ORDER BY date ASC LIMIT 1""",
+                    (start, user_id, ledger_id),
+                )
+                first = cursor.fetchone()
+                base = float(first["total_cost"] or 0) if first else 0
+            base = base or 1
+            return {"pnl": pnl, "pnl_rate": round(pnl / base * 100, 2), "base_value": base}
+        except Exception as exc:
+            logger.error("Failed to get ledger pnl overview: %s", exc)
+            return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
+        finally:
+            conn.close()
+
+    def get_pnl_overview(self, period: str = "day", user_id: str = None, ledger_id: int | None = None) -> Dict[str, Any]:
         """
         获取盈亏概览数据。
 
         Args:
             period: day|month|year|all
             user_id: 用户ID
+            ledger_id: 账本ID，非空时查 ledger_daily_snapshots
         """
+        if ledger_id is not None:
+            return self._get_ledger_pnl_overview(period, user_id or "", ledger_id)
+
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -223,9 +297,7 @@ class AnalysisDatabaseMixin:
                 prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
                     pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
-                    latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
-                    # 分母用期末持仓成本：反映"当前账户里这么多钱，赚了多少比例"
-                    base = latest_invest or prev_invest or 1
+                    base = self._resolve_period_start_base(normalized_rows, prev_invest) or 1
                     return {
                         "pnl": pnl,
                         "pnl_rate": round(pnl / base * 100, 2) if base else 0,
@@ -246,9 +318,7 @@ class AnalysisDatabaseMixin:
                 prev_invest = float(prev["total_invest"] or 0) if prev else 0.0
                 if normalized_rows:
                     pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
-                    latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
-                    # 分母用期末持仓成本
-                    base = latest_invest or prev_invest or 1
+                    base = self._resolve_period_start_base(normalized_rows, prev_invest) or 1
                     return {
                         "pnl": pnl,
                         "pnl_rate": round(pnl / base * 100, 2) if base else 0,
@@ -265,10 +335,7 @@ class AnalysisDatabaseMixin:
             )
             if normalized_rows:
                 pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
-                latest_invest = float(normalized_rows[-1]["total_invest"] or 0.0)
-                first_invest = float(normalized_rows[0]["total_invest"] or 0.0)
-                # 分母用期末持仓成本
-                base = latest_invest or first_invest or 1
+                base = self._resolve_period_start_base(normalized_rows, 0.0) or 1
                 return {
                     "pnl": pnl,
                     "pnl_rate": round(pnl / base * 100, 2) if base else 0,
@@ -282,14 +349,164 @@ class AnalysisDatabaseMixin:
         finally:
             conn.close()
 
+    def _get_ledger_calendar_data(
+        self,
+        time_type: str,
+        user_id: str,
+        ledger_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """获取指定账本的收益日历数据（查 ledger_daily_snapshots）。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now = _get_datetime_now()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # Fetch all dates for selectable
+            cursor.execute(
+                "SELECT date FROM ledger_daily_snapshots WHERE user_id = ? AND ledger_id = ? ORDER BY date ASC",
+                (user_id, ledger_id),
+            )
+            all_dates = [str(row["date"]) for row in cursor.fetchall() if row["date"]]
+            months_by_year = _build_months_by_year(all_dates, now)
+            selectable_years = sorted(months_by_year.keys())
+            selectable_months_by_year = {str(y): sorted(list(months_by_year[y])) for y in selectable_years}
+            selectable = {
+                "day": {"years": selectable_years, "months_by_year": selectable_months_by_year},
+                "month": {"years": selectable_years},
+            }
+
+            latest_year = selectable_years[-1] if selectable_years else None
+            latest_month = max(months_by_year[latest_year]) if latest_year is not None else None
+            period: Dict[str, Any] = {"time_type": time_type}
+            items = []
+            total_pnl = 0.0
+            rate_base = 0.0
+
+            def _fetch_prev_cost(date_str: str) -> float:
+                cursor.execute(
+                    "SELECT total_cost FROM ledger_daily_snapshots WHERE date < ? AND user_id = ? AND ledger_id = ? ORDER BY date DESC LIMIT 1",
+                    (date_str, user_id, ledger_id),
+                )
+                row = cursor.fetchone()
+                return float(row["total_cost"] or 0.0) if row else 0.0
+
+            def _fetch_rows(start_date: str, end_date: str) -> List[Dict[str, Any]]:
+                cursor.execute(
+                    "SELECT date, day_pnl, total_cost FROM ledger_daily_snapshots WHERE date >= ? AND date <= ? AND user_id = ? AND ledger_id = ? ORDER BY date ASC",
+                    (start_date, end_date, user_id, ledger_id),
+                )
+                return [{"date": str(r["date"]), "pnl": _round_pnl(r["day_pnl"]), "total_cost": float(r["total_cost"] or 0)} for r in cursor.fetchall()]
+
+            def _resolve_base(rows, prev_cost):
+                if prev_cost > 0:
+                    return prev_cost
+                if rows:
+                    return float(rows[0].get("total_cost") or 0.0)
+                return 0.0
+
+            if time_type == "day":
+                if not selectable_years:
+                    period.update({"year": now.year, "month": now.month})
+                    return {"items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": f"{now.year}年{now.month}月累计", "period": period, "selectable": selectable}
+
+                target_year = year
+                target_month = month
+                if target_year is None and target_month is None:
+                    if now.year in months_by_year and now.month in months_by_year[now.year]:
+                        target_year, target_month = now.year, now.month
+                    else:
+                        target_year, target_month = latest_year, latest_month
+                else:
+                    target_year = target_year or now.year
+                    target_month = target_month or now.month
+                period.update({"year": int(target_year), "month": int(target_month)})
+
+                if target_year not in months_by_year or target_month not in months_by_year[target_year]:
+                    return {"error": "Selected period has no snapshot data", "code": "INVALID_CALENDAR_PERIOD", "items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": f"{target_year}年{target_month}月累计", "period": period, "selectable": selectable}
+
+                month_start = f"{target_year:04d}-{target_month:02d}-01"
+                if target_month == 12:
+                    next_m = dt.datetime(target_year + 1, 1, 1)
+                else:
+                    next_m = dt.datetime(target_year, target_month + 1, 1)
+                month_end = (next_m - timedelta(days=1)).strftime("%Y-%m-%d")
+                if target_year == now.year and target_month == now.month:
+                    month_end = min(month_end, today_str)
+
+                rows = _fetch_rows(month_start, month_end)
+                total_pnl = _round_pnl(sum(float(r["pnl"] or 0) for r in rows))
+                for r in rows:
+                    day = int(str(r["date"]).split("-")[2])
+                    items.append({"label": f"{target_month}-{day}", "pnl": r["pnl"]})
+                rate_base = _resolve_base(rows, _fetch_prev_cost(month_start))
+                title = f"{target_year}年{target_month}月累计"
+
+            elif time_type == "month":
+                if not selectable_years:
+                    period.update({"year": now.year})
+                    return {"items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": f"{now.year}年累计", "period": period, "selectable": selectable}
+
+                target_year = year or (now.year if now.year in months_by_year else latest_year)
+                period.update({"year": int(target_year)})
+                if target_year not in months_by_year:
+                    return {"error": "Selected period has no snapshot data", "code": "INVALID_CALENDAR_PERIOD", "items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": f"{target_year}年累计", "period": period, "selectable": selectable}
+
+                year_start = f"{target_year:04d}-01-01"
+                year_end = today_str if target_year == now.year else f"{target_year:04d}-12-31"
+                rows = _fetch_rows(year_start, year_end)
+                month_totals: Dict[int, float] = {}
+                for r in rows:
+                    m = int(str(r["date"]).split("-")[1])
+                    month_totals[m] = _round_pnl(month_totals.get(m, 0.0) + float(r["pnl"] or 0))
+                month_limit = now.month if target_year == now.year else 12
+                for m in range(1, month_limit + 1):
+                    pnl = float(month_totals.get(m, 0.0) or 0.0)
+                    items.append({"label": f"{m}月", "pnl": pnl})
+                    total_pnl = _round_pnl(total_pnl + pnl)
+                rate_base = _resolve_base(rows, _fetch_prev_cost(year_start))
+                title = f"{target_year}年累计"
+
+            elif time_type == "year":
+                period = {"time_type": "year"}
+                rows = _fetch_rows("0001-01-01", today_str)
+                if rows:
+                    year_totals: Dict[int, float] = {}
+                    for r in rows:
+                        y = int(str(r["date"]).split("-")[0])
+                        year_totals[y] = _round_pnl(year_totals.get(y, 0.0) + float(r["pnl"] or 0))
+                    start_year = int(str(rows[0]["date"]).split("-")[0])
+                    for y in range(start_year, now.year + 1):
+                        pnl = float(year_totals.get(y, 0.0) or 0.0)
+                        items.append({"label": str(y), "pnl": pnl})
+                        total_pnl = _round_pnl(total_pnl + pnl)
+                rate_base = _resolve_base(rows, 0.0)
+                title = "总累计"
+            else:
+                return {"error": "Invalid time type", "code": "INVALID_CALENDAR_PERIOD", "items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": "", "period": period, "selectable": selectable}
+
+            total_rate = round(total_pnl / rate_base * 100, 2) if rate_base else 0.0
+            return {"items": items, "total_pnl": total_pnl, "total_rate": total_rate, "title": title, "period": period, "selectable": selectable}
+        except Exception as exc:
+            logger.error("Failed to get ledger calendar data: %s", exc)
+            return {"items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": "", "period": {"time_type": time_type}, "selectable": {"day": {"years": [], "months_by_year": {}}, "month": {"years": []}}}
+        finally:
+            conn.close()
+
     def get_calendar_data(
         self,
         time_type: str = "day",
         user_id: str = None,
         year: Optional[int] = None,
         month: Optional[int] = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Any]:
         """获取收益日历数据。"""
+        if ledger_id is not None:
+            return self._get_ledger_calendar_data(time_type, user_id or "", ledger_id, year, month)
+
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -313,34 +530,6 @@ class AnalysisDatabaseMixin:
                     LIMIT 1
                     """,
                     (date_str,) + user_param,
-                )
-                row = cursor.fetchone()
-                return float(row["total_invest"] or 0.0) if row else 0.0
-
-            def _fetch_last_invest(date_str: str) -> float:
-                cursor.execute(
-                    f"""
-                    SELECT total_invest
-                    FROM daily_snapshots
-                    WHERE date <= ? AND {user_condition}
-                    ORDER BY date DESC
-                    LIMIT 1
-                    """,
-                    (date_str,) + user_param,
-                )
-                row = cursor.fetchone()
-                return float(row["total_invest"] or 0.0) if row else 0.0
-
-            def _fetch_first_invest() -> float:
-                cursor.execute(
-                    f"""
-                    SELECT total_invest
-                    FROM daily_snapshots
-                    WHERE {user_condition}
-                    ORDER BY date ASC
-                    LIMIT 1
-                    """,
-                    user_param,
                 )
                 row = cursor.fetchone()
                 return float(row["total_invest"] or 0.0) if row else 0.0
@@ -425,9 +614,10 @@ class AnalysisDatabaseMixin:
                 for row in normalized_rows:
                     day = int(str(row["date"]).split("-")[2])
                     items.append({"label": f"{target_month}-{day}", "pnl": row["pnl"]})
-                period_base = _fetch_last_invest(month_end)
-                if period_base <= 0:
-                    period_base = _fetch_prev_invest(month_start)
+                period_base = self._resolve_period_start_base(
+                    normalized_rows,
+                    _fetch_prev_invest(month_start),
+                )
                 rate_base = period_base
                 title = f"{target_year}年{target_month}月累计"
 
@@ -477,9 +667,10 @@ class AnalysisDatabaseMixin:
                     pnl = float(month_totals.get(m, 0.0) or 0.0)
                     items.append({"label": f"{m}月", "pnl": pnl})
                     total_pnl = _round_pnl(total_pnl + pnl)
-                period_base = _fetch_last_invest(year_end)
-                if period_base <= 0:
-                    period_base = _fetch_prev_invest(year_start)
+                period_base = self._resolve_period_start_base(
+                    normalized_rows,
+                    _fetch_prev_invest(year_start),
+                )
                 rate_base = period_base
                 title = f"{target_year}年累计"
 
@@ -502,9 +693,7 @@ class AnalysisDatabaseMixin:
                         pnl = float(year_totals.get(y, 0.0) or 0.0)
                         items.append({"label": str(y), "pnl": pnl})
                         total_pnl = _round_pnl(total_pnl + pnl)
-                period_base = _fetch_last_invest(today_str)
-                if period_base <= 0:
-                    period_base = _fetch_first_invest()
+                period_base = self._resolve_period_start_base(normalized_rows, 0.0)
                 rate_base = period_base
                 title = "总累计"
             else:
@@ -548,6 +737,7 @@ class AnalysisDatabaseMixin:
         user_id: str = None,
         year: Optional[int] = None,
         month: Optional[int] = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Any]:
         """获取按市场拆分的收益日历数据。"""
         conn = self.get_connection()
@@ -688,54 +878,56 @@ class AnalysisDatabaseMixin:
         finally:
             conn.close()
 
-    def get_rank_data(self, rank_type: str = "gain", market: str = "all", user_id: str = None) -> List[Dict[str, Any]]:
+    def get_rank_data(self, rank_type: str = "gain", market: str = "all", user_id: str = None, ledger_id: int | None = None) -> List[Dict[str, Any]]:
         """获取盈亏排行数据。"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if market == "all":
                 cursor.execute(
                     f"""
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE {user_condition}
+                    WHERE {user_condition}{ledger_condition}
                     """,
-                    user_param,
+                    user_param + ledger_param,
                 )
             elif market == "a":
                 cursor.execute(
                     f"""
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%') AND {user_condition}
+                    WHERE (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%') AND {user_condition}{ledger_condition}
                     """,
-                    user_param,
+                    user_param + ledger_param,
                 )
             elif market == "us":
                 cursor.execute(
                     f"""
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'gb_%' AND {user_condition}
+                    WHERE code LIKE 'gb_%' AND {user_condition}{ledger_condition}
                     """,
-                    user_param,
+                    user_param + ledger_param,
                 )
             elif market == "hk":
                 cursor.execute(
                     f"""
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'hk%' AND {user_condition}
+                    WHERE code LIKE 'hk%' AND {user_condition}{ledger_condition}
                     """,
-                    user_param,
+                    user_param + ledger_param,
                 )
             elif market == "fund":
                 cursor.execute(
                     f"""
                     SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE (code LIKE 'f_%' OR code LIKE 'ft_%') AND {user_condition}
+                    WHERE (code LIKE 'f_%' OR code LIKE 'ft_%') AND {user_condition}{ledger_condition}
                     """,
-                    user_param,
+                    user_param + ledger_param,
                 )
             else:
                 return []

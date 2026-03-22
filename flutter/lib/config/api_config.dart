@@ -39,6 +39,7 @@ class ApiConfig {
       '/api/portfolio/delete_corrective';
   static const String portfolioUndo = '/api/portfolio/undo';
   static const String portfolioTransactions = '/api/portfolio/transactions';
+  static const String portfolioLedgers = '/api/portfolio/ledgers';
   static const String pricesBatch = '/api/prices/batch';
   static const String cashAssets = '/api/cash_assets';
   static const String otherAssets = '/api/other_assets';
