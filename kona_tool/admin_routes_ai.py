@@ -18,6 +18,7 @@ from core.auth import admin_required
 logger = logging.getLogger(__name__)
 
 AI_PROVIDERS_KEY = "ai_providers"
+AI_OCR_PROVIDER_CONFIG_KEY = "ai_ocr_provider_config"
 
 # 预置供应商类型定义
 PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
@@ -74,6 +75,30 @@ def _save_providers(db: Any, providers: List[Dict[str, Any]], updater: str = "")
     db.set_runtime_config(AI_PROVIDERS_KEY, json.dumps(providers, ensure_ascii=False), updated_by=updater)
 
 
+def _load_ocr_provider_config(db: Any) -> Dict[str, str]:
+    raw = db.get_runtime_config(AI_OCR_PROVIDER_CONFIG_KEY)
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        "provider_id": str(payload.get("provider_id") or "").strip(),
+        "model": str(payload.get("model") or "").strip(),
+    }
+
+
+def _save_ocr_provider_config(db: Any, config_payload: Dict[str, str], updater: str = "") -> None:
+    db.set_runtime_config(
+        AI_OCR_PROVIDER_CONFIG_KEY,
+        json.dumps(config_payload, ensure_ascii=False),
+        updated_by=updater,
+    )
+
+
 def _mask_key(api_key: str) -> str:
     """脱敏 API Key：保留末 4 位。"""
     key = str(api_key or "").strip()
@@ -96,6 +121,25 @@ def _sanitize_provider(p: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _sanitize_ocr_config(
+    providers: List[Dict[str, Any]],
+    ocr_config: Dict[str, str],
+) -> Dict[str, Any]:
+    provider_id = str(ocr_config.get("provider_id") or "").strip()
+    model = str(ocr_config.get("model") or "").strip()
+    provider = next((p for p in providers if str(p.get("id") or "").strip() == provider_id), None)
+    provider_name = str(provider.get("name") or "").strip() if provider else ""
+    inherited_model = str(provider.get("model") or "").strip() if provider else ""
+    resolved_model = model or inherited_model
+    return {
+        "provider_id": provider_id,
+        "provider_name": provider_name,
+        "model": model,
+        "resolved_model": resolved_model,
+        "enabled": bool(provider_id and provider),
+    }
+
+
 def register_admin_ai_routes(bp, db, admin_write_audit) -> None:
 
     @bp.route("/ai/presets", methods=["GET"])
@@ -109,8 +153,10 @@ def register_admin_ai_routes(bp, db, admin_write_audit) -> None:
     def admin_ai_providers():
         """返回已配置的供应商列表（api_key 脱敏）。"""
         providers = _load_providers(db)
+        ocr_config = _load_ocr_provider_config(db)
         return jsonify({
             "providers": [_sanitize_provider(p) for p in providers],
+            "ocr_config": _sanitize_ocr_config(providers, ocr_config),
         })
 
     @bp.route("/ai/providers/save", methods=["POST"])
@@ -200,6 +246,10 @@ def register_admin_ai_routes(bp, db, admin_write_audit) -> None:
         if len(new_providers) == len(providers):
             return jsonify({"error": "供应商不存在"}), 404
 
+        ocr_config = _load_ocr_provider_config(db)
+        if str(ocr_config.get("provider_id") or "").strip() == provider_id:
+            _save_ocr_provider_config(db, {"provider_id": "", "model": ""}, updater)
+
         _save_providers(db, new_providers, updater)
         return jsonify({
             "status": "ok",
@@ -234,6 +284,31 @@ def register_admin_ai_routes(bp, db, admin_write_audit) -> None:
         return jsonify({
             "status": "ok",
             "providers": [_sanitize_provider(p) for p in providers],
+        })
+
+    @bp.route("/ai/ocr/save", methods=["POST"])
+    @admin_write_audit(action="admin.ai.ocr.save", target_type="ai_provider")
+    @admin_required
+    def admin_ai_ocr_save():
+        """保存截图识别专用配置。"""
+        data = admin_common.json_body()
+        provider_id = str(data.get("provider_id", "")).strip()
+        model = str(data.get("model", "")).strip()
+        updater = str(getattr(g, "user_id", "") or "")
+
+        providers = _load_providers(db)
+        provider = next((p for p in providers if str(p.get("id") or "").strip() == provider_id), None)
+        if provider_id and not provider:
+            return jsonify({"error": "截图识别供应商不存在"}), 404
+
+        payload = {
+            "provider_id": provider_id,
+            "model": model,
+        }
+        _save_ocr_provider_config(db, payload, updater)
+        return jsonify({
+            "status": "ok",
+            "ocr_config": _sanitize_ocr_config(providers, payload),
         })
 
     @bp.route("/ai/providers/test", methods=["POST"])

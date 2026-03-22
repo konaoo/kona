@@ -1,6 +1,8 @@
 import os
 import sys
 import tempfile
+import io
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -18,6 +20,7 @@ os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test.db")
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 import app as app_module  # noqa: E402
+import portfolio_handlers  # noqa: E402
 
 
 class PortfolioApiTests(unittest.TestCase):
@@ -78,6 +81,134 @@ class PortfolioApiTests(unittest.TestCase):
         target = next((item for item in items if item.get('code') == 'sh600000'), None)
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target['qty']), 15.0)
+
+    def test_portfolio_ocr_parse_asset_normalizes_candidates(self):
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            'parse_portfolio_asset_candidates',
+            return_value=portfolio_handlers.portfolio_ocr.PortfolioOcrParseResult(
+                items=[
+                    {
+                        'name': '腾讯控股',
+                        'code': '00700.HK',
+                        'qty': 200.0,
+                        'price': 318.4,
+                        'curr': 'HKD',
+                        'asset_type': 'hk',
+                        'confidence': 0.94,
+                        'note': '截图里价格列靠得比较近',
+                    }
+                ],
+                warnings=['成本价建议再确认一眼'],
+                raw_text='{"items":[...]}',
+            ),
+        ):
+            resp = self.client.post(
+                '/api/portfolio/ocr_parse_asset',
+                data={
+                    'file': (io.BytesIO(b'fake-image-bytes'), 'holding.png'),
+                },
+                content_type='multipart/form-data',
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get('warnings'), ['成本价建议再确认一眼'])
+        items = body.get('items') or []
+        self.assertEqual(len(items), 1)
+        first = items[0]
+        self.assertEqual(first.get('name'), '腾讯控股')
+        self.assertEqual(first.get('code'), 'hk00700')
+        self.assertEqual(first.get('curr'), 'HKD')
+        self.assertEqual(first.get('asset_type'), 'hk')
+        self.assertEqual(first.get('type_name'), '港股')
+        self.assertAlmostEqual(float(first.get('qty') or 0), 200.0)
+        self.assertAlmostEqual(float(first.get('price') or 0), 318.4)
+
+    def test_portfolio_ocr_parse_asset_returns_provider_error(self):
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            'parse_portfolio_asset_candidates',
+            side_effect=portfolio_handlers.portfolio_ocr.PortfolioOcrError(
+                'AI 服务未配置，暂时无法识别截图',
+                code='OCR_PROVIDER_NOT_CONFIGURED',
+                status_code=503,
+            ),
+        ):
+            resp = self.client.post(
+                '/api/portfolio/ocr_parse_asset',
+                data={
+                    'file': (io.BytesIO(b'fake-image-bytes'), 'holding.png'),
+                },
+                content_type='multipart/form-data',
+            )
+
+        self.assertEqual(resp.status_code, 503)
+        body = resp.get_json() or {}
+        self.assertEqual(body.get('code'), 'OCR_PROVIDER_NOT_CONFIGURED')
+
+    def test_portfolio_ocr_prefers_dedicated_ocr_provider_config(self):
+        app_module.db.set_runtime_config(
+            "ai_providers",
+            json.dumps(
+                [
+                    {
+                        "id": "chat01",
+                        "type": "zhipu",
+                        "name": "聊天模型",
+                        "base_url": "https://chat.example.com/v1",
+                        "api_key": "chat-key",
+                        "model": "glm-chat",
+                        "active": True,
+                        "protocol": "openai",
+                    },
+                    {
+                        "id": "ocr01",
+                        "type": "zhipu",
+                        "name": "截图模型",
+                        "base_url": "https://vision.example.com/v1",
+                        "api_key": "ocr-key",
+                        "model": "glm-4.6v-base",
+                        "active": False,
+                        "protocol": "openai",
+                    },
+                ],
+                ensure_ascii=False,
+            ),
+            updated_by="test",
+        )
+        app_module.db.set_runtime_config(
+            "ai_ocr_provider_config",
+            json.dumps(
+                {
+                    "provider_id": "ocr01",
+                    "model": "glm-4.6v-flash",
+                },
+                ensure_ascii=False,
+            ),
+            updated_by="test",
+        )
+
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            "_run_openai_compatible_vision",
+            return_value='{"items":[],"warnings":[]}',
+        ) as mocked:
+            result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
+                db=app_module.db,
+                image_bytes=b"fake-image-bytes",
+                filename="holding.png",
+                content_type="image/png",
+            )
+
+        self.assertEqual(result.items, [])
+        self.assertEqual(result.warnings, [])
+        self.assertEqual(mocked.call_count, 1)
+        kwargs = mocked.call_args.kwargs
+        self.assertEqual(kwargs.get("api_key"), "ocr-key")
+        self.assertEqual(kwargs.get("base_url"), "https://vision.example.com/v1")
+        self.assertEqual(kwargs.get("provider_type"), "zhipu")
+        self.assertEqual(kwargs.get("model"), "glm-4.6v-flash")
 
     def test_portfolio_modify_allows_negative_cost_price(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -235,8 +366,118 @@ class PortfolioApiTests(unittest.TestCase):
         resp = self.client.get('/api/portfolio/transactions?code=sh600021')
         self.assertEqual(resp.status_code, 200)
         records = (resp.get_json() or {}).get('records') or []
-        self.assertEqual([item.get('type') for item in records], ['减仓', '分红'])
+        self.assertEqual([item.get('type') for item in records], ['减仓', '初始持仓', '分红'])
         self.assertAlmostEqual(float(records[0].get('pnl') or 0.0), 4.0, places=6)
+
+    def test_buy_and_sell_transactions_store_curr_market_and_effective_date(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': '00700',
+            'name': '腾讯控股',
+            'price': 400.0,
+            'qty': 2.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        buy_resp = self.client.post('/api/portfolio/buy', json={
+            'code': '00700.HK',
+            'price': 420.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(buy_resp.status_code, 200)
+
+        sell_resp = self.client.post('/api/portfolio/sell', json={
+            'code': '00700.HK',
+            'price': 430.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT type, code, curr, market, effective_date
+            FROM transactions
+            WHERE code = ?
+            ORDER BY id ASC
+            """,
+            ('00700.HK',),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(str(rows[0]['type']), '加仓')
+        self.assertEqual(str(rows[0]['curr']), 'HKD')
+        self.assertEqual(str(rows[0]['market']), 'hk')
+        self.assertRegex(str(rows[0]['effective_date'] or ''), r'^\d{4}-\d{2}-\d{2}$')
+        self.assertEqual(str(rows[1]['type']), '减仓')
+        self.assertEqual(str(rows[1]['curr']), 'HKD')
+        self.assertEqual(str(rows[1]['market']), 'hk')
+        self.assertRegex(str(rows[1]['effective_date'] or ''), r'^\d{4}-\d{2}-\d{2}$')
+
+    def test_portfolio_add_writes_opening_balance_log_and_detail_record(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600031',
+            'name': '三一重工',
+            'price': 15.0,
+            'qty': 20.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT correction_type, before_qty, after_qty, before_price, after_price, note
+            FROM portfolio_correction_logs
+            WHERE code = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            ('sh600031',),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        self.assertIsNotNone(row)
+        self.assertEqual(str(row['correction_type']), 'opening_balance')
+        self.assertAlmostEqual(float(row['before_qty'] or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(row['after_qty'] or 0.0), 20.0, places=6)
+        self.assertIsNone(row['before_price'])
+        self.assertAlmostEqual(float(row['after_price'] or 0.0), 15.0, places=6)
+        self.assertEqual(str(row['note'] or ''), '初始持仓录入')
+
+        resp = self.client.get('/api/portfolio/transactions?code=sh600031')
+        self.assertEqual(resp.status_code, 200)
+        records = (resp.get_json() or {}).get('records') or []
+        self.assertEqual([item.get('type') for item in records], ['初始持仓'])
+        self.assertAlmostEqual(float(records[0].get('after_qty') or 0.0), 20.0, places=6)
+        self.assertAlmostEqual(float(records[0].get('after_price') or 0.0), 15.0, places=6)
+
+    def test_position_qty_before_opening_balance_date_is_zero(self):
+        ok = app_module.db.add_asset({
+            'code': 'f_110018',
+            'name': '开放式基金测试',
+            'price': 1.5,
+            'qty': 100.0,
+            'curr': 'CNY',
+            'asset_type': 'fund',
+        })
+        self.assertTrue(ok)
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        self.assertAlmostEqual(
+            float(app_module.db.get_position_qty_as_of_effective_date('f_110018', yesterday) or 0.0),
+            0.0,
+            places=6,
+        )
+        self.assertAlmostEqual(
+            float(app_module.db.get_position_qty_as_of_effective_date('f_110018', today) or 0.0),
+            100.0,
+            places=6,
+        )
 
     def test_portfolio_modify_with_note_writes_correction_log(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -277,13 +518,14 @@ class PortfolioApiTests(unittest.TestCase):
         )
         rows = cursor.fetchall()
         conn.close()
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]['correction_type'], 'holding')
         self.assertAlmostEqual(float(rows[0]['before_qty'] or 0.0), 5.0, places=6)
         self.assertAlmostEqual(float(rows[0]['after_qty'] or 0.0), 6.0, places=6)
         self.assertAlmostEqual(float(rows[0]['before_price'] or 0.0), 10.0, places=6)
         self.assertAlmostEqual(float(rows[0]['after_price'] or 0.0), 9.5, places=6)
         self.assertEqual(rows[0]['note'], '更正初始录入数量和成本')
+        self.assertEqual(rows[1]['correction_type'], 'opening_balance')
 
     def test_portfolio_list_can_ignore_legacy_adjustment_after_migration_switch(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -318,6 +560,71 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 4.0, places=6)
         self.assertAlmostEqual(float(target.get('adjustment') or 0.0), 4.0, places=6)
 
+    def test_legacy_adjustment_migration_report_marks_ready_when_no_old_value(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600024',
+            'name': '测试迁移盘点就绪',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        report = app_module.db.get_portfolio_legacy_adjustment_migration_report()
+        self.assertTrue(bool(report.get('ready_to_ignore_now')))
+        self.assertEqual(report.get('migration_status'), '可直接切新口径')
+        self.assertEqual(int(report.get('nonzero_legacy_position_count') or 0), 0)
+        self.assertAlmostEqual(float(report.get('nonzero_legacy_adjustment_total') or 0.0), 0.0, places=6)
+        positions = report.get('positions') or []
+        self.assertEqual(len(positions), 1)
+        self.assertEqual(positions[0].get('migration_hint'), '可直接切新口径')
+        self.assertEqual(int(positions[0].get('correction_count') or 0), 1)
+
+    def test_legacy_adjustment_migration_report_lists_positions_that_need_manual_review(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
+            VALUES ('usAAPL', '苹果', 3.0, 100.0, 'USD', 12.5, 'us', 'legacy-user', datetime('now','localtime'))
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, user_id, curr, market, effective_date)
+            VALUES ('usAAPL', '苹果', '减仓', 110.0, 1.0, 110.0, 10.0, '2026-03-18 21:30:00', 'legacy-user', 'USD', 'us', '2026-03-18')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO portfolio_adjustment_ledger (user_id, code, event_type, amount, curr, note, source)
+            VALUES ('legacy-user', 'usAAPL', 'dividend', 3.0, 'USD', '历史现金分红', 'test')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        report = app_module.db.get_portfolio_legacy_adjustment_migration_report('legacy-user')
+        self.assertFalse(bool(report.get('ready_to_ignore_now')))
+        self.assertEqual(report.get('migration_status'), '仍需人工迁移')
+        self.assertEqual(int(report.get('nonzero_legacy_position_count') or 0), 1)
+        self.assertAlmostEqual(float(report.get('nonzero_legacy_adjustment_total') or 0.0), 12.5, places=6)
+        positions = report.get('positions') or []
+        self.assertEqual(len(positions), 1)
+        target = positions[0]
+        self.assertEqual(target.get('code'), 'usAAPL')
+        self.assertTrue(bool(target.get('has_nonzero_legacy_adjustment')))
+        self.assertEqual(target.get('migration_hint'), '需要人工迁移')
+        self.assertAlmostEqual(float(target.get('legacy_adjustment') or 0.0), 12.5, places=6)
+        self.assertAlmostEqual(float(target.get('ledger_adjustment') or 0.0), 3.0, places=6)
+        self.assertAlmostEqual(float(target.get('realized_pnl_adjustment') or 0.0), 10.0, places=6)
+        self.assertEqual(int(target.get('tx_count') or 0), 1)
+        self.assertEqual(int(target.get('correction_count') or 0), 0)
+
+        reports = app_module.db.list_portfolio_legacy_adjustment_migration_reports()
+        target_report = next((item for item in reports if item.get('user_id') == 'legacy-user'), None)
+        self.assertIsNotNone(target_report)
+        self.assertEqual(target_report.get('migration_status'), '仍需人工迁移')
+
     def test_portfolio_modify_does_not_write_trade_transaction(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600025',
@@ -340,9 +647,10 @@ class PortfolioApiTests(unittest.TestCase):
         resp = self.client.get('/api/portfolio/transactions?code=sh600025')
         self.assertEqual(resp.status_code, 200)
         records = (resp.get_json() or {}).get('records') or []
-        self.assertEqual(len(records), 1)
+        self.assertEqual(len(records), 2)
         self.assertEqual(records[0].get('type'), '持仓修正')
         self.assertEqual(records[0].get('note'), '补录初始份额')
+        self.assertEqual(records[1].get('type'), '初始持仓')
 
     def test_portfolio_adjustment_event_updates_total_adjustment_and_transactions(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -409,7 +717,7 @@ class PortfolioApiTests(unittest.TestCase):
         tx_resp = self.client.get('/api/portfolio/transactions?code=sh600023')
         self.assertEqual(tx_resp.status_code, 200)
         records = (tx_resp.get_json() or {}).get('records') or []
-        self.assertEqual([item.get('type') for item in records], ['手续费', '分红'])
+        self.assertCountEqual([item.get('type') for item in records], ['手续费', '分红', '初始持仓'])
 
     def test_portfolio_adjustment_event_allows_empty_note(self):
         add_resp = self.client.post('/api/portfolio/add', json={

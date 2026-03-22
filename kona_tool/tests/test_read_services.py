@@ -39,16 +39,16 @@ class _FakeDb:
     def get_history(self, days, user_id):
         return list(self.history_items)
 
-    def get_pnl_overview(self, period, user_id):
+    def get_pnl_overview(self, period, user_id, ledger_id=None):
         return {"pnl": 12.34, "pnl_rate": 1.23, "period": period}
 
-    def get_calendar_data(self, time_type, user_id, year=None, month=None):
+    def get_calendar_data(self, time_type, user_id, year=None, month=None, ledger_id=None):
         return {"items": [], "title": f"{time_type}-calendar"}
 
-    def get_market_breakdown_calendar_data(self, time_type, user_id, year=None, month=None):
+    def get_market_breakdown_calendar_data(self, time_type, user_id, year=None, month=None, ledger_id=None):
         return {"items": [], "title": "market-breakdown"}
 
-    def get_rank_data(self, rank_type, market, user_id):
+    def get_rank_data(self, rank_type, market, user_id, ledger_id=None):
         return [
             {
                 "code": "AAPL",
@@ -147,7 +147,7 @@ class ReadServicesTests(unittest.TestCase):
 
         # db 返回今天那格的快照值 10.0
         db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "items": [{"label": today_label, "pnl": 10.0}],
             "total_pnl": 10.0,
             "total_rate": 1.0,
@@ -177,7 +177,7 @@ class ReadServicesTests(unittest.TestCase):
         today_label = f"{today.month}-{today.day}"
 
         db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "items": [],  # 今天还没有快照
             "total_pnl": 0.0,
             "total_rate": 0.0,
@@ -207,7 +207,7 @@ class ReadServicesTests(unittest.TestCase):
         today_label = f"{today.month}-{today.day}"
 
         db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "items": [
                 {"label": effective_label, "pnl": 10.0},
                 {"label": today_label, "pnl": 0.0},
@@ -244,7 +244,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_calendar_past_month_not_affected_by_stats_getter(self):
         """查的是历史月份，今天那格不应被 stats_getter 修改"""
         db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "items": [{"label": "1-15", "pnl": 20.0}],
             "total_pnl": 20.0,
             "total_rate": 2.0,
@@ -285,6 +285,24 @@ class ReadServicesTests(unittest.TestCase):
         self.assertEqual(called_with, ["u_1"])
         self.assertAlmostEqual(result["day"]["pnl"], 99.0)
         self.assertAlmostEqual(result["day"]["pnl_rate"], 9.9)  # 99/1000*100
+
+    def test_analysis_overview_day_prefers_day_pnl_base(self):
+        """当实时层已经给出 day_pnl_base 时，day 概览应直接认这套分母。"""
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+            stats_getter=lambda user_id: {
+                "day_pnl": 90.0,
+                "day_pnl_base": 600.0,
+                "total_invest": 1000.0,
+            },
+        )
+
+        with self.app.test_request_context("/api/analysis/overview?period=day"):
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        self.assertAlmostEqual(result["day"]["base_value"], 600.0)
+        self.assertAlmostEqual(result["day"]["pnl_rate"], 15.0)
 
     def test_analysis_overview_day_falls_back_to_snapshot_on_error(self):
         """stats_getter 抛异常时，应 fallback 回 db.get_pnl_overview"""
@@ -361,7 +379,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_rank_uses_cny_for_cross_currency_sorting(self):
         """多货币持仓排行应换算为 CNY 后排序，返回值保持原始货币"""
         db = _FakeDb()
-        db.get_rank_data = lambda rank_type, market, user_id: [
+        db.get_rank_data = lambda rank_type, market, user_id, ledger_id=None: [
             {
                 "code": "AAPL",
                 "name": "Apple",
@@ -408,7 +426,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_rank_without_currency_converter_falls_back_to_native_pnl_sort(self):
         """未注入 convert_amount 时，直接按原始货币 pnl 排序（兼容旧行为）"""
         db = _FakeDb()
-        db.get_rank_data = lambda rank_type, market, user_id: [
+        db.get_rank_data = lambda rank_type, market, user_id, ledger_id=None: [
             {"code": "AAPL", "name": "Apple", "qty": 10, "cost_price": 10, "adjustment": 0, "market": "us", "curr": "USD"},
             {"code": "sh600000", "name": "工行", "qty": 100, "cost_price": 9, "adjustment": 0, "market": "a", "curr": "CNY"},
         ]
@@ -427,13 +445,13 @@ class ReadServicesTests(unittest.TestCase):
         self.assertEqual(result["gain"][0]["code"], "sh600000")
         self.assertEqual(result["gain"][1]["code"], "AAPL")
 
-    def test_market_breakdown_today_uses_stats_getter(self):
-        """市场拆分日历当月今日的 total_pnl 应使用实时值"""
+    def test_market_breakdown_today_keeps_snapshot_row_consistent(self):
+        """分市场日历同一行里的总值和分项都应保持快照口径。"""
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d")
 
         db = _FakeDb()
-        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "time_type": "day",
             "year": today.year,
             "month": today.month,
@@ -460,15 +478,14 @@ class ReadServicesTests(unittest.TestCase):
 
         today_item = next((i for i in result["items"] if i["date"] == today_str), None)
         self.assertIsNotNone(today_item)
-        self.assertAlmostEqual(today_item["total_pnl"], 88.0)
-        self.assertEqual(today_item["source"], "partial_realtime")
-        # per-market 拆分保持快照值不变
+        self.assertAlmostEqual(today_item["total_pnl"], 5.0)
+        self.assertEqual(today_item["source"], "estimated")
         self.assertAlmostEqual(today_item["markets"]["a"], 5.0)
 
     def test_market_breakdown_past_month_not_affected_by_stats_getter(self):
         """历史月份不应被 stats_getter 修改"""
         db = _FakeDb()
-        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None: {
+        db.get_market_breakdown_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
             "time_type": "day",
             "year": 2026,
             "month": 1,
@@ -522,12 +539,12 @@ class ReadServicesTests(unittest.TestCase):
         self.assertAlmostEqual(item["day_pnl"], 6.0)
         self.assertAlmostEqual(item["day_pnl_rate"], (1.0 / 11.0) * 100)
 
-    def test_portfolio_total_pnl_rate_uses_extended_denominator(self):
-        """减仓后 total_pnl_rate 分母应加上已实现盈亏，避免收益率虚高。"""
+    def test_portfolio_total_pnl_rate_uses_current_cost_base(self):
+        """累计收益率只认当前这只持仓还压着的本金。"""
         # 持仓成本 cost=100*10=1000, 当前价 12, 市值 1200
         # adjustment=200 (已实现盈亏), total_pnl = (12-10)*100 + 200 = 400
-        # 分母 = |1000| + max(0, 200) = 1200
-        # rate = 400 / 1200 * 100 = 33.33%（而非 400/1000*100=40%）
+        # 分母 = |1000|
+        # rate = 400 / 1000 * 100 = 40%
         db = _FakeDb()
         db.portfolio_items = [
             {"code": "sh600002", "name": "Test2", "qty": 100, "price": 10.0, "adjustment": 200.0, "curr": "CNY", "asset_type": "a"}
@@ -546,7 +563,8 @@ class ReadServicesTests(unittest.TestCase):
             result = service.build_metrics_payload(user_id="u_1")
         item = result[0]
         self.assertAlmostEqual(item["total_pnl"], 400.0)
-        self.assertAlmostEqual(item["total_pnl_rate"], 400.0 / 1200.0 * 100, places=4)
+        self.assertAlmostEqual(item["total_pnl_base"], 1000.0, places=4)
+        self.assertAlmostEqual(item["total_pnl_rate"], 400.0 / 1000.0 * 100, places=4)
 
     def test_portfolio_read_service_includes_latest_nav_date_for_otc_fund(self):
         db = _FakeDb()

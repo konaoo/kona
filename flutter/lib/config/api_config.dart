@@ -2,7 +2,10 @@
 class ApiConfig {
   /// API 基础地址
   /// 当前生产仅保留 IP 入口，域名备案完成后再评估恢复域名访问。
-  static const String baseUrl = 'http://114.132.238.12';
+  static const String baseUrl = String.fromEnvironment(
+    'MOBILE_API_BASE_URL',
+    defaultValue: 'http://114.132.238.12',
+  );
   static const List<String> loginBaseUrlCandidates = <String>[baseUrl];
 
   /// 请求超时时间（秒）
@@ -34,6 +37,7 @@ class ApiConfig {
   static const String portfolioModify = '/api/portfolio/modify';
   static const String portfolioAdjustmentEvent =
       '/api/portfolio/adjustment_event';
+  static const String portfolioOcrParseAsset = '/api/portfolio/ocr_parse_asset';
   static const String portfolioDelete = '/api/portfolio/delete';
   static const String portfolioDeleteCorrective =
       '/api/portfolio/delete_corrective';

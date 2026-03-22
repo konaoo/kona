@@ -325,7 +325,7 @@ class AppAssetsState extends ChangeNotifier {
     required String code,
     required double qty,
     required double price,
-    required double adjustment,
+    double? adjustment,
     bool notify = true,
   }) {
     final index = portfolioIndexByCode(code);
@@ -338,7 +338,7 @@ class AppAssetsState extends ChangeNotifier {
       name: old.name,
       qty: qty,
       price: price,
-      adjustment: adjustment,
+      adjustment: adjustment ?? old.adjustment,
       curr: old.curr,
       assetType: old.assetType,
     );

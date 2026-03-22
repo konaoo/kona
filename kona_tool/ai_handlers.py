@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any, Callable, Dict, Optional
 
@@ -16,6 +17,9 @@ from core.admin.runtime_config import load_user_group_ops_config
 from core.request_trace import record_request_stage, trace_request_stage
 
 logger = logging.getLogger(__name__)
+
+AI_PROVIDERS_KEY = "ai_providers"
+AI_OCR_PROVIDER_CONFIG_KEY = "ai_ocr_provider_config"
 
 SYSTEM_PROMPT = """你是"小咔"，咔咔记账的 AI 投资助手。你能看到用户的完整投资组合数据。
 
@@ -40,29 +44,101 @@ def _build_ai_credits_required_payload(db: Any, user_id: str, *, balance: int | 
     }
 
 
-def _get_active_provider(db: Any) -> Optional[Dict[str, Any]]:
-    """从 runtime_configs 读取激活的 AI 供应商，fallback 到环境变量。"""
+def _load_runtime_ai_providers(db: Any) -> list[dict[str, Any]]:
+    raw = db.get_runtime_config(AI_PROVIDERS_KEY)
+    if not raw:
+        return []
     try:
-        raw = db.get_runtime_config("ai_providers")
-        if raw:
-            providers = json.loads(raw)
-            active = next((p for p in providers if p.get("active")), None)
-            if active and active.get("api_key"):
-                return active
+        providers = json.loads(raw)
     except Exception as exc:
         logger.warning("Failed to load AI providers from runtime_configs: %s", exc)
+        return []
+    if not isinstance(providers, list):
+        return []
+    return [item for item in providers if isinstance(item, dict)]
 
-    # fallback 到环境变量
-    env_key = getattr(config, "AI_API_KEY", "")
-    if env_key:
-        return {
-            "type": getattr(config, "AI_PROVIDER", "deepseek"),
-            "api_key": env_key,
-            "model": getattr(config, "AI_MODEL", ""),
-            "base_url": "",
-            "protocol": "anthropic" if getattr(config, "AI_PROVIDER", "") == "anthropic" else "openai",
-        }
+
+def _build_env_provider() -> Optional[Dict[str, Any]]:
+    env_key = str(getattr(config, "AI_API_KEY", "") or "").strip()
+    if not env_key:
+        env_key = str(os.getenv("OPENAI_API_KEY", "") or "").strip()
+    env_base_url = str(getattr(config, "AI_BASE_URL", "") or "").strip()
+    if not env_base_url:
+        env_base_url = str(os.getenv("OPENAI_API_BASE", "") or "").strip()
+    env_provider = str(getattr(config, "AI_PROVIDER", "") or "").strip()
+    if not env_provider and env_key:
+        env_provider = "openai"
+    env_model = str(getattr(config, "AI_MODEL", "") or "").strip()
+    if not env_model:
+        env_model = str(os.getenv("OPENAI_MODEL", "") or "").strip()
+    if not env_key:
+        return None
+    return {
+        "id": "env_default",
+        "type": env_provider or "openai",
+        "api_key": env_key,
+        "model": env_model,
+        "base_url": env_base_url,
+        "protocol": "anthropic" if (env_provider or "").lower() == "anthropic" else "openai",
+        "active": True,
+    }
+
+
+def _find_provider_by_id(providers: list[dict[str, Any]], provider_id: str) -> Optional[dict[str, Any]]:
+    target = str(provider_id or "").strip()
+    if not target:
+        return None
+    for provider in providers:
+        if str(provider.get("id") or "").strip() == target:
+            return provider
     return None
+
+
+def _load_ocr_provider_config(db: Any) -> Dict[str, str]:
+    raw = db.get_runtime_config(AI_OCR_PROVIDER_CONFIG_KEY)
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except Exception as exc:
+        logger.warning("Failed to load OCR provider config from runtime_configs: %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        "provider_id": str(payload.get("provider_id") or "").strip(),
+        "model": str(payload.get("model") or "").strip(),
+    }
+
+
+def _get_active_provider(db: Any) -> Optional[Dict[str, Any]]:
+    """从 runtime_configs 读取激活的 AI 供应商，fallback 到环境变量。"""
+    providers = _load_runtime_ai_providers(db)
+    active = next((p for p in providers if p.get("active") and p.get("api_key")), None)
+    if active:
+        return dict(active)
+    return _build_env_provider()
+
+
+def _get_ocr_provider(db: Any) -> Optional[Dict[str, Any]]:
+    providers = _load_runtime_ai_providers(db)
+    ocr_cfg = _load_ocr_provider_config(db)
+    provider_id = str(ocr_cfg.get("provider_id") or "").strip()
+    model_override = str(ocr_cfg.get("model") or "").strip()
+
+    selected = _find_provider_by_id(providers, provider_id) if provider_id else None
+    if not selected:
+        selected = next((p for p in providers if p.get("active") and p.get("api_key")), None)
+    if selected and selected.get("api_key"):
+        resolved = dict(selected)
+        if model_override:
+            resolved["model"] = model_override
+        return resolved
+
+    env_provider = _build_env_provider()
+    if env_provider and model_override:
+        env_provider["model"] = model_override
+    return env_provider
 
 
 def create_ai_chat_handler(

@@ -100,9 +100,9 @@ def build_portfolio_items_with_metrics(
         cost = raw_cost_price * qty
         value = current_price * qty
         total_pnl = value - cost + adjustment
-        # 分母用 |持仓成本| + max(0, 已实现盈亏)，避免减仓后分母缩水导致收益率虚高
-        cost_denominator = abs(cost) + max(0.0, adjustment)
-        total_pnl_rate = (total_pnl / cost_denominator * 100) if cost_denominator > 0 else 0.0
+        # 累计收益率只认当前还压在这只持仓里的本金，不再把已兑现收益继续塞回分母。
+        total_pnl_base = abs(cost)
+        total_pnl_rate = (total_pnl / total_pnl_base * 100) if total_pnl_base > 0 else 0.0
 
         day_pnl_ready = (not nav_update_pending) and current_price > 0 and quote_yclose > 0
         buy_info = (today_buys or {}).get(code)
@@ -118,20 +118,26 @@ def build_portfolio_items_with_metrics(
                 today_buy_qty=_to_float((buy_info or {}).get("qty")),
             )
             day_pnl_display_enabled = yesterday_qty > 0
+            day_pnl_base_display = quote_yclose * yesterday_qty if yesterday_qty > 0 else 0.0
         else:
             day_pnl_display = 0.0
             day_pnl_rate_display = 0.0
             day_pnl_display_enabled = False
+            day_pnl_base_display = 0.0
         day_pnl_aggregate_enabled = day_pnl_display_enabled and market_trading_day
         day_pnl_aggregate = day_pnl_display if day_pnl_aggregate_enabled else 0.0
         day_pnl_rate_aggregate = day_pnl_rate_display if day_pnl_aggregate_enabled else 0.0
+        day_pnl_base_aggregate = day_pnl_base_display if day_pnl_aggregate_enabled else 0.0
 
         rate_to_cny = convert_amount(1.0, curr, "CNY", rates)
         value_cny = value * rate_to_cny
         cost_cny = cost * rate_to_cny
         total_pnl_cny = total_pnl * rate_to_cny
+        total_pnl_base_cny = total_pnl_base * rate_to_cny
         day_pnl_cny = day_pnl_display * rate_to_cny
         day_pnl_aggregate_cny = day_pnl_aggregate * rate_to_cny
+        day_pnl_base_display_cny = day_pnl_base_display * rate_to_cny
+        day_pnl_base_aggregate_cny = day_pnl_base_aggregate * rate_to_cny
 
         enriched.append(
             {
@@ -147,12 +153,16 @@ def build_portfolio_items_with_metrics(
                 "raw_cost_total": cost,
                 "value": value,
                 "total_pnl": total_pnl,
+                "total_pnl_base": total_pnl_base,
                 "total_pnl_rate": total_pnl_rate,
                 "day_pnl": day_pnl_display,
+                "day_pnl_base": day_pnl_base_display,
                 "day_pnl_rate": day_pnl_rate_display,
                 "day_pnl_display": day_pnl_display,
+                "day_pnl_base_display": day_pnl_base_display,
                 "day_pnl_rate_display": day_pnl_rate_display,
                 "day_pnl_aggregate": day_pnl_aggregate,
+                "day_pnl_base_aggregate": day_pnl_base_aggregate,
                 "day_pnl_rate_aggregate": day_pnl_rate_aggregate,
                 "nav_update_pending": nav_update_pending,
                 "latest_nav_date": latest_nav_date,
@@ -164,8 +174,11 @@ def build_portfolio_items_with_metrics(
                 "value_cny": value_cny,
                 "cost_cny": cost_cny,
                 "total_pnl_cny": total_pnl_cny,
+                "total_pnl_base_cny": total_pnl_base_cny,
                 "day_pnl_cny": day_pnl_cny,
+                "day_pnl_base_cny": day_pnl_base_display_cny,
                 "day_pnl_aggregate_cny": day_pnl_aggregate_cny,
+                "day_pnl_base_aggregate_cny": day_pnl_base_aggregate_cny,
                 "quote_price": quote_price,
                 "quote_change": quote_change,
                 "quote_change_pct": quote_change_pct,

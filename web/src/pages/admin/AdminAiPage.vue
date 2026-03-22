@@ -5,7 +5,7 @@
     <div class="main-content">
       <div class="page-header">
         <h1>AI 助手配置</h1>
-        <p class="page-desc">配置 AI 供应商，用于小咔智能助手</p>
+        <p class="page-desc">配置 AI 供应商，用于小咔智能助手和截图识别</p>
       </div>
 
       <p v-if="pageMessage" :class="pageOk ? 'up' : 'down'" class="msg-tip">{{ pageMessage }}</p>
@@ -15,6 +15,73 @@
           <span class="add-icon">+</span>
           添加供应商
         </button>
+      </div>
+
+      <div class="ocr-config-card">
+        <div class="ocr-config-header">
+          <h2>截图识别配置</h2>
+          <p>这里单独指定截图识别使用的供应商和模型，不再跟聊天助手共用。</p>
+        </div>
+
+        <div class="ocr-config-grid">
+          <div class="ocr-field">
+            <label class="field-label">截图识别供应商</label>
+            <select v-model="ocrConfig.provider_id" class="field-input" @change="onOcrProviderChange">
+              <option value="">跟随当前激活供应商</option>
+              <option v-for="p in providers" :key="p.id" :value="p.id">
+                {{ p.name }}（{{ presetLabel(p.type) }}）
+              </option>
+            </select>
+          </div>
+
+          <div class="ocr-field">
+            <label class="field-label">截图识别模型</label>
+            <div class="model-field">
+              <select v-if="ocrModels.length > 0" v-model="ocrConfig.model" class="field-input mono">
+                <option value="">跟随供应商默认模型</option>
+                <option v-for="m in ocrModels" :key="m.id" :value="m.id">{{ m.name || m.id }}</option>
+                <option
+                  v-if="ocrConfig.model && !ocrModels.some(m => m.id === ocrConfig.model)"
+                  :value="ocrConfig.model"
+                >
+                  {{ ocrConfig.model }}（当前）
+                </option>
+              </select>
+              <input
+                v-else
+                v-model="ocrConfig.model"
+                class="field-input mono"
+                placeholder="留空时跟随供应商默认模型"
+                maxlength="100"
+              />
+              <button
+                class="fetch-models-btn"
+                :disabled="ocrFetchingModels || !ocrConfig.provider_id"
+                @click="fetchOcrModels"
+                title="获取模型列表"
+              >
+                <template v-if="ocrFetchingModels">⏳</template>
+                <template v-else>🔄</template>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ocr-config-footer">
+          <p class="ocr-config-meta">
+            <template v-if="ocrConfig.provider_id">
+              当前截图识别：{{ ocrConfig.provider_name || '未命名供应商' }} / {{ ocrConfig.resolved_model || '未指定模型' }}
+            </template>
+            <template v-else>
+              当前截图识别：跟随当前激活供应商
+            </template>
+          </p>
+          <button class="footer-btn save-btn" :disabled="ocrSaving" @click="saveOcrConfig">
+            {{ ocrSaving ? '保存中…' : '保存截图识别配置' }}
+          </button>
+        </div>
+
+        <p v-if="ocrMessage" class="modal-msg" :class="ocrOk ? 'up' : 'down'">{{ ocrMessage }}</p>
       </div>
 
       <div v-if="loading" class="loading-text">加载中…</div>
@@ -149,6 +216,14 @@ interface ProviderPreset {
   protocol: string
 }
 
+interface OcrConfig {
+  provider_id: string
+  provider_name: string
+  model: string
+  resolved_model: string
+  enabled: boolean
+}
+
 const providers = ref<ProviderItem[]>([])
 const presets: Record<string, ProviderPreset> = {
   deepseek: { label: 'DeepSeek', default_base_url: 'https://api.deepseek.com', default_model: 'deepseek-chat', protocol: 'openai' },
@@ -161,11 +236,24 @@ const presets: Record<string, ProviderPreset> = {
 const loading = ref(true)
 const pageMessage = ref('')
 const pageOk = ref(true)
+const ocrMessage = ref('')
+const ocrOk = ref(true)
+const ocrSaving = ref(false)
 const testing = ref('')
 const testResults = reactive<Record<string, { ok: boolean; message: string }>>({})
 const editorTesting = ref(false)
 const editorModels = ref<{ id: string; name: string }[]>([])
 const fetchingModels = ref(false)
+const ocrModels = ref<{ id: string; name: string }[]>([])
+const ocrFetchingModels = ref(false)
+
+const ocrConfig = reactive<OcrConfig>({
+  provider_id: '',
+  provider_name: '',
+  model: '',
+  resolved_model: '',
+  enabled: false,
+})
 
 const editor = reactive({
   visible: false,
@@ -187,6 +275,14 @@ function presetLabel(type: string): string {
 function flash(msg: string, ok: boolean) {
   pageMessage.value = msg
   pageOk.value = ok
+}
+
+function applyOcrConfig(config?: Partial<OcrConfig>) {
+  ocrConfig.provider_id = config?.provider_id || ''
+  ocrConfig.provider_name = config?.provider_name || ''
+  ocrConfig.model = config?.model || config?.resolved_model || ''
+  ocrConfig.resolved_model = config?.resolved_model || config?.model || ''
+  ocrConfig.enabled = Boolean(config?.enabled)
 }
 
 function onTypeChange() {
@@ -232,12 +328,68 @@ function closeEditor() {
 async function loadAll() {
   loading.value = true
   try {
-    const resp = await api.get<{ providers: ProviderItem[] }>('/api/admin/ai/providers')
+    const resp = await api.get<{ providers: ProviderItem[]; ocr_config?: OcrConfig }>('/api/admin/ai/providers')
     providers.value = resp.providers || []
+    applyOcrConfig(resp.ocr_config)
   } catch (e) {
     flash(e instanceof Error ? e.message : '加载失败', false)
   } finally {
     loading.value = false
+  }
+}
+
+function onOcrProviderChange() {
+  const provider = providers.value.find(p => p.id === ocrConfig.provider_id)
+  ocrModels.value = []
+  ocrMessage.value = ''
+  if (!provider) {
+    ocrConfig.provider_name = ''
+    ocrConfig.model = ''
+    ocrConfig.resolved_model = ''
+    return
+  }
+  ocrConfig.provider_name = provider.name
+  if (!ocrConfig.model) {
+    ocrConfig.model = provider.model || ''
+  }
+  ocrConfig.resolved_model = ocrConfig.model || provider.model || ''
+}
+
+async function fetchOcrModels() {
+  if (!ocrConfig.provider_id) return
+  ocrFetchingModels.value = true
+  ocrMessage.value = ''
+  try {
+    const resp = await api.post<{ models: { id: string; name: string }[] }>('/api/admin/ai/providers/models', {
+      id: ocrConfig.provider_id,
+    })
+    ocrModels.value = resp.models || []
+    ocrMessage.value = ocrModels.value.length > 0 ? `已获取 ${ocrModels.value.length} 个模型` : '未获取到模型列表'
+    ocrOk.value = ocrModels.value.length > 0
+  } catch (e) {
+    ocrMessage.value = e instanceof Error ? e.message : '获取模型列表失败'
+    ocrOk.value = false
+  } finally {
+    ocrFetchingModels.value = false
+  }
+}
+
+async function saveOcrConfig() {
+  ocrSaving.value = true
+  ocrMessage.value = ''
+  try {
+    const resp = await api.post<{ ocr_config: OcrConfig }>('/api/admin/ai/ocr/save', {
+      provider_id: ocrConfig.provider_id,
+      model: ocrConfig.model,
+    })
+    applyOcrConfig(resp.ocr_config)
+    ocrMessage.value = ocrConfig.provider_id ? '截图识别配置已保存' : '截图识别已改为跟随当前激活供应商'
+    ocrOk.value = true
+  } catch (e) {
+    ocrMessage.value = e instanceof Error ? e.message : '保存失败'
+    ocrOk.value = false
+  } finally {
+    ocrSaving.value = false
   }
 }
 
@@ -256,6 +408,7 @@ async function saveEditor() {
 
     const resp = await api.post<{ providers: ProviderItem[] }>('/api/admin/ai/providers/save', payload)
     providers.value = resp.providers || []
+    await loadAll()
     flash(editor.id ? '供应商已更新' : '供应商已添加', true)
     editor.visible = false
   } catch (e) {
@@ -271,6 +424,7 @@ async function deleteProvider(p: ProviderItem) {
   try {
     const resp = await api.post<{ providers: ProviderItem[] }>('/api/admin/ai/providers/delete', { id: p.id })
     providers.value = resp.providers || []
+    await loadAll()
     flash('已删除', true)
   } catch (e) {
     flash(e instanceof Error ? e.message : '删除失败', false)
@@ -281,6 +435,7 @@ async function activateProvider(id: string) {
   try {
     const resp = await api.post<{ providers: ProviderItem[] }>('/api/admin/ai/providers/activate', { id })
     providers.value = resp.providers || []
+    await loadAll()
     flash('已切换激活供应商', true)
   } catch (e) {
     flash(e instanceof Error ? e.message : '操作失败', false)
@@ -389,6 +544,32 @@ onMounted(() => {
 .add-icon { font-size: 18px; font-weight: 300; }
 
 .loading-text, .empty-text { color: #8a93a5; font-size: 14px; padding: 40px 0; text-align: center; }
+
+.ocr-config-card {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid #e7ebf3;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+.ocr-config-header h2 { margin: 0; font-size: 18px; font-weight: 800; color: #111827; }
+.ocr-config-header p { margin: 6px 0 0; color: #8a93a5; font-size: 13px; }
+.ocr-config-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr);
+  gap: 16px;
+}
+.ocr-field { min-width: 0; }
+.ocr-config-footer {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ocr-config-meta { margin: 0; color: #6b7280; font-size: 13px; }
 
 /* Provider Cards */
 .provider-list { display: flex; flex-direction: column; gap: 14px; }
@@ -510,6 +691,8 @@ select.field-input { cursor: pointer; }
 @media (max-width: 900px) {
   .main-content { padding: 18px 18px calc(112px + env(safe-area-inset-bottom)); }
   .page-header h1 { font-size: 28px; }
+  .ocr-config-grid { grid-template-columns: 1fr; }
+  .ocr-config-footer { flex-direction: column; align-items: flex-start; }
   .card-info { grid-template-columns: 1fr; }
   .info-value.truncate { max-width: 200px; }
 }

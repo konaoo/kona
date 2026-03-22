@@ -3,16 +3,48 @@
 """
 from datetime import datetime
 import math
+import os
 from typing import Callable
 
 from flask import g, jsonify, request
+from werkzeug.datastructures import FileStorage
+
+from core import portfolio_ocr
 from core.request_trace import trace_request_stage
+
 
 def _parse_bool(value) -> bool:
     if isinstance(value, bool):
         return value
     text = str(value or "").strip().lower()
     return text in {"1", "true", "yes", "y", "on"}
+
+
+def _normalize_ocr_candidate_code(value: str) -> str:
+    code = str(value or "").strip()
+    if not code:
+        return ""
+    upper = code.upper()
+    if upper.endswith(".HK"):
+        return f"hk{upper[:-3]}".lower()
+    lower = code.lower()
+    if lower.startswith(("sh", "sz", "bj", "hk", "gb_", "f_", "ft_")):
+        return lower
+    return code
+
+
+def _allow_local_ocr_demo() -> bool:
+    return str(os.getenv("ALLOW_LOCAL_OCR_DEMO", "") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _is_local_request() -> bool:
+    remote_addr = str(request.remote_addr or "").strip()
+    return remote_addr in {"127.0.0.1", "::1", "localhost"}
 
 
 def create_portfolio_payload_handlers(
@@ -118,6 +150,84 @@ def create_portfolio_payload_handlers(
             return {"error": "Missing required parameter: code", "code": "MISSING_CODE"}, 400
         records = db.get_portfolio_transactions(code=code, user_id=user_id, ledger_id=ledger_id)
         return {"records": records}
+
+    def handle_portfolio_ocr_parse():
+        uploaded = request.files.get("file")
+        if not isinstance(uploaded, FileStorage):
+            return {
+                "error": "请先上传截图文件",
+                "code": "OCR_FILE_REQUIRED",
+            }, 400
+        if not uploaded.filename:
+            return {
+                "error": "请先选择截图文件",
+                "code": "OCR_FILE_REQUIRED",
+            }, 400
+
+        try:
+            with trace_request_stage("portfolio.ocr.read_file"):
+                image_bytes = uploaded.stream.read()
+            with trace_request_stage("portfolio.ocr.parse"):
+                parsed = portfolio_ocr.parse_portfolio_asset_candidates(
+                    db=db,
+                    image_bytes=image_bytes,
+                    filename=uploaded.filename or "",
+                    content_type=uploaded.mimetype or uploaded.content_type or "",
+                )
+        except portfolio_ocr.PortfolioOcrError as exc:
+            if _allow_local_ocr_demo() and _is_local_request():
+                logger.warning(
+                    "portfolio ocr fallback to local demo: code=%s message=%s",
+                    exc.code,
+                    exc.message,
+                )
+                parsed = portfolio_ocr.build_local_demo_result()
+            else:
+                return {"error": exc.message, "code": exc.code}, exc.status_code
+        except Exception as exc:
+            logger.exception("portfolio ocr parse failed: %s", exc)
+            return {
+                "error": "截图识别失败，请稍后重试",
+                "code": "OCR_PARSE_FAILED",
+            }, 500
+
+        normalized_items = []
+        for item in parsed.items:
+            code = str(item.get("code") or "").strip()
+            name = str(item.get("name") or "").strip()
+            curr = str(item.get("curr") or "").strip()
+            normalized = (
+                portfolio_identity_normalizer(code, curr, name)
+                if code or name
+                else {"code": "", "name": name, "curr": curr or "", "asset_type": ""}
+            )
+            asset_type = str(item.get("asset_type") or normalized.get("asset_type") or "").strip().lower()
+            type_name = {
+                "a": "A股",
+                "hk": "港股",
+                "us": "美股",
+                "fund": "基金",
+            }.get(asset_type, "资产")
+            normalized_items.append(
+                {
+                    "name": normalized.get("name") or name,
+                    "code": _normalize_ocr_candidate_code(normalized.get("code") or code),
+                    "qty": item.get("qty"),
+                    "price": item.get("price"),
+                    "currency": normalized.get("curr") or curr,
+                    "curr": normalized.get("curr") or curr,
+                    "asset_type": asset_type,
+                    "type_name": type_name,
+                    "confidence": item.get("confidence") or 0.0,
+                    "note": item.get("note") or "",
+                }
+            )
+
+        return {
+            "items": normalized_items,
+            "warnings": parsed.warnings,
+            "raw_text": parsed.raw_text,
+        }
 
     def handle_portfolio_add():
         data = request.json
@@ -1038,6 +1148,7 @@ def create_portfolio_payload_handlers(
         "portfolio_sell_to_cash": handle_portfolio_sell_to_cash,
         "portfolio_undo": handle_portfolio_undo,
         "portfolio_transactions": handle_portfolio_transactions,
+        "portfolio_ocr_parse": handle_portfolio_ocr_parse,
         "ledgers_list": handle_ledgers_list,
         "ledger_create": handle_ledger_create,
         "ledger_update": handle_ledger_update,

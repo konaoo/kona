@@ -120,13 +120,13 @@ def _fetch_transactions_until(
 ) -> List[sqlite3.Row]:
     cursor = conn.cursor()
     sql = """
-        SELECT id, time, code, type, price, qty, pnl
+        SELECT id, time, code, type, price, qty, pnl, market, effective_date
         FROM transactions
         WHERE COALESCE(user_id, '') = ?
     """
     params: List[str] = [uid]
     if end_date:
-        sql += " AND substr(time, 1, 10) <= ?"
+        sql += " AND COALESCE(NULLIF(substr(effective_date, 1, 10), ''), substr(time, 1, 10)) <= ?"
         params.append(end_date)
     sql += " ORDER BY time ASC, id ASC"
     cursor.execute(sql, tuple(params))
@@ -167,10 +167,11 @@ def _build_realized_by_date(transactions: List[sqlite3.Row]) -> Dict[str, Dict[s
     for tx in transactions:
         if str(tx["type"] or "") != "减仓":
             continue
-        date_str = str(tx["time"] or "")[:10]
+        date_str = str(tx["effective_date"] or "")[:10] or str(tx["time"] or "")[:10]
         if len(date_str) != 10:
             continue
-        market = _normalize_market_from_code(str(tx["code"] or ""))
+        raw_market = str(tx["market"] or "").strip().lower()
+        market = raw_market if raw_market in PRIMARY_MARKETS else _normalize_market_from_code(str(tx["code"] or ""))
         day = result.setdefault(date_str, {m: 0.0 for m in PRIMARY_MARKETS})
         day[market] += float(tx["pnl"] or 0.0)
     return result

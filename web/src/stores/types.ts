@@ -48,12 +48,16 @@ export type PortfolioItem = {
   raw_cost_total?: number
   value?: number
   total_pnl?: number
+  total_pnl_base?: number
   total_pnl_rate?: number
   day_pnl?: number
+  day_pnl_base?: number
   day_pnl_rate?: number
   day_pnl_display?: number
+  day_pnl_base_display?: number
   day_pnl_rate_display?: number
   day_pnl_aggregate?: number
+  day_pnl_base_aggregate?: number
   day_pnl_rate_aggregate?: number
   nav_update_pending?: boolean
   day_pnl_display_enabled?: boolean
@@ -65,8 +69,11 @@ export type PortfolioItem = {
   value_cny?: number
   cost_cny?: number
   total_pnl_cny?: number
+  total_pnl_base_cny?: number
   day_pnl_cny?: number
+  day_pnl_base_cny?: number
   day_pnl_aggregate_cny?: number
+  day_pnl_base_aggregate_cny?: number
   quote_price?: number
   quote_change?: number
   quote_change_pct?: number
@@ -141,15 +148,22 @@ export type PositionRow = {
   valueCny?: number
   costCny?: number
   totalPnlCny?: number
+  totalPnlBase?: number
+  totalPnlBaseCny?: number
   dayPnlCny?: number
+  dayPnlBase?: number
+  dayPnlBaseCny?: number
   dayPnlAggregateCny?: number
+  dayPnlBaseAggregateCny?: number
   rateToCny?: number
   totalPnl: number
   dayPnl: number
   dayPnlRate: number
   dayPnlDisplay: number
+  dayPnlBaseDisplay?: number
   dayPnlRateDisplay: number
   dayPnlAggregate: number
+  dayPnlBaseAggregate: number
   dayPnlRateAggregate: number
   totalPnlRate: number
   quotePrice?: number

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
@@ -518,6 +519,60 @@ class ApiService {
     );
   }
 
+  Future<dynamic> _postMultipart(
+    String endpoint, {
+    required String fileField,
+    required String filePath,
+    Map<String, String>? fields,
+  }) async {
+    if (filePath.trim().isEmpty) {
+      throw ApiException('截图文件不能为空');
+    }
+    final requestId = _newRequestId();
+    var retriedAfterRefresh = false;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final request = http.MultipartRequest(
+          'POST',
+          buildApiUri(endpoint),
+        );
+        final headers = _buildHeaders(requestId: requestId);
+        headers.remove('Content-Type');
+        request.headers.addAll(headers);
+        if (fields != null && fields.isNotEmpty) {
+          request.fields.addAll(fields);
+        }
+        request.files.add(await http.MultipartFile.fromPath(fileField, filePath));
+        final streamed = await _client.send(request).timeout(
+          const Duration(seconds: ApiConfig.timeout),
+        );
+        final response = await http.Response.fromStream(streamed);
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else if (response.statusCode == 401 && !retriedAfterRefresh) {
+          final refreshed = await _refreshAccessToken();
+          if (refreshed) {
+            retriedAfterRefresh = true;
+            continue;
+          }
+          throw _buildAuthFailureException();
+        } else {
+          throw ApiException(
+            _extractErrorMessage(response),
+            statusCode: response.statusCode,
+          );
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        if (e is FileSystemException) {
+          throw ApiException('读取截图失败，请重新选择图片');
+        }
+        throw _mapNetworkError(e);
+      }
+    }
+    throw _mapNetworkError('unknown error');
+  }
+
   AssetActionResult _failureResult(
     Object error, {
     String fallback = '操作失败，请稍后再试',
@@ -841,6 +896,19 @@ class ApiService {
     return await _get(endpoint) ?? [];
   }
 
+  /// 上传截图，解析添加资产候选结果
+  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(String filePath) async {
+    final response = await _postMultipart(
+      ApiConfig.portfolioOcrParseAsset,
+      fileField: 'file',
+      filePath: filePath,
+    );
+    if (response is Map<String, dynamic>) {
+      return response;
+    }
+    throw ApiException('截图识别返回格式不正确');
+  }
+
   /// 添加投资资产
   Future<AssetActionResult> addPortfolioAsset(
     String code,
@@ -861,7 +929,7 @@ class ApiService {
         if (curr != null && curr.isNotEmpty) 'curr': curr,
         if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -883,7 +951,7 @@ class ApiService {
         'price': price,
         'qty': qty,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -913,7 +981,7 @@ class ApiService {
         if (curr != null && curr.isNotEmpty) 'curr': curr,
         if (assetType != null && assetType.isNotEmpty) 'asset_type': assetType,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -935,7 +1003,7 @@ class ApiService {
         'price': price,
         'qty': qty,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -959,7 +1027,7 @@ class ApiService {
         'qty': qty,
         'cash_asset_id': cashAssetId,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       });
       return _okResultOrFailure(response);
     } catch (e) {
@@ -982,7 +1050,7 @@ class ApiService {
         'qty': qty,
         'price': price,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       };
       final cleanNote = (note ?? '').trim();
       if (cleanNote.isNotEmpty) {
@@ -1010,7 +1078,7 @@ class ApiService {
         'event_type': eventType,
         'amount': amount,
         'request_id': requestId ?? _newRequestId(),
-        if (ledgerId != null) 'ledger_id': ledgerId,
+        ...?(ledgerId == null ? null : {'ledger_id': ledgerId}),
       };
       final cleanNote = (note ?? '').trim();
       if (cleanNote.isNotEmpty) {

@@ -678,7 +678,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   }
 
   double _currentDisplayCostPrice() {
-    return _currentRawCostPrice();
+    final displayCostPrice = widget.item?.displayCostPrice;
+    if (displayCostPrice != null && displayCostPrice.isFinite) {
+      return displayCostPrice;
+    }
+    final qty = _currentHoldingQty();
+    if (qty <= 0) return _currentRawCostPrice();
+    return (_currentRawCostPrice() * qty - (widget.item?.adjustment ?? 0)) / qty;
   }
 
   String _adjustInputLabel() {
@@ -786,7 +792,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     if (_adjustType == 'cost_price') {
       return _ResolvedAdjustPayload(
         qty: qty,
-        price: value,
+        price: qty > 0 ? value + currentAdjustment / qty : value,
         adjustment: currentAdjustment,
       );
     }
@@ -1113,7 +1119,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         }
         final qtyVal = widget.item?.qty ?? 0;
         final rawPriceVal = widget.item?.price ?? 0;
-        final currentAdjustmentVal = widget.item?.adjustment ?? 0;
         final validationError = _validateAdjustPayload(
           qty: qtyVal.toDouble(),
           value: adjustVal,
@@ -1128,7 +1133,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         final payload = _buildAdjustPayload(
           qty: qtyVal.toDouble(),
           rawPrice: rawPriceVal.toDouble(),
-          currentAdjustment: currentAdjustmentVal.toDouble(),
+          currentAdjustment: (widget.item?.adjustment ?? 0).toDouble(),
           value: adjustVal,
         );
         if (_adjustType == 'dividend' || _adjustType == 'fee') {
@@ -1144,7 +1149,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
             code: code,
             qty: payload.qty,
             price: payload.price,
-            adjustment: payload.adjustment,
             note: note,
             awaitRefresh: false,
           );

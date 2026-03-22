@@ -164,6 +164,12 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl', 0)), expected)
         self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl', 0)), expected)
         self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl', 0)), expected)
+        self.assertAlmostEqual(float((payload.get('month') or {}).get('base_value', 0)), 1000.0)
+        self.assertAlmostEqual(float((payload.get('year') or {}).get('base_value', 0)), 1000.0)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('base_value', 0)), 1000.0)
+        self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl_rate', 0)), 12.5)
+        self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl_rate', 0)), 12.5)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl_rate', 0)), 12.5)
 
     def test_analysis_calendar_today_item_keeps_snapshot_value(self):
         fixed_now = datetime(2026, 2, 12, 14, 0, 0)

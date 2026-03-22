@@ -538,9 +538,15 @@ class ApiBaselineTests(unittest.TestCase):
 
         self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-20')
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 14.0, places=2)
+        self.assertAlmostEqual(float(stats.get('day_pnl_base') or 0.0), 70.0, places=2)
         self.assertAlmostEqual(
             float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('us') or 0.0),
             14.0,
+            places=2,
+        )
+        self.assertAlmostEqual(
+            float((stats.get('day_pnl_bases_by_date') or {}).get('2026-03-20') or 0.0),
+            70.0,
             places=2,
         )
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
@@ -575,6 +581,11 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(
             float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('fund') or 0.0),
             0.1,
+            places=2,
+        )
+        self.assertAlmostEqual(
+            float((stats.get('day_pnl_bases_by_date') or {}).get('2026-03-20') or 0.0),
+            12.4,
             places=2,
         )
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)

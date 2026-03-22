@@ -13,6 +13,7 @@ import 'pages/analysis_page.dart';
 import 'pages/news_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/asset_detail_page.dart';
+import 'pages/portfolio_screenshot_import_page.dart';
 import 'widgets/add_asset_dialog.dart';
 import 'widgets/invest_trade_dialog.dart';
 
@@ -376,6 +377,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   DateTime? _lastResumeAt;
   DateTime? _lastPausedAt;
   bool _fabVisible = true;
+  bool _investFabExpanded = false;
   final GlobalKey<HomePageState> _homePageKey = GlobalKey<HomePageState>();
   final GlobalKey<InvestPageState> _investPageKey =
       GlobalKey<InvestPageState>();
@@ -504,6 +506,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     setState(() {
       _currentIndex = index;
       _fabVisible = true;
+      _investFabExpanded = false;
     });
     _homePageKey.currentState?.resetFabVisibilityController();
     _investPageKey.currentState?.resetFabVisibilityController();
@@ -511,7 +514,12 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
 
   void _onPrimaryScrollVisibilityChanged(bool visible) {
     if (_fabVisible == visible) return;
-    setState(() => _fabVisible = visible);
+    setState(() {
+      _fabVisible = visible;
+      if (!visible) {
+        _investFabExpanded = false;
+      }
+    });
   }
 
   void _navigateTo(String pageName) {
@@ -558,6 +566,161 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     );
   }
 
+  void _toggleInvestFab() {
+    setState(() => _investFabExpanded = !_investFabExpanded);
+  }
+
+  Future<void> _openManualInvestment() async {
+    setState(() => _investFabExpanded = false);
+    _showAddInvestment();
+  }
+
+  Future<void> _openScreenshotInvestment() async {
+    setState(() => _investFabExpanded = false);
+    await Navigator.of(context).push(
+      MaterialPageRoute<bool>(
+        builder: (_) => const PortfolioScreenshotImportPage(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  static const Color _investFabForeground = Color(0xFF22304D);
+
+  Widget _buildInvestFabOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color backgroundColor,
+    required double right,
+    required double bottom,
+  }) {
+    final visible = _investFabExpanded && _fabVisible && _currentIndex == 1;
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutBack,
+      right: visible ? right : 10,
+      bottom: visible ? bottom : 10,
+      child: AnimatedScale(
+        scale: visible ? 1 : 0.72,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutBack,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 140),
+          child: IgnorePointer(
+            ignoring: !visible,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: backgroundColor.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _investFabForeground,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: FloatingActionButton.small(
+                    heroTag: '${icon.codePoint}_${right}_$bottom',
+                    onPressed: onTap,
+                    backgroundColor: backgroundColor,
+                    child: Icon(icon, size: 20, color: _investFabForeground),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvestFabGroup() {
+    return SizedBox(
+      width: 240,
+      height: 220,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          _buildInvestFabOption(
+            icon: Icons.edit_note_rounded,
+            label: '手动录入',
+            onTap: _openManualInvestment,
+            backgroundColor: const Color(0xFFE7C8FF),
+            right: 66,
+            bottom: 12,
+          ),
+          _buildInvestFabOption(
+            icon: Icons.photo_camera_outlined,
+            label: '截图识别',
+            onTap: _openScreenshotInvestment,
+            backgroundColor: const Color(0xFFC9DBFF),
+            right: 18,
+            bottom: 84,
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.24),
+                    blurRadius: 28,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: FloatingActionButton.small(
+                heroTag: 'add_investment_main',
+                onPressed: _toggleInvestFab,
+                backgroundColor: const Color(0xFF52679E),
+                child: AnimatedRotation(
+                  turns: _investFabExpanded ? 0.125 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    _investFabExpanded ? Icons.close : Icons.add,
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Rebuild on theme changes so bottom bar updates immediately
@@ -595,22 +758,20 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
                 duration: const Duration(milliseconds: 140),
                 child: IgnorePointer(
                   ignoring: !_fabVisible,
-                  child: FloatingActionButton.small(
-                    heroTag: _currentIndex == 0
-                        ? 'add_asset_home'
-                        : 'add_investment',
-                    onPressed: _currentIndex == 0
-                        ? _showQuickAdd
-                        : _showAddInvestment,
-                    backgroundColor: AppTheme.accent,
-                    child: Icon(
-                      Icons.add,
-                      size: 20,
-                      color: AppTheme.isLight
-                          ? Colors.white
-                          : AppTheme.textPrimary,
-                    ),
-                  ),
+                  child: _currentIndex == 0
+                      ? FloatingActionButton.small(
+                          heroTag: 'add_asset_home',
+                          onPressed: _showQuickAdd,
+                          backgroundColor: AppTheme.accent,
+                          child: Icon(
+                            Icons.add,
+                            size: 20,
+                            color: AppTheme.isLight
+                                ? Colors.white
+                                : AppTheme.textPrimary,
+                          ),
+                        )
+                      : _buildInvestFabGroup(),
                 ),
               ),
             )

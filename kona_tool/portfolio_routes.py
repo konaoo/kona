@@ -25,6 +25,7 @@ def create_portfolio_blueprint(
     portfolio_update_handler,
     portfolio_modify_handler,
     portfolio_adjustment_event_handler,
+    portfolio_ocr_parse_handler,
     snapshot_save_handler,
     snapshot_trigger_handler,
     snapshot_fix_handler,
@@ -67,6 +68,11 @@ def create_portfolio_blueprint(
     @optional_auth
     def add_adjustment_event():
         return _jsonify_result(portfolio_adjustment_event_handler())
+
+    @bp.route("/api/portfolio/ocr_parse_asset", methods=["POST"])
+    @optional_auth
+    def parse_asset_from_screenshot():
+        return _jsonify_result(portfolio_ocr_parse_handler())
 
     @bp.route("/api/snapshot/save", methods=["POST"])
     @optional_auth

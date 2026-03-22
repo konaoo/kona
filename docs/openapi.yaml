@@ -24,6 +24,161 @@ components:
         status:
           type: string
           example: ok
+    PortfolioTransactionRecord:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 交易、收益事件或修正记录的中文类型名
+        time:
+          type: string
+        note:
+          type: string
+        price:
+          type: number
+        qty:
+          type: number
+        amount:
+          type: number
+        pnl:
+          type: number
+        before_qty:
+          type: number
+          nullable: true
+        after_qty:
+          type: number
+          nullable: true
+        before_price:
+          type: number
+          nullable: true
+        after_price:
+          type: number
+          nullable: true
+    PortfolioTransactionsResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioTransactionRecord"
+    PortfolioItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        qty:
+          type: number
+        price:
+          type: number
+        curr:
+          type: string
+        asset_type:
+          type: string
+        category_type:
+          type: string
+        logo_url:
+          type: string
+          nullable: true
+        adjustment:
+          type: number
+        adjustment_total:
+          type: number
+        legacy_adjustment:
+          type: number
+        ledger_adjustment:
+          type: number
+        cash_event_adjustment:
+          type: number
+        realized_pnl_adjustment:
+          type: number
+        legacy_adjustment_ignored:
+          type: boolean
+        market:
+          type: string
+        market_open:
+          type: boolean
+        market_trading_day:
+          type: boolean
+        market_status_reason:
+          type: string
+        current_price:
+          type: number
+        yclose:
+          type: number
+        display_cost_price:
+          type: number
+        cost:
+          type: number
+        raw_cost_total:
+          type: number
+        value:
+          type: number
+        total_pnl:
+          type: number
+        total_pnl_base:
+          type: number
+        total_pnl_rate:
+          type: number
+        day_pnl:
+          type: number
+        day_pnl_base:
+          type: number
+        day_pnl_rate:
+          type: number
+        day_pnl_display:
+          type: number
+        day_pnl_base_display:
+          type: number
+        day_pnl_rate_display:
+          type: number
+        day_pnl_aggregate:
+          type: number
+        day_pnl_base_aggregate:
+          type: number
+        day_pnl_rate_aggregate:
+          type: number
+        nav_update_pending:
+          type: boolean
+        latest_nav_date:
+          type: string
+          nullable: true
+        quote_ready:
+          type: boolean
+        quote_pending:
+          type: boolean
+        day_pnl_display_enabled:
+          type: boolean
+        day_pnl_aggregate_enabled:
+          type: boolean
+        rate_to_cny:
+          type: number
+        value_cny:
+          type: number
+        cost_cny:
+          type: number
+        total_pnl_cny:
+          type: number
+        total_pnl_base_cny:
+          type: number
+        day_pnl_cny:
+          type: number
+        day_pnl_base_cny:
+          type: number
+        day_pnl_aggregate_cny:
+          type: number
+        day_pnl_base_aggregate_cny:
+          type: number
+        quote_price:
+          type: number
+        quote_change:
+          type: number
+        quote_change_pct:
+          type: number
+        position_pct:
+          type: number
+          nullable: true
     RequestRuntimeMetrics:
       type: object
       properties:
@@ -157,10 +312,8 @@ components:
             type: integer
         months_by_year:
           type: object
-          additionalProperties:
-            type: array
-            items:
-              type: integer
+          additionalProperties: true
+          description: 按年份分组的月份列表，键是年份字符串，值是月份数组
     AnalysisCalendarSelectableMonth:
       type: object
       properties:
@@ -541,9 +694,9 @@ components:
         version:
           type: string
         buildNumber:
-          oneOf:
-            - type: string
-            - type: integer
+          type: string
+          nullable: true
+          description: 构建号，服务端历史上可能返回整数，这里统一按字符串描述以兼容类型生成
         releaseNotes:
           type: string
         downloadUrl:
@@ -962,17 +1115,13 @@ components:
         display_name:
           type: string
         value:
-          oneOf:
-            - type: string
-            - type: number
-            - type: integer
-            - type: boolean
+          type: string
+          nullable: true
+          description: 配置当前值，服务端真实值可能是字符串、数字或布尔，这里统一按字符串描述以兼容类型生成
         default_value:
-          oneOf:
-            - type: string
-            - type: number
-            - type: integer
-            - type: boolean
+          type: string
+          nullable: true
+          description: 配置默认值，服务端真实值可能是字符串、数字或布尔，这里统一按字符串描述以兼容类型生成
         type:
           type: string
         description:
@@ -1002,11 +1151,9 @@ components:
         key:
           type: string
         value:
-          oneOf:
-            - type: string
-            - type: number
-            - type: integer
-            - type: boolean
+          type: string
+          nullable: true
+          description: 待更新配置值，服务端仍兼容数字和布尔，这里先按字符串描述以兼容类型生成
         items:
           type: array
           items:
@@ -1015,11 +1162,9 @@ components:
               key:
                 type: string
               value:
-                oneOf:
-                  - type: string
-                  - type: number
-                  - type: integer
-                  - type: boolean
+                type: string
+                nullable: true
+                description: 批量更新值，服务端仍兼容数字和布尔，这里先按字符串描述以兼容类型生成
     AdminConfigUpdateResponse:
       type: object
       properties:
@@ -1033,11 +1178,9 @@ components:
               key:
                 type: string
               value:
-                oneOf:
-                  - type: string
-                  - type: number
-                  - type: integer
-                  - type: boolean
+                type: string
+                nullable: true
+                description: 已更新配置值，服务端真实值可能是字符串、数字或布尔，这里统一按字符串描述以兼容类型生成
     AdminOpsTextImageResponse:
       type: object
       properties:
@@ -1711,10 +1854,8 @@ components:
             type: integer
         sources:
           type: object
-          additionalProperties:
-            type: object
-            additionalProperties:
-              type: integer
+          additionalProperties: true
+          description: 来源统计明细，键是来源名，值是各表计数明细
         total:
           type: integer
     AdminRebindExecuteResponse:
@@ -1822,6 +1963,7 @@ components:
 paths:
   /health:
     get:
+      operationId: getHealth
       summary: Health check
       responses:
         "200":
@@ -1839,6 +1981,7 @@ paths:
                     $ref: "#/components/schemas/RequestRuntimeMetrics"
   /api/rates:
     get:
+      operationId: getRates
       summary: Get FX rates
       responses:
         "200":
@@ -1851,6 +1994,7 @@ paths:
                   type: number
   /api/price:
     get:
+      operationId: getPrice
       summary: Get a single price
       parameters:
         - in: query
@@ -1882,6 +2026,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /api/prices/batch:
     post:
+      operationId: getBatchPrices
       summary: Get batch prices
       requestBody:
         required: true
@@ -1914,6 +2059,7 @@ paths:
                       type: number
   /api/portfolio:
     get:
+      operationId: getPortfolio
       summary: Get portfolio
       security:
         - bearerAuth: []
@@ -1924,6 +2070,11 @@ paths:
           schema:
             type: string
             enum: [all, stock_cn, stock_us, stock_hk, fund]
+        - in: query
+          name: with_metrics
+          required: false
+          schema:
+            type: boolean
       responses:
         "200":
           description: OK
@@ -1932,22 +2083,10 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    code:
-                      type: string
-                    name:
-                      type: string
-                    qty:
-                      type: number
-                    price:
-                      type: number
-                    curr:
-                      type: string
-                    adjustment:
-                      type: number
+                  $ref: "#/components/schemas/PortfolioItem"
   /api/portfolio/add:
     post:
+      operationId: addPortfolioAsset
       summary: Add asset
       security:
         - bearerAuth: []
@@ -1978,6 +2117,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/portfolio/update:
     post:
+      operationId: updatePortfolioAssetField
       summary: Update asset field
       security:
         - bearerAuth: []
@@ -2004,7 +2144,8 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/portfolio/modify:
     post:
-      summary: Modify asset qty/price/adjustment
+      operationId: modifyPortfolioAsset
+      summary: Modify asset qty/price
       security:
         - bearerAuth: []
       requestBody:
@@ -2013,7 +2154,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [code, qty, price, adjustment]
+              required: [code, qty, price]
               properties:
                 code:
                   type: string
@@ -2021,8 +2162,10 @@ paths:
                   type: number
                 price:
                   type: number
-                adjustment:
-                  type: number
+                note:
+                  type: string
+                request_id:
+                  type: string
       responses:
         "200":
           description: OK
@@ -2030,8 +2173,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/adjustment_event:
+    post:
+      operationId: addPortfolioAdjustmentEvent
+      summary: Add portfolio cash event
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, event_type, amount]
+              properties:
+                code:
+                  type: string
+                event_type:
+                  type: string
+                  enum: [dividend, fee, tax]
+                amount:
+                  type: number
+                curr:
+                  type: string
+                note:
+                  type: string
+                request_id:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOk"
+  /api/portfolio/transactions:
+    get:
+      operationId: getPortfolioTransactions
+      summary: Get portfolio transaction and correction records
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioTransactionsResponse"
   /api/portfolio/delete:
     post:
+      operationId: deletePortfolioAsset
       summary: Delete asset
       security:
         - bearerAuth: []
@@ -2054,6 +2251,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/portfolio/buy:
     post:
+      operationId: buyPortfolioAsset
       summary: Buy asset
       security:
         - bearerAuth: []
@@ -2080,6 +2278,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/portfolio/sell:
     post:
+      operationId: sellPortfolioAsset
       summary: Sell asset
       security:
         - bearerAuth: []
@@ -2106,6 +2305,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/transactions:
     get:
+      operationId: getTransactions
       summary: Get transactions
       security:
         - bearerAuth: []
@@ -2127,6 +2327,7 @@ paths:
                   type: object
   /api/history:
     get:
+      operationId: getHistory
       summary: Get history
       security:
         - bearerAuth: []
@@ -2148,6 +2349,7 @@ paths:
                   type: object
   /api/search:
     get:
+      operationId: searchSecurities
       summary: Search securities
       parameters:
         - in: query
@@ -2166,6 +2368,7 @@ paths:
                   type: object
   /api/news/latest:
     get:
+      operationId: getLatestNews
       summary: Latest news
       responses:
         "200":
@@ -2178,6 +2381,7 @@ paths:
                   type: object
   /api/settings/info:
     get:
+      operationId: getSettingsInfo
       summary: System info
       responses:
         "200":
@@ -2188,6 +2392,7 @@ paths:
                 type: object
   /api/settings/check_api:
     get:
+      operationId: checkSettingsApi
       summary: Check API status
       responses:
         "200":
@@ -2198,12 +2403,14 @@ paths:
                 type: object
   /api/settings/backup:
     get:
+      operationId: downloadSettingsBackup
       summary: Download DB backup
       responses:
         "200":
           description: SQLite file
   /api/settings/restore:
     post:
+      operationId: restoreSettingsBackup
       summary: Restore DB
       requestBody:
         required: true
@@ -2224,6 +2431,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/cash_assets:
     get:
+      operationId: getCashAssets
       summary: Get cash assets
       security:
         - bearerAuth: []
@@ -2232,6 +2440,7 @@ paths:
           description: OK
   /api/cash_assets/add:
     post:
+      operationId: addCashAsset
       summary: Add cash asset
       security:
         - bearerAuth: []
@@ -2258,6 +2467,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/cash_assets/delete:
     post:
+      operationId: deleteCashAsset
       summary: Delete cash asset
       security:
         - bearerAuth: []
@@ -2280,6 +2490,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/cash_assets/update:
     post:
+      operationId: updateCashAsset
       summary: Update cash asset
       security:
         - bearerAuth: []
@@ -2308,6 +2519,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/other_assets:
     get:
+      operationId: getOtherAssets
       summary: Get other assets
       security:
         - bearerAuth: []
@@ -2316,6 +2528,7 @@ paths:
           description: OK
   /api/other_assets/add:
     post:
+      operationId: addOtherAsset
       summary: Add other asset
       security:
         - bearerAuth: []
@@ -2342,6 +2555,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/other_assets/delete:
     post:
+      operationId: deleteOtherAsset
       summary: Delete other asset
       security:
         - bearerAuth: []
@@ -2364,6 +2578,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/other_assets/update:
     post:
+      operationId: updateOtherAsset
       summary: Update other asset
       security:
         - bearerAuth: []
@@ -2392,6 +2607,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/liabilities:
     get:
+      operationId: getLiabilities
       summary: Get liabilities
       security:
         - bearerAuth: []
@@ -2400,6 +2616,7 @@ paths:
           description: OK
   /api/liabilities/add:
     post:
+      operationId: addLiability
       summary: Add liability
       security:
         - bearerAuth: []
@@ -2426,6 +2643,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/liabilities/delete:
     post:
+      operationId: deleteLiability
       summary: Delete liability
       security:
         - bearerAuth: []
@@ -2448,6 +2666,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/liabilities/update:
     post:
+      operationId: updateLiability
       summary: Update liability
       security:
         - bearerAuth: []
@@ -2476,6 +2695,7 @@ paths:
                 $ref: "#/components/schemas/StatusOk"
   /api/auth/login:
     post:
+      operationId: login
       summary: Login
       requestBody:
         required: true
@@ -2496,6 +2716,7 @@ paths:
           description: OK
   /api/auth/register:
     post:
+      operationId: register
       summary: Register with invite code
       requestBody:
         required: true
@@ -2518,6 +2739,7 @@ paths:
           description: OK
   /api/auth/invite/validate:
     post:
+      operationId: validateInviteCode
       summary: Validate invite code
       requestBody:
         required: true
@@ -2534,6 +2756,7 @@ paths:
           description: OK
   /api/auth/password/change:
     post:
+      operationId: changePassword
       summary: Change password
       security:
         - bearerAuth: []
@@ -2554,6 +2777,7 @@ paths:
           description: OK
   /api/auth/refresh:
     post:
+      operationId: refreshSession
       summary: Refresh access token
       requestBody:
         required: true
@@ -2572,6 +2796,7 @@ paths:
           description: OK
   /api/auth/logout:
     post:
+      operationId: logout
       summary: Logout
       security:
         - bearerAuth: []
@@ -2589,6 +2814,7 @@ paths:
           description: OK
   /api/auth/profile:
     post:
+      operationId: updateProfile
       summary: Update user profile
       security:
         - bearerAuth: []
@@ -2608,6 +2834,7 @@ paths:
           description: OK
   /api/auth/bootstrap_credentials:
     post:
+      operationId: bootstrapCredentials
       summary: Bootstrap username/password for legacy users
       security:
         - bearerAuth: []
@@ -2628,12 +2855,14 @@ paths:
           description: OK
   /api/auth/send_code:
     post:
+      operationId: sendAuthCode
       summary: Deprecated endpoint, returns 410
       responses:
         "410":
           description: Deprecated
   /api/auth/me:
     get:
+      operationId: getCurrentUser
       summary: Current user
       security:
         - bearerAuth: []
@@ -2642,6 +2871,7 @@ paths:
           description: OK
   /api/analysis/overview:
     get:
+      operationId: getAnalysisOverview
       summary: PnL overview
       security:
         - bearerAuth: []
@@ -2661,6 +2891,7 @@ paths:
                 $ref: "#/components/schemas/AnalysisOverviewResponse"
   /api/analysis/calendar:
     get:
+      operationId: getAnalysisCalendar
       summary: PnL calendar
       security:
         - bearerAuth: []
@@ -2701,6 +2932,7 @@ paths:
                 $ref: "#/components/schemas/AnalysisCalendarErrorResponse"
   /api/analysis/rank:
     get:
+      operationId: getAnalysisRank
       summary: PnL rank
       security:
         - bearerAuth: []
@@ -2726,6 +2958,7 @@ paths:
                 $ref: "#/components/schemas/AnalysisRankResponse"
   /api/snapshot/save:
     post:
+      operationId: apiSnapshotSavePost
       summary: Save daily snapshot
       security:
         - bearerAuth: []
@@ -2756,6 +2989,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /api/snapshot/trigger:
     post:
+      operationId: apiSnapshotTriggerPost
       summary: Trigger snapshot
       responses:
         "200":
@@ -2777,6 +3011,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /api/snapshot/fix:
     post:
+      operationId: apiSnapshotFixPost
       summary: Fix snapshot day_pnl
       security:
         - bearerAuth: []
@@ -2814,6 +3049,7 @@ paths:
   # AUTO-GENERATED PATH STUBS (请补 summary/fields)
   /api/admin/apis/health:
     get:
+      operationId: apiAdminApisHealthGet
       summary: 后台接口健康与策略汇总
       security:
         - bearerAuth: []
@@ -2839,6 +3075,7 @@ paths:
 
   /api/admin/apis/policies:
     get:
+      operationId: apiAdminApisPoliciesGet
       summary: 后台接口策略列表
       security:
         - bearerAuth: []
@@ -2871,6 +3108,7 @@ paths:
 
   /api/admin/apis/policies/batch_update:
     post:
+      operationId: apiAdminApisPoliciesBatchUpdatePost
       summary: 批量更新后台接口策略
       security:
         - bearerAuth: []
@@ -2914,6 +3152,7 @@ paths:
 
   /api/admin/apis/policies/update:
     post:
+      operationId: apiAdminApisPoliciesUpdatePost
       summary: 更新单条后台接口策略
       security:
         - bearerAuth: []
@@ -2957,6 +3196,7 @@ paths:
 
   /api/admin/apis/price_alerts:
     get:
+      operationId: apiAdminApisPriceAlertsGet
       summary: 行情价格告警与历史快照
       security:
         - bearerAuth: []
@@ -2988,6 +3228,7 @@ paths:
 
   /api/admin/apis/price_probe:
     post:
+      operationId: apiAdminApisPriceProbePost
       summary: 单资产价格诊断
       security:
         - bearerAuth: []
@@ -3025,6 +3266,7 @@ paths:
 
   /api/admin/apis/provider_test:
     post:
+      operationId: apiAdminApisProviderTestPost
       summary: 单个行情/汇率源测试
       security:
         - bearerAuth: []
@@ -3066,6 +3308,7 @@ paths:
 
   /api/admin/apis/provider_tests/latest:
     get:
+      operationId: apiAdminApisProviderTestsLatestGet
       summary: 最近一次行情源测试报告
       security:
         - bearerAuth: []
@@ -3091,6 +3334,7 @@ paths:
 
   /api/admin/apis/provider_tests/run:
     post:
+      operationId: apiAdminApisProviderTestsRunPost
       summary: 运行行情源测试并保存报告
       security:
         - bearerAuth: []
@@ -3116,6 +3360,7 @@ paths:
 
   /api/admin/apis/smoke_test:
     post:
+      operationId: apiAdminApisSmokeTestPost
       summary: 后台冒烟测试
       security:
         - bearerAuth: []
@@ -3141,6 +3386,7 @@ paths:
 
   /api/admin/config:
     get:
+      operationId: apiAdminConfigGet
       summary: 后台系统配置白名单
       security:
         - bearerAuth: []
@@ -3166,6 +3412,7 @@ paths:
 
   /api/admin/config/reset:
     post:
+      operationId: apiAdminConfigResetPost
       summary: 恢复系统配置默认值
       security:
         - bearerAuth: []
@@ -3206,6 +3453,7 @@ paths:
 
   /api/admin/config/update:
     post:
+      operationId: apiAdminConfigUpdatePost
       summary: 更新系统配置
       security:
         - bearerAuth: []
@@ -3243,6 +3491,7 @@ paths:
 
   /api/admin/data/backup:
     post:
+      operationId: apiAdminDataBackupPost
       summary: 创建数据库备份
       security:
         - bearerAuth: []
@@ -3280,6 +3529,7 @@ paths:
 
   /api/admin/data/backup/latest:
     get:
+      operationId: apiAdminDataBackupLatestGet
       summary: 获取最近一次备份信息
       security:
         - bearerAuth: []
@@ -3311,6 +3561,7 @@ paths:
 
   /api/admin/data/rebind/execute:
     post:
+      operationId: apiAdminDataRebindExecutePost
       summary: 执行历史数据归属迁移
       security:
         - bearerAuth: []
@@ -3357,6 +3608,7 @@ paths:
 
   /api/admin/data/rebind/preview:
     get:
+      operationId: apiAdminDataRebindPreviewGet
       summary: 预览历史数据归属迁移
       security:
         - bearerAuth: []
@@ -3400,6 +3652,7 @@ paths:
 
   /api/admin/data/restore:
     post:
+      operationId: apiAdminDataRestorePost
       summary: 恢复数据库备份
       security:
         - bearerAuth: []
@@ -3437,6 +3690,7 @@ paths:
 
   /api/admin/data/snapshot/cleanup_market_closed:
     post:
+      operationId: apiAdminDataSnapshotCleanupMarketClosedPost
       summary: 清理休市日快照日盈亏
       security:
         - bearerAuth: []
@@ -3454,11 +3708,10 @@ paths:
                 end_date:
                   type: string
                 markets:
-                  oneOf:
-                    - type: string
-                    - type: array
-                      items:
-                        type: string
+                  type: array
+                  items:
+                    type: string
+                  description: 要清理的市场列表；服务端历史上也兼容单个字符串
       responses:
         "200":
           description: OK
@@ -3481,6 +3734,7 @@ paths:
 
   /api/admin/data/snapshot/cleanup_market_closed/preview:
     post:
+      operationId: apiAdminDataSnapshotCleanupMarketClosedPreviewPost
       summary: 预览休市日清理影响范围
       security:
         - bearerAuth: []
@@ -3498,11 +3752,10 @@ paths:
                 end_date:
                   type: string
                 markets:
-                  oneOf:
-                    - type: string
-                    - type: array
-                      items:
-                        type: string
+                  type: array
+                  items:
+                    type: string
+                  description: 要预览的市场列表；服务端历史上也兼容单个字符串
       responses:
         "200":
           description: OK
@@ -3525,6 +3778,7 @@ paths:
 
   /api/admin/data/snapshot/cleanup_weekend:
     post:
+      operationId: apiAdminDataSnapshotCleanupWeekendPost
       summary: 清理周末快照日盈亏
       security:
         - bearerAuth: []
@@ -3563,6 +3817,7 @@ paths:
 
   /api/admin/data/snapshot/cleanup_weekend/preview:
     post:
+      operationId: apiAdminDataSnapshotCleanupWeekendPreviewPost
       summary: 预览周末清理影响范围
       security:
         - bearerAuth: []
@@ -3601,6 +3856,7 @@ paths:
 
   /api/admin/data/snapshot/health:
     get:
+      operationId: apiAdminDataSnapshotHealthGet
       summary: 快照任务健康检查
       security:
         - bearerAuth: []
@@ -3626,6 +3882,7 @@ paths:
 
   /api/admin/data/snapshot/trigger:
     post:
+      operationId: apiAdminDataSnapshotTriggerPost
       summary: 手动触发快照
       security:
         - bearerAuth: []
@@ -3662,6 +3919,7 @@ paths:
 
   /api/admin/data/snapshots:
     get:
+      operationId: apiAdminDataSnapshotsGet
       summary: 查询快照明细
       security:
         - bearerAuth: []
@@ -3715,6 +3973,7 @@ paths:
 
   /api/admin/invites:
     get:
+      operationId: apiAdminInvitesGet
       summary: 邀请码列表
       security:
         - bearerAuth: []
@@ -3770,6 +4029,7 @@ paths:
 
   /api/admin/invites/export:
     get:
+      operationId: apiAdminInvitesExportGet
       summary: 导出邀请码 CSV
       security:
         - bearerAuth: []
@@ -3807,6 +4067,7 @@ paths:
 
   /api/admin/invites/generate:
     post:
+      operationId: apiAdminInvitesGeneratePost
       summary: 生成邀请码
       security:
         - bearerAuth: []
@@ -3844,6 +4105,7 @@ paths:
 
   /api/admin/invites/revoke:
     post:
+      operationId: apiAdminInvitesRevokePost
       summary: 作废邀请码
       security:
         - bearerAuth: []
@@ -3887,6 +4149,7 @@ paths:
 
   /api/admin/invites/stats:
     get:
+      operationId: apiAdminInvitesStatsGet
       summary: 邀请码统计
       security:
         - bearerAuth: []
@@ -3918,6 +4181,7 @@ paths:
 
   /api/admin/meta/dictionaries:
     get:
+      operationId: apiAdminMetaDictionariesGet
       summary: 后台字典与标签
       security:
         - bearerAuth: []
@@ -3943,6 +4207,7 @@ paths:
 
   /api/admin/ops/app_update:
     get:
+      operationId: apiAdminOpsAppUpdateGet
       summary: 运营配置-更新提示
       security:
         - bearerAuth: []
@@ -3968,6 +4233,7 @@ paths:
 
   /api/admin/ops/app_update/update:
     post:
+      operationId: apiAdminOpsAppUpdateUpdatePost
       summary: 更新运营配置-更新提示
       security:
         - bearerAuth: []
@@ -4010,6 +4276,7 @@ paths:
 
   /api/admin/ops/invite_acquire:
     get:
+      operationId: apiAdminOpsInviteAcquireGet
       summary: 运营配置-邀请码获取页
       security:
         - bearerAuth: []
@@ -4035,6 +4302,7 @@ paths:
 
   /api/admin/ops/invite_acquire/update:
     post:
+      operationId: apiAdminOpsInviteAcquireUpdatePost
       summary: 更新运营配置-邀请码获取页
       security:
         - bearerAuth: []
@@ -4077,6 +4345,7 @@ paths:
 
   /api/admin/ops/ios_qr:
     get:
+      operationId: apiAdminOpsIosQrGet
       summary: 运营配置-iOS 下载二维码
       security:
         - bearerAuth: []
@@ -4102,6 +4371,7 @@ paths:
 
   /api/admin/ops/ios_qr/update:
     post:
+      operationId: apiAdminOpsIosQrUpdatePost
       summary: 更新运营配置-iOS 下载二维码
       security:
         - bearerAuth: []
@@ -4144,6 +4414,7 @@ paths:
 
   /api/admin/ops/user_group:
     get:
+      operationId: apiAdminOpsUserGroupGet
       summary: 运营配置-用户群页
       security:
         - bearerAuth: []
@@ -4169,6 +4440,7 @@ paths:
 
   /api/admin/ops/user_group/update:
     post:
+      operationId: apiAdminOpsUserGroupUpdatePost
       summary: 更新运营配置-用户群页
       security:
         - bearerAuth: []
@@ -4211,6 +4483,7 @@ paths:
 
   /api/admin/overview:
     get:
+      operationId: apiAdminOverviewGet
       summary: 后台概览看板
       security:
         - bearerAuth: []
@@ -4248,6 +4521,7 @@ paths:
 
   /api/admin/summary/todo:
     get:
+      operationId: apiAdminSummaryTodoGet
       summary: 后台待办与巡检摘要
       security:
         - bearerAuth: []
@@ -4286,6 +4560,7 @@ paths:
 
   /api/admin/users:
     get:
+      operationId: apiAdminUsersGet
       summary: 后台用户列表
       security:
         - bearerAuth: []
@@ -4363,6 +4638,7 @@ paths:
 
   /api/admin/users/disable:
     post:
+      operationId: apiAdminUsersDisablePost
       summary: 停用用户
       security:
         - bearerAuth: []
@@ -4409,6 +4685,7 @@ paths:
 
   /api/admin/users/enable:
     post:
+      operationId: apiAdminUsersEnablePost
       summary: 启用用户
       security:
         - bearerAuth: []
@@ -4455,6 +4732,7 @@ paths:
 
   /api/admin/users/metrics:
     get:
+      operationId: apiAdminUsersMetricsGet
       summary: 用户运营指标
       security:
         - bearerAuth: []
@@ -4480,6 +4758,7 @@ paths:
 
   /api/admin/users/password/reset:
     post:
+      operationId: apiAdminUsersPasswordResetPost
       summary: 重置用户密码
       security:
         - bearerAuth: []
@@ -4530,6 +4809,7 @@ paths:
 
   /api/admin/users/sessions/count:
     get:
+      operationId: apiAdminUsersSessionsCountGet
       summary: 用户在线会话数
       security:
         - bearerAuth: []
@@ -4567,6 +4847,7 @@ paths:
 
   /api/admin/users/sessions/revoke:
     post:
+      operationId: apiAdminUsersSessionsRevokePost
       summary: 强制用户下线
       security:
         - bearerAuth: []
@@ -4613,6 +4894,7 @@ paths:
 
   /api/admin/users/status:
     post:
+      operationId: apiAdminUsersStatusPost
       summary: 设置用户状态
       security:
         - bearerAuth: []
@@ -4662,6 +4944,7 @@ paths:
 
   /api/admin/users/update:
     post:
+      operationId: apiAdminUsersUpdatePost
       summary: 更新用户信息
       security:
         - bearerAuth: []
@@ -4719,6 +5002,7 @@ paths:
         schema:
           type: string
     get:
+      operationId: apiAdminUsersUserIdGet
       summary: 用户详情
       security:
         - bearerAuth: []
@@ -4762,6 +5046,7 @@ paths:
         schema:
           type: string
     get:
+      operationId: apiAdminUsersUserIdPortfolioGet
       summary: 用户持仓与资产概览
       security:
         - bearerAuth: []
@@ -4805,6 +5090,7 @@ paths:
 
   /api/analysis/calendar/market_breakdown:
     get:
+      operationId: getAnalysisMarketBreakdown
       summary: 收益日历按市场拆分
       security:
         - bearerAuth: []
@@ -4850,6 +5136,7 @@ paths:
 
   /api/app/version:
     get:
+      operationId: getAppVersion
       summary: 获取客户端更新配置
       responses:
         "200":
@@ -4861,6 +5148,7 @@ paths:
 
   /api/asset/trends:
     post:
+      operationId: getAssetTrends
       summary: 批量资产趋势线
       security:
         - bearerAuth: []
@@ -4886,6 +5174,7 @@ paths:
 
   /api/market/indices:
     get:
+      operationId: getMarketIndices
       summary: 首页指数与汇率
       responses:
         "200":
@@ -4899,6 +5188,7 @@ paths:
 
   /api/market/status:
     get:
+      operationId: getMarketStatus
       summary: 市场开休市状态
       responses:
         "200":
@@ -4910,6 +5200,7 @@ paths:
 
   /api/portfolio/buy_with_cash:
     post:
+      operationId: buyPortfolioAssetWithCash
       summary: 现金账户买入资产
       security:
         - bearerAuth: []
@@ -4947,6 +5238,7 @@ paths:
 
   /api/portfolio/delete_corrective:
     post:
+      operationId: deletePortfolioAssetCorrective
       summary: 纠正性删除资产及历史记录
       security:
         - bearerAuth: []
@@ -4978,6 +5270,7 @@ paths:
 
   /api/portfolio/undo:
     post:
+      operationId: undoPortfolioOperation
       summary: 撤销最近一次投资操作
       security:
         - bearerAuth: []
@@ -5015,6 +5308,7 @@ paths:
 
   /api/sync/bootstrap:
     post:
+      operationId: bootstrapSync
       summary: 客户端增量同步引导
       security:
         - bearerAuth: []
@@ -5034,6 +5328,7 @@ paths:
 
   /api/system/price_health:
     get:
+      operationId: getSystemPriceHealth
       summary: 行情运行健康指标
       responses:
         "200":
@@ -5051,6 +5346,7 @@ paths:
 
   /api/web/config:
     get:
+      operationId: getWebConfig
       summary: Web 门户公开配置
       responses:
         "200":

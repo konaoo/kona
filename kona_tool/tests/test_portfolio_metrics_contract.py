@@ -127,7 +127,9 @@ class PortfolioMetricsContractTests(unittest.TestCase):
             "position_pct",
             "cost_cny",
             "total_pnl_cny",
+            "total_pnl_base_cny",
             "day_pnl_aggregate_cny",
+            "day_pnl_base_aggregate_cny",
             "day_pnl_rate_aggregate",
             "market",
             "market_open",
@@ -166,7 +168,9 @@ class PortfolioMetricsContractTests(unittest.TestCase):
             "position_pct",
             "cost_cny",
             "total_pnl_cny",
+            "total_pnl_base_cny",
             "day_pnl_aggregate_cny",
+            "day_pnl_base_aggregate_cny",
             "day_pnl_rate_aggregate",
         ):
             self.assertIn(key, item)
@@ -231,6 +235,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertAlmostEqual(float(item.get("ledger_adjustment") or 0.0), 15.0, places=6)
         self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 20.0, places=6)
         self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 40.0, places=6)
+        self.assertAlmostEqual(float(item.get("total_pnl_base") or 0.0), 100.0, places=6)
 
     def test_portfolio_metrics_ignore_legacy_adjustment_after_migration_switch(self):
         _seed_user("u_ledger_cutover", "ledger_cutover_user")
@@ -259,6 +264,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertAlmostEqual(float(item.get("ledger_adjustment") or 0.0), 15.0, places=6)
         self.assertAlmostEqual(float(item.get("adjustment_total") or 0.0), 15.0, places=6)
         self.assertAlmostEqual(float(item.get("total_pnl") or 0.0), 35.0, places=6)
+        self.assertAlmostEqual(float(item.get("total_pnl_base") or 0.0), 100.0, places=6)
 
     def test_today_buy_is_excluded_from_day_pnl_by_bookkeeping_rule(self):
         _seed_user("u_today_buy", "today_buy_user")
@@ -292,6 +298,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         item = (resp.get_json() or [])[0]
         self.assertAlmostEqual(float(item.get("day_pnl") or 0.0), -2.9086675, places=6)
+        self.assertAlmostEqual(float(item.get("day_pnl_base") or 0.0), 934.8457345, places=6)
         self.assertAlmostEqual(float(item.get("day_pnl_rate") or 0.0), -0.3111387678904725, places=6)
         self.assertLess(float(item.get("quote_change_pct") or 0.0), 0.0)
 

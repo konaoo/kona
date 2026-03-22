@@ -19,12 +19,16 @@ class PortfolioItem {
   final double? value;
   final double? positionPct;
   final double? totalPnl;
+  final double? totalPnlBase;
   final double? totalPnlRate;
   final double? dayPnl;
+  final double? dayPnlBase;
   final double? dayPnlRate;
   final double? dayPnlDisplay;
+  final double? dayPnlBaseDisplay;
   final double? dayPnlRateDisplay;
   final double? dayPnlAggregate;
+  final double? dayPnlBaseAggregate;
   final double? dayPnlRateAggregate;
   final bool? navUpdatePending;
   final String? latestNavDate;
@@ -37,8 +41,11 @@ class PortfolioItem {
   final double? valueCny;
   final double? costCny;
   final double? totalPnlCny;
+  final double? totalPnlBaseCny;
   final double? dayPnlCny;
+  final double? dayPnlBaseCny;
   final double? dayPnlAggregateCny;
+  final double? dayPnlBaseAggregateCny;
   final double? quotePrice;
   final double? quoteChange;
   final double? quoteChangePct;
@@ -61,12 +68,16 @@ class PortfolioItem {
     this.value,
     this.positionPct,
     this.totalPnl,
+    this.totalPnlBase,
     this.totalPnlRate,
     this.dayPnl,
+    this.dayPnlBase,
     this.dayPnlRate,
     this.dayPnlDisplay,
+    this.dayPnlBaseDisplay,
     this.dayPnlRateDisplay,
     this.dayPnlAggregate,
+    this.dayPnlBaseAggregate,
     this.dayPnlRateAggregate,
     this.navUpdatePending,
     this.latestNavDate,
@@ -79,8 +90,11 @@ class PortfolioItem {
     this.valueCny,
     this.costCny,
     this.totalPnlCny,
+    this.totalPnlBaseCny,
     this.dayPnlCny,
+    this.dayPnlBaseCny,
     this.dayPnlAggregateCny,
+    this.dayPnlBaseAggregateCny,
     this.quotePrice,
     this.quoteChange,
     this.quoteChangePct,
@@ -113,12 +127,16 @@ class PortfolioItem {
             json['portfolioPct'],
       ),
       totalPnl: _parseDoubleOrNull(json['total_pnl']),
+      totalPnlBase: _parseDoubleOrNull(json['total_pnl_base']),
       totalPnlRate: _parseDoubleOrNull(json['total_pnl_rate']),
       dayPnl: _parseDoubleOrNull(json['day_pnl']),
+      dayPnlBase: _parseDoubleOrNull(json['day_pnl_base']),
       dayPnlRate: _parseDoubleOrNull(json['day_pnl_rate']),
       dayPnlDisplay: _parseDoubleOrNull(json['day_pnl_display']),
+      dayPnlBaseDisplay: _parseDoubleOrNull(json['day_pnl_base_display']),
       dayPnlRateDisplay: _parseDoubleOrNull(json['day_pnl_rate_display']),
       dayPnlAggregate: _parseDoubleOrNull(json['day_pnl_aggregate']),
+      dayPnlBaseAggregate: _parseDoubleOrNull(json['day_pnl_base_aggregate']),
       dayPnlRateAggregate: _parseDoubleOrNull(json['day_pnl_rate_aggregate']),
       navUpdatePending: _parseBoolOrNull(json['nav_update_pending']),
       latestNavDate: _parseString(
@@ -135,8 +153,13 @@ class PortfolioItem {
       valueCny: _parseDoubleOrNull(json['value_cny']),
       costCny: _parseDoubleOrNull(json['cost_cny']),
       totalPnlCny: _parseDoubleOrNull(json['total_pnl_cny']),
+      totalPnlBaseCny: _parseDoubleOrNull(json['total_pnl_base_cny']),
       dayPnlCny: _parseDoubleOrNull(json['day_pnl_cny']),
+      dayPnlBaseCny: _parseDoubleOrNull(json['day_pnl_base_cny']),
       dayPnlAggregateCny: _parseDoubleOrNull(json['day_pnl_aggregate_cny']),
+      dayPnlBaseAggregateCny: _parseDoubleOrNull(
+        json['day_pnl_base_aggregate_cny'],
+      ),
       quotePrice: _parseDoubleOrNull(json['quote_price']),
       quoteChange: _parseDoubleOrNull(json['quote_change']),
       quoteChangePct: _parseDoubleOrNull(json['quote_change_pct']),
@@ -162,12 +185,17 @@ class PortfolioItem {
       if (value != null) 'value': value,
       if (positionPct != null) 'position_pct': positionPct,
       if (totalPnl != null) 'total_pnl': totalPnl,
+      if (totalPnlBase != null) 'total_pnl_base': totalPnlBase,
       if (totalPnlRate != null) 'total_pnl_rate': totalPnlRate,
       if (dayPnl != null) 'day_pnl': dayPnl,
+      if (dayPnlBase != null) 'day_pnl_base': dayPnlBase,
       if (dayPnlRate != null) 'day_pnl_rate': dayPnlRate,
       if (dayPnlDisplay != null) 'day_pnl_display': dayPnlDisplay,
+      if (dayPnlBaseDisplay != null) 'day_pnl_base_display': dayPnlBaseDisplay,
       if (dayPnlRateDisplay != null) 'day_pnl_rate_display': dayPnlRateDisplay,
       if (dayPnlAggregate != null) 'day_pnl_aggregate': dayPnlAggregate,
+      if (dayPnlBaseAggregate != null)
+        'day_pnl_base_aggregate': dayPnlBaseAggregate,
       if (dayPnlRateAggregate != null)
         'day_pnl_rate_aggregate': dayPnlRateAggregate,
       if (navUpdatePending != null) 'nav_update_pending': navUpdatePending,
@@ -184,9 +212,13 @@ class PortfolioItem {
       if (valueCny != null) 'value_cny': valueCny,
       if (costCny != null) 'cost_cny': costCny,
       if (totalPnlCny != null) 'total_pnl_cny': totalPnlCny,
+      if (totalPnlBaseCny != null) 'total_pnl_base_cny': totalPnlBaseCny,
       if (dayPnlCny != null) 'day_pnl_cny': dayPnlCny,
+      if (dayPnlBaseCny != null) 'day_pnl_base_cny': dayPnlBaseCny,
       if (dayPnlAggregateCny != null)
         'day_pnl_aggregate_cny': dayPnlAggregateCny,
+      if (dayPnlBaseAggregateCny != null)
+        'day_pnl_base_aggregate_cny': dayPnlBaseAggregateCny,
       if (quotePrice != null) 'quote_price': quotePrice,
       if (quoteChange != null) 'quote_change': quoteChange,
       if (quoteChangePct != null) 'quote_change_pct': quoteChangePct,

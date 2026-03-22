@@ -448,6 +448,7 @@ def create_app_components(
             portfolio_update_handler=portfolio_payload_handlers["portfolio_update"],
             portfolio_modify_handler=portfolio_payload_handlers["portfolio_modify"],
             portfolio_adjustment_event_handler=portfolio_payload_handlers["portfolio_adjustment_event"],
+            portfolio_ocr_parse_handler=portfolio_payload_handlers["portfolio_ocr_parse"],
             snapshot_save_handler=portfolio_payload_handlers["snapshot_save"],
             snapshot_trigger_handler=portfolio_payload_handlers["snapshot_trigger"],
             snapshot_fix_handler=portfolio_payload_handlers["snapshot_fix"],

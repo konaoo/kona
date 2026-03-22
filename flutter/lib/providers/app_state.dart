@@ -901,6 +901,11 @@ class AppState extends ChangeNotifier {
     return await _api.searchStocks(query);
   }
 
+  /// 上传截图，解析“添加资产”候选结果
+  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(String filePath) async {
+    return _api.parsePortfolioAssetScreenshot(filePath);
+  }
+
   // ============================================================
   // 14) 投资交易与调仓写操作
   // ============================================================

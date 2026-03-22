@@ -87,10 +87,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
       const value = pickNumber(item, ['value']) ?? 0
       const totalPnl = pickNumber(item, ['total_pnl']) ?? 0
+      const totalPnlBase = pickNumber(item, ['total_pnl_base']) ?? 0
       const totalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
       const dayPnlDisplay = pickNumber(item, ['day_pnl_display', 'day_pnl']) ?? 0
+      const dayPnlBaseDisplay = pickNumber(item, ['day_pnl_base_display', 'day_pnl_base']) ?? 0
       const dayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
       const dayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
+      const dayPnlBaseAggregate =
+        pickNumber(item, ['day_pnl_base_aggregate', 'day_pnl_base']) ?? 0
       const dayPnlRateAggregate = pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
       const navUpdatePending =
         pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
@@ -121,13 +125,21 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         valueCny: pickNumber(item, ['value_cny']) ?? undefined,
         costCny: pickNumber(item, ['cost_cny']) ?? undefined,
         totalPnlCny: pickNumber(item, ['total_pnl_cny']) ?? undefined,
+        totalPnlBase,
+        totalPnlBaseCny: pickNumber(item, ['total_pnl_base_cny']) ?? undefined,
         dayPnlCny: pickNumber(item, ['day_pnl_cny']) ?? undefined,
+        dayPnlBase: dayPnlBaseAggregate,
+        dayPnlBaseCny: pickNumber(item, ['day_pnl_base_cny']) ?? undefined,
         dayPnlAggregateCny: pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined,
+        dayPnlBaseAggregate,
+        dayPnlBaseAggregateCny:
+          pickNumber(item, ['day_pnl_base_aggregate_cny']) ?? undefined,
         rateToCny: pickNumber(item, ['rate_to_cny']) ?? undefined,
         totalPnl,
         dayPnl: dayPnlAggregate,
         dayPnlRate: dayPnlRateAggregate,
         dayPnlDisplay,
+        dayPnlBaseDisplay,
         dayPnlRateDisplay,
         dayPnlAggregate,
         dayPnlRateAggregate,

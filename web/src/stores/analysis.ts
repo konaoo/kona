@@ -271,6 +271,37 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
   }
 
+  function applyCalendarSelectable(payload: AnalysisCalendarPayload) {
+    const daySelectable = payload.selectable?.day
+    selectableDayYears.value = normalizeYearList(daySelectable?.years || [])
+    selectableDayMonthsByYear.value = daySelectable?.months_by_year || {}
+    selectableMonthYears.value = normalizeYearList(payload.selectable?.month?.years || [])
+  }
+
+  function syncCalendarSelectionFromPayload(payload: AnalysisCalendarPayload) {
+    const period = payload.period
+    if (calendarType.value === 'day') {
+      const nextYear = Number(period?.year)
+      const nextMonth = Number(period?.month)
+      if (Number.isFinite(nextYear) && nextYear > 0) {
+        selectedDayYear.value = nextYear
+      }
+      if (Number.isFinite(nextMonth) && nextMonth > 0) {
+        selectedDayMonth.value = nextMonth
+      }
+      ensureDaySelection()
+      return
+    }
+
+    if (calendarType.value === 'month') {
+      const nextYear = Number(period?.year)
+      if (Number.isFinite(nextYear) && nextYear > 0) {
+        selectedMonthYear.value = nextYear
+      }
+      ensureMonthSelection()
+    }
+  }
+
   async function loadOverview() {
     const payload = await api.get<Record<string, AnalysisOverviewItem>>('/api/analysis/overview?period=all')
     Object.assign(overview, payload)
@@ -294,10 +325,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
       const payload = await api.get<AnalysisCalendarPayload>(`/api/analysis/calendar?${params.toString()}`)
       if (requestId !== calendarRequestId) return
 
-      const daySelectable = payload.selectable?.day
-      selectableDayYears.value = normalizeYearList(daySelectable?.years || [])
-      selectableDayMonthsByYear.value = daySelectable?.months_by_year || {}
-      selectableMonthYears.value = normalizeYearList(payload.selectable?.month?.years || [])
+      applyCalendarSelectable(payload)
+      syncCalendarSelectionFromPayload(payload)
       calendarState.title = payload.title || ''
       calendarState.items = payload.items || []
       calendarState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
@@ -305,7 +334,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
     } catch (error) {
       const invalidPayload = invalidCalendarPeriodPayload(error)
       if (recoverOnInvalid && invalidPayload) {
-        selectableDayYears.value = normalizeYearList(invalidPayload.selectable?.day?.years || [])
+        applyCalendarSelectable(invalidPayload)
+        syncCalendarSelectionFromPayload(invalidPayload)
         await loadCalendar(false)
       }
     }

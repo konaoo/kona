@@ -27,15 +27,15 @@ class PortfolioMetricsService {
     return valueCny - costCny.abs();
   }
 
-  static double resolvePositiveAdjustmentCny(PortfolioItem item) {
-    final adjustmentCny = _metricWithRate(item.adjustment, item.rateToCny) ?? 0;
-    return adjustmentCny > 0 ? adjustmentCny : 0;
+  static double? resolveTotalPnlDenominatorCny(PortfolioItem item) {
+    return item.totalPnlBaseCny ??
+        _metricWithRate(item.totalPnlBase, item.rateToCny) ??
+        resolveCostCny(item)?.abs();
   }
 
-  static double? resolveTotalPnlDenominatorCny(PortfolioItem item) {
-    final costCny = resolveCostCny(item);
-    if (costCny == null) return null;
-    return costCny.abs() + resolvePositiveAdjustmentCny(item);
+  static double? resolveDayPnlBaseCny(PortfolioItem item) {
+    return item.dayPnlBaseAggregateCny ??
+        _metricWithRate(item.dayPnlBaseAggregate, item.rateToCny);
   }
 
   static double? resolveDayPnlAggregateCny(PortfolioItem item) {
@@ -109,10 +109,10 @@ class PortfolioMetricsService {
     var hasMetrics = false;
     for (final item in items) {
       final dayPnlCny = resolveDayPnlAggregateCny(item);
-      final valueCny = resolveValueCny(item);
-      if (dayPnlCny != null && valueCny != null) {
+      final dayPnlBaseCny = resolveDayPnlBaseCny(item);
+      if (dayPnlCny != null && dayPnlBaseCny != null) {
         pnl += dayPnlCny;
-        base += (valueCny - dayPnlCny);
+        base += dayPnlBaseCny;
         hasMetrics = true;
       }
     }
@@ -154,10 +154,8 @@ class PortfolioMetricsService {
     return totalPnl / totalPnlDenominator * 100;
   }
 
-  static double? calcDayPnlRateNullable(double? pnl, double? totalValue) {
-    if (pnl == null || totalValue == null) return null;
-    final base = totalValue - pnl;
-    if (base <= 0) return null;
+  static double? calcDayPnlRateNullable(double? pnl, double? base) {
+    if (pnl == null || base == null || base <= 0) return null;
     return pnl / base * 100;
   }
 

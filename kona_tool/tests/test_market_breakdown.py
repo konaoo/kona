@@ -103,6 +103,23 @@ class MarketBreakdownTests(unittest.TestCase):
         self.assertAlmostEqual(float(by_market.get("hk") or 0), 123.45, places=2)
         self.assertAlmostEqual(float(by_market.get("a") or 0), 0.0, places=2)
 
+    def test_realized_pnl_by_date_prefers_stored_effective_date_and_market(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO transactions (time, code, name, type, price, qty, amount, pnl, market, effective_date, user_id)
+            VALUES (?, ?, ?, '减仓', ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-02-18 23:30:00", "gb_aapl", "苹果", 200.0, 1.0, 200.0, 50.0, "us", "2026-02-17", "u_us"),
+        )
+        conn.commit()
+        conn.close()
+
+        by_market = app_module.db.get_realized_pnl_by_date("2026-02-17", user_id="u_us")
+        self.assertAlmostEqual(float(by_market.get("us") or 0), 50.0, places=2)
+        self.assertAlmostEqual(float(by_market.get("a") or 0), 0.0, places=2)
+
     def test_analysis_calendar_market_breakdown_endpoint(self):
         self._insert_snapshot("2026-02-17", total_pnl=100.0, day_pnl=400.0, user_id="")
         app_module.db.save_daily_snapshot_market_breakdown(

@@ -49,16 +49,16 @@
 ### 3.1 文档生成类
 
 - `generate_api_docs.py`
-  用途：从后端路由生成 API 文档总览。
+  用途：从 Flask 实际路由表生成 API 文档总览，不再只扫 `app.py`。
 
 - `generate_api_details.py`
-  用途：从后端代码中提取更细的接口参数和返回信息。
+  用途：从 Flask 实际路由和 handler 源码里提取更细的接口参数和返回信息。
 
 - `generate_openapi_types_web.sh`
   用途：基于 `docs/openapi.yaml` 生成 Web 端类型文件。
 
 - `generate_openapi_types_flutter.sh`
-  用途：基于 `docs/openapi.yaml` 生成 Flutter 端类型文件（需要 Java 环境）。
+  用途：基于 `docs/openapi.yaml` 生成 Flutter 端类型文件（需要 Java 环境；缺少时会直接提示）。
 
 - `sync_openapi_paths.py`
   用途：基于后端实际路由补齐 `openapi.yaml` 的缺失路径（只填路径与占位响应）。

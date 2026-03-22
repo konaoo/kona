@@ -6,7 +6,7 @@ import { computeDisplayCostPrice } from '@/shared/costBasis'
 import { resolveErrorMessage } from '@/shared/errorText'
 
 type TradeAction = 'add' | 'buy' | 'sell' | 'adjust'
-type AdjustType = 'pnl' | 'costPrice' | 'quantity' | 'dividend' | 'fee'
+type AdjustType = 'costPrice' | 'quantity' | 'dividend' | 'fee'
 
 const props = defineProps<{
   show: boolean
@@ -40,12 +40,11 @@ const selectedStock = ref<any>(null)
 const price = ref('')
 const qty = ref('')
 const amount = ref('')
-const adjustType = ref<AdjustType>('pnl')
+const adjustType = ref<AdjustType>('costPrice')
 const adjustValue = ref('')
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const adjustTypeOptions: Array<{ value: AdjustType; label: string }> = [
-  { value: 'pnl', label: '累计收益' },
   { value: 'costPrice', label: '成本价' },
   { value: 'quantity', label: '数量' },
   { value: 'dividend', label: '分红' },
@@ -199,7 +198,7 @@ function applyModeDefaults() {
     price.value = ''
     qty.value = ''
     amount.value = ''
-    adjustType.value = 'pnl'
+    adjustType.value = 'costPrice'
     adjustValue.value = ''
     return
   }
@@ -209,7 +208,7 @@ function applyModeDefaults() {
     price.value = ''
     qty.value = ''
     amount.value = ''
-    adjustType.value = 'pnl'
+    adjustType.value = 'costPrice'
     syncAdjustInputDefault()
     return
   }
@@ -229,7 +228,7 @@ function resetForm() {
   price.value = ''
   qty.value = ''
   amount.value = ''
-  adjustType.value = 'pnl'
+  adjustType.value = 'costPrice'
   adjustValue.value = ''
   isAcctDropdownOpen.value = false
   isCreateSheetOpen.value = false
@@ -320,8 +319,8 @@ function resolveAdjustPayload():
     if (parsedInput <= 0) return { error: '目标成本价必须大于 0' }
     return {
       qty: holdingQty,
-      price: rawPrice,
-      adjustment: rawPrice * holdingQty - parsedInput * holdingQty,
+      price: parsedInput + currentAdj / holdingQty,
+      adjustment: currentAdj,
     }
   }
 
@@ -354,14 +353,7 @@ function resolveAdjustPayload():
     }
   }
 
-  if (!holdingQty || holdingQty <= 0) {
-    return { error: '当前持仓数量无效，不能调整累计收益' }
-  }
-  return {
-    qty: holdingQty,
-    price: rawPrice,
-    adjustment: parsedInput,
-  }
+  return { error: '不支持的调整类型' }
 }
 
 const adjustPreview = computed(() => {
@@ -687,12 +679,21 @@ async function handleConfirm() {
         return
       }
 
-      await api.post('/api/portfolio/modify', {
-        code: selectedStock.value.code,
-        qty: payload.qty,
-        price: payload.price,
-        adjustment: payload.adjustment,
-      })
+      if (adjustType.value === 'dividend' || adjustType.value === 'fee') {
+        const amountValue = parseFloat(adjustValue.value)
+        await api.post('/api/portfolio/adjustment_event', {
+          code: selectedStock.value.code,
+          event_type: adjustType.value,
+          amount: amountValue,
+          curr: selectedStock.value.currency,
+        })
+      } else {
+        await api.post('/api/portfolio/modify', {
+          code: selectedStock.value.code,
+          qty: payload.qty,
+          price: payload.price,
+        })
+      }
       await submitSuccess('✓ 已调整')
       return
     }
