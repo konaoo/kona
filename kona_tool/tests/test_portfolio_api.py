@@ -257,7 +257,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIn("绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码", prompt)
         self.assertIn("如果截图是表格或列表，优先逐行提取名称、代码、数量、成本价", prompt)
 
-    def test_portfolio_ocr_falls_back_to_table_prompt_when_first_pass_empty(self):
+    def test_portfolio_ocr_falls_back_to_transcript_prompt_when_first_pass_empty(self):
         app_module.db.set_runtime_config(
             "ai_providers",
             json.dumps(
@@ -283,11 +283,8 @@ class PortfolioApiTests(unittest.TestCase):
             "_run_openai_compatible_vision",
             side_effect=[
                 '{"items":[],"warnings":[]}',
-                (
-                    '{"items":[{"name":"江苏银行","code":"","qty":3200,'
-                    '"price":10.092,"curr":"CNY","asset_type":"a",'
-                    '"confidence":0.72,"note":"表格模式补出数量和成本价"}],"warnings":[]}'
-                ),
+                "",
+                "江苏银行 |  | 3200 | 10.092",
             ],
         ) as mocked:
             result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
@@ -300,11 +297,122 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].get("name"), "江苏银行")
         self.assertEqual(result.items[0].get("code"), "")
-        self.assertEqual(mocked.call_count, 2)
+        self.assertEqual(mocked.call_count, 3)
         first_prompt = mocked.call_args_list[0].kwargs.get("prompt") or ""
         second_prompt = mocked.call_args_list[1].kwargs.get("prompt") or ""
+        third_prompt = mocked.call_args_list[2].kwargs.get("prompt") or ""
         self.assertIn("新增资产表单", first_prompt)
-        self.assertIn("复杂持仓表截图", second_prompt)
+        self.assertIn("真正的资产列表区域", second_prompt)
+        self.assertIn("上半段", third_prompt)
+
+    def test_portfolio_ocr_falls_back_to_transcript_structuring_when_json_stays_empty(self):
+        app_module.db.set_runtime_config(
+            "ai_providers",
+            json.dumps(
+                [
+                    {
+                        "id": "ocr01",
+                        "type": "zhipu",
+                        "name": "截图模型",
+                        "base_url": "https://vision.example.com/v1",
+                        "api_key": "ocr-key",
+                        "model": "glm-4.6v-flash",
+                        "active": True,
+                        "protocol": "openai",
+                    },
+                ],
+                ensure_ascii=False,
+            ),
+            updated_by="test",
+        )
+
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            "_run_openai_compatible_vision",
+            side_effect=[
+                '{"items":[],"warnings":[]}',
+                "腾讯控股 00700 100 598.00 -9,000.00",
+            ],
+        ) as mocked_vision, patch.object(
+            portfolio_handlers.portfolio_ocr,
+            "_run_openai_compatible_text",
+            return_value=(
+                '{"items":[{"name":"腾讯控股","code":"00700","qty":100,'
+                '"price":598.0,"curr":"HKD","asset_type":"hk",'
+                '"confidence":0.82,"note":"转写兜底成功"}],"warnings":["来自转写兜底"]}'
+            ),
+        ) as mocked_text:
+            result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
+                db=app_module.db,
+                image_bytes=b"fake-image-bytes",
+                filename="holding.png",
+                content_type="image/png",
+            )
+
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].get("name"), "腾讯控股")
+        self.assertEqual(result.items[0].get("code"), "00700")
+        self.assertEqual(mocked_vision.call_count, 2)
+        self.assertEqual(mocked_text.call_count, 0)
+        transcript_prompt = mocked_vision.call_args_list[1].kwargs.get("prompt") or ""
+        self.assertIn("真正的资产列表区域", transcript_prompt)
+
+    def test_portfolio_ocr_normalize_items_keeps_up_to_twelve_rows(self):
+        raw_items = []
+        for idx in range(15):
+            raw_items.append(
+                {
+                    "name": f"资产{idx}",
+                    "code": "",
+                    "qty": idx + 1,
+                    "price": idx + 0.5,
+                }
+            )
+
+        items = portfolio_handlers.portfolio_ocr._normalize_items(raw_items)
+
+        self.assertEqual(len(items), 12)
+        self.assertEqual(items[0].get("name"), "资产0")
+        self.assertEqual(items[-1].get("name"), "资产11")
+
+    def test_portfolio_ocr_parse_transcript_items_supports_pipe_format(self):
+        transcript = "\n".join(
+            [
+                "腾讯控股 | 00700 | 100 | 598.00",
+                "中国海洋 |  | 1000 | HK$21.354",
+            ]
+        )
+
+        items = portfolio_handlers.portfolio_ocr._parse_transcript_items(transcript)
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0].get("name"), "腾讯控股")
+        self.assertEqual(items[0].get("code"), "00700")
+        self.assertEqual(items[0].get("qty"), 100.0)
+        self.assertEqual(items[0].get("price"), 598.0)
+        self.assertEqual(items[1].get("curr"), "HKD")
+
+    def test_portfolio_ocr_parse_transcript_items_supports_two_line_rows(self):
+        transcript = "\n".join(
+            [
+                "腾讯控股 50,800.00 508.000 -9,000.00",
+                "00700 100 598.00 -15.05%",
+                "恒生高息股 8,512.00 21.280 +284.00",
+                "03466 400 20.57 +3.45%",
+            ]
+        )
+
+        items = portfolio_handlers.portfolio_ocr._parse_transcript_items(transcript)
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0].get("name"), "腾讯控股")
+        self.assertEqual(items[0].get("code"), "00700")
+        self.assertEqual(items[0].get("qty"), 100.0)
+        self.assertEqual(items[0].get("price"), 598.0)
+
+    def test_portfolio_ocr_leading_text_strips_trailing_sign(self):
+        name = portfolio_handlers.portfolio_ocr._leading_text_before_number("小米集团 -1,972.85 200 HK$44.395")
+        self.assertEqual(name, "小米集团")
 
     def test_portfolio_modify_allows_negative_cost_price(self):
         add_resp = self.client.post('/api/portfolio/add', json={

@@ -132,11 +132,13 @@ def _get_ocr_provider(db: Any) -> Optional[Dict[str, Any]]:
     if selected and selected.get("api_key"):
         resolved = dict(selected)
         if model_override:
+            resolved["text_model"] = str(selected.get("model") or "").strip()
             resolved["model"] = model_override
         return resolved
 
     env_provider = _build_env_provider()
     if env_provider and model_override:
+        env_provider["text_model"] = str(env_provider.get("model") or "").strip()
         env_provider["model"] = model_override
     return env_provider
 
