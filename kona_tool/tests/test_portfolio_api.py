@@ -228,7 +228,11 @@ class PortfolioApiTests(unittest.TestCase):
         with patch.object(
             portfolio_handlers.portfolio_ocr,
             "_run_openai_compatible_vision",
-            return_value='{"items":[],"warnings":[]}',
+            return_value=(
+                '{"items":[{"name":"腾讯控股","code":"hk00700","qty":200,'
+                '"price":318.4,"curr":"HKD","asset_type":"hk","confidence":0.9,'
+                '"note":""}],"warnings":[]}'
+            ),
         ) as mocked:
             result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
                 db=app_module.db,
@@ -237,7 +241,7 @@ class PortfolioApiTests(unittest.TestCase):
                 content_type="image/png",
             )
 
-        self.assertEqual(result.items, [])
+        self.assertEqual(len(result.items), 1)
         self.assertEqual(result.warnings, [])
         self.assertEqual(mocked.call_count, 1)
         kwargs = mocked.call_args.kwargs
@@ -251,7 +255,56 @@ class PortfolioApiTests(unittest.TestCase):
 
         self.assertIn("只有在截图里明确看到了代码，才能填写 code", prompt)
         self.assertIn("绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码", prompt)
-        self.assertNotIn("如果代码能明显识别，尽量给出标准代码", prompt)
+        self.assertIn("如果截图是表格或列表，优先逐行提取名称、代码、数量、成本价", prompt)
+
+    def test_portfolio_ocr_falls_back_to_table_prompt_when_first_pass_empty(self):
+        app_module.db.set_runtime_config(
+            "ai_providers",
+            json.dumps(
+                [
+                    {
+                        "id": "ocr01",
+                        "type": "zhipu",
+                        "name": "截图模型",
+                        "base_url": "https://vision.example.com/v1",
+                        "api_key": "ocr-key",
+                        "model": "glm-4.6v-flash",
+                        "active": True,
+                        "protocol": "openai",
+                    },
+                ],
+                ensure_ascii=False,
+            ),
+            updated_by="test",
+        )
+
+        with patch.object(
+            portfolio_handlers.portfolio_ocr,
+            "_run_openai_compatible_vision",
+            side_effect=[
+                '{"items":[],"warnings":[]}',
+                (
+                    '{"items":[{"name":"江苏银行","code":"","qty":3200,'
+                    '"price":10.092,"curr":"CNY","asset_type":"a",'
+                    '"confidence":0.72,"note":"表格模式补出数量和成本价"}],"warnings":[]}'
+                ),
+            ],
+        ) as mocked:
+            result = portfolio_handlers.portfolio_ocr.parse_portfolio_asset_candidates(
+                db=app_module.db,
+                image_bytes=b"fake-image-bytes",
+                filename="holding.png",
+                content_type="image/png",
+            )
+
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].get("name"), "江苏银行")
+        self.assertEqual(result.items[0].get("code"), "")
+        self.assertEqual(mocked.call_count, 2)
+        first_prompt = mocked.call_args_list[0].kwargs.get("prompt") or ""
+        second_prompt = mocked.call_args_list[1].kwargs.get("prompt") or ""
+        self.assertIn("新增资产表单", first_prompt)
+        self.assertIn("复杂持仓表截图", second_prompt)
 
     def test_portfolio_modify_allows_negative_cost_price(self):
         add_resp = self.client.post('/api/portfolio/add', json={

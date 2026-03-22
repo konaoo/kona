@@ -79,26 +79,52 @@ def parse_portfolio_asset_candidates(
         )
 
     image_b64 = base64.b64encode(image_bytes).decode("ascii")
-    prompt = _build_ocr_prompt()
-    try:
+    prompts = [_build_ocr_prompt(), _build_table_ocr_prompt()]
+
+    def _run_vision(prompt: str) -> str:
         if protocol == "anthropic":
-            raw_text = _run_anthropic_vision(
+            return _run_anthropic_vision(
                 prompt=prompt,
                 image_b64=image_b64,
                 media_type=media_type,
                 api_key=api_key,
                 model=model,
             )
-        else:
-            raw_text = _run_openai_compatible_vision(
-                prompt=prompt,
-                image_b64=image_b64,
-                media_type=media_type,
-                api_key=api_key,
-                model=model,
-                base_url=base_url,
-                provider_type=provider_type,
-            )
+        return _run_openai_compatible_vision(
+            prompt=prompt,
+            image_b64=image_b64,
+            media_type=media_type,
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            provider_type=provider_type,
+        )
+
+    raw_text = ""
+    try:
+        last_parse_error: PortfolioOcrError | None = None
+        for idx, prompt in enumerate(prompts):
+            raw_text = _run_vision(prompt)
+            try:
+                payload = _parse_response_json(raw_text)
+            except PortfolioOcrError as exc:
+                last_parse_error = exc
+                if idx < len(prompts) - 1 and exc.code in {
+                    "OCR_INVALID_JSON",
+                    "OCR_EMPTY_RESPONSE",
+                }:
+                    continue
+                raise
+            items = _normalize_items(payload.get("items"))
+            warnings = _normalize_warnings(payload.get("warnings"))
+            if items or idx == len(prompts) - 1:
+                return PortfolioOcrParseResult(
+                    items=items,
+                    warnings=warnings,
+                    raw_text=raw_text,
+                )
+        if last_parse_error is not None:
+            raise last_parse_error
     except PortfolioOcrError:
         raise
     except Exception as exc:
@@ -115,10 +141,11 @@ def parse_portfolio_asset_candidates(
             status_code=502,
         ) from exc
 
-    payload = _parse_response_json(raw_text)
-    items = _normalize_items(payload.get("items"))
-    warnings = _normalize_warnings(payload.get("warnings"))
-    return PortfolioOcrParseResult(items=items, warnings=warnings, raw_text=raw_text)
+    raise PortfolioOcrError(
+        "截图识别失败，请稍后重试",
+        code="OCR_PARSE_FAILED",
+        status_code=502,
+    )
 
 
 def build_local_demo_result() -> PortfolioOcrParseResult:
@@ -186,6 +213,7 @@ def _build_ocr_prompt() -> str:
         "你是投资记账产品里的截图识别助手。"
         "当前任务只服务“添加资产”入口，不是导入交易历史。"
         "请从用户上传的持仓截图里提取可直接用于“新增资产表单”的候选资产。"
+        "截图可能是单只持仓详情，也可能是深色背景、整页、多行、多列表格的持仓列表。"
         "不要臆造完整交易记录，不要输出解释性文字。"
         "\n\n"
         "严格返回一个 JSON 对象，不要加 markdown 代码块。格式如下：\n"
@@ -205,13 +233,50 @@ def _build_ocr_prompt() -> str:
         '  "warnings": ["如果截图模糊或字段不确定，在这里给简短提醒"]\n'
         "}\n\n"
         "要求：\n"
-        "1. 最多返回 5 条候选资产。\n"
-        "2. 如果同一张图里有多条资产，按你最有把握的顺序返回。\n"
+        "1. 最多返回 12 条候选资产。\n"
+        "2. 如果同一张图里有多条资产，按从上到下、从左到右的顺序返回。\n"
         "3. 只有在截图里明确看到了代码，才能填写 code；如果没有明确看到，code 必须是空字符串。\n"
         "4. 如果数量或成本价看不清，就填 null，不要瞎猜。\n"
         "5. 绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码。\n"
-        "6. 如果代码能明确识别，尽量给出标准代码，如：sh600519、hk00700、gb_aapl、f_110017。\n"
-        "7. confidence 取 0 到 1 之间的小数。\n"
+        "6. 如果截图是表格或列表，优先逐行提取名称、代码、数量、成本价，缺哪个就留空，不要因为缺一列就整行放弃。\n"
+        "7. 如果表头写的是“成本/现价”，优先把前一个值当作成本价；如果表头写的是“现价/成本”，优先把后一个值当作成本价。\n"
+        "8. 市值、盈亏、涨跌幅、今日盈亏、参考盈亏都不是 price，不要误填到成本价。\n"
+        "9. 如果代码能明确识别，尽量给出标准代码，如：sh600519、hk00700、gb_aapl、f_110017。\n"
+        "10. confidence 取 0 到 1 之间的小数。\n"
+        "11. 只返回 JSON。"
+    )
+
+
+def _build_table_ocr_prompt() -> str:
+    return (
+        "你现在面对的是投资软件里的复杂持仓表截图。"
+        "这类截图通常是深色背景、多行、多列、整页列表。"
+        "你的任务不是解释页面，而是把每一行能识别出的资产提取成新增资产草稿。"
+        "\n\n"
+        "严格返回一个 JSON 对象，不要加 markdown 代码块。格式如下：\n"
+        "{\n"
+        '  "items": [\n'
+        "    {\n"
+        '      "name": "资产名称",\n'
+        '      "code": "截图里明确出现的代码；如果截图里没出现，就给空字符串",\n'
+        '      "qty": 123.45,\n'
+        '      "price": 12.34,\n'
+        '      "curr": "CNY/HKD/USD 之一，判断不出就给空字符串",\n'
+        '      "asset_type": "a/hk/us/fund 之一，判断不出就给空字符串",\n'
+        '      "confidence": 0.0,\n'
+        '      "note": "最多一句提醒"\n'
+        "    }\n"
+        "  ],\n"
+        '  "warnings": ["如果有整列看不清或字段缺失，在这里给简短提醒"]\n'
+        "}\n\n"
+        "表格识别规则：\n"
+        "1. 最多返回 12 条资产，按从上到下顺序提取。\n"
+        "2. 一行资产通常包含名称，可能还带一行代码；数量、成本价、现价、盈亏可能分散在右侧多列。\n"
+        "3. 只提名称、代码、数量、成本价；市值、盈亏、涨跌幅都不要塞进 price。\n"
+        "4. 如果表头是“成本/现价”，前一个值优先当成本价；如果表头是“现价/成本”，后一个值优先当成本价。\n"
+        "5. 如果代码没出现在截图里，code 必须为空字符串，绝对不要猜。\n"
+        "6. 如果一行里名称和数量能看清，但成本价看不清，也要保留这条资产，缺字段留空。\n"
+        "7. 如果左侧有市场提示，例如“沪港”“港股”“美股”，可以用来辅助判断 curr 和 asset_type，但不能拿来猜代码。\n"
         "8. 只返回 JSON。"
     )
 
