@@ -64,6 +64,18 @@
                 <template v-else>🔄</template>
               </button>
             </div>
+            <input
+              v-model="ocrConfig.model"
+              class="field-input mono ocr-model-manual"
+              :placeholder="ocrModelPlaceholder()"
+              maxlength="100"
+            />
+            <p class="field-help">
+              模型列表可能不会返回全部可用模型。
+              <template v-if="isOcrZhipuProvider()">
+                智谱截图识别建议直接填写 <span class="mono">glm-4.6v-flash</span>。
+              </template>
+            </p>
           </div>
         </div>
 
@@ -350,9 +362,29 @@ function onOcrProviderChange() {
   }
   ocrConfig.provider_name = provider.name
   if (!ocrConfig.model) {
-    ocrConfig.model = provider.model || ''
+    ocrConfig.model = suggestedOcrModel(provider) || provider.model || ''
   }
   ocrConfig.resolved_model = ocrConfig.model || provider.model || ''
+}
+
+function suggestedOcrModel(provider?: ProviderItem | null): string {
+  if (!provider) return ''
+  if (provider.type === 'zhipu') return 'glm-4.6v-flash'
+  return ''
+}
+
+function isOcrZhipuProvider(): boolean {
+  const provider = providers.value.find(p => p.id === ocrConfig.provider_id)
+  return provider?.type === 'zhipu'
+}
+
+function ocrModelPlaceholder(): string {
+  const provider = providers.value.find(p => p.id === ocrConfig.provider_id)
+  const suggested = suggestedOcrModel(provider)
+  if (suggested) {
+    return `可直接手填，如 ${suggested}`
+  }
+  return '留空时跟随供应商默认模型，也可以直接手填模型 ID'
 }
 
 async function fetchOcrModels() {
@@ -657,6 +689,8 @@ onMounted(() => {
 .field-input:focus { border-color: #5b8def; }
 .field-input.mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; font-size: 13px; }
 select.field-input { cursor: pointer; }
+.ocr-model-manual { margin-top: 8px; }
+.field-help { margin: 8px 0 0; color: #8a93a5; font-size: 12px; line-height: 1.5; }
 
 .model-field { display: flex; gap: 8px; align-items: center; }
 .model-field .field-input { flex: 1; }
