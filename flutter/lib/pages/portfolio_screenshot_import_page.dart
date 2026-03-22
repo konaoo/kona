@@ -21,6 +21,7 @@ class _PortfolioScreenshotImportPageState
   final ImagePicker _imagePicker = ImagePicker();
 
   bool _recognizing = false;
+  bool _submitting = false;
   String? _errorText;
   String? _selectedImageName;
   List<Map<String, dynamic>> _candidates = const [];
@@ -60,6 +61,21 @@ class _PortfolioScreenshotImportPageState
     return '$code|$name|$qty|$price';
   }
 
+  List<Map<String, dynamic>> _mergeCandidates(
+    List<Map<String, dynamic>> existing,
+    List<Map<String, dynamic>> incoming,
+  ) {
+    final merged = List<Map<String, dynamic>>.from(existing);
+    final seen = existing.map(_candidateKey).toSet();
+    for (final item in incoming) {
+      final key = _candidateKey(item);
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      merged.add(item);
+    }
+    return merged;
+  }
+
   Future<void> _pickAndParseScreenshot() async {
     if (_recognizing) return;
     final file = await _imagePicker.pickImage(
@@ -89,23 +105,32 @@ class _PortfolioScreenshotImportPageState
             return name.isNotEmpty;
           })
           .toList();
+      final previousCount = _candidates.length;
+      final mergedCandidates = _mergeCandidates(_candidates, candidates);
       setState(() {
         _recognizing = false;
-        _candidates = candidates;
-        _selectedCandidate = candidates.isEmpty ? null : candidates.first;
+        if (candidates.isNotEmpty) {
+          _candidates = mergedCandidates;
+          _selectedCandidate = candidates.first;
+        }
       });
       if (candidates.isEmpty) {
         setState(() {
-          _errorText = '这张图里没有识别出可添加的资产，请换一张更清晰的持仓截图';
+          _errorText = '识别失败可能是因为主人没钱买API，麻烦请使用手动录入😭';
         });
         return;
       }
-      TopToast.showInfo(context, '已生成识别结果，请点编辑进入添加资产弹窗');
+      TopToast.showInfo(
+        context,
+        mergedCandidates.length > previousCount
+            ? '已追加识别结果，请继续编辑后提交'
+            : '这张图没有新的识别结果',
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _recognizing = false;
-        _errorText = '截图识别失败，请稍后重试';
+        _errorText = '识别失败可能是因为主人没钱买API，麻烦请使用手动录入😭';
       });
       TopToast.showError(context, _errorText!);
     }
@@ -149,19 +174,6 @@ class _PortfolioScreenshotImportPageState
       c = c.substring(0, c.length - 3);
     }
     return c;
-  }
-
-  bool _candidateIsComplete(Map<String, dynamic> item) {
-    final name = item['name']?.toString().trim() ?? '';
-    final code = item['code']?.toString().trim() ?? '';
-    final qty = _asDouble(item['qty']);
-    final price = _asDouble(item['price']);
-    return name.isNotEmpty &&
-        code.isNotEmpty &&
-        qty != null &&
-        qty > 0 &&
-        price != null &&
-        price > 0;
   }
 
   String _typeNameForItem(Map<String, dynamic> item) {
@@ -252,10 +264,12 @@ class _PortfolioScreenshotImportPageState
 
   Future<void> _openAddAssetDialog(Map<String, dynamic> item) async {
     _selectCandidate(item);
-    await showInvestTradeSheet<void>(
+    final itemKey = _candidateKey(item);
+    final result = await showInvestTradeSheet<Map<String, dynamic>>(
       context: context,
       mode: 'add',
       presentation: InvestTradeDialogPresentation.centered,
+      draftOnly: true,
       initialSelectedAsset: _buildInitialSelectedAsset(item),
       initialSearchQuery: _initialSearchQueryForItem(item),
       initialPrice: _asDouble(item['price']),
@@ -276,6 +290,98 @@ class _PortfolioScreenshotImportPageState
         });
       },
     );
+    if (!mounted || result == null) return;
+    final updatedItem = Map<String, dynamic>.from(item)
+      ..['name'] =
+          (result['name']?.toString().trim() ?? item['name']?.toString() ?? '')
+      ..['code'] =
+          (result['code']?.toString().trim() ?? item['code']?.toString() ?? '')
+      ..['qty'] = result['qty'] ?? item['qty']
+      ..['price'] = result['price'] ?? item['price']
+      ..['curr'] =
+          (result['curr']?.toString().trim() ?? item['curr']?.toString() ?? '')
+      ..['asset_type'] = (result['asset_type']?.toString().trim() ??
+          item['asset_type']?.toString() ??
+          '')
+      ..['type_name'] =
+          (result['type_name']?.toString().trim() ?? item['type_name']?.toString() ?? '');
+    final nextCandidates = _candidates
+        .map((candidate) => _candidateKey(candidate) == itemKey ? updatedItem : candidate)
+        .toList();
+    setState(() {
+      _candidates = nextCandidates;
+      if (_candidateKey(_selectedCandidate ?? const {}) == itemKey) {
+        _selectedCandidate = updatedItem;
+      }
+      _errorText = null;
+    });
+  }
+
+  bool _candidateIsComplete(Map<String, dynamic> item) {
+    final name = item['name']?.toString().trim() ?? '';
+    final code = item['code']?.toString().trim() ?? '';
+    final qty = _asDouble(item['qty']);
+    final price = _asDouble(item['price']);
+    return name.isNotEmpty &&
+        code.isNotEmpty &&
+        qty != null &&
+        qty > 0 &&
+        price != null &&
+        price > 0;
+  }
+
+  bool get _canSubmitCandidates =>
+      !_submitting &&
+      _candidates.isNotEmpty &&
+      _candidates.every(_candidateIsComplete);
+
+  Future<void> _submitCandidates() async {
+    if (!_canSubmitCandidates) return;
+    final appState = context.read<AppState>();
+    setState(() {
+      _submitting = true;
+      _errorText = null;
+    });
+    var successCount = 0;
+    for (var i = 0; i < _candidates.length; i += 1) {
+      final item = _candidates[i];
+      final code = item['code']?.toString().trim() ?? '';
+      final name = item['name']?.toString().trim() ?? '';
+      final qty = _asDouble(item['qty']);
+      final price = _asDouble(item['price']);
+      if (code.isEmpty || name.isEmpty || qty == null || price == null) {
+        setState(() {
+          _submitting = false;
+          _errorText = '还有资产信息没补完整，请先编辑后再提交';
+        });
+        return;
+      }
+      final result = await appState.addInvestment(
+        code: code,
+        name: name,
+        price: price,
+        qty: qty,
+        curr: item['curr']?.toString(),
+        assetType: item['asset_type']?.toString(),
+        awaitRefresh: false,
+      );
+      if (!mounted) return;
+      if (!result.ok) {
+        setState(() {
+          _submitting = false;
+          _errorText = successCount > 0
+              ? '前 $successCount 条已添加，后续提交失败：${result.message ?? '请稍后重试'}'
+              : (result.message ?? '提交失败，请稍后重试');
+        });
+        TopToast.showError(context, _errorText!);
+        return;
+      }
+      successCount += 1;
+    }
+    await appState.refreshAll(force: true);
+    if (!mounted) return;
+    TopToast.showSuccess(context, '添加成功');
+    Navigator.of(context).maybePop();
   }
 
   Widget _buildTag(String text) {
@@ -298,7 +404,6 @@ class _PortfolioScreenshotImportPageState
   }
 
   Widget _buildCandidateCard(Map<String, dynamic> item, bool selected) {
-    final confidence = ((_asDouble(item['confidence']) ?? 0) * 100).clamp(0, 100);
     final currSymbol = _currencySymbolForItem(item);
     final rawNote = item['note']?.toString().trim() ?? '';
     final note = rawNote.contains('本地演示') ? '' : rawNote;
@@ -306,7 +411,6 @@ class _PortfolioScreenshotImportPageState
     final qtyValue = _asDouble(item['qty']);
     final qtyText = qtyValue == null ? '待补' : _formatNumber(qtyValue);
     final qtyUnit = _quantityUnit(item);
-    final complete = _candidateIsComplete(item);
 
     return InkWell(
       onTap: () => _selectCandidate(item),
@@ -390,9 +494,7 @@ class _PortfolioScreenshotImportPageState
               children: [
                 Expanded(
                   child: Text(
-                    complete
-                        ? '当前识别准确率 ${confidence.toStringAsFixed(0)}%，点编辑可直接带入添加资产弹窗'
-                        : '当前识别准确率 ${confidence.toStringAsFixed(0)}%，有缺项时点编辑进入添加资产弹窗补齐',
+                    '识别不正确可以点击编辑修正',
                     style: _dm(size: 11, color: AppTheme.textMuted),
                   ),
                 ),
@@ -442,7 +544,7 @@ class _PortfolioScreenshotImportPageState
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
           children: [
             Container(
               padding: const EdgeInsets.all(16),
@@ -478,7 +580,7 @@ class _PortfolioScreenshotImportPageState
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '截图最好包含资产名称、代码、数量、买入价；缺的字段可以在添加资产弹窗里补。',
+                    '截图最好包含资产名称、代码、数量、买入价。',
                     style: _dm(size: 13, color: AppTheme.textMuted),
                   ),
                 ],
@@ -504,15 +606,6 @@ class _PortfolioScreenshotImportPageState
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                '点每条结果右侧的编辑，就会直接打开原来的添加资产弹窗；识别到的内容会自动带进去，没有的字段你再手动补。',
-                style: _dm(
-                  size: 12,
-                  weight: FontWeight.w600,
-                  color: AppTheme.textMuted,
-                ),
-              ),
             ],
             if ((_errorText ?? '').isNotEmpty) ...[
               const SizedBox(height: 14),
@@ -528,6 +621,18 @@ class _PortfolioScreenshotImportPageState
           ],
         ),
       ),
+      bottomNavigationBar: _candidates.isEmpty
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: FilledButton(
+                  onPressed: _canSubmitCandidates ? _submitCandidates : null,
+                  child: Text(_submitting ? '正在提交' : '提交'),
+                ),
+              ),
+            ),
     );
   }
 }
