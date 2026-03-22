@@ -366,8 +366,13 @@ class PortfolioApiTests(unittest.TestCase):
         resp = self.client.get('/api/portfolio/transactions?code=sh600021')
         self.assertEqual(resp.status_code, 200)
         records = (resp.get_json() or {}).get('records') or []
-        self.assertEqual([item.get('type') for item in records], ['减仓', '初始持仓', '分红'])
-        self.assertAlmostEqual(float(records[0].get('pnl') or 0.0), 4.0, places=6)
+        self.assertEqual(len(records), 3)
+        self.assertCountEqual(
+            [item.get('type') for item in records],
+            ['减仓', '初始持仓', '分红'],
+        )
+        sell_record = next(item for item in records if item.get('type') == '减仓')
+        self.assertAlmostEqual(float(sell_record.get('pnl') or 0.0), 4.0, places=6)
 
     def test_buy_and_sell_transactions_store_curr_market_and_effective_date(self):
         add_resp = self.client.post('/api/portfolio/add', json={

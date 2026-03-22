@@ -27,3 +27,8 @@ npx --yes @openapitools/openapi-generator-cli generate \
   -g dart \
   -o "${OUT_DIR}" \
   --additional-properties=pubName=kaka_openapi,pubVersion=0.0.0,nullableFields=true
+
+# 这份生成结果只是给主 Flutter 工程复用 lib 里的模型和接口，
+# 生成器自带的 test/doc 样板不该混进主工程，否则 CI 的 flutter analyze 会把它们也扫进去。
+rm -rf "${OUT_DIR}/test" "${OUT_DIR}/doc" "${OUT_DIR}/.dart_tool"
+rm -f "${OUT_DIR}/pubspec.lock"

@@ -18,6 +18,7 @@ void main() {
     bool usExtendedActive = false,
     String usSession = 'regular',
     Map<String, double>? dayPnlAggregateCny,
+    Map<String, double>? dayPnlBaseAggregateCny,
     Map<String, double>? valueCny,
   }) async {
     SharedPreferences.setMockInitialValues({
@@ -32,6 +33,9 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['sh600000'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['sh600000'],
+            if (dayPnlBaseAggregateCny?['sh600000'] != null)
+              'day_pnl_base_aggregate_cny':
+                  dayPnlBaseAggregateCny!['sh600000'],
             if (valueCny?['sh600000'] != null)
               'value_cny': valueCny!['sh600000'],
           },
@@ -44,6 +48,9 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['hk00700'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['hk00700'],
+            if (dayPnlBaseAggregateCny?['hk00700'] != null)
+              'day_pnl_base_aggregate_cny':
+                  dayPnlBaseAggregateCny!['hk00700'],
             if (valueCny?['hk00700'] != null) 'value_cny': valueCny!['hk00700'],
           },
           {
@@ -55,6 +62,9 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['gb_aapl'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['gb_aapl'],
+            if (dayPnlBaseAggregateCny?['gb_aapl'] != null)
+              'day_pnl_base_aggregate_cny':
+                  dayPnlBaseAggregateCny!['gb_aapl'],
             if (valueCny?['gb_aapl'] != null) 'value_cny': valueCny!['gb_aapl'],
           },
           {
@@ -66,6 +76,9 @@ void main() {
             'adjustment': 0,
             if (dayPnlAggregateCny?['f_161725'] != null)
               'day_pnl_aggregate_cny': dayPnlAggregateCny!['f_161725'],
+            if (dayPnlBaseAggregateCny?['f_161725'] != null)
+              'day_pnl_base_aggregate_cny':
+                  dayPnlBaseAggregateCny!['f_161725'],
             if (valueCny?['f_161725'] != null)
               'value_cny': valueCny!['f_161725'],
           },
@@ -131,6 +144,7 @@ void main() {
       openStatus: const {'a': false, 'hk': true, 'us': true, 'fund': false},
       changeAmt: 1,
       dayPnlAggregateCny: const {'hk00700': 186, 'gb_aapl': 2175},
+      dayPnlBaseAggregateCny: const {'hk00700': 20000, 'gb_aapl': 30000},
       valueCny: const {'hk00700': 20000, 'gb_aapl': 30000},
     );
     // hk: 1 * 200 * 0.93 = 186
@@ -146,6 +160,7 @@ void main() {
       usExtendedActive: true,
       usSession: 'pre',
       dayPnlAggregateCny: const {'gb_aapl': 2175},
+      dayPnlBaseAggregateCny: const {'gb_aapl': 30000},
       valueCny: const {'gb_aapl': 30000},
     );
 
@@ -177,6 +192,7 @@ void main() {
       },
       changeAmt: 1,
       dayPnlAggregateCny: const {'hk00700': 186},
+      dayPnlBaseAggregateCny: const {'hk00700': 20000},
       valueCny: const {'hk00700': 20000},
     );
 

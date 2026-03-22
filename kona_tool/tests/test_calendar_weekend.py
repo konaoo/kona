@@ -246,7 +246,7 @@ class CalendarWeekendTests(unittest.TestCase):
         self.assertEqual(len(data["items"]), 3)
         self.assertEqual(data["total_pnl"], 0.0)
 
-    def test_day_view_total_rate_uses_period_end_invest(self):
+    def test_day_view_total_rate_uses_period_start_invest(self):
         _insert_snapshot("2026-01-31", 0, 0, total_invest=2000)
         _insert_snapshot("2026-02-03", 100, 100, total_invest=3000)
         _insert_snapshot("2026-02-04", 150, 50, total_invest=3500)
@@ -257,10 +257,10 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("day", "u1", year=2026, month=2)
 
         self.assertAlmostEqual(float(data["total_pnl"]), 150.0, places=2)
-        # 分母用月末持仓成本 3500：150/3500*100 ≈ 4.29
-        self.assertAlmostEqual(float(data["total_rate"]), 4.29, places=2)
+        # 分母用月初前一日的本金 2000：150/2000*100 = 7.5
+        self.assertAlmostEqual(float(data["total_rate"]), 7.5, places=2)
 
-    def test_month_view_total_rate_uses_period_end_invest(self):
+    def test_month_view_total_rate_uses_period_start_invest(self):
         _insert_snapshot("2025-12-31", 0, 0, total_invest=5000)
         _insert_snapshot("2026-01-12", 100, 100, total_invest=6000)
         _insert_snapshot("2026-02-10", 300, 200, total_invest=7000)
@@ -271,10 +271,10 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("month", "u1", year=2026)
 
         self.assertAlmostEqual(float(data["total_pnl"]), 300.0, places=2)
-        # 分母用年末持仓成本 7000：300/7000*100 ≈ 4.29
-        self.assertAlmostEqual(float(data["total_rate"]), 4.29, places=2)
+        # 分母用年初前一日的本金 5000：300/5000*100 = 6.0
+        self.assertAlmostEqual(float(data["total_rate"]), 6.0, places=2)
 
-    def test_year_view_total_rate_uses_period_end_invest(self):
+    def test_year_view_total_rate_uses_period_start_invest(self):
         _insert_snapshot("2025-12-31", 0, 0, total_invest=4000)
         _insert_snapshot("2026-01-12", 100, 100, total_invest=5000)
 
@@ -284,8 +284,8 @@ class CalendarWeekendTests(unittest.TestCase):
             data = db_module.db.get_calendar_data("year", "u1")
 
         self.assertAlmostEqual(float(data["total_pnl"]), 100.0, places=2)
-        # 分母用最新持仓成本 5000：100/5000*100 = 2.0
-        self.assertAlmostEqual(float(data["total_rate"]), 2.0, places=2)
+        # 总累计分母用序列起点的本金 4000：100/4000*100 = 2.5
+        self.assertAlmostEqual(float(data["total_rate"]), 2.5, places=2)
 
     def test_selected_empty_period_returns_invalid_code(self):
         _insert_snapshot("2026-02-06", 100, 10)

@@ -551,7 +551,7 @@ class ApiBaselineTests(unittest.TestCase):
         )
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
-    def test_calculate_stats_attributes_otc_fund_to_latest_nav_date(self):
+    def test_calculate_stats_does_not_backfill_otc_fund_before_position_effective_date(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'f_110017',
             'name': '基金A',
@@ -580,12 +580,12 @@ class ApiBaselineTests(unittest.TestCase):
 
         self.assertAlmostEqual(
             float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('fund') or 0.0),
-            0.1,
+            0.0,
             places=2,
         )
         self.assertAlmostEqual(
             float((stats.get('day_pnl_bases_by_date') or {}).get('2026-03-20') or 0.0),
-            12.4,
+            0.0,
             places=2,
         )
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
