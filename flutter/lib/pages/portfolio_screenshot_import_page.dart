@@ -260,6 +260,21 @@ class _PortfolioScreenshotImportPageState
       initialSearchQuery: _initialSearchQueryForItem(item),
       initialPrice: _asDouble(item['price']),
       initialQty: _asDouble(item['qty']),
+      preserveDraftInputsOnClear: true,
+      onDeletePressed: () {
+        if (!mounted) return;
+        final itemKey = _candidateKey(item);
+        final nextCandidates = _candidates
+            .where((candidate) => _candidateKey(candidate) != itemKey)
+            .toList();
+        setState(() {
+          _candidates = nextCandidates;
+          if (_candidateKey(_selectedCandidate ?? const {}) == itemKey) {
+            _selectedCandidate = nextCandidates.isEmpty ? null : nextCandidates.first;
+          }
+          _errorText = nextCandidates.isEmpty ? '这条识别结果已删除' : null;
+        });
+      },
     );
   }
 

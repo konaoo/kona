@@ -1,3 +1,24 @@
+## 2026-03-22-06
+
+### 这版一句话
+
+继续收口截图识别录入：禁止 AI 在没看到代码时瞎猜证券代码，并把统一添加资产弹窗里的删除和保留输入交互补齐。
+
+### 主要变化
+- **截图识别提示词补上“严禁猜代码”**：后端 [kona_tool/core/portfolio_ocr.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/portfolio_ocr.py) 现在明确要求只有在截图里真的看到了代码，才允许填写 `code`；如果没看到，必须留空，不能根据名称、品牌、常识、热门股票记忆、价格或市场去脑补。
+- **补一条防回退测试**：后端 [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) 新增回归测试，直接锁住“禁止猜代码”这条规则，避免后面改提示词时又把模型带回会臆造代码的状态。
+- **统一添加资产弹窗补齐删除入口**：Flutter [flutter/lib/widgets/invest_trade_dialog.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/widgets/invest_trade_dialog.dart) 现在在截图识别进入的“添加资产”弹窗右上角显示删除按钮，允许直接删掉这条识别结果，不再回到截图页再删。
+- **清空已选资产时保留 OCR 草稿数字**：Flutter [flutter/lib/widgets/invest_trade_dialog.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/widgets/invest_trade_dialog.dart) / [flutter/lib/pages/portfolio_screenshot_import_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/portfolio_screenshot_import_page.dart) 现在在截图识别链路里，点已选资产的 `x` 只会清掉资产选择，不会把 OCR 带进来的数量和成本价一起清空。
+
+### 影响范围
+- 后端：`/api/portfolio/ocr_parse_asset` 的代码提取口径
+- Flutter：截图识别进入后的“添加资产”弹窗交互
+
+### 验收重点
+- 像“小米集团”这类截图里没有明确股票代码的场景，识别结果里的 `code` 应保持为空，不应再杜撰 `000333` 之类代码
+- 在截图识别进入的“添加资产”弹窗里，右上角应能直接删除当前识别结果
+- 清掉已选资产后，数量和成本价应继续保留，方便换资产时直接沿用 OCR 草稿
+
 ## 2026-03-22-05
 
 ### 这版一句话

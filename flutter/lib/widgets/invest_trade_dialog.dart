@@ -37,12 +37,14 @@ Future<T?> showInvestTradeSheet<T>({
   required String mode,
   PortfolioItem? item,
   Map<String, dynamic>? initialSelectedAsset,
+  VoidCallback? onDeletePressed,
   BuildContext? hostContext,
   Future<void> Function()? onPortfolioChanged,
   String? initialTradeMode,
   String? initialSearchQuery,
   double? initialPrice,
   double? initialQty,
+  bool preserveDraftInputsOnClear = false,
   bool selectionOnly = false,
   InvestTradeDialogPresentation presentation =
       InvestTradeDialogPresentation.sheet,
@@ -60,12 +62,14 @@ Future<T?> showInvestTradeSheet<T>({
           mode: mode,
           item: item,
           initialSelectedAsset: initialSelectedAsset,
+          onDeletePressed: onDeletePressed,
           hostContext: hostContext,
           onPortfolioChanged: onPortfolioChanged,
           initialTradeMode: initialTradeMode,
           initialSearchQuery: initialSearchQuery,
           initialPrice: initialPrice,
           initialQty: initialQty,
+          preserveDraftInputsOnClear: preserveDraftInputsOnClear,
           selectionOnly: selectionOnly,
           presentation: presentation,
         ),
@@ -89,12 +93,14 @@ Future<T?> showInvestTradeSheet<T>({
         mode: mode,
         item: item,
         initialSelectedAsset: initialSelectedAsset,
+        onDeletePressed: onDeletePressed,
         hostContext: hostContext,
         onPortfolioChanged: onPortfolioChanged,
         initialTradeMode: initialTradeMode,
         initialSearchQuery: initialSearchQuery,
         initialPrice: initialPrice,
         initialQty: initialQty,
+        preserveDraftInputsOnClear: preserveDraftInputsOnClear,
         selectionOnly: selectionOnly,
         presentation: presentation,
       ),
@@ -159,12 +165,14 @@ class InvestTradeDialog extends StatefulWidget {
   final String mode; // add | buy | sell
   final PortfolioItem? item;
   final Map<String, dynamic>? initialSelectedAsset;
+  final VoidCallback? onDeletePressed;
   final BuildContext? hostContext;
   final Future<void> Function()? onPortfolioChanged;
   final String? initialTradeMode;
   final String? initialSearchQuery;
   final double? initialPrice;
   final double? initialQty;
+  final bool preserveDraftInputsOnClear;
   final bool selectionOnly;
   final InvestTradeDialogPresentation presentation;
 
@@ -173,12 +181,14 @@ class InvestTradeDialog extends StatefulWidget {
     required this.mode,
     this.item,
     this.initialSelectedAsset,
+    this.onDeletePressed,
     this.hostContext,
     this.onPortfolioChanged,
     this.initialTradeMode,
     this.initialSearchQuery,
     this.initialPrice,
     this.initialQty,
+    this.preserveDraftInputsOnClear = false,
     this.selectionOnly = false,
     this.presentation = InvestTradeDialogPresentation.sheet,
   });
@@ -267,6 +277,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   bool get _isSell => widget.mode == 'sell';
   bool get _isTrade => widget.mode == 'trade';
   bool get _isSelectionOnly => _isAdd && widget.selectionOnly;
+  bool get _preserveDraftInputsOnClear => widget.preserveDraftInputsOnClear;
   bool get _isAdjust => _tradeMode == 'adjust';
   bool get _isDirectAdjustEntry =>
       _isTrade && widget.initialTradeMode == 'adjust';
@@ -1689,9 +1700,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       _errorText = null;
       _searchErrorText = null;
       _fundInputMode = isFund ? 'amount' : 'qty';
-      _priceController.clear();
-      _qtyController.clear();
-      _amountController.clear();
+      if (!_preserveDraftInputsOnClear) {
+        _priceController.clear();
+        _qtyController.clear();
+        _amountController.clear();
+      }
       _navErrorText = null;
       _navLoading = false;
     });
@@ -1706,9 +1719,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     setState(() {
       _selected = null;
       _queryController.clear();
-      _priceController.clear();
-      _qtyController.clear();
-      _amountController.clear();
+      if (!_preserveDraftInputsOnClear) {
+        _priceController.clear();
+        _qtyController.clear();
+        _amountController.clear();
+      }
       _errorText = null;
       _searchErrorText = null;
       _results = [];
@@ -2929,6 +2944,13 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     return '加仓$suffix';
   }
 
+  void _handleDeletePressed() {
+    final callback = widget.onDeletePressed;
+    if (callback == null) return;
+    callback();
+    _closeDialog();
+  }
+
   Widget _buildCashSelector({
     required List<Asset> cashOptions,
     required String targetCurrency,
@@ -3104,7 +3126,18 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                     letterSpacing: -0.01,
                   ),
                 ),
-                const SizedBox(width: 24, height: 24),
+                widget.onDeletePressed == null
+                    ? const SizedBox(width: 24, height: 24)
+                    : IconButton(
+                        onPressed: _saving ? null : _handleDeletePressed,
+                        tooltip: '删除这条识别结果',
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.delete_outline,
+                          size: 20,
+                          color: _tokens.red,
+                        ),
+                      ),
               ],
             ),
           ),

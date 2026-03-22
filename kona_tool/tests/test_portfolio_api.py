@@ -246,6 +246,13 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(kwargs.get("provider_type"), "zhipu")
         self.assertEqual(kwargs.get("model"), "glm-4.6v-flash")
 
+    def test_portfolio_ocr_prompt_forbids_guessing_missing_code(self):
+        prompt = portfolio_handlers.portfolio_ocr._build_ocr_prompt()
+
+        self.assertIn("只有在截图里明确看到了代码，才能填写 code", prompt)
+        self.assertIn("绝对不要根据资产名称、品牌名、常识、热门股票记忆、价格或市场去猜代码", prompt)
+        self.assertNotIn("如果代码能明显识别，尽量给出标准代码", prompt)
+
     def test_portfolio_modify_allows_negative_cost_price(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600002',
