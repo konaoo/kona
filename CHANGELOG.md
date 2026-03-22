@@ -1,8 +1,35 @@
+## 2026-03-22-01
+
+### 这版一句话
+
+投资支持多账本：每个账本独立管理持仓、交易和分析数据，总资产页汇总所有账本。
+
+### 主要变化
+- **数据库**：新增 `investment_ledgers` 和 `ledger_daily_snapshots` 表；`portfolio`、`transactions`、`portfolio_adjustment_ledger`、`portfolio_correction_logs` 加 `ledger_id` 列；portfolio 唯一约束改为 `(code, user_id, ledger_id)`。数据迁移自动为现有用户创建默认账本。
+- **后端 CRUD**：`GET/POST /api/portfolio/ledgers`、`PUT/DELETE /api/portfolio/ledgers/<id>`，非默认且无持仓才允许删除。
+- **后端持仓隔离**：`db_portfolio.py` 所有持仓/交易查询和写入方法加 `ledger_id` 过滤；不传时读侧返回全部，写侧用默认账本。
+- **后端分析隔离**：`db_analysis.py` 的 overview/calendar/rank 加 `ledger_id`，有值时查 `ledger_daily_snapshots`；快照任务 `snapshot.py` 同时保存全局和按账本快照。
+- **Flutter 状态管理**：`app_state.dart` 新增 `ledgers`、`currentLedgerId`、`switchLedger()`、`loadLedgers()`、`createLedger()`、`updateLedger()`、`deleteLedger()`；登录和恢复会话后自动加载账本；所有投资写操作默认透传 `currentLedgerId`。
+- **Flutter UI**：投资页顶部常驻账本切换栏 + “+” 新建按钮；长按账本可重命名/删除；分析页 API 调用传入 `currentLedgerId`。
+
+### 影响范围
+- 后端：db_schema、db_portfolio、db_snapshots、db_analysis、snapshot、portfolio_handlers、portfolio_routes、analysis_handlers、analysis_read_service、portfolio_read_service、app_factory
+- Flutter：api_config、api_service、app_state、app_investment_write_state、app_refresh_state、app_refresh_coordinator_state、invest_page、analysis_page
+- 测试：5 个 Flutter 测试文件更新 fake/stub 签名
+
+### 验收重点
+- 投资页顶部出现账本切换栏和 “+” 按钮
+- 创建新账本 → 切换过去 → 持仓为空
+- 在新账本买入资产 → 切回默认账本 → 原持仓不变
+- 删除空账本成功；删除有持仓的账本被拒绝
+- 分析页按当前账本展示数据
+- 不切换账本时所有功能与之前一致
+
 ## 2026-03-21-01
 
 ### 这版一句话
 
-统一分析页“当日总计盈亏”和收益日历口径，并封住自动快照反向污染历史日期的问题。
+统一分析页”当日总计盈亏”和收益日历口径，并封住自动快照反向污染历史日期的问题。
 
 ### 主要变化
 - **分析页当日口径统一**：后端 [kona_tool/core/analysis_read_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py) 的 `period=day` 现在在休市时仍然认实时统计层里的“最后一个有效收益日最终值”，不再退回“今天自然日快照”，避免顶部 `当日总计盈亏` 和收益日历互相打架。
