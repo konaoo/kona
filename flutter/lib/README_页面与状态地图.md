@@ -58,7 +58,10 @@ flutter/lib/
   - 首页 / 资产总览
 
 - [invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart)
-  - 投资页 / 持仓、卡片、交易弹窗
+  - 投资页 / 持仓、卡片、交易弹窗、账本选择器
+
+- [ledger_management_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/ledger_management_page.dart)
+  - 账本管理页 / 新增、重命名、删除、拖动排序
 
 - [analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)
   - 分析页 / 收益、排行、日历

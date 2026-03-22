@@ -136,8 +136,11 @@ class AppRefreshCoordinatorState {
     );
   }
 
-  Future<void> refreshHomeData() async {
-    await _refreshState.refreshHomeData(bindings: _bindings);
+  Future<void> refreshHomeData({int? ledgerId}) async {
+    await _refreshState.refreshHomeData(
+      bindings: _bindings,
+      ledgerId: ledgerId,
+    );
   }
 
   Future<void> refreshByVersion({
@@ -173,7 +176,10 @@ class AppRefreshCoordinatorState {
   }
 
   Future<void> refreshPortfolio({int? ledgerId}) async {
-    await _refreshState.refreshPortfolio(bindings: _bindings, ledgerId: ledgerId);
+    await _refreshState.refreshPortfolio(
+      bindings: _bindings,
+      ledgerId: ledgerId,
+    );
   }
 
   Future<void> loadExchangeRates() async {

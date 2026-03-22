@@ -462,6 +462,7 @@ def create_app_components(
             portfolio_transactions_handler=portfolio_payload_handlers["portfolio_transactions"],
             ledgers_list_handler=portfolio_payload_handlers["ledgers_list"],
             ledger_create_handler=portfolio_payload_handlers["ledger_create"],
+            ledger_reorder_handler=portfolio_payload_handlers["ledger_reorder"],
             ledger_update_handler=portfolio_payload_handlers["ledger_update"],
             ledger_delete_handler=portfolio_payload_handlers["ledger_delete"],
         )

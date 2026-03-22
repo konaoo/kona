@@ -23,6 +23,29 @@ import app as app_module  # noqa: E402
 import portfolio_handlers  # noqa: E402
 
 
+def _auth_headers(user_id: str, username: str) -> dict:
+    token = app_module.generate_token(user_id, username)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _seed_user(
+    user_id: str,
+    username: str,
+    password_hash: str = "scrypt$16384$8$1$U0FMVA==$SEFTSA==",
+) -> None:
+    conn = app_module.db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
+        VALUES (?, ?, ?, 0, 0, 'active')
+        """,
+        (user_id, username, password_hash),
+    )
+    conn.commit()
+    conn.close()
+
+
 class PortfolioApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -42,6 +65,8 @@ class PortfolioApiTests(unittest.TestCase):
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM portfolio_legacy_adjustment_states")
+        cursor.execute("DELETE FROM ledger_daily_snapshots")
+        cursor.execute("DELETE FROM investment_ledgers")
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
@@ -1051,6 +1076,171 @@ class PortfolioApiTests(unittest.TestCase):
         remaining = int(cursor.fetchone()['cnt'])
         conn.close()
         self.assertEqual(remaining, 0)
+
+    def test_portfolio_ledger_isolation_keeps_adjustments_separate(self):
+        default_ledger_id = app_module.db.get_default_ledger_id('')
+        second_ledger = app_module.db.create_ledger('', '第二账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        asset_payload = {
+            'code': 'sh600031',
+            'name': '账本隔离测试',
+            'qty': 10.0,
+            'price': 10.0,
+            'curr': 'CNY',
+            'asset_type': 'a',
+            'adjustment': 0.0,
+        }
+        self.assertTrue(app_module.db.add_asset(dict(asset_payload), user_id='', ledger_id=default_ledger_id))
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    **asset_payload,
+                    'qty': 8.0,
+                    'price': 12.0,
+                },
+                user_id='',
+                ledger_id=second_ledger_id,
+            )
+        )
+
+        dividend_detail = app_module.db.add_portfolio_adjustment_event(
+            code='sh600031',
+            event_type='dividend',
+            amount=5.0,
+            user_id='',
+            return_detail=True,
+            ledger_id=default_ledger_id,
+        )
+        self.assertTrue(dividend_detail.get('ok'))
+
+        sell_detail = app_module.db.sell_asset(
+            code='sh600031',
+            price=15.0,
+            qty=2.0,
+            user_id='',
+            return_detail=True,
+            ledger_id=second_ledger_id,
+        )
+        self.assertTrue(sell_detail.get('ok'))
+
+        default_items = app_module.db.get_portfolio(user_id='', ledger_id=default_ledger_id)
+        second_items = app_module.db.get_portfolio(user_id='', ledger_id=second_ledger_id)
+        self.assertEqual(len(default_items), 1)
+        self.assertEqual(len(second_items), 1)
+
+        self.assertAlmostEqual(float(default_items[0].get('ledger_adjustment') or 0.0), 5.0, places=6)
+        self.assertAlmostEqual(float(default_items[0].get('realized_pnl_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(default_items[0].get('adjustment_total') or 0.0), 5.0, places=6)
+
+        self.assertAlmostEqual(float(second_items[0].get('ledger_adjustment') or 0.0), 0.0, places=6)
+        self.assertAlmostEqual(float(second_items[0].get('realized_pnl_adjustment') or 0.0), 6.0, places=6)
+        self.assertAlmostEqual(float(second_items[0].get('adjustment_total') or 0.0), 6.0, places=6)
+
+    def test_delete_corrective_removes_target_ledger_snapshots_only(self):
+        default_ledger_id = app_module.db.get_default_ledger_id('')
+        second_ledger = app_module.db.create_ledger('', '保留账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'sh600099',
+                    'name': '纠错删账本快照',
+                    'qty': 10.0,
+                    'price': 10.0,
+                    'curr': 'CNY',
+                    'asset_type': 'a',
+                    'adjustment': 0.0,
+                },
+                user_id='',
+                ledger_id=default_ledger_id,
+            )
+        )
+
+        d1 = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        d2 = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
+        self.assertTrue(
+            app_module.db.save_ledger_daily_snapshot(user_id='', ledger_id=default_ledger_id, date_str=d1, total_cost=100.0)
+        )
+        self.assertTrue(
+            app_module.db.save_ledger_daily_snapshot(user_id='', ledger_id=default_ledger_id, date_str=d2, total_cost=100.0)
+        )
+        self.assertTrue(
+            app_module.db.save_ledger_daily_snapshot(user_id='', ledger_id=second_ledger_id, date_str=d1, total_cost=200.0)
+        )
+        self.assertTrue(
+            app_module.db.save_ledger_daily_snapshot(user_id='', ledger_id=second_ledger_id, date_str=d2, total_cost=200.0)
+        )
+
+        delete_resp = self.client.post('/api/portfolio/delete_corrective', json={
+            'code': 'sh600099',
+            'ledger_id': default_ledger_id,
+            'request_id': 'req-corrective-ledger-1',
+        })
+        self.assertEqual(delete_resp.status_code, 200)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(1) AS cnt FROM ledger_daily_snapshots WHERE ledger_id = ? AND date IN (?, ?)",
+            (default_ledger_id, d1, d2),
+        )
+        removed_count = int(cursor.fetchone()['cnt'])
+        cursor.execute(
+            "SELECT COUNT(1) AS cnt FROM ledger_daily_snapshots WHERE ledger_id = ? AND date IN (?, ?)",
+            (second_ledger_id, d1, d2),
+        )
+        kept_count = int(cursor.fetchone()['cnt'])
+        conn.close()
+
+        self.assertEqual(removed_count, 0)
+        self.assertEqual(kept_count, 2)
+
+    def test_portfolio_rejects_invalid_ledger_id_query(self):
+        resp = self.client.get('/api/portfolio?ledger_id=bad-ledger')
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'INVALID_LEDGER_ID')
+
+    def test_ledger_reorder_updates_sort_order(self):
+        user_id = 'u_ledger_reorder'
+        username = 'ledger_reorder_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        default_ledger_id = app_module.db.get_default_ledger_id(user_id)
+        second_ledger = app_module.db.create_ledger(user_id, '第二账本')
+        third_ledger = app_module.db.create_ledger(user_id, '第三账本')
+
+        resp = self.client.put('/api/portfolio/ledgers/reorder', json={
+            'ledger_ids': [third_ledger['ledger_id'], default_ledger_id, second_ledger['ledger_id']],
+        }, headers=headers)
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get('ok'))
+
+        ledgers = app_module.db.get_ledgers(user_id)
+        self.assertEqual(
+            [ledger['id'] for ledger in ledgers],
+            [third_ledger['ledger_id'], default_ledger_id, second_ledger['ledger_id']],
+        )
+
+    def test_ledger_reorder_rejects_unknown_ledger(self):
+        user_id = 'u_ledger_reorder'
+        username = 'ledger_reorder_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        default_ledger_id = app_module.db.get_default_ledger_id(user_id)
+        app_module.db.create_ledger(user_id, '第二账本')
+
+        resp = self.client.put('/api/portfolio/ledgers/reorder', json={
+            'ledger_ids': [default_ledger_id, 999999],
+        }, headers=headers)
+
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'INVALID_LEDGER_IDS')
 
     def test_sell_all_keeps_realized_pnl_in_cumulative_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={

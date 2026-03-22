@@ -284,7 +284,7 @@ class AppState extends ChangeNotifier {
     if (_currentLedgerId == ledgerId) return;
     _currentLedgerId = ledgerId;
     notifyListeners();
-    unawaited(refreshPortfolio(ledgerId: ledgerId));
+    unawaited(refreshHomeData(ledgerId: ledgerId));
   }
 
   /// 加载账本列表
@@ -293,12 +293,20 @@ class AppState extends ChangeNotifier {
     try {
       final data = await _api.getLedgers();
       _ledgers = data.cast<Map<String, dynamic>>();
-      if (_ledgers.isNotEmpty && _currentLedgerId == null) {
-        final defaultLedger = _ledgers.firstWhere(
-          (l) => l['is_default'] == 1 || l['is_default'] == true,
-          orElse: () => _ledgers.first,
+      if (_ledgers.isEmpty) {
+        _currentLedgerId = null;
+      } else {
+        final currentStillExists = _ledgers.any(
+          (ledger) => ledger['id'] == _currentLedgerId,
         );
-        _currentLedgerId = defaultLedger['id'] as int?;
+        if (!currentStillExists) {
+          final defaultLedger = _ledgers.firstWhere(
+            (ledger) =>
+                ledger['is_default'] == 1 || ledger['is_default'] == true,
+            orElse: () => _ledgers.first,
+          );
+          _currentLedgerId = defaultLedger['id'] as int?;
+        }
       }
       notifyListeners();
     } catch (e) {
@@ -307,14 +315,21 @@ class AppState extends ChangeNotifier {
   }
 
   /// 创建账本
-  Future<AssetActionResult> createLedger(String name, {String description = ''}) async {
+  Future<AssetActionResult> createLedger(
+    String name, {
+    String description = '',
+  }) async {
     final result = await _api.createLedger(name, description: description);
     if (result.ok) await loadLedgers();
     return result;
   }
 
   /// 更新账本
-  Future<AssetActionResult> updateLedger(int id, String name, {String description = ''}) async {
+  Future<AssetActionResult> updateLedger(
+    int id,
+    String name, {
+    String description = '',
+  }) async {
     final result = await _api.updateLedger(id, name, description: description);
     if (result.ok) await loadLedgers();
     return result;
@@ -322,16 +337,26 @@ class AppState extends ChangeNotifier {
 
   /// 删除账本
   Future<AssetActionResult> deleteLedger(int id) async {
+    final removedCurrent = _currentLedgerId == id;
     final result = await _api.deleteLedger(id);
     if (result.ok) {
-      if (_currentLedgerId == id) {
-        _currentLedgerId = _ledgers
-            .firstWhere((l) => l['is_default'] == 1 || l['is_default'] == true, orElse: () => _ledgers.first)['id'] as int?;
+      await loadLedgers();
+      if (removedCurrent) {
+        await refreshHomeData();
       }
+    }
+    return result;
+  }
+
+  /// 更新账本排序
+  Future<AssetActionResult> reorderLedgers(List<int> ledgerIds) async {
+    final result = await _api.reorderLedgers(ledgerIds);
+    if (result.ok) {
       await loadLedgers();
     }
     return result;
   }
+
   AppAsyncFlowResult? get lastHydrateResult =>
       _refreshCoordinatorState.lastHydrateResult;
   AppAsyncFlowResult? get lastRefreshResult =>
@@ -759,8 +784,10 @@ class AppState extends ChangeNotifier {
 
   /// 刷新首页数据（全量）
   /// 刷新首页数据
-  Future<void> refreshHomeData() async {
-    await _refreshCoordinatorState.refreshHomeData();
+  Future<void> refreshHomeData({int? ledgerId}) async {
+    await _refreshCoordinatorState.refreshHomeData(
+      ledgerId: ledgerId ?? _currentLedgerId,
+    );
   }
 
   /// 按版本增量刷新，失败时自动回退全量刷新。
@@ -880,8 +907,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// 获取投资持仓交易记录
-  Future<List<dynamic>> getInvestmentTransactions(String code, {int? ledgerId}) {
-    return _api.getPortfolioTransactions(code, ledgerId: ledgerId ?? _currentLedgerId);
+  Future<List<dynamic>> getInvestmentTransactions(
+    String code, {
+    int? ledgerId,
+  }) {
+    return _api.getPortfolioTransactions(
+      code,
+      ledgerId: ledgerId ?? _currentLedgerId,
+    );
   }
 
   // ============================================================
@@ -902,7 +935,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// 上传截图，解析“添加资产”候选结果
-  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(String filePath) async {
+  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(
+    String filePath,
+  ) async {
     return _api.parsePortfolioAssetScreenshot(filePath);
   }
 
@@ -1093,7 +1128,9 @@ class AppState extends ChangeNotifier {
 
   /// 刷新投资组合
   Future<void> refreshPortfolio({int? ledgerId}) async {
-    await _refreshCoordinatorState.refreshPortfolio(ledgerId: ledgerId ?? _currentLedgerId);
+    await _refreshCoordinatorState.refreshPortfolio(
+      ledgerId: ledgerId ?? _currentLedgerId,
+    );
   }
 
   /// 加载汇率

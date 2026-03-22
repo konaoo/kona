@@ -46,10 +46,7 @@ class ApiService {
   }
 
   /// 同步整组认证 token，避免续签时反复读取安全存储。
-  void setAuthTokens({
-    String? accessToken,
-    String? refreshToken,
-  }) {
+  void setAuthTokens({String? accessToken, String? refreshToken}) {
     _token = accessToken;
     _refreshToken = refreshToken;
   }
@@ -456,7 +453,10 @@ class ApiService {
           }
           throw _buildAuthFailureException();
         } else {
-          throw ApiException(_extractErrorMessage(response), statusCode: response.statusCode);
+          throw ApiException(
+            _extractErrorMessage(response),
+            statusCode: response.statusCode,
+          );
         }
       } catch (e) {
         if (e is ApiException) rethrow;
@@ -471,10 +471,7 @@ class ApiService {
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
         final response = await _client
-            .delete(
-              buildApiUri(endpoint),
-              headers: _buildHeaders(),
-            )
+            .delete(buildApiUri(endpoint), headers: _buildHeaders())
             .timeout(const Duration(seconds: ApiConfig.timeout));
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
@@ -486,7 +483,10 @@ class ApiService {
           }
           throw _buildAuthFailureException();
         } else {
-          throw ApiException(_extractErrorMessage(response), statusCode: response.statusCode);
+          throw ApiException(
+            _extractErrorMessage(response),
+            statusCode: response.statusCode,
+          );
         }
       } catch (e) {
         if (e is ApiException) rethrow;
@@ -532,20 +532,19 @@ class ApiService {
     var retriedAfterRefresh = false;
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
-        final request = http.MultipartRequest(
-          'POST',
-          buildApiUri(endpoint),
-        );
+        final request = http.MultipartRequest('POST', buildApiUri(endpoint));
         final headers = _buildHeaders(requestId: requestId);
         headers.remove('Content-Type');
         request.headers.addAll(headers);
         if (fields != null && fields.isNotEmpty) {
           request.fields.addAll(fields);
         }
-        request.files.add(await http.MultipartFile.fromPath(fileField, filePath));
-        final streamed = await _client.send(request).timeout(
-          const Duration(seconds: ApiConfig.timeout),
+        request.files.add(
+          await http.MultipartFile.fromPath(fileField, filePath),
         );
+        final streamed = await _client
+            .send(request)
+            .timeout(const Duration(seconds: ApiConfig.timeout));
         final response = await http.Response.fromStream(streamed);
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
@@ -633,7 +632,8 @@ class ApiService {
     final data = _toMap(response);
     if (data.isEmpty) return const AssetActionResult.success();
     final status = data['status']?.toString().trim();
-    if (status == 'ok') return AssetActionResult(ok: true, data: data);
+    final ok = data['ok'] == true;
+    if (status == 'ok' || ok) return AssetActionResult(ok: true, data: data);
     final message = resolveApiErrorText(
       code: data['code']?.toString(),
       message: data['error']?.toString(),
@@ -851,7 +851,10 @@ class ApiService {
   }
 
   /// 创建账本
-  Future<AssetActionResult> createLedger(String name, {String description = ''}) async {
+  Future<AssetActionResult> createLedger(
+    String name, {
+    String description = '',
+  }) async {
     try {
       final response = await _post(ApiConfig.portfolioLedgers, {
         'name': name,
@@ -864,7 +867,11 @@ class ApiService {
   }
 
   /// 更新账本
-  Future<AssetActionResult> updateLedger(int id, String name, {String description = ''}) async {
+  Future<AssetActionResult> updateLedger(
+    int id,
+    String name, {
+    String description = '',
+  }) async {
     try {
       final response = await _put('${ApiConfig.portfolioLedgers}/$id', {
         'name': name,
@@ -886,6 +893,18 @@ class ApiService {
     }
   }
 
+  /// 重排账本顺序
+  Future<AssetActionResult> reorderLedgers(List<int> ledgerIds) async {
+    try {
+      final response = await _put(ApiConfig.portfolioLedgersReorder, {
+        'ledger_ids': ledgerIds,
+      });
+      return _okResultOrFailure(response);
+    } catch (e) {
+      return _failureResult(e);
+    }
+  }
+
   /// 搜索股票/基金
   Future<List<dynamic>> searchStocks(String query) async {
     if (query.isEmpty) return [];
@@ -897,7 +916,9 @@ class ApiService {
   }
 
   /// 上传截图，解析添加资产候选结果
-  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(String filePath) async {
+  Future<Map<String, dynamic>> parsePortfolioAssetScreenshot(
+    String filePath,
+  ) async {
     final response = await _postMultipart(
       ApiConfig.portfolioOcrParseAsset,
       fileField: 'file',
@@ -1316,11 +1337,15 @@ class ApiService {
     required String note,
   }) async {
     try {
-      final data = await _post(
-        '/api/assets/$assetType/$assetId/adjustments',
-        {'name': name, 'mode': mode, 'delta': delta, 'note': note},
-      );
-      final map = (data is Map) ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final data = await _post('/api/assets/$assetType/$assetId/adjustments', {
+        'name': name,
+        'mode': mode,
+        'delta': delta,
+        'note': note,
+      });
+      final map = (data is Map)
+          ? Map<String, dynamic>.from(data)
+          : <String, dynamic>{};
       return AssetActionResult.success(data: map);
     } catch (e) {
       return _failureResult(e);
@@ -1340,10 +1365,16 @@ class ApiService {
   }
 
   /// 获取投资持仓交易记录
-  Future<List<dynamic>> getPortfolioTransactions(String code, {int? ledgerId}) async {
+  Future<List<dynamic>> getPortfolioTransactions(
+    String code, {
+    int? ledgerId,
+  }) async {
     final params = <String, String>{'code': code};
     if (ledgerId != null) params['ledger_id'] = ledgerId.toString();
-    final endpoint = Uri(path: ApiConfig.portfolioTransactions, queryParameters: params).toString();
+    final endpoint = Uri(
+      path: ApiConfig.portfolioTransactions,
+      queryParameters: params,
+    ).toString();
     final data = await _get(endpoint);
     if (data is Map && data['records'] is List) {
       return data['records'] as List<dynamic>;
@@ -1391,10 +1422,7 @@ class ApiService {
   }) async {
     final query = StringBuffer('type=$rankType&market=$market');
     if (ledgerId != null) query.write('&ledger_id=$ledgerId');
-    return await _get(
-          '${ApiConfig.analysisRank}?$query',
-        ) ??
-        {};
+    return await _get('${ApiConfig.analysisRank}?$query') ?? {};
   }
 
   // ============================================================

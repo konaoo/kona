@@ -543,48 +543,44 @@ class DatabaseSchemaManager:
             cursor.execute(f"PRAGMA table_info({table})")
             return column in [row[1] for row in cursor.fetchall()]
 
-        # 已迁移过则跳过
-        if _has_column("portfolio", "ledger_id"):
-            return
-
-        # 1. 为每个现有用户创建默认账本
-        cursor.execute(
-            "SELECT DISTINCT user_id FROM portfolio WHERE COALESCE(user_id, '') != ''"
-        )
-        user_ids = [row[0] for row in cursor.fetchall()]
-        for uid in user_ids:
+        if not _has_column("portfolio", "ledger_id"):
+            # 1. 为每个现有用户创建默认账本
             cursor.execute(
-                """
-                INSERT OR IGNORE INTO investment_ledgers (user_id, name, is_default, sort_order)
-                VALUES (?, '默认账本', 1, 0)
-                """,
-                (uid,),
+                "SELECT DISTINCT user_id FROM portfolio WHERE COALESCE(user_id, '') != ''"
             )
+            user_ids = [row[0] for row in cursor.fetchall()]
+            for uid in user_ids:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO investment_ledgers (user_id, name, is_default, sort_order)
+                    VALUES (?, '默认账本', 1, 0)
+                    """,
+                    (uid,),
+                )
 
-        # 2. 为四张表添加 ledger_id 列
-        for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
-            cursor.execute(
-                f"ALTER TABLE {table} ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 0"
-            )
+            # 2. 为四张表添加 ledger_id 列
+            for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
+                cursor.execute(
+                    f"ALTER TABLE {table} ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 0"
+                )
 
-        # 3. 将现有数据的 ledger_id 更新为对应用户的默认账本 ID
-        for uid in user_ids:
-            cursor.execute(
-                "SELECT id FROM investment_ledgers WHERE user_id = ? AND is_default = 1",
-                (uid,),
-            )
-            row = cursor.fetchone()
-            if row:
-                ledger_id = row[0]
-                for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
-                    user_col_condition = "user_id = ?" if table != "transactions" else "user_id = ?"
-                    cursor.execute(
-                        f"UPDATE {table} SET ledger_id = ? WHERE {user_col_condition}",
-                        (ledger_id, uid),
-                    )
+            # 3. 将现有数据的 ledger_id 更新为对应用户的默认账本 ID
+            for uid in user_ids:
+                cursor.execute(
+                    "SELECT id FROM investment_ledgers WHERE user_id = ? AND is_default = 1",
+                    (uid,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    ledger_id = row[0]
+                    for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
+                        user_col_condition = "user_id = ?" if table != "transactions" else "user_id = ?"
+                        cursor.execute(
+                            f"UPDATE {table} SET ledger_id = ? WHERE {user_col_condition}",
+                            (ledger_id, uid),
+                        )
 
-        # 4. 重建 portfolio 唯一约束为 (code, user_id, ledger_id)
-        #    SQLite 不支持 ALTER TABLE 改约束，需要重建表
+        # 4. 无论是不是老库，都要确保旧唯一索引不会被重新建回来
         cursor.execute("DROP INDEX IF EXISTS idx_portfolio_code_user_unique")
         cursor.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_code_user_ledger_unique"

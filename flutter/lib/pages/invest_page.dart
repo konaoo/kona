@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +9,7 @@ import '../models/portfolio.dart';
 import '../providers/app_state.dart';
 import '../services/portfolio_metrics_service.dart';
 import 'investment_detail_page.dart';
+import 'ledger_management_page.dart';
 import '../widgets/fab_scroll_visibility_controller.dart';
 
 // ══════════════════════════════════════════════════
@@ -106,14 +109,18 @@ class _S {
     fontSize: 12.5,
     fontWeight: FontWeight.w600,
   );
-  // Ledger switcher
-  static final ledgerChip = GoogleFonts.dmSans(
+  // Ledger selector
+  static final ledgerTrigger = GoogleFonts.dmSans(
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
+  );
+  static final ledgerMenuName = GoogleFonts.dmSans(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+  );
+  static final ledgerMenuMeta = GoogleFonts.dmSans(
     fontSize: 12,
     fontWeight: FontWeight.w500,
-  );
-  static final ledgerChipActive = GoogleFonts.dmSans(
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
   );
 }
 
@@ -145,11 +152,23 @@ class InvestPage extends StatefulWidget {
 class InvestPageState extends State<InvestPage> {
   final FabScrollVisibilityController _fabVisibilityController =
       FabScrollVisibilityController();
+  final LayerLink _ledgerLink = LayerLink();
+  final GlobalKey _ledgerButtonKey = GlobalKey();
   bool _refreshInFlight = false;
+  bool _ledgerDropdownOpen = false;
+  OverlayEntry? _ledgerDropdownEntry;
+  String? _lastAvatarString;
+  MemoryImage? _cachedAvatarImage;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    _hideLedgerDropdown(updateState: false);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -168,6 +187,9 @@ class InvestPageState extends State<InvestPage> {
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
+    if (_ledgerDropdownOpen) {
+      _hideLedgerDropdown();
+    }
     final callback = widget.onFabVisibilityChanged;
     if (callback == null) return false;
     if (notification.depth != 0) return false;
@@ -351,189 +373,425 @@ class InvestPageState extends State<InvestPage> {
     );
   }
 
-  // ─── Ledger Switcher ─────────────────────────────
-  Widget _buildLedgerSwitcher(AppState appState) {
+  // ─── Ledger Selector ─────────────────────────────
+  void _toggleLedgerDropdown(AppState appState) {
+    if (_ledgerDropdownOpen) {
+      _hideLedgerDropdown();
+      return;
+    }
+    _showLedgerDropdown(appState);
+  }
+
+  void _showLedgerDropdown(AppState appState) {
+    if (_ledgerDropdownEntry != null) return;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _ledgerDropdownEntry = OverlayEntry(
+      builder: (_) {
+        final triggerSize = _targetSize(_ledgerButtonKey);
+        final width = (triggerSize.width + 74).clamp(164.0, 240.0);
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _hideLedgerDropdown,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _ledgerLink,
+              showWhenUnlinked: false,
+              offset: Offset(0, triggerSize.height + 8),
+              child: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  width: width,
+                  child: _buildLedgerDropdownCard(appState),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    overlay.insert(_ledgerDropdownEntry!);
+    setState(() => _ledgerDropdownOpen = true);
+  }
+
+  void _hideLedgerDropdown({bool updateState = true}) {
+    _ledgerDropdownEntry?.remove();
+    _ledgerDropdownEntry = null;
+    if (!mounted) return;
+    if (updateState) {
+      setState(() => _ledgerDropdownOpen = false);
+    }
+  }
+
+  Size _targetSize(GlobalKey key) {
+    final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+    return renderBox?.size ?? Size.zero;
+  }
+
+  Widget _buildLedgerDropdownCard(AppState appState) {
     final ledgers = appState.ledgers;
     final currentId = appState.currentLedgerId;
-    return SizedBox(
-      height: 34,
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: ledgers.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final ledger = ledgers[index];
-                final id = ledger['id'] as int?;
-                final name = (ledger['name'] as String?) ?? '账本';
-                final isActive = id == currentId;
-                return GestureDetector(
-                  onTap: () => appState.switchLedger(id),
-                  onLongPress: () => _showLedgerActions(appState, ledger),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? AppTheme.accent.withValues(alpha: 0.15)
-                          : (AppTheme.isLight
-                              ? const Color(0x08222C40)
-                              : const Color(0x14FFFFFF)),
-                      borderRadius: BorderRadius.circular(16),
-                      border: isActive
-                          ? Border.all(color: AppTheme.accent, width: 1.2)
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      name,
-                      style: (isActive
-                              ? _S.ledgerChipActive
-                              : _S.ledgerChip)
-                          .copyWith(
-                        color:
-                            isActive ? AppTheme.accent : AppTheme.textMuted,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        final opacity = value.clamp(0.0, 1.0).toDouble();
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - opacity) * -4),
+            child: child,
           ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: () => _showCreateLedgerDialog(appState),
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: AppTheme.isLight
-                    ? const Color(0x0A222C40)
-                    : const Color(0x14FFFFFF),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(Icons.add, size: 16, color: AppTheme.textMuted),
-            ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppTheme.isLight
+                ? AppTheme.gold.withValues(alpha: 0.14)
+                : AppTheme.gold.withValues(alpha: 0.36),
           ),
-        ],
-      ),
-    );
-  }
-
-  void _showCreateLedgerDialog(AppState appState) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建账本'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '账本名称'),
+          color: AppTheme.isLight
+              ? const Color(0xFFF9FAFF)
+              : const Color(0xFA14171F),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.isLight
+                  ? const Color(0x14222C48)
+                  : Colors.black.withValues(alpha: 0.48),
+              blurRadius: AppTheme.isLight ? 22 : 28,
+              offset: AppTheme.isLight
+                  ? const Offset(0, 10)
+                  : const Offset(0, 16),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final name = controller.text.trim();
-              if (name.isEmpty) return;
-              Navigator.pop(ctx);
-              final result = await appState.createLedger(name);
-              if (!mounted) return;
-              if (!result.ok) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(result.message ?? '创建失败')),
-                );
-              }
-            },
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLedgerActions(AppState appState, Map<String, dynamic> ledger) {
-    final id = ledger['id'] as int?;
-    final name = (ledger['name'] as String?) ?? '';
-    final isDefault = ledger['is_default'] == 1 || ledger['is_default'] == true;
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('重命名'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showRenameLedgerDialog(appState, id!, name);
-              },
-            ),
-            if (!isDefault)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title:
-                    const Text('删除', style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final result = await appState.deleteLedger(id!);
-                  if (!mounted) return;
-                  if (!result.ok) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(result.message ?? '删除失败，账本下可能还有持仓')),
-                    );
-                  }
-                },
+            for (final entry in ledgers.asMap().entries)
+              _buildLedgerMenuItem(
+                appState: appState,
+                ledger: entry.value,
+                isFirst: entry.key == 0,
+                isLast: false,
+                isActive: entry.value['id'] == currentId,
               ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              height: 1,
+              color: AppTheme.isLight
+                  ? const Color(0x0D222C40)
+                  : Colors.white.withValues(alpha: 0.06),
+            ),
+            _buildManageLedgerItem(),
           ],
         ),
       ),
     );
   }
 
-  void _showRenameLedgerDialog(AppState appState, int id, String currentName) {
-    final controller = TextEditingController(text: currentName);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重命名账本'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '账本名称'),
+  Widget _buildLedgerMenuItem({
+    required AppState appState,
+    required Map<String, dynamic> ledger,
+    required bool isFirst,
+    required bool isLast,
+    required bool isActive,
+  }) {
+    final title = (ledger['name'] as String?) ?? '账本';
+    final isDefault = ledger['is_default'] == true || ledger['is_default'] == 1;
+    final activeColor = AppTheme.isLight
+        ? const Color(0xFFBC9552)
+        : const Color(0xFFCDB47C);
+    return InkWell(
+      onTap: () {
+        _hideLedgerDropdown();
+        final ledgerId = ledger['id'] as int?;
+        if (ledgerId != null) {
+          appState.switchLedger(ledgerId);
+        }
+      },
+      borderRadius: BorderRadius.vertical(
+        top: isFirst ? const Radius.circular(14) : Radius.zero,
+        bottom: isLast ? const Radius.circular(14) : Radius.zero,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive
+              ? activeColor.withValues(alpha: AppTheme.isLight ? 0.08 : 0.14)
+              : Colors.transparent,
+          borderRadius: BorderRadius.vertical(
+            top: isFirst ? const Radius.circular(14) : Radius.zero,
+            bottom: isLast ? const Radius.circular(14) : Radius.zero,
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final name = controller.text.trim();
-              if (name.isEmpty || name == currentName) {
-                Navigator.pop(ctx);
-                return;
-              }
-              Navigator.pop(ctx);
-              final result = await appState.updateLedger(id, name);
-              if (!mounted) return;
-              if (!result.ok) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(result.message ?? '重命名失败')),
-                );
-              }
-            },
-            child: const Text('确定'),
-          ),
-        ],
+        child: Row(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _S.ledgerMenuName.copyWith(
+                        color: isActive ? activeColor : AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (isDefault) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: activeColor.withValues(
+                            alpha: AppTheme.isLight ? 0.26 : 0.4,
+                          ),
+                        ),
+                        color: activeColor.withValues(
+                          alpha: AppTheme.isLight ? 0.06 : 0.1,
+                        ),
+                      ),
+                      child: Text(
+                        '默认',
+                        style: _S.ledgerMenuMeta.copyWith(color: activeColor),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (isActive)
+              Icon(Icons.check_rounded, size: 18, color: activeColor),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManageLedgerItem() {
+    return InkWell(
+      onTap: () async {
+        _hideLedgerDropdown();
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const LedgerManagementPage()));
+      },
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.tune_rounded, size: 18, color: AppTheme.textMuted),
+            const SizedBox(width: 10),
+            Text(
+              '管理账本',
+              style: _S.ledgerMenuName.copyWith(color: AppTheme.textPrimary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLedgerAvatar(AppState appState) {
+    final currentAvatarString = appState.avatar;
+    if (currentAvatarString != _lastAvatarString) {
+      _lastAvatarString = currentAvatarString;
+      if (currentAvatarString != null && currentAvatarString.isNotEmpty) {
+        try {
+          _cachedAvatarImage = MemoryImage(base64Decode(currentAvatarString));
+        } catch (_) {
+          _cachedAvatarImage = null;
+        }
+      } else {
+        _cachedAvatarImage = null;
+      }
+    }
+
+    final hasAvatar = _cachedAvatarImage != null;
+    final fallback =
+        (appState.username?.isNotEmpty == true
+                ? appState.username!.substring(0, 1)
+                : 'U')
+            .toUpperCase();
+
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: AppTheme.isLight
+              ? const Color(0x335B8DEF)
+              : Colors.white.withValues(alpha: 0.16),
+        ),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
+        ),
+        image: hasAvatar
+            ? DecorationImage(image: _cachedAvatarImage!, fit: BoxFit.cover)
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: hasAvatar
+          ? null
+          : Text(
+              fallback,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+    );
+  }
+
+  Widget _buildLedgerSelector(AppState appState) {
+    final ledgers = appState.ledgers;
+    final currentId = appState.currentLedgerId;
+    Map<String, dynamic>? currentLedger;
+    for (final ledger in ledgers) {
+      if (ledger['id'] == currentId) {
+        currentLedger = ledger;
+        break;
+      }
+    }
+    currentLedger ??= ledgers.isNotEmpty
+        ? Map<String, dynamic>.from(ledgers.first)
+        : null;
+    final currentName = (currentLedger?['name'] as String?) ?? '默认账本';
+    final isDefaultLedger =
+        currentLedger?['is_default'] == true ||
+        currentLedger?['is_default'] == 1;
+    final triggerColor = AppTheme.isLight
+        ? const Color(0xFFBC9552)
+        : const Color(0xFFCDB47C);
+    final titleColor = AppTheme.isLight
+        ? const Color(0xFF1E2430)
+        : triggerColor;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CompositedTransformTarget(
+              link: _ledgerLink,
+              child: Container(
+                key: _ledgerButtonKey,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppTheme.isLight
+                        ? AppTheme.gold.withValues(
+                            alpha: _ledgerDropdownOpen ? 0.22 : 0.12,
+                          )
+                        : AppTheme.gold.withValues(
+                            alpha: _ledgerDropdownOpen ? 0.42 : 0.26,
+                          ),
+                  ),
+                  color: AppTheme.isLight
+                      ? AppTheme.gold.withValues(
+                          alpha: _ledgerDropdownOpen ? 0.06 : 0.01,
+                        )
+                      : AppTheme.gold.withValues(
+                          alpha: _ledgerDropdownOpen ? 0.12 : 0.05,
+                        ),
+                ),
+                child: InkWell(
+                  onTap: () => _toggleLedgerDropdown(appState),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 10, 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildLedgerAvatar(appState),
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 120),
+                          child: Text(
+                            currentName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _S.ledgerTrigger.copyWith(
+                              color: titleColor,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.01,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        AnimatedRotation(
+                          turns: _ledgerDropdownOpen ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 180),
+                          child: Icon(
+                            Icons.expand_more_rounded,
+                            size: 15,
+                            color: triggerColor.withValues(
+                              alpha: AppTheme.isLight ? 0.78 : 0.9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (isDefaultLedger) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 2.5,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: triggerColor.withValues(
+                      alpha: AppTheme.isLight ? 0.16 : 0.3,
+                    ),
+                  ),
+                  color: AppTheme.isLight
+                      ? const Color(0xFFF8F1E5)
+                      : triggerColor.withValues(alpha: 0.08),
+                ),
+                child: Text(
+                  '默认账本',
+                  style: _S.ledgerMenuMeta.copyWith(
+                    fontSize: 10,
+                    color: triggerColor.withValues(
+                      alpha: AppTheme.isLight ? 0.88 : 1,
+                    ),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -561,7 +819,8 @@ class InvestPageState extends State<InvestPage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 10),
-                    _buildLedgerSwitcher(appState),
+                    _buildLedgerSelector(appState),
+                    const SizedBox(height: 12),
                     _buildHeroCard(appState),
                     const SizedBox(height: 12),
                     _buildCategoryTabs(appState),
@@ -1134,9 +1393,7 @@ class InvestPageState extends State<InvestPage> {
       onTap: () async {
         final appState = context.read<AppState>();
         await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => InvestmentDetailPage(item: item),
-          ),
+          MaterialPageRoute(builder: (_) => InvestmentDetailPage(item: item)),
         );
         appState.refreshPortfolio();
       },

@@ -290,6 +290,7 @@ class PortfolioDatabaseMixin:
         cursor,
         codes: List[str],
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, float]:
         """按 code 批量汇总分红/手续费/税金流水金额。"""
         clean_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
@@ -299,25 +300,27 @@ class PortfolioDatabaseMixin:
         placeholders = ",".join("?" for _ in clean_codes)
         event_types = ("dividend", "fee", "tax")
         type_placeholders = ",".join("?" for _ in event_types)
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
         if user_id:
             cursor.execute(
                 f"""
                 SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
                 FROM portfolio_adjustment_ledger
-                WHERE user_id = ? AND event_type IN ({type_placeholders}) AND code IN ({placeholders})
+                WHERE user_id = ? AND event_type IN ({type_placeholders}) AND code IN ({placeholders}){ledger_condition}
                 GROUP BY code
                 """,
-                (user_id, *event_types, *clean_codes),
+                (user_id, *event_types, *clean_codes) + ledger_param,
             )
         else:
             cursor.execute(
                 f"""
                 SELECT code, COALESCE(SUM(amount), 0.0) AS total_amount
                 FROM portfolio_adjustment_ledger
-                WHERE (user_id IS NULL OR user_id = '') AND event_type IN ({type_placeholders}) AND code IN ({placeholders})
+                WHERE (user_id IS NULL OR user_id = '') AND event_type IN ({type_placeholders}) AND code IN ({placeholders}){ledger_condition}
                 GROUP BY code
                 """,
-                (*event_types, *clean_codes),
+                (*event_types, *clean_codes) + ledger_param,
             )
         return {
             str(row["code"]): float(row["total_amount"] or 0.0)
@@ -329,6 +332,7 @@ class PortfolioDatabaseMixin:
         cursor,
         codes: List[str],
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, float]:
         """按 code 批量汇总减仓已实现盈亏。"""
         clean_codes = [str(code or "").strip() for code in codes if str(code or "").strip()]
@@ -336,25 +340,27 @@ class PortfolioDatabaseMixin:
             return {}
 
         placeholders = ",".join("?" for _ in clean_codes)
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
         if user_id:
             cursor.execute(
                 f"""
                 SELECT code, COALESCE(SUM(pnl), 0.0) AS total_pnl
                 FROM transactions
-                WHERE user_id = ? AND type = '减仓' AND code IN ({placeholders})
+                WHERE user_id = ? AND type = '减仓' AND code IN ({placeholders}){ledger_condition}
                 GROUP BY code
                 """,
-                (user_id, *clean_codes),
+                (user_id, *clean_codes) + ledger_param,
             )
         else:
             cursor.execute(
                 f"""
                 SELECT code, COALESCE(SUM(pnl), 0.0) AS total_pnl
                 FROM transactions
-                WHERE (user_id IS NULL OR user_id = '') AND type = '减仓' AND code IN ({placeholders})
+                WHERE (user_id IS NULL OR user_id = '') AND type = '减仓' AND code IN ({placeholders}){ledger_condition}
                 GROUP BY code
                 """,
-                clean_codes,
+                tuple(clean_codes) + ledger_param,
             )
         return {
             str(row["code"]): float(row["total_pnl"] or 0.0)
@@ -621,10 +627,21 @@ class PortfolioDatabaseMixin:
         legacy_adjustment: float = 0.0,
         include_legacy_adjustment: bool = True,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, float]:
         """返回单只持仓的旧 adjustment、现金收益事件和已实现盈亏汇总。"""
-        ledger_map = self._fetch_portfolio_adjustment_ledger_sums(cursor, [code], user_id)
-        realized_map = self._fetch_portfolio_realized_pnl_sums(cursor, [code], user_id)
+        ledger_map = self._fetch_portfolio_adjustment_ledger_sums(
+            cursor,
+            [code],
+            user_id,
+            ledger_id=ledger_id,
+        )
+        realized_map = self._fetch_portfolio_realized_pnl_sums(
+            cursor,
+            [code],
+            user_id,
+            ledger_id=ledger_id,
+        )
         ledger_adjustment = float(ledger_map.get(str(code or "").strip(), 0.0))
         realized_pnl_adjustment = float(realized_map.get(str(code or "").strip(), 0.0))
         legacy_value = float(legacy_adjustment or 0.0) if include_legacy_adjustment else 0.0
@@ -926,6 +943,56 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
+    def reorder_ledgers(self, user_id: str, ledger_ids: List[int]) -> Dict[str, Any]:
+        """按传入顺序重排账本。"""
+        normalized_ids: List[int] = []
+        seen_ids: set[int] = set()
+        for raw_id in ledger_ids:
+            try:
+                ledger_id = int(raw_id)
+            except (TypeError, ValueError):
+                return {"ok": False, "code": "INVALID_LEDGER_IDS", "error": "账本排序参数不合法"}
+            if ledger_id <= 0 or ledger_id in seen_ids:
+                return {"ok": False, "code": "INVALID_LEDGER_IDS", "error": "账本排序参数不合法"}
+            seen_ids.add(ledger_id)
+            normalized_ids.append(ledger_id)
+        if not normalized_ids:
+            return {"ok": False, "code": "INVALID_LEDGER_IDS", "error": "账本排序参数不合法"}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id
+                FROM investment_ledgers
+                WHERE user_id = ?
+                ORDER BY sort_order, id
+                """,
+                (user_id,),
+            )
+            existing_ids = [int(row["id"]) for row in cursor.fetchall()]
+            if sorted(existing_ids) != sorted(normalized_ids):
+                return {"ok": False, "code": "INVALID_LEDGER_IDS", "error": "账本列表不完整或包含非法账本"}
+
+            for index, ledger_id in enumerate(normalized_ids):
+                cursor.execute(
+                    """
+                    UPDATE investment_ledgers
+                    SET sort_order = ?, updated_at = datetime('now','localtime')
+                    WHERE id = ? AND user_id = ?
+                    """,
+                    (index, ledger_id, user_id),
+                )
+            conn.commit()
+            return {"ok": True}
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed to reorder ledgers: %s", exc)
+            return {"ok": False, "code": "REORDER_FAILED", "error": "账本排序失败"}
+        finally:
+            conn.close()
+
     def delete_ledger(self, ledger_id: int, user_id: str) -> Dict[str, Any]:
         """删除账本（非默认 + 无持仓才允许）。"""
         conn = self.get_connection()
@@ -1019,11 +1086,13 @@ class PortfolioDatabaseMixin:
             cursor,
             [row["code"] for row in rows],
             user_id,
+            ledger_id=ledger_id,
         )
         realized_sums = self._fetch_portfolio_realized_pnl_sums(
             cursor,
             [row["code"] for row in rows],
             user_id,
+            ledger_id=ledger_id,
         )
 
         for row in rows:
@@ -1118,6 +1187,7 @@ class PortfolioDatabaseMixin:
                 legacy_adjustment=float(row["adjustment"] or 0.0),
                 include_legacy_adjustment=include_legacy_adjustment,
                 user_id=user_id,
+                ledger_id=ledger_id,
             )
         conn.close()
         if row:
@@ -1393,6 +1463,7 @@ class PortfolioDatabaseMixin:
                 code,
                 legacy_adjustment=before_asset["adjustment"],
                 user_id=user_id,
+                ledger_id=ledger_id,
             )
             ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
             old_total_adjustment = float(adjustment_breakdown["total_adjustment"])
@@ -1546,6 +1617,7 @@ class PortfolioDatabaseMixin:
                 code,
                 legacy_adjustment=before_asset["adjustment"],
                 user_id=user_id,
+                ledger_id=ledger_id,
             )
             old_ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
             old_realized_pnl_adjustment = float(adjustment_breakdown["realized_pnl_adjustment"])
@@ -1776,9 +1848,33 @@ class PortfolioDatabaseMixin:
                 )
             snapshots_deleted = cursor.rowcount
 
+            if user_id:
+                if ledger_id is not None:
+                    cursor.execute(
+                        "DELETE FROM ledger_daily_snapshots WHERE date >= ? AND user_id = ? AND ledger_id = ?",
+                        (from_date, user_id, ledger_id),
+                    )
+                else:
+                    cursor.execute(
+                        "DELETE FROM ledger_daily_snapshots WHERE date >= ? AND user_id = ?",
+                        (from_date, user_id),
+                    )
+            else:
+                if ledger_id is not None:
+                    cursor.execute(
+                        "DELETE FROM ledger_daily_snapshots WHERE date >= ? AND user_id = '' AND ledger_id = ?",
+                        (from_date, ledger_id),
+                    )
+                else:
+                    cursor.execute(
+                        "DELETE FROM ledger_daily_snapshots WHERE date >= ? AND user_id = ''",
+                        (from_date,),
+                    )
+            ledger_snapshots_deleted = cursor.rowcount
+
             conn.commit()
             logger.info(
-                "Corrective delete done: code=%s from_date=%s portfolio=%s tx=%s ledger=%s correction=%s snapshots=%s",
+                "Corrective delete done: code=%s from_date=%s portfolio=%s tx=%s ledger=%s correction=%s snapshots=%s ledger_snapshots=%s",
                 code,
                 from_date,
                 portfolio_deleted,
@@ -1786,6 +1882,7 @@ class PortfolioDatabaseMixin:
                 ledger_deleted,
                 correction_deleted,
                 snapshots_deleted,
+                ledger_snapshots_deleted,
             )
             return {
                 "portfolio": int(portfolio_deleted),
@@ -1793,6 +1890,7 @@ class PortfolioDatabaseMixin:
                 "ledger": int(ledger_deleted),
                 "corrections": int(correction_deleted),
                 "snapshots": int(snapshots_deleted),
+                "ledger_snapshots": int(ledger_snapshots_deleted),
                 "from_date": from_date,
             }
         except Exception as exc:
@@ -1989,6 +2087,7 @@ class PortfolioDatabaseMixin:
                 code,
                 legacy_adjustment=old_adj,
                 user_id=user_id,
+                ledger_id=ledger_id,
             )
             old_ledger_adjustment = float(adjustment_breakdown["ledger_adjustment"])
             old_realized_pnl_adjustment = float(adjustment_breakdown["realized_pnl_adjustment"])

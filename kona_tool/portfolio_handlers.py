@@ -63,18 +63,27 @@ def create_portfolio_payload_handlers(
     undo_release: Callable[[str, str], None],
     take_snapshot_func: Callable[[str | None], bool],
 ):
+    class InvalidLedgerIdError(ValueError):
+        """请求里的 ledger_id 不合法。"""
+
     def _save_snapshot_async(user_id: str | None, stage_prefix: str) -> None:
         with trace_request_stage(f"{stage_prefix}.snapshot"):
             snapshot_saver_async(user_id)
 
-    def _resolve_ledger_id(user_id: str | None, raw_value) -> int | None:
+    def _resolve_ledger_id(raw_value) -> int | None:
         """从请求中解析 ledger_id。None 表示不过滤（返回全部账本）。"""
         if raw_value is None or str(raw_value).strip() == '':
             return None
         try:
-            return int(raw_value)
+            ledger_id = int(raw_value)
         except (TypeError, ValueError):
-            return None
+            raise InvalidLedgerIdError("INVALID_LEDGER_ID")
+        if ledger_id <= 0:
+            raise InvalidLedgerIdError("INVALID_LEDGER_ID")
+        return ledger_id
+
+    def _invalid_ledger_response():
+        return jsonify({"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}), 400
 
     def handle_ledgers_list():
         user_id = g.user_id
@@ -98,6 +107,38 @@ def create_portfolio_payload_handlers(
             return jsonify(result)
         status = 409 if result.get('code') == 'DUPLICATE_NAME' else 400
         return jsonify(result), status
+
+    def handle_ledger_reorder():
+        data = request.json or {}
+        user_id = g.user_id
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        raw_ids = data.get('ledger_ids')
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return jsonify({
+                "ok": False,
+                "code": "INVALID_LEDGER_IDS",
+                "error": "ledger_ids 必须是非空数组",
+            }), 400
+        try:
+            ledger_ids = [int(item) for item in raw_ids]
+        except (TypeError, ValueError):
+            return jsonify({
+                "ok": False,
+                "code": "INVALID_LEDGER_IDS",
+                "error": "ledger_ids 只能包含正整数",
+            }), 400
+        if any(ledger_id <= 0 for ledger_id in ledger_ids):
+            return jsonify({
+                "ok": False,
+                "code": "INVALID_LEDGER_IDS",
+                "error": "ledger_ids 只能包含正整数",
+            }), 400
+        result = db.reorder_ledgers(user_id, ledger_ids)
+        if result.get('ok'):
+            return jsonify(result)
+        status_map = {'INVALID_LEDGER_IDS': 400}
+        return jsonify(result), status_map.get(result.get('code'), 400)
 
     def handle_ledger_update(ledger_id: int):
         data = request.json
@@ -126,7 +167,10 @@ def create_portfolio_payload_handlers(
         asset_type = request.args.get('type', 'all')
         with_metrics = _parse_bool(request.args.get('with_metrics'))
         user_id = g.user_id
-        ledger_id = _resolve_ledger_id(user_id, request.args.get('ledger_id'))
+        try:
+            ledger_id = _resolve_ledger_id(request.args.get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         logger.info(f"API: get_portfolio called with type={asset_type}, user_id={user_id}, ledger_id={ledger_id}")
         data = portfolio_read_service.build_portfolio_payload(
             asset_type=asset_type,
@@ -145,7 +189,10 @@ def create_portfolio_payload_handlers(
     def handle_portfolio_transactions():
         code = request.args.get('code', '').strip()
         user_id = g.user_id
-        ledger_id = _resolve_ledger_id(user_id, request.args.get('ledger_id'))
+        try:
+            ledger_id = _resolve_ledger_id(request.args.get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if not code:
             return {"error": "Missing required parameter: code", "code": "MISSING_CODE"}, 400
         records = db.get_portfolio_transactions(code=code, user_id=user_id, ledger_id=ledger_id)
@@ -273,8 +320,10 @@ def create_portfolio_payload_handlers(
         data['price'] = price
         data['adjustment'] = 0.0
         data['asset_type'] = normalized['asset_type']
-
-        ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        try:
+            ledger_id = _resolve_ledger_id(data.get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if ledger_id is None and user_id:
             ledger_id = db.get_default_ledger_id(user_id)
 
@@ -392,7 +441,7 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
-            mod_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            mod_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
             if mod_ledger_id is None and user_id:
                 mod_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -430,6 +479,8 @@ def create_portfolio_payload_handlers(
                 {"error": error_message, "code": error_code},
                 status_code,
             )
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         except ValueError:
             return idempotent_response(
                 'portfolio_modify',
@@ -486,7 +537,7 @@ def create_portfolio_payload_handlers(
                     )
                 amount = raw_amount if event_type == 'dividend' else -raw_amount
 
-            adj_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            adj_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
             if adj_ledger_id is None and user_id:
                 adj_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -529,6 +580,8 @@ def create_portfolio_payload_handlers(
                 {"error": error_message, "code": error_code},
                 status_code,
             )
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         except ValueError:
             return idempotent_response(
                 'portfolio_adjustment_event',
@@ -618,7 +671,10 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
-        del_ledger_id = _resolve_ledger_id(user_id, (data or {}).get('ledger_id'))
+        try:
+            del_ledger_id = _resolve_ledger_id((data or {}).get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if del_ledger_id is None and user_id:
             del_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -647,7 +703,10 @@ def create_portfolio_payload_handlers(
         if dedup_hit:
             return jsonify(dedup_payload), dedup_status
 
-        delc_ledger_id = _resolve_ledger_id(user_id, (data or {}).get('ledger_id'))
+        try:
+            delc_ledger_id = _resolve_ledger_id((data or {}).get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if delc_ledger_id is None and user_id:
             delc_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -698,7 +757,7 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
-            buy_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            buy_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
             if buy_ledger_id is None and user_id:
                 buy_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -726,6 +785,8 @@ def create_portfolio_payload_handlers(
                 {"error": error_message, "code": error_code},
                 status_code,
             )
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         except ValueError:
             return idempotent_response(
                 'portfolio_buy',
@@ -810,7 +871,10 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
-        bwc_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        try:
+            bwc_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if bwc_ledger_id is None and user_id:
             bwc_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -910,7 +974,7 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
-            sell_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+            sell_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
             if sell_ledger_id is None and user_id:
                 sell_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -944,6 +1008,8 @@ def create_portfolio_payload_handlers(
                 {"error": error_message, "code": error_code},
                 status_code,
             )
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         except ValueError:
             return idempotent_response(
                 'portfolio_sell',
@@ -1009,7 +1075,10 @@ def create_portfolio_payload_handlers(
                 404,
             )
 
-        stc_ledger_id = _resolve_ledger_id(user_id, data.get('ledger_id'))
+        try:
+            stc_ledger_id = _resolve_ledger_id(data.get('ledger_id'))
+        except InvalidLedgerIdError:
+            return _invalid_ledger_response()
         if stc_ledger_id is None and user_id:
             stc_ledger_id = db.get_default_ledger_id(user_id)
 
@@ -1139,6 +1208,7 @@ def create_portfolio_payload_handlers(
         "portfolio_ocr_parse": handle_portfolio_ocr_parse,
         "ledgers_list": handle_ledgers_list,
         "ledger_create": handle_ledger_create,
+        "ledger_reorder": handle_ledger_reorder,
         "ledger_update": handle_ledger_update,
         "ledger_delete": handle_ledger_delete,
     }

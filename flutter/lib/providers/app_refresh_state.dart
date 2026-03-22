@@ -483,45 +483,55 @@ class AppRefreshState {
     );
   }
 
-  Future<void> refreshHomeData({required AppRefreshBindings bindings}) async {
+  Future<void> refreshHomeData({
+    required AppRefreshBindings bindings,
+    int? ledgerId,
+  }) async {
     try {
-      final results = await Future.wait([
+      final assetResults = await Future.wait([
         _api.getCashAssets(),
         _api.getOtherAssets(),
         _api.getLiabilities(),
-        _api.getPortfolio(withMetrics: true),
-        _api.getHistory(),
-        _api.getAnalysisOverview(period: 'all'),
+        _api.getPortfolio(withMetrics: true, ledgerId: ledgerId),
       ]);
 
       bindings.replaceCashAssets(
-        (results[0] as List).map((e) => Asset.fromJson(e)).toList(),
+        assetResults[0].map((e) => Asset.fromJson(e)).toList(),
       );
       bindings.replaceOtherAssets(
-        (results[1] as List).map((e) => Asset.fromJson(e)).toList(),
+        assetResults[1].map((e) => Asset.fromJson(e)).toList(),
       );
       bindings.replaceLiabilities(
-        (results[2] as List).map((e) => Asset.fromJson(e)).toList(),
+        assetResults[2].map((e) => Asset.fromJson(e)).toList(),
       );
       bindings.replacePortfolio(
-        (results[3] as List).map((e) => PortfolioItem.fromJson(e)).toList(),
+        assetResults[3].map((e) => PortfolioItem.fromJson(e)).toList(),
       );
 
       bindings.recalculateHomeTotals();
-
-      final history = results[4] as List;
-      final overview = (results[5] as Map?)?.cast<String, dynamic>();
-      bindings.calculateHistoryStats(history);
-      bindings.applyOverviewMilestones(overview);
-
-      await saveHomeCache(
-        bindings: bindings,
-        history: history,
-        overview: overview,
-      );
       bindings.syncState.markAssetFresh(notify: false);
       bindings.setPortfolioLoaded(true);
       bindings.notifyListeners();
+
+      try {
+        final extraResults = await Future.wait([
+          _api.getHistory(),
+          _api.getAnalysisOverview(period: 'all', ledgerId: ledgerId),
+        ]);
+        final history = extraResults[0] as List;
+        final overview = (extraResults[1] as Map?)?.cast<String, dynamic>();
+        bindings.calculateHistoryStats(history);
+        bindings.applyOverviewMilestones(overview);
+
+        await saveHomeCache(
+          bindings: bindings,
+          history: history,
+          overview: overview,
+        );
+        bindings.notifyListeners();
+      } catch (e) {
+        debugPrint('刷新首页补充数据失败: $e');
+      }
 
       unawaited(
         refreshPortfolioPricesInBackground(bindings: bindings, force: true),
@@ -572,9 +582,15 @@ class AppRefreshState {
     }
   }
 
-  Future<void> refreshPortfolio({required AppRefreshBindings bindings, int? ledgerId}) async {
+  Future<void> refreshPortfolio({
+    required AppRefreshBindings bindings,
+    int? ledgerId,
+  }) async {
     try {
-      final data = await _api.getPortfolio(withMetrics: true, ledgerId: ledgerId);
+      final data = await _api.getPortfolio(
+        withMetrics: true,
+        ledgerId: ledgerId,
+      );
       bindings.replacePortfolio(
         (data).map((e) => PortfolioItem.fromJson(e)).toList(),
       );

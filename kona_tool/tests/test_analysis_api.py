@@ -33,6 +33,8 @@ class AnalysisApiTests(unittest.TestCase):
         cursor.execute("DELETE FROM liabilities")
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM ledger_daily_snapshots")
+        cursor.execute("DELETE FROM investment_ledgers")
         cursor.execute("DELETE FROM daily_snapshots")
         cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
@@ -518,6 +520,73 @@ class AnalysisApiTests(unittest.TestCase):
         target = next((item for item in items if item.get('code') == 'sh600014'), None)
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('pnl') or 0.0), 15.0, places=2)
+
+    def test_analysis_rank_keeps_same_code_isolated_by_ledger(self):
+        default_ledger_id = app_module.db.get_default_ledger_id('')
+        second_ledger = app_module.db.create_ledger('', '分析第二账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        asset_payload = {
+            'code': 'sh600015',
+            'name': '分析账本隔离',
+            'qty': 10.0,
+            'price': 10.0,
+            'curr': 'CNY',
+            'asset_type': 'a',
+            'adjustment': 0.0,
+        }
+        self.assertTrue(app_module.db.add_asset(dict(asset_payload), user_id='', ledger_id=default_ledger_id))
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    **asset_payload,
+                    'qty': 8.0,
+                    'price': 12.0,
+                },
+                user_id='',
+                ledger_id=second_ledger_id,
+            )
+        )
+        self.assertTrue(
+            app_module.db.add_portfolio_adjustment_event(
+                code='sh600015',
+                event_type='dividend',
+                amount=15.0,
+                user_id='',
+                ledger_id=default_ledger_id,
+            )
+        )
+        self.assertTrue(
+            app_module.db.sell_asset(
+                code='sh600015',
+                price=14.0,
+                qty=2.0,
+                user_id='',
+                ledger_id=second_ledger_id,
+            )
+        )
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600015': (10.0, 10.0, 0.0, 0.0)}):
+            default_resp = self.client.get(f'/api/analysis/rank?type=all&ledger_id={default_ledger_id}')
+            second_resp = self.client.get(f'/api/analysis/rank?type=all&ledger_id={second_ledger_id}')
+
+        self.assertEqual(default_resp.status_code, 200)
+        self.assertEqual(second_resp.status_code, 200)
+
+        default_items = ((default_resp.get_json() or {}).get('gain') or []) + ((default_resp.get_json() or {}).get('loss') or [])
+        second_items = ((second_resp.get_json() or {}).get('gain') or []) + ((second_resp.get_json() or {}).get('loss') or [])
+        default_target = next((item for item in default_items if item.get('code') == 'sh600015'), None)
+        second_target = next((item for item in second_items if item.get('code') == 'sh600015'), None)
+        self.assertIsNotNone(default_target)
+        self.assertIsNotNone(second_target)
+        self.assertAlmostEqual(float(default_target.get('pnl') or 0.0), 15.0, places=2)
+        self.assertAlmostEqual(float(second_target.get('pnl') or 0.0), -8.0, places=2)
+
+    def test_analysis_rejects_invalid_ledger_id(self):
+        resp = self.client.get('/api/analysis/rank?type=all&ledger_id=bad-ledger')
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'INVALID_LEDGER_ID')
 
 
 if __name__ == '__main__':

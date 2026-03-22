@@ -945,6 +945,7 @@ class AnalysisDatabaseMixin:
                     cursor,
                     [row["code"] for row in rows],
                     user_id,
+                    ledger_id=ledger_id,
                 )
             fetch_realized_sums = getattr(self, "_fetch_portfolio_realized_pnl_sums", None)
             if callable(fetch_realized_sums):
@@ -952,6 +953,7 @@ class AnalysisDatabaseMixin:
                     cursor,
                     [row["code"] for row in rows],
                     user_id,
+                    ledger_id=ledger_id,
                 )
 
             data = []

@@ -218,6 +218,29 @@
 - 分析页按当前账本展示数据
 - 不切换账本时所有功能与之前一致
 
+## 2026-03-22-01
+
+### 这版一句话
+
+投资账本切换正式落地到 Flutter：投资页改成顶部账本选择器 + 独立账本管理页，并把分析页和首页的账本联动收干净。
+
+### 主要变化
+- [flutter/lib/pages/invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart) / [flutter/lib/pages/ledger_management_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/ledger_management_page.dart)：投资页顶部改成账本胶囊选择器，下拉里可直接切换账本并进入独立“管理账本”页面；管理页支持新增、重命名、删除、拖动排序。
+- [flutter/lib/providers/app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) / [flutter/lib/providers/app_refresh_coordinator_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_coordinator_state.dart) / [flutter/lib/providers/app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart)：切换账本后改为刷新整套首页数据，首页总资产口径收正为“全局现金/其他/负债 + 当前账本投资资产”，不再出现切账本后首页整页归零。
+- [flutter/lib/pages/analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)：分析页和“全部排行”页现在会监听当前账本变化，切换账本后会清掉旧数据并按新账本重拉。
+- [flutter/lib/services/api_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/api_service.dart) / [flutter/lib/config/api_config.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/config/api_config.dart)：补齐账本排序接口，修正 ledger 接口成功响应的前端识别。
+- [kona_tool/portfolio_routes.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_routes.py) / [kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py) / [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) / [kona_tool/core/db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py) / [kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py)：后端补齐账本排序接口、账本隔离、非法 `ledger_id` 拒绝和账本快照清理，避免同代码跨账本串盈亏、删纠错后账本历史残留脏数据。
+- [flutter/test/invest_page_ledger_selector_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/invest_page_ledger_selector_test.dart) / [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) / [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)：补齐账本选择器、账本排序、账本隔离和分析页账本参数的回归测试。
+
+### 影响范围
+- Flutter：投资页、首页、分析页、账本管理页
+- 后端：投资账本读写、分析读侧、账本排序、账本快照清理
+
+### 验收重点
+- 切换账本后，投资页和分析页应立即切到当前账本，不应继续显示上一个账本的数据
+- 切换账本后，首页不应整页归零；首页总资产应按“全局现金/其他/负债 + 当前账本投资资产”展示
+- 账本下拉里的“管理账本”页应支持新增、改名、删除、拖动排序
+
 ## 2026-03-21-01
 
 ### 这版一句话

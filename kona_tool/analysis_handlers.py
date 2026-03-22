@@ -23,6 +23,21 @@ def create_analysis_payload_handlers(
             raise ValueError(name)
         return val
 
+    def _parse_optional_ledger_id_arg():
+        raw = request.args.get('ledger_id')
+        if raw is None:
+            return None
+        raw = str(raw).strip()
+        if not raw:
+            return None
+        try:
+            ledger_id = int(raw)
+        except ValueError:
+            raise ValueError('ledger_id')
+        if ledger_id <= 0:
+            raise ValueError('ledger_id')
+        return ledger_id
+
     def build_analysis_overview_payload():
         """
         盈亏概览
@@ -35,7 +50,10 @@ def create_analysis_payload_handlers(
         """
         period = request.args.get('period', 'all')
         user_id = g.user_id
-        ledger_id = request.args.get('ledger_id', type=int)
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
         return analysis_read_service.build_overview_payload(
             period=period,
             user_id=user_id,
@@ -70,7 +88,10 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
-        ledger_id = request.args.get('ledger_id', type=int)
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
         result = analysis_read_service.build_calendar_payload(
             time_type=time_type,
             user_id=user_id,
@@ -104,7 +125,10 @@ def create_analysis_payload_handlers(
             return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
 
         user_id = g.user_id
-        ledger_id = request.args.get('ledger_id', type=int)
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
         result = analysis_read_service.build_market_breakdown_payload(
             user_id=user_id,
             year=year,
@@ -128,7 +152,10 @@ def create_analysis_payload_handlers(
         """
         market = request.args.get('market', 'all')
         user_id = g.user_id
-        ledger_id = request.args.get('ledger_id', type=int)
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
         return analysis_read_service.build_rank_payload(
             market=market,
             user_id=user_id,

@@ -24,7 +24,7 @@ class _RefreshGuardAppState extends AppState {
   }
 
   @override
-  Future<void> refreshHomeData() async {
+  Future<void> refreshHomeData({int? ledgerId}) async {
     refreshHomeDataCalls += 1;
     await refreshHomeCompleter.future;
   }
@@ -78,9 +78,7 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<AppState>.value(
         value: appState,
-        child: const MaterialApp(
-          home: InvestPage(),
-        ),
+        child: const MaterialApp(home: InvestPage()),
       ),
     );
 

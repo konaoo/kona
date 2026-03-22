@@ -39,6 +39,7 @@ def create_portfolio_blueprint(
     portfolio_transactions_handler,
     ledgers_list_handler=None,
     ledger_create_handler=None,
+    ledger_reorder_handler=None,
     ledger_update_handler=None,
     ledger_delete_handler=None,
 ):
@@ -140,6 +141,12 @@ def create_portfolio_blueprint(
         @optional_auth
         def create_ledger():
             return _jsonify_result(ledger_create_handler())
+
+    if ledger_reorder_handler:
+        @bp.route("/api/portfolio/ledgers/reorder", methods=["PUT"])
+        @optional_auth
+        def reorder_ledgers():
+            return _jsonify_result(ledger_reorder_handler())
 
     if ledger_update_handler:
         @bp.route("/api/portfolio/ledgers/<int:ledger_id>", methods=["PUT"])

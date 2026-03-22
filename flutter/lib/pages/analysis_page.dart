@@ -122,6 +122,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   bool _overviewLoaded = false;
   int _overviewRetryCount = 0;
   Timer? _overviewRetryTimer;
+  int? _activeLedgerId;
 
   // 收益日历相关
   String _calendarTimeType = 'day';
@@ -156,11 +157,47 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ledgerId = context.read<AppState>().currentLedgerId;
+    if (_activeLedgerId == ledgerId) {
+      return;
+    }
+    final initialMount = _activeLedgerId == null && !_overviewLoaded;
+    _activeLedgerId = ledgerId;
+    if (initialMount) {
+      return;
+    }
+    _handleLedgerChanged();
+  }
+
+  @override
   void dispose() {
     _overviewRetryTimer?.cancel();
     _calendarRetryTimer?.cancel();
     _rankRetryTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleLedgerChanged() {
+    _overviewRetryTimer?.cancel();
+    _calendarRetryTimer?.cancel();
+    _rankRetryTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _overview = {};
+      _overviewLoaded = false;
+      _loading = true;
+      _overviewRetryCount = 0;
+      _calendarData = {};
+      _calendarRetryCount = 0;
+      _rankData = {};
+      _rankLoading = true;
+      _rankRetryCount = 0;
+    });
+    unawaited(_loadData(force: true));
+    unawaited(_loadCalendar(force: true));
+    unawaited(_loadRank(force: true));
   }
 
   Future<void> _loadData({
@@ -183,6 +220,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       setState(() => _loading = true);
     }
     try {
+      if (!mounted) return;
       final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.overviewLoader != null
           ? await widget.overviewLoader!('all')
@@ -272,6 +310,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
       if (mounted) setState(() {});
     }
     try {
+      if (!mounted) return;
       final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.calendarLoader != null
           ? await widget.calendarLoader!(
@@ -323,7 +362,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
       final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.rankLoader != null
           ? await widget.rankLoader!(rankType: 'all', market: 'all')
-          : await _api.getAnalysisRank(rankType: 'all', market: 'all', ledgerId: ledgerId);
+          : await _api.getAnalysisRank(
+              rankType: 'all',
+              market: 'all',
+              ledgerId: ledgerId,
+            );
       if (!mounted) return;
       setState(() {
         _rankData = data;
@@ -1366,10 +1409,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
             children: [
               Text(
                 '${item.currencySymbol}${item.pnl.toStringAsFixed(0)}',
-                style: _S.rankVal.copyWith(
-                  color: pnlColor,
-                  fontSize: 14,
-                ),
+                style: _S.rankVal.copyWith(color: pnlColor, fontSize: 14),
               ),
               const SizedBox(height: 1),
               Text(
@@ -1587,11 +1627,27 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
   List<_RankItem> _items = const [];
   int _retryCount = 0;
   Timer? _retryTimer;
+  int? _activeLedgerId;
 
   @override
   void initState() {
     super.initState();
     _loadRank();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ledgerId = context.read<AppState>().currentLedgerId;
+    if (_activeLedgerId == ledgerId) {
+      return;
+    }
+    final initialMount = _activeLedgerId == null && _items.isEmpty && !_loading;
+    _activeLedgerId = ledgerId;
+    if (initialMount) {
+      return;
+    }
+    unawaited(_loadRank(force: true));
   }
 
   @override
@@ -1607,7 +1663,11 @@ class _AnalysisRankAllPageState extends State<AnalysisRankAllPage> {
       final ledgerId = context.read<AppState>().currentLedgerId;
       final data = widget.rankLoader != null
           ? await widget.rankLoader!(rankType: 'all', market: 'all')
-          : await _api.getAnalysisRank(rankType: 'all', market: 'all', ledgerId: ledgerId);
+          : await _api.getAnalysisRank(
+              rankType: 'all',
+              market: 'all',
+              ledgerId: ledgerId,
+            );
       if (!mounted) return;
       final items = _parseRankItems(data);
       setState(() {
