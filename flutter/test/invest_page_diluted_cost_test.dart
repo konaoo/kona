@@ -16,7 +16,7 @@ class _InvestPageCostAppState extends AppState {
   List<PortfolioItem> get filteredPortfolio => _items;
 
   @override
-  Future<void> refreshHomeData() async {}
+  Future<void> refreshHomeData({int? ledgerId}) async {}
 }
 
 void main() {

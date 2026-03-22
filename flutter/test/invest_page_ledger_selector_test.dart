@@ -43,7 +43,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  Future<void> _pumpPage(
+  Future<void> pumpPage(
     WidgetTester tester,
     _LedgerSelectorAppState appState,
   ) async {
@@ -65,7 +65,7 @@ void main() {
       currentLedgerId: 1,
     );
 
-    await _pumpPage(tester, appState);
+    await pumpPage(tester, appState);
 
     await tester.tap(find.text('默认账本').first);
     await tester.pumpAndSettle();
@@ -83,7 +83,7 @@ void main() {
       currentLedgerId: 1,
     );
 
-    await _pumpPage(tester, appState);
+    await pumpPage(tester, appState);
 
     await tester.tap(find.text('默认账本').first);
     await tester.pumpAndSettle();

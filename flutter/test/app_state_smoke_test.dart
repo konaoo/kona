@@ -9,7 +9,7 @@ class _NoRefreshAppState extends AppState {
     : super(api: api, tokenLoader: () async => null);
 
   @override
-  Future<void> refreshHomeData() async {}
+  Future<void> refreshHomeData({int? ledgerId}) async {}
 }
 
 class _FakeApiService implements ApiService {
