@@ -280,6 +280,47 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> get ledgers => _ledgers;
   int? get currentLedgerId => _currentLedgerId;
 
+  List<Map<String, dynamic>> _cloneLedgers(
+    List<Map<String, dynamic>> source,
+  ) {
+    return source
+        .map((ledger) => Map<String, dynamic>.from(ledger))
+        .toList(growable: false);
+  }
+
+  int? _coerceLedgerId(dynamic rawId) {
+    if (rawId is int) return rawId;
+    return int.tryParse(rawId?.toString() ?? '');
+  }
+
+  int? _pickLedgerSelection(
+    List<Map<String, dynamic>> ledgers, {
+    int? preferredLedgerId,
+  }) {
+    if (ledgers.isEmpty) return null;
+    if (preferredLedgerId != null &&
+        ledgers.any((ledger) => _coerceLedgerId(ledger['id']) == preferredLedgerId)) {
+      return preferredLedgerId;
+    }
+    final defaultLedger = ledgers.firstWhere(
+      (ledger) => ledger['is_default'] == 1 || ledger['is_default'] == true,
+      orElse: () => ledgers.first,
+    );
+    return _coerceLedgerId(defaultLedger['id']);
+  }
+
+  void _replaceLedgers(
+    List<Map<String, dynamic>> nextLedgers, {
+    int? preferredLedgerId,
+  }) {
+    _ledgers = nextLedgers;
+    _currentLedgerId = _pickLedgerSelection(
+      nextLedgers,
+      preferredLedgerId: preferredLedgerId,
+    );
+    notifyListeners();
+  }
+
   /// 切换当前账本，null 表示全部
   void switchLedger(int? ledgerId) {
     if (_currentLedgerId == ledgerId) return;
@@ -293,23 +334,10 @@ class AppState extends ChangeNotifier {
     if (!isLoggedIn) return;
     try {
       final data = await _api.getLedgers();
-      _ledgers = data.cast<Map<String, dynamic>>();
-      if (_ledgers.isEmpty) {
-        _currentLedgerId = null;
-      } else {
-        final currentStillExists = _ledgers.any(
-          (ledger) => ledger['id'] == _currentLedgerId,
-        );
-        if (!currentStillExists) {
-          final defaultLedger = _ledgers.firstWhere(
-            (ledger) =>
-                ledger['is_default'] == 1 || ledger['is_default'] == true,
-            orElse: () => _ledgers.first,
-          );
-          _currentLedgerId = defaultLedger['id'] as int?;
-        }
-      }
-      notifyListeners();
+      _replaceLedgers(
+        data.cast<Map<String, dynamic>>(),
+        preferredLedgerId: _currentLedgerId,
+      );
     } catch (e) {
       debugPrint('Failed to load ledgers: $e');
     }
@@ -320,8 +348,66 @@ class AppState extends ChangeNotifier {
     String name, {
     String description = '',
   }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) {
+      return const AssetActionResult.failure('账本名称不能为空');
+    }
+    final previousLedgers = _cloneLedgers(_ledgers);
+    final previousCurrentLedgerId = _currentLedgerId;
+    final tempId = -DateTime.now().microsecondsSinceEpoch;
+    final nextSortOrder = _ledgers.fold<int>(
+      -1,
+      (maxValue, ledger) {
+        final sortOrder = ledger['sort_order'];
+        final parsed = sortOrder is int
+            ? sortOrder
+            : int.tryParse(sortOrder?.toString() ?? '') ?? -1;
+        return parsed > maxValue ? parsed : maxValue;
+      },
+    ) +
+        1;
+    final optimisticLedgers = [
+      ...previousLedgers,
+      <String, dynamic>{
+        'id': tempId,
+        'user_id': userId,
+        'name': cleanName,
+        'description': description.trim(),
+        'sort_order': nextSortOrder,
+        'is_default': false,
+        'pending': true,
+      },
+    ];
+    _replaceLedgers(
+      optimisticLedgers,
+      preferredLedgerId: previousCurrentLedgerId,
+    );
+
     final result = await _api.createLedger(name, description: description);
-    if (result.ok) await loadLedgers();
+    if (!result.ok) {
+      _replaceLedgers(
+        previousLedgers,
+        preferredLedgerId: previousCurrentLedgerId,
+      );
+      return result;
+    }
+
+    final createdLedgerId = _coerceLedgerId(result.data?['ledger_id']);
+    if (createdLedgerId != null) {
+      final settledLedgers = _cloneLedgers(_ledgers).map((ledger) {
+        if (_coerceLedgerId(ledger['id']) != tempId) return ledger;
+        return <String, dynamic>{
+          ...ledger,
+          'id': createdLedgerId,
+          'pending': false,
+        };
+      }).toList(growable: false);
+      _replaceLedgers(
+        settledLedgers,
+        preferredLedgerId: previousCurrentLedgerId,
+      );
+    }
+    unawaited(loadLedgers());
     return result;
   }
 
@@ -339,12 +425,33 @@ class AppState extends ChangeNotifier {
   /// 删除账本
   Future<AssetActionResult> deleteLedger(int id) async {
     final removedCurrent = _currentLedgerId == id;
+    final previousLedgers = _cloneLedgers(_ledgers);
+    final previousCurrentLedgerId = _currentLedgerId;
+    final nextLedgers = previousLedgers
+        .where((ledger) => _coerceLedgerId(ledger['id']) != id)
+        .toList(growable: false);
+    final nextCurrentLedgerId = removedCurrent
+        ? _pickLedgerSelection(nextLedgers)
+        : previousCurrentLedgerId;
+    _replaceLedgers(nextLedgers, preferredLedgerId: nextCurrentLedgerId);
+    if (removedCurrent) {
+      unawaited(refreshHomeData(ledgerId: nextCurrentLedgerId));
+    }
+
     final result = await _api.deleteLedger(id);
-    if (result.ok) {
-      await loadLedgers();
+    if (!result.ok) {
+      _replaceLedgers(
+        previousLedgers,
+        preferredLedgerId: previousCurrentLedgerId,
+      );
       if (removedCurrent) {
-        await refreshHomeData();
+        unawaited(refreshHomeData(ledgerId: previousCurrentLedgerId));
       }
+      return result;
+    }
+    unawaited(loadLedgers());
+    if (removedCurrent) {
+      unawaited(refreshHomeData(ledgerId: nextCurrentLedgerId));
     }
     return result;
   }
