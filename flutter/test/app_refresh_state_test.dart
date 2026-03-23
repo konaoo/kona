@@ -75,6 +75,7 @@ class _RefreshHarness {
     return AppRefreshBindings(
       username: () => null,
       userId: () => null,
+      currentLedgerId: () => null,
       syncState: syncState,
       syncVersions: () => syncState.syncVersions,
       portfolio: () => portfolio,
