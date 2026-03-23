@@ -1,3 +1,22 @@
+## 2026-03-23-08
+
+### 这版一句话
+
+修掉“用户后来新建了空账本，默认账本历史快照就只剩最近两天”的结构缺口：默认账本现在会补回可明确归属的旧历史，不再被“当前不止一个账本”这一条过窄规则卡住。
+
+### 主要变化
+- **回填规则从“单账本”升级成“默认账本可确认历史”**：后端 [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) 现在会给每个默认账本判断一个安全回填边界。单账本用户继续补全部旧历史；多账本用户则只补“早于任何非默认账本存在或活动证据”的旧全局快照，避免后来新建空账本后默认账本历史整段缺失。
+- **初始化链路切到新的正式入口**：后端 [kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py) 现在在账本结构初始化后会执行 `backfill_default_ledger_daily_snapshots`，不再只跑旧的“单账本专用”回填。
+- **补齐两类关键回归测试**：后端 [kona_tool/tests/test_database_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_database_schema.py) 新增“多账本但非默认账本只是后来新建，默认账本仍会补回旧历史”以及“非默认账本一旦出现历史活动，就停止继续给默认账本猜历史”的测试；[kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py) 也补了默认账本在多账本场景下读取旧历史日历的回归。
+
+### 影响范围
+- 后端：账本历史快照初始化与历史回填规则
+- Flutter / Web / App：所有带 `ledger_id` 读取账本分析历史的页面
+
+### 验收重点
+- 像 `konae` 这种“历史数据都在默认账本，后来又新建了空账本”的用户，默认账本分析历史不应再只剩最近两天
+- 一旦非默认账本已经有明确历史活动，回填逻辑应停止在那个边界前，不应继续猜后面的全局历史归属
+
 ## 2026-03-23-07
 
 ### 这版一句话

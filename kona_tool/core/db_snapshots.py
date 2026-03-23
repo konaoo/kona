@@ -48,18 +48,19 @@ class SnapshotDatabaseMixin:
             logger.info("Cleaned up %s orphan ledger daily snapshots", changed)
         return changed
 
-    def backfill_single_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
+    def backfill_default_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
         """
-        为“当前只有一个账本”的用户补齐缺失的账本历史快照。
+        为“默认账本可明确承接旧历史”的用户补齐缺失的账本历史快照。
 
         背景：
         - 老用户在多账本上线前，只有 daily_snapshots 全局历史
         - 多账本迁移时，只给持仓/交易补了 ledger_id，没有把历史快照补到 ledger_daily_snapshots
 
         这里的原则是：
-        - 只处理当前确实只有一个账本的用户
+        - 单账本用户：全部旧历史都归默认账本
+        - 多账本用户：只把“早于任何非默认账本存在/活动证据”的旧历史补给默认账本
         - 只补缺失日期，不覆盖已有账本快照
-        - 不对多账本用户猜历史归属，避免写入伪造数据
+        - 一旦非默认账本在某天已经存在或有活动，就不再对该日及之后的全局历史做猜测
 
         注意：
         - 旧全局快照没有“按账本的历史 total_cost”，只有 total_invest
@@ -67,28 +68,77 @@ class SnapshotDatabaseMixin:
           这里把 total_invest 同时映射到 total_market_value / total_cost，
           total_pnl_rate 也按 total_invest 作为基数回填
         """
-        params: list[Any] = []
-        user_filter_sql = ""
-        if user_id is not None:
-            user_filter_sql = "WHERE user_id = ?"
-            params.append(str(user_id))
-
         cursor.execute(
-            f"""
-            SELECT user_id, MIN(id) AS ledger_id
+            """
+            SELECT user_id, id AS ledger_id
             FROM investment_ledgers
-            {user_filter_sql}
-            GROUP BY user_id
-            HAVING COUNT(*) = 1
-            """,
-            params,
+            WHERE is_default = 1
+            """
+            + (" AND user_id = ?" if user_id is not None else ""),
+            ((str(user_id),) if user_id is not None else ()),
         )
-        single_ledger_users = cursor.fetchall()
+        default_ledgers = cursor.fetchall()
         inserted_total = 0
 
-        for row in single_ledger_users:
+        def _pick_earliest_date(candidates: list[str | None]) -> str | None:
+            normalized = sorted(
+                {
+                    str(value).strip()
+                    for value in candidates
+                    if value is not None and str(value).strip()
+                }
+            )
+            return normalized[0] if normalized else None
+
+        for row in default_ledgers:
             uid = str(row["user_id"] or "")
             ledger_id = int(row["ledger_id"])
+            cutoff_candidates: list[str | None] = []
+
+            cursor.execute(
+                """
+                SELECT date(created_at) AS cutoff_date
+                FROM investment_ledgers
+                WHERE user_id = ? AND id != ?
+                """,
+                (uid, ledger_id),
+            )
+            cutoff_candidates.extend(
+                str(item["cutoff_date"]).strip() if item["cutoff_date"] else None
+                for item in cursor.fetchall()
+            )
+
+            for sql in (
+                """
+                SELECT MIN(date(time)) AS cutoff_date
+                FROM transactions
+                WHERE user_id = ? AND ledger_id IS NOT NULL AND ledger_id != 0 AND ledger_id != ?
+                """,
+                """
+                SELECT MIN(date(created_at)) AS cutoff_date
+                FROM portfolio
+                WHERE user_id = ? AND ledger_id IS NOT NULL AND ledger_id != 0 AND ledger_id != ?
+                """,
+                """
+                SELECT MIN(date(created_at)) AS cutoff_date
+                FROM portfolio_adjustment_ledger
+                WHERE user_id = ? AND ledger_id IS NOT NULL AND ledger_id != 0 AND ledger_id != ?
+                """,
+                """
+                SELECT MIN(date(created_at)) AS cutoff_date
+                FROM portfolio_correction_logs
+                WHERE user_id = ? AND ledger_id IS NOT NULL AND ledger_id != 0 AND ledger_id != ?
+                """,
+            ):
+                cursor.execute(sql, (uid, ledger_id))
+                activity_row = cursor.fetchone()
+                cutoff_candidates.append(
+                    str(activity_row["cutoff_date"]).strip()
+                    if activity_row and activity_row["cutoff_date"]
+                    else None
+                )
+
+            cutoff_date = _pick_earliest_date(cutoff_candidates)
             cursor.execute(
                 """
                 INSERT INTO ledger_daily_snapshots (
@@ -113,6 +163,7 @@ class SnapshotDatabaseMixin:
                     COALESCE(ds.updated_at, datetime('now','localtime'))
                 FROM daily_snapshots ds
                 WHERE ds.user_id = ?
+                  AND (? IS NULL OR ds.date < ?)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM ledger_daily_snapshots lds
@@ -122,20 +173,31 @@ class SnapshotDatabaseMixin:
                   )
                 ORDER BY ds.date ASC
                 """,
-                (ledger_id, uid, ledger_id),
+                (ledger_id, uid, cutoff_date, cutoff_date, ledger_id),
             )
             cursor.execute("SELECT changes()")
             changed = int(cursor.fetchone()[0] or 0)
             if changed > 0:
                 inserted_total += changed
                 logger.info(
-                    "Backfilled %s ledger snapshots for single-ledger user=%s ledger_id=%s",
+                    "Backfilled %s ledger snapshots for default ledger user=%s ledger_id=%s cutoff=%s",
                     changed,
                     uid,
                     ledger_id,
+                    cutoff_date,
                 )
 
         return inserted_total
+
+    def backfill_single_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
+        """
+        兼容旧调用名。
+
+        现在的正式实现已经升级成：
+        - 单账本用户补全部旧历史
+        - 多账本用户补“明确属于默认账本”的旧历史
+        """
+        return self.backfill_default_ledger_daily_snapshots(cursor, user_id=user_id)
 
     def has_daily_snapshot(self, date_str: str, user_id: str = None) -> bool:
         """判断指定日期是否已有主快照。"""

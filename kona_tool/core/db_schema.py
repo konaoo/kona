@@ -31,7 +31,7 @@ class DatabaseSchemaManager:
         db_manager._backfill_user_daily_activity(cursor)
         self._ensure_ledger_schema(cursor)
         db_manager.cleanup_orphan_ledger_daily_snapshots(cursor)
-        db_manager.backfill_single_ledger_daily_snapshots(cursor)
+        db_manager.backfill_default_ledger_daily_snapshots(cursor)
 
     def _create_tables(self, cursor: Any) -> None:
         cursor.execute(

@@ -102,7 +102,7 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertAlmostEqual(8.0, float(rows[0]["total_pnl_rate"]), places=2)
         self.assertAlmostEqual(20.0, float(rows[0]["day_pnl"]), places=2)
 
-    def test_init_database_does_not_guess_history_for_multi_ledger_user(self):
+    def test_init_database_backfills_default_ledger_history_before_non_default_created(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "schema.db")
             db = DatabaseManager(db_path)
@@ -121,17 +121,26 @@ class DatabaseSchemaTests(unittest.TestCase):
                 VALUES ('u_multi', '账本一', 1, 0)
                 """
             )
+            default_ledger_id = int(cursor.lastrowid)
             cursor.execute(
                 """
-                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order)
-                VALUES ('u_multi', '账本二', 0, 1)
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order, created_at)
+                VALUES ('u_multi', '账本二', 0, 1, '2026-03-10 09:00:00')
+                """
+            )
+            second_ledger_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES ('2026-03-01', 1500, 1000, 500, 0, 0, 80, 20, 'u_multi')
                 """
             )
             cursor.execute(
                 """
                 INSERT INTO daily_snapshots
                 (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-                VALUES ('2026-03-01', 1500, 1000, 500, 0, 0, 80, 20, 'u_multi')
+                VALUES ('2026-03-12', 1520, 1100, 420, 0, 0, 100, 20, 'u_multi')
                 """
             )
             conn.commit()
@@ -142,12 +151,91 @@ class DatabaseSchemaTests(unittest.TestCase):
             conn = db.get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT COUNT(1) AS cnt FROM ledger_daily_snapshots WHERE user_id = 'u_multi'"
+                """
+                SELECT ledger_id, date
+                FROM ledger_daily_snapshots
+                WHERE user_id = 'u_multi'
+                ORDER BY date ASC, ledger_id ASC
+                """
             )
-            row = cursor.fetchone()
+            rows = cursor.fetchall()
             conn.close()
 
-        self.assertEqual(0, int(row["cnt"]))
+        self.assertEqual(1, len(rows))
+        self.assertEqual(default_ledger_id, int(rows[0]["ledger_id"]))
+        self.assertEqual("2026-03-01", str(rows[0]["date"]))
+        self.assertNotEqual(second_ledger_id, int(rows[0]["ledger_id"]))
+
+    def test_init_database_stops_backfill_once_non_default_has_historical_activity(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "schema.db")
+            db = DatabaseManager(db_path)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
+                VALUES ('u_multi_active', 'multi_active_user', 'hash', 0, 0, 'active')
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order)
+                VALUES ('u_multi_active', '默认账本', 1, 0)
+                """
+            )
+            default_ledger_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order, created_at)
+                VALUES ('u_multi_active', '副账本', 0, 1, '2026-03-10 09:00:00')
+                """
+            )
+            second_ledger_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                (time, code, name, type, price, qty, amount, pnl, user_id, ledger_id)
+                VALUES ('2026-03-01 10:00:00', 'sh600000', '测试', 'buy', 10, 1, 10, 0, 'u_multi_active', ?)
+                """,
+                (second_ledger_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES ('2026-02-28', 1400, 900, 500, 0, 0, 60, 10, 'u_multi_active')
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES ('2026-03-01', 1410, 910, 500, 0, 0, 70, 10, 'u_multi_active')
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            db.init_database()
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT ledger_id, date
+                FROM ledger_daily_snapshots
+                WHERE user_id = 'u_multi_active'
+                ORDER BY date ASC, ledger_id ASC
+                """
+            )
+            rows = cursor.fetchall()
+            conn.close()
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(default_ledger_id, int(rows[0]["ledger_id"]))
+        self.assertEqual("2026-02-28", str(rows[0]["date"]))
 
     def test_init_database_cleans_orphan_ledger_snapshots(self):
         with tempfile.TemporaryDirectory() as temp_dir:
