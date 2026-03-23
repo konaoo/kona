@@ -89,11 +89,15 @@ class _S {
 class AnalysisPage extends StatefulWidget {
   const AnalysisPage({
     super.key,
+    this.isActive = true,
+    this.autoRefreshInterval = const Duration(minutes: 2),
     this.overviewLoader,
     this.calendarLoader,
     this.rankLoader,
   });
 
+  final bool isActive;
+  final Duration autoRefreshInterval;
   final Future<Map<String, dynamic>> Function(String period)? overviewLoader;
   final Future<Map<String, dynamic>> Function({
     required String timeType,
@@ -108,7 +112,8 @@ class AnalysisPage extends StatefulWidget {
   State<AnalysisPage> createState() => _AnalysisPageState();
 }
 
-class _AnalysisPageState extends State<AnalysisPage> {
+class _AnalysisPageState extends State<AnalysisPage>
+    with WidgetsBindingObserver {
   final ApiService _api = ApiService();
   final CacheService _cache = CacheService();
   final LayerLink _datePickerLink = LayerLink();
@@ -143,10 +148,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
   bool _rankLoading = false;
   int _rankRetryCount = 0;
   Timer? _rankRetryTimer;
+  Timer? _autoRefreshTimer;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     _selectedDayYear = now.year;
     _selectedDayMonth = now.month;
@@ -154,6 +162,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     _loadData();
     _loadCalendar();
     _loadRank();
+    _syncAutoRefreshTimer();
   }
 
   @override
@@ -173,10 +182,53 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _overviewRetryTimer?.cancel();
     _calendarRetryTimer?.cancel();
     _rankRetryTimer?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnalysisPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final becameActive = !oldWidget.isActive && widget.isActive;
+    if (oldWidget.isActive != widget.isActive ||
+        oldWidget.autoRefreshInterval != widget.autoRefreshInterval) {
+      _syncAutoRefreshTimer();
+    }
+    if (becameActive) {
+      _triggerSilentRefresh();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    _syncAutoRefreshTimer();
+  }
+
+  bool get _canAutoRefresh =>
+      widget.isActive && _lifecycleState == AppLifecycleState.resumed;
+
+  void _syncAutoRefreshTimer() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = null;
+    if (!_canAutoRefresh) {
+      return;
+    }
+    _autoRefreshTimer = Timer.periodic(widget.autoRefreshInterval, (_) {
+      _triggerSilentRefresh();
+    });
+  }
+
+  void _triggerSilentRefresh() {
+    if (!mounted || !_canAutoRefresh) return;
+    _calendarCache.clear();
+    unawaited(_loadData(force: true, showLoadingUi: false));
+    unawaited(_loadCalendar(force: true, showLoadingUi: false));
+    unawaited(_loadRank(force: true));
   }
 
   void _handleLedgerChanged() {
@@ -631,20 +683,23 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
   Widget _buildOverviewCard(AppState appState) {
     final periodData = _asMap(_overview[_currentPeriod]);
+    final useRealtimeDay = _currentPeriod == 'day' && appState.portfolioLoaded;
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
-    final hasPnl = apiPnl != null;
-    final hasRate = apiRate != null;
-    final pnl = apiPnl ?? 0;
+    final effectivePnl = useRealtimeDay ? appState.investDayPnl : apiPnl;
+    final effectiveRate = useRealtimeDay ? appState.investDayPnlRate : apiRate;
+    final hasPnl = effectivePnl != null;
+    final hasRate = effectiveRate != null;
+    final pnl = effectivePnl ?? 0;
     final pnlColor = hasPnl
         ? (pnl >= 0 ? AppTheme.danger : AppTheme.success)
         : AppTheme.textMuted;
-    final showLoading = _loading && !_overviewLoaded;
-    final pnlValue = apiPnl ?? 0;
+    final showLoading = _loading && !_overviewLoaded && !useRealtimeDay;
+    final pnlValue = effectivePnl ?? 0;
     final amountText = appState.amountHidden
         ? '****'
         : (hasPnl ? '¥${pnlValue.toStringAsFixed(0)}' : '--');
-    final rateValue = apiRate ?? 0;
+    final rateValue = effectiveRate ?? 0;
     final rateText = appState.amountHidden
         ? '--'
         : (hasRate

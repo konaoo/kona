@@ -9,6 +9,9 @@ class _RealtimeAppState extends AppState {
   _RealtimeAppState() : super(tokenLoader: () async => null);
 
   @override
+  bool get portfolioLoaded => true;
+
+  @override
   double get investDayPnl => 88;
 
   @override
@@ -32,6 +35,8 @@ void main() {
   }
 
   Widget buildPage({
+    bool isActive = true,
+    Duration autoRefreshInterval = const Duration(minutes: 2),
     required Future<Map<String, dynamic>> Function({
       required String timeType,
       int? year,
@@ -44,6 +49,8 @@ void main() {
       child: MaterialApp(
         home: Scaffold(
           body: AnalysisPage(
+            isActive: isActive,
+            autoRefreshInterval: autoRefreshInterval,
             overviewLoader: overviewLoader,
             calendarLoader: calendarLoader,
             rankLoader:
@@ -96,7 +103,7 @@ void main() {
     };
   }
 
-  testWidgets('顶部大卡只展示概览口径', (tester) async {
+  testWidgets('顶部大卡当日优先展示实时投资口径，其他周期仍展示概览口径', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
       buildPage(
@@ -112,8 +119,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('当日盈亏'), findsOneWidget);
-    expect(find.text('¥999'), findsOneWidget);
-    expect(find.text('+9.99%'), findsOneWidget);
+    expect(find.text('¥88'), findsOneWidget);
+    expect(find.text('+1.23%'), findsOneWidget);
 
     await tester.tap(find.text('本年'));
     await tester.pumpAndSettle();
@@ -143,7 +150,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥999'), findsOneWidget);
+    expect(find.text('¥88'), findsOneWidget);
     expect(find.text('41'), findsWidgets);
   });
 
@@ -182,7 +189,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥999'), findsOneWidget);
+    expect(find.text('¥88'), findsOneWidget);
     expect(find.text('41'), findsWidgets);
     expect(find.text('本月盈亏'), findsOneWidget);
     expect(find.text('88'), findsNothing);
@@ -256,5 +263,61 @@ void main() {
     expect(find.text('本月盈亏'), findsOneWidget);
     expect(find.text('¥17118'), findsOneWidget);
     expect(find.text('+0.83%'), findsOneWidget);
+  });
+
+  testWidgets('分析页激活时会静默自动刷新', (tester) async {
+    final now = DateTime.now();
+    var overviewCallCount = 0;
+    var calendarCallCount = 0;
+    var rankCallCount = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>(
+        create: (_) => _RealtimeAppState(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnalysisPage(
+              isActive: true,
+              autoRefreshInterval: const Duration(milliseconds: 50),
+              overviewLoader: (_) async {
+                overviewCallCount += 1;
+                return {
+                  'day': {'pnl': overviewCallCount.toDouble(), 'pnl_rate': 1.0},
+                  'month': {'pnl': 2.0, 'pnl_rate': 2.0},
+                  'year': {'pnl': 3.0, 'pnl_rate': 3.0},
+                  'all': {'pnl': 4.0, 'pnl_rate': 4.0},
+                };
+              },
+              calendarLoader: ({required timeType, year, month}) async {
+                calendarCallCount += 1;
+                return buildCalendarPayload(
+                  timeType: timeType,
+                  year: year ?? now.year,
+                  month: month ?? now.month,
+                  items: const <Map<String, dynamic>>[],
+                );
+              },
+              rankLoader:
+                  ({String rankType = 'all', String market = 'all'}) async {
+                    rankCallCount += 1;
+                    return {'gain': [], 'loss': []};
+                  },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final initialOverviewCalls = overviewCallCount;
+    final initialCalendarCalls = calendarCallCount;
+    final initialRankCalls = rankCallCount;
+
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.pumpAndSettle();
+
+    expect(overviewCallCount, greaterThan(initialOverviewCalls));
+    expect(calendarCallCount, greaterThan(initialCalendarCalls));
+    expect(rankCallCount, greaterThan(initialRankCalls));
   });
 }

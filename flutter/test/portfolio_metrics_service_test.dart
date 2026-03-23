@@ -70,4 +70,66 @@ void main() {
       closeTo(144, 1e-6),
     );
   });
+
+  test('实时价格会驱动市值与盈亏重算', () {
+    final item = PortfolioItem(
+      code: 'sh600000',
+      name: '测试资产',
+      qty: 10,
+      price: 10,
+      cost: 100,
+      adjustment: 15,
+      curr: 'CNY',
+    );
+    final priceInfo = PriceInfo(
+      price: 12,
+      yclose: 11,
+      change: 1,
+      changePct: 9.09,
+    );
+
+    expect(
+      PortfolioMetricsService.resolveLiveValue(item, priceInfo: priceInfo),
+      120,
+    );
+    expect(
+      PortfolioMetricsService.resolveLiveFloatPnl(item, priceInfo: priceInfo),
+      20,
+    );
+    expect(
+      PortfolioMetricsService.resolveLiveTotalPnl(item, priceInfo: priceInfo),
+      35,
+    );
+    expect(
+      PortfolioMetricsService.resolveLiveDayPnl(item, priceInfo: priceInfo),
+      10,
+    );
+    expect(
+      PortfolioMetricsService.resolveLiveDayPnlRate(item, priceInfo: priceInfo),
+      closeTo(9.0909, 1e-4),
+    );
+  });
+
+  test('sumMetricWhenAny 会忽略缺失项，只在全空时返回空', () {
+    final items = <PortfolioItem>[
+      buildItem(dayPnlAggregateCny: 12),
+      buildItem(dayPnlAggregateCny: null),
+      buildItem(dayPnlAggregateCny: -2),
+    ];
+
+    expect(
+      PortfolioMetricsService.sumMetricWhenAny(
+        items,
+        (item) => item.dayPnlAggregateCny,
+      ),
+      10,
+    );
+    expect(
+      PortfolioMetricsService.sumMetricWhenAny(
+        <PortfolioItem>[buildItem(dayPnlAggregateCny: null)],
+        (item) => item.dayPnlAggregateCny,
+      ),
+      isNull,
+    );
+  });
 }

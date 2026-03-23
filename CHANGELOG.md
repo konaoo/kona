@@ -1,3 +1,24 @@
+## 2026-03-23-07
+
+### 这版一句话
+
+把 Flutter 投资页和分析页的实时刷新口径收正：投资页现在会跟着实时行情跳数，分析页“当日”大卡也改成跟投资页同源。
+
+### 主要变化
+- **投资页改成吃实时行情缓存**：Flutter [flutter/lib/services/portfolio_metrics_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/portfolio_metrics_service.dart) 新增一组实时口径计算函数，优先用 `PriceInfo` 重算现价、市值、当日盈亏、持仓盈亏和累计盈亏；[flutter/lib/pages/invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart) 的顶部总卡、分类汇总、持仓排序和持仓卡片都切到这套实时口径，不再只吃 `getPortfolio()` 上一次返回的静态字段。
+- **顶部当日盈亏不再被空值连坐成 `--`**：同一套实时口径现在会先累计有值的资产，只有全部资产都算不出当日盈亏时才显示 `--`，避免明细已经在跳、顶部总卡却长时间空白。
+- **分析页激活时会静默刷新**：Flutter [flutter/lib/main.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/main.dart) 会把当前是否处于分析页 Tab 传给 [flutter/lib/pages/analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)，分析页激活时会自己启动静默刷新，切走或退后台就停掉。
+- **分析页“当日”大卡改成和投资页同源**：同一页面现在在 `当日` 模式下直接使用 `AppState` 里的实时投资盈亏，而不是继续等分析概览接口慢半拍，避免投资页已经变了、分析页顶部还停在旧值。
+- **补齐回归测试**：新增/更新了 [flutter/test/portfolio_metrics_service_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/portfolio_metrics_service_test.dart)、[flutter/test/invest_page_diluted_cost_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/invest_page_diluted_cost_test.dart)、[flutter/test/analysis_realtime_snapshot_policy_test.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/test/analysis_realtime_snapshot_policy_test.dart)，锁住这次实时刷新口径。
+
+### 影响范围
+- Flutter：投资页的投资总市值、当日盈亏、持仓盈亏、累计盈亏、持仓卡片现价与排序
+- Flutter：分析页 `当日` 顶部大卡，以及分析页激活时的静默刷新行为
+
+### 验收重点
+- 开盘时停留在投资页不操作，现价和相关盈亏数字应能跟随实时行情跳动
+- 分析页停留在 `当日` 时，顶部当日盈亏应和投资页同方向变化，不应长期停在旧值
+
 ## 2026-03-23-06
 
 ### 这版一句话

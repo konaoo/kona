@@ -742,7 +742,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               key: _investPageKey,
               onFabVisibilityChanged: _onPrimaryScrollVisibilityChanged,
             ),
-            const AnalysisPage(),
+            AnalysisPage(isActive: _currentIndex == 2),
             const NewsPage(),
             ProfilePage(onLogout: widget.onLogout),
           ],

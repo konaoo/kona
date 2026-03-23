@@ -843,27 +843,50 @@ class InvestPageState extends State<InvestPage> {
     final items = appState.portfolio;
     final totalValueCny = PortfolioMetricsService.sumMetricOrNull(
       items,
-      (item) => item.valueCny,
+      (item) => PortfolioMetricsService.resolveLiveValueCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
-    final dayPnlCny = PortfolioMetricsService.sumMetricOrNull(
+    final dayPnlCny = PortfolioMetricsService.sumMetricWhenAny(
       items,
-      (item) => item.dayPnlAggregateCny,
+      (item) => PortfolioMetricsService.resolveLiveDayPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
-    final dayPnlBaseCny = PortfolioMetricsService.sumMetricOrNull(
+    final dayPnlBaseCny = PortfolioMetricsService.sumMetricWhenAny(
       items,
-      PortfolioMetricsService.resolveDayPnlBaseCny,
+      (item) => PortfolioMetricsService.resolveLiveDayPnlBaseCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final holdPnlCny = PortfolioMetricsService.sumMetricOrNull(
       items,
-      PortfolioMetricsService.resolveFloatPnlCny,
+      (item) => PortfolioMetricsService.resolveLiveFloatPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final totalPnlCny = PortfolioMetricsService.sumMetricOrNull(
       items,
-      (item) => item.totalPnlCny,
+      (item) => PortfolioMetricsService.resolveLiveTotalPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final costAbsCny = PortfolioMetricsService.sumAbsMetricOrNull(
       items,
-      (item) => item.costCny,
+      (item) => PortfolioMetricsService.resolveCostCnyLive(
+        item,
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final totalPnlDenominatorCny = PortfolioMetricsService.sumMetricOrNull(
       items,
@@ -1116,21 +1139,36 @@ class InvestPageState extends State<InvestPage> {
     final filtered = appState.filteredPortfolio;
     if (filtered.isEmpty) return const SizedBox.shrink();
 
-    final catDayPnl = PortfolioMetricsService.sumMetricOrNull(
+    final catDayPnl = PortfolioMetricsService.sumMetricWhenAny(
       filtered,
-      (item) => item.dayPnlAggregateCny,
+      (item) => PortfolioMetricsService.resolveLiveDayPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
-    final catDayPnlBase = PortfolioMetricsService.sumMetricOrNull(
+    final catDayPnlBase = PortfolioMetricsService.sumMetricWhenAny(
       filtered,
-      PortfolioMetricsService.resolveDayPnlBaseCny,
+      (item) => PortfolioMetricsService.resolveLiveDayPnlBaseCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final catHoldPnl = PortfolioMetricsService.sumMetricOrNull(
       filtered,
-      (item) => item.totalPnlCny,
+      (item) => PortfolioMetricsService.resolveLiveTotalPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final catCostAbs = PortfolioMetricsService.sumAbsMetricOrNull(
       filtered,
-      (item) => item.costCny,
+      (item) => PortfolioMetricsService.resolveCostCnyLive(
+        item,
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
     );
     final catDayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
       catDayPnl,
@@ -1249,12 +1287,20 @@ class InvestPageState extends State<InvestPage> {
 
   // ─── Portfolio List ────────────────────────────
   Widget _buildPortfolioList(AppState appState) {
-    final List<dynamic> filtered = List.from(appState.filteredPortfolio);
+    final List<PortfolioItem> filtered = List.from(appState.filteredPortfolio);
 
     // Sort by today's PnL descending
     filtered.sort((a, b) {
-      final pnlA = (a.dayPnlAggregateCny as num?)?.toDouble();
-      final pnlB = (b.dayPnlAggregateCny as num?)?.toDouble();
+      final pnlA = PortfolioMetricsService.resolveLiveDayPnlCny(
+        a,
+        priceInfo: appState.resolvePriceInfo(a),
+        fallbackRateToCny: appState.getCurrencyRate(a.curr),
+      );
+      final pnlB = PortfolioMetricsService.resolveLiveDayPnlCny(
+        b,
+        priceInfo: appState.resolvePriceInfo(b),
+        fallbackRateToCny: appState.getCurrencyRate(b.curr),
+      );
       if (pnlA == null && pnlB == null) return 0;
       if (pnlA == null) return 1;
       if (pnlB == null) return -1;
@@ -1292,33 +1338,44 @@ class InvestPageState extends State<InvestPage> {
   }
 
   // ─── Stock Card ────────────────────────────────
-  Widget _buildStockCard(dynamic item, AppState appState) {
-    final qty = (item.qty as num?)?.toDouble() ?? 0.0;
-    final rawCostPrice = (item.price as num?)?.toDouble() ?? 0.0;
-    final displayCostPrice =
-        (item.displayCostPrice as num?)?.toDouble() ?? rawCostPrice;
+  Widget _buildStockCard(PortfolioItem item, AppState appState) {
+    final priceInfo = appState.resolvePriceInfo(item);
+    final fallbackRateToCny = appState.getCurrencyRate(item.curr);
+    final qty = item.qty;
+    final rawCostPrice = item.price;
+    final displayCostPrice = item.displayCostPrice ?? rawCostPrice;
 
-    final backendCurrentPrice = (item.currentPrice as num?)?.toDouble() ?? 0.0;
-    final currentPrice = backendCurrentPrice > 0
-        ? backendCurrentPrice
-        : rawCostPrice;
+    final currentPrice = PortfolioMetricsService.resolveCurrentPrice(
+      item,
+      priceInfo: priceInfo,
+    );
+    final mv = PortfolioMetricsService.resolveLiveValue(item, priceInfo: priceInfo);
+    final holdingPnl = PortfolioMetricsService.resolveLiveTotalPnl(
+      item,
+      priceInfo: priceInfo,
+    );
+    final holdingPnlPct = PortfolioMetricsService.resolveLiveTotalPnlRate(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+    );
 
-    final mv = (item.value as num?)?.toDouble();
-    final holdingPnl = (item.totalPnl as num?)?.toDouble();
-    final holdingPnlPct = (item.totalPnlRate as num?)?.toDouble();
-
-    final navUpdatePending = (item.navUpdatePending as bool?) ?? false;
+    final navUpdatePending = appState.isNavUpdatePendingAsset(item);
     final latestNavDate = _readLatestNavDate(item);
     final latestNavDateText = _formatLatestNavDateText(latestNavDate);
-    final dayPnlEnabled = (item.dayPnlDisplayEnabled as bool?) ?? false;
-    final dailyPnl =
-        (item.dayPnlDisplay as num?)?.toDouble() ??
-        (item.dayPnl as num?)?.toDouble() ??
-        (item.dayPnlAggregate as num?)?.toDouble();
-    final dailyPnlPct =
-        (item.dayPnlRateDisplay as num?)?.toDouble() ??
-        (item.dayPnlRate as num?)?.toDouble() ??
-        (item.dayPnlRateAggregate as num?)?.toDouble();
+    final dayPnlEnabled = appState.isAssetDayPnlDisplayEnabled(
+      item,
+      priceInfo: priceInfo,
+    );
+    final dailyPnl = PortfolioMetricsService.resolveLiveDayPnl(
+      item,
+      priceInfo: priceInfo,
+    );
+    final dailyPnlPct = PortfolioMetricsService.resolveLiveDayPnlRate(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+    );
 
     // Market type tag
     final marketType = (item.marketType as String? ?? 'a').toLowerCase();
@@ -1340,9 +1397,8 @@ class InvestPageState extends State<InvestPage> {
     final pctBase = positionPct ?? 0.0;
     final positionPctRatio = (pctBase.clamp(0.0, 100.0) / 100.0).toDouble();
 
-    final mvLabel = mv == null
-        ? '--'
-        : '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}';
+    final mvLabel =
+        '$sym${appState.formatAmount(mv, prefix: '').replaceFirst('¥', '')}';
     final currentPriceLabel = currentPrice > 0
         ? '$sym${_formatDisplayPrice(currentPrice, item: item)}'
         : '--';
@@ -1357,9 +1413,7 @@ class InvestPageState extends State<InvestPage> {
             dailyPnl == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dailyPnl);
-    final holdingValueColor = holdingPnl == null
-        ? AppTheme.textMuted
-        : AppState.getPnlColor(holdingPnl);
+    final holdingValueColor = AppState.getPnlColor(holdingPnl);
 
     final dayPnlValue = shouldShowFundDayPnlPlaceholder || navUpdatePending
         ? '--'
