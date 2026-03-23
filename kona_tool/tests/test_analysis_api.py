@@ -582,6 +582,38 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(default_target.get('pnl') or 0.0), 15.0, places=2)
         self.assertAlmostEqual(float(second_target.get('pnl') or 0.0), -8.0, places=2)
 
+    def test_analysis_calendar_backfills_single_ledger_history_from_global_snapshots(self):
+        ledger_id = app_module.db.get_default_ledger_id('')
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-01', 1000, 800, 200, 0, 0, 80, 10, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-02', 1020, 820, 200, 0, 0, 95, 15, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        app_module.db.init_database()
+
+        resp = self.client.get(f'/api/analysis/calendar?type=day&year=2026&month=3&ledger_id={ledger_id}')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        item_map = {str(item.get('label')): float(item.get('pnl') or 0.0) for item in items}
+        self.assertEqual(10.0, item_map.get('3-1'))
+        self.assertEqual(15.0, item_map.get('3-2'))
+
     def test_analysis_rejects_invalid_ledger_id(self):
         resp = self.client.get('/api/analysis/rank?type=all&ledger_id=bad-ledger')
         self.assertEqual(resp.status_code, 400)

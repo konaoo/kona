@@ -30,6 +30,7 @@ class DatabaseSchemaManager:
         db_manager._ensure_admin_api_policies_defaults(cursor)
         db_manager._backfill_user_daily_activity(cursor)
         self._ensure_ledger_schema(cursor)
+        db_manager.backfill_single_ledger_daily_snapshots(cursor)
 
     def _create_tables(self, cursor: Any) -> None:
         cursor.execute(

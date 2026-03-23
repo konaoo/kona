@@ -1,3 +1,24 @@
+## 2026-03-23-04
+
+### 这版一句话
+
+修掉单账本老用户分析页历史断层：后端现在会把旧全局快照正式回填到唯一账本的历史快照里，避免 App 带账本后只剩最近两天。
+
+### 主要变化
+- **单账本历史正式回填到账本快照**：后端 [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) 新增 `backfill_single_ledger_daily_snapshots`，会把只有一个账本的用户在 `daily_snapshots` 里的缺失历史日期补到 `ledger_daily_snapshots`，只补缺口，不覆盖已有账本快照。
+- **初始化链路接入正式补齐**：后端 [kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py) 现在会在账本结构迁移完成后自动执行这条补齐逻辑，老单账本用户部署后即可被正式修复，不需要 App 或接口临时兜底。
+- **多账本用户不猜历史归属**：这次修复明确只处理当前只有一个账本的用户，避免把旧全局历史硬拆到多个账本里，防止伪造历史数据。
+- **补齐回归测试**：后端 [kona_tool/tests/test_database_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_database_schema.py) 和 [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py) 新增“单账本历史回填”和“多账本不误补”的测试，锁住这次修复。
+
+### 影响范围
+- 后端：单账本老用户的账本历史快照初始化与迁移
+- Flutter App：分析页在带 `ledger_id` 时的历史日历和概览口径
+
+### 验收重点
+- 单账本老用户进入 App 分析页后，不应再只看到最近两天账本历史
+- 同一位单账本用户的 App 账本分析历史，应能和旧全局历史基本对齐
+- 多账本用户不应被自动补出无法确认归属的历史账本快照
+
 ## 2026-03-23-03
 
 ### 这版一句话

@@ -21,6 +21,95 @@ MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 class SnapshotDatabaseMixin:
     """给 DatabaseManager 提供快照、历史与同步版本相关方法。"""
 
+    def backfill_single_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
+        """
+        为“当前只有一个账本”的用户补齐缺失的账本历史快照。
+
+        背景：
+        - 老用户在多账本上线前，只有 daily_snapshots 全局历史
+        - 多账本迁移时，只给持仓/交易补了 ledger_id，没有把历史快照补到 ledger_daily_snapshots
+
+        这里的原则是：
+        - 只处理当前确实只有一个账本的用户
+        - 只补缺失日期，不覆盖已有账本快照
+        - 不对多账本用户猜历史归属，避免写入伪造数据
+
+        注意：
+        - 旧全局快照没有“按账本的历史 total_cost”，只有 total_invest
+        - 为了让单账本老用户的账本分析历史和旧全局分析历史保持一致，
+          这里把 total_invest 同时映射到 total_market_value / total_cost，
+          total_pnl_rate 也按 total_invest 作为基数回填
+        """
+        params: list[Any] = []
+        user_filter_sql = ""
+        if user_id is not None:
+            user_filter_sql = "WHERE user_id = ?"
+            params.append(str(user_id))
+
+        cursor.execute(
+            f"""
+            SELECT user_id, MIN(id) AS ledger_id
+            FROM investment_ledgers
+            {user_filter_sql}
+            GROUP BY user_id
+            HAVING COUNT(*) = 1
+            """,
+            params,
+        )
+        single_ledger_users = cursor.fetchall()
+        inserted_total = 0
+
+        for row in single_ledger_users:
+            uid = str(row["user_id"] or "")
+            ledger_id = int(row["ledger_id"])
+            cursor.execute(
+                """
+                INSERT INTO ledger_daily_snapshots (
+                    user_id, ledger_id, date,
+                    total_market_value, total_cost, total_pnl, total_pnl_rate,
+                    day_pnl, holdings_count, created_at
+                )
+                SELECT
+                    ds.user_id,
+                    ?,
+                    ds.date,
+                    ROUND(COALESCE(ds.total_invest, 0), 2),
+                    ROUND(COALESCE(ds.total_invest, 0), 2),
+                    ROUND(COALESCE(ds.total_pnl, 0), 2),
+                    CASE
+                        WHEN ABS(COALESCE(ds.total_invest, 0)) > 0
+                            THEN ROUND(COALESCE(ds.total_pnl, 0) / ds.total_invest * 100, 2)
+                        ELSE 0
+                    END,
+                    ROUND(COALESCE(ds.day_pnl, 0), 2),
+                    0,
+                    COALESCE(ds.updated_at, datetime('now','localtime'))
+                FROM daily_snapshots ds
+                WHERE ds.user_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM ledger_daily_snapshots lds
+                      WHERE lds.user_id = ds.user_id
+                        AND lds.ledger_id = ?
+                        AND lds.date = ds.date
+                  )
+                ORDER BY ds.date ASC
+                """,
+                (ledger_id, uid, ledger_id),
+            )
+            cursor.execute("SELECT changes()")
+            changed = int(cursor.fetchone()[0] or 0)
+            if changed > 0:
+                inserted_total += changed
+                logger.info(
+                    "Backfilled %s ledger snapshots for single-ledger user=%s ledger_id=%s",
+                    changed,
+                    uid,
+                    ledger_id,
+                )
+
+        return inserted_total
+
     def has_daily_snapshot(self, date_str: str, user_id: str = None) -> bool:
         """判断指定日期是否已有主快照。"""
         conn = self.get_connection()
