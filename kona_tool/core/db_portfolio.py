@@ -132,7 +132,11 @@ class PortfolioDatabaseMixin:
         return str(code or "").strip(), None
 
     def _ensure_portfolio_user_scoped_unique(self, cursor) -> None:
-        """将 portfolio 的全局 code 唯一约束迁移为 (code, user_id) 唯一约束。"""
+        """兼容旧库唯一约束，但多账本库不再按 (code, user_id) 去重。"""
+        cursor.execute("PRAGMA table_info(portfolio)")
+        portfolio_cols = [row[1] for row in cursor.fetchall()]
+        has_ledger_id = "ledger_id" in portfolio_cols
+
         cursor.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='portfolio'"
         )
@@ -141,7 +145,7 @@ class PortfolioDatabaseMixin:
         table_sql = str(raw_sql or "").lower()
         has_legacy_unique = "code text unique" in table_sql or "code\ttext unique" in table_sql
 
-        if has_legacy_unique:
+        if has_legacy_unique and not has_ledger_id:
             logger.info("Migrating portfolio schema from global code unique to (code, user_id) unique")
             cursor.execute("DROP TABLE IF EXISTS portfolio_new")
             cursor.execute(
@@ -195,8 +199,11 @@ class PortfolioDatabaseMixin:
             safe_name = str(index_name).replace('"', '""')
             cursor.execute(f'PRAGMA index_info("{safe_name}")')
             cols = [str(col_row[2]) for col_row in cursor.fetchall()]
-            if cols == ["code"]:
+            if cols == ["code"] or cols == ["code", "user_id"]:
                 cursor.execute(f'DROP INDEX IF EXISTS "{safe_name}"')
+
+        if has_ledger_id:
+            return
 
         removed = self._deduplicate_portfolio_by_code_user(cursor)
         if removed > 0:

@@ -431,9 +431,6 @@ class DatabaseSchemaManager:
     def _create_base_indexes(self, cursor: Any) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_code ON portfolio(code)")
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_code_user_unique ON portfolio(code, user_id)"
-        )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)")
         cursor.execute(

@@ -1359,6 +1359,56 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(second_item['qty']), 200.0)
         self.assertAlmostEqual(float(second_item['price']), 31.0)
 
+    def test_db_init_keeps_same_code_positions_in_different_ledgers(self):
+        user_id = 'u_init_keeps_cross_ledger_positions'
+        username = 'init_keeps_cross_ledger_positions_user'
+        _seed_user(user_id, username)
+        default_ledger_id = app_module.db.get_default_ledger_id(user_id)
+        second_ledger = app_module.db.create_ledger(user_id, '第二账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (
+                code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id
+            ) VALUES (?, ?, ?, ?, 'CNY', 0.0, 'a', ?, ?)
+            """,
+            ('sh600900', '长江电力', 100.0, 26.0, user_id, default_ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO portfolio (
+                code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id
+            ) VALUES (?, ?, ?, ?, 'CNY', 0.0, 'a', ?, ?)
+            """,
+            ('sh600900', '长江电力', 200.0, 27.0, user_id, second_ledger_id),
+        )
+        conn.commit()
+        conn.close()
+
+        app_module.db.init_database()
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT ledger_id, qty, price
+            FROM portfolio
+            WHERE user_id = ? AND code = ?
+            ORDER BY ledger_id
+            """,
+            (user_id, 'sh600900'),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        self.assertEqual(2, len(rows))
+        self.assertEqual([default_ledger_id, second_ledger_id], [int(row['ledger_id']) for row in rows])
+        self.assertAlmostEqual(100.0, float(rows[0]['qty']))
+        self.assertAlmostEqual(200.0, float(rows[1]['qty']))
+
     def test_sell_all_keeps_realized_pnl_in_cumulative_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600010',

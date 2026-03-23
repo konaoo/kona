@@ -8,6 +8,7 @@
 - **首页全量刷新继续带当前账本**：Flutter [flutter/lib/providers/app_refresh_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_state.dart) / [flutter/lib/providers/app_refresh_coordinator_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_refresh_coordinator_state.dart) / [flutter/lib/providers/app_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_state.dart) 现在会把当前 `ledger_id` 贯穿到 `refreshAll / refreshByVersion`，首页下拉刷新、全量刷新、账本模式下的回退刷新不再把默认账本刷成全部账本汇总。
 - **新增持仓更新语句补回账本条件**：后端 [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) 里 `add_asset()` 命中已有持仓后的 `UPDATE` 现在会带上 `ledger_id`，避免同一用户多个账本里同代码资产被一次更新一起改掉。
 - **撤销投资操作改成按账本回滚**：后端 [kona_tool/portfolio_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/portfolio_handlers.py) 会把 `ledger_id` 写进 undo 记录，[kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) 的 `undo_invest_operation()` 现在也按 `code + user_id + ledger_id` 回滚，不再误删或误恢复别的账本同代码持仓。
+- **数据库初始化不再按旧规则删多账本同代码持仓**：后端 [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) 现在只会在旧单账本库里做 `(code, user_id)` 兼容迁移；如果 `portfolio` 已经有 `ledger_id`，初始化阶段只清旧索引，不再按旧口径去重。[kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py) 也不再重建 `(code, user_id)` 的旧唯一索引。
 - **补了跨账本回归测试**：后端 [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) 新增“同代码跨账本更新只改目标账本”和“带现金买入后的 undo 只回滚目标账本”两条测试，锁住这次修复。
 
 ### 影响范围
@@ -18,6 +19,7 @@
 - 选择默认账本进入首页后，下拉刷新不应再跳成全部账本总额
 - 同一用户两个账本都有同一只股票时，修改其中一个账本的持仓不应影响另一个账本
 - 在某个账本里买入后点撤销，只应回滚当前账本，不应把别的账本同代码持仓一起删掉
+- 服务重启、补快照或数据库初始化时，不应再把同用户不同账本的同代码持仓误删成只剩一条
 
 ## 2026-03-22-10
 
