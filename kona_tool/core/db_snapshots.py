@@ -21,6 +21,33 @@ MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 class SnapshotDatabaseMixin:
     """给 DatabaseManager 提供快照、历史与同步版本相关方法。"""
 
+    def cleanup_orphan_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
+        """清理已经失去对应账本主表记录的孤儿账本快照。"""
+        params: list[Any] = []
+        user_filter_sql = ""
+        if user_id is not None:
+            user_filter_sql = "AND s.user_id = ?"
+            params.append(str(user_id))
+
+        cursor.execute(
+            f"""
+            DELETE FROM ledger_daily_snapshots
+            WHERE id IN (
+                SELECT s.id
+                FROM ledger_daily_snapshots s
+                LEFT JOIN investment_ledgers l ON l.id = s.ledger_id
+                WHERE l.id IS NULL
+                {user_filter_sql}
+            )
+            """,
+            params,
+        )
+        cursor.execute("SELECT changes()")
+        changed = int(cursor.fetchone()[0] or 0)
+        if changed > 0:
+            logger.info("Cleaned up %s orphan ledger daily snapshots", changed)
+        return changed
+
     def backfill_single_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
         """
         为“当前只有一个账本”的用户补齐缺失的账本历史快照。

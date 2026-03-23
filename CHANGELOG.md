@@ -1,3 +1,23 @@
+## 2026-03-23-05
+
+### 这版一句话
+
+修掉删除账本后遗留孤儿历史快照的问题：删账本时会同步删掉账本快照，初始化时也会顺手清理历史残留。
+
+### 主要变化
+- **删除账本时同步删除账本快照**：后端 [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py) 现在在删除空的非默认账本前，会先删掉该账本对应的 `ledger_daily_snapshots`，避免主表删了、历史快照还留着。
+- **初始化链路补孤儿清理**：后端 [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) 新增 `cleanup_orphan_ledger_daily_snapshots`，数据库初始化时会把已经失去对应账本主表记录的孤儿快照清理掉。[kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py) 已接入这条清理逻辑。
+- **补齐回归测试**：后端 [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py) 新增“删空账本时账本快照一起删除”的测试；[kona_tool/tests/test_database_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_database_schema.py) 新增“初始化会清理孤儿账本快照”的测试。
+- **线上脏数据已清理**：这次已在腾讯云线上库里删除 5 行失去主账本记录的孤儿 `ledger_daily_snapshots`，清理前备份保存在 `archive/backups/portfolio-before-orphan-ledger-snapshot-clean-20260323-120409.db`。
+
+### 影响范围
+- 后端：账本删除链路
+- 后端：数据库初始化时的账本历史快照清理
+
+### 验收重点
+- 删除空账本后，不应再留下该账本的历史快照
+- 服务启动后，不应再看到没有对应 `investment_ledgers` 主记录的 `ledger_daily_snapshots`
+
 ## 2026-03-23-04
 
 ### 这版一句话

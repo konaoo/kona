@@ -148,3 +148,51 @@ class DatabaseSchemaTests(unittest.TestCase):
             conn.close()
 
         self.assertEqual(0, int(row["cnt"]))
+
+    def test_init_database_cleans_orphan_ledger_snapshots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "schema.db")
+            db = DatabaseManager(db_path)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
+                VALUES ('u_orphan', 'orphan_user', 'hash', 0, 0, 'active')
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order)
+                VALUES ('u_orphan', '待删除账本', 0, 0)
+                """
+            )
+            ledger_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO ledger_daily_snapshots
+                (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+                VALUES ('u_orphan', ?, '2026-03-22', 100.0, 100.0, 5.0, 5.0, 5.0, 1)
+                """,
+                (ledger_id,),
+            )
+            cursor.execute(
+                "DELETE FROM investment_ledgers WHERE id = ?",
+                (ledger_id,),
+            )
+            conn.commit()
+            conn.close()
+
+            db.init_database()
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(1) AS cnt FROM ledger_daily_snapshots WHERE user_id = 'u_orphan' AND ledger_id = ?",
+                (ledger_id,),
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+        self.assertEqual(0, int(row["cnt"]))

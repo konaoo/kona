@@ -1261,6 +1261,54 @@ class PortfolioApiTests(unittest.TestCase):
         ledgers = app_module.db.get_ledgers(user_id)
         self.assertNotIn(ledger['ledger_id'], [item['id'] for item in ledgers])
 
+    def test_delete_empty_non_default_ledger_also_removes_ledger_snapshots(self):
+        user_id = 'u_delete_empty_ledger_snapshots'
+        username = 'delete_empty_ledger_snapshots_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        ledger = app_module.db.create_ledger(user_id, '待删除账本')
+        ledger_id = int(ledger['ledger_id'])
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+            VALUES (?, ?, '2026-03-22', 100.0, 100.0, 5.0, 5.0, 5.0, 1)
+            """,
+            (user_id, ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+            VALUES (?, ?, '2026-03-23', 110.0, 100.0, 6.0, 6.0, 1.0, 1)
+            """,
+            (user_id, ledger_id),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.delete(
+            f"/api/portfolio/ledgers/{ledger_id}",
+            headers=headers,
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get('ok'))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(1) AS cnt FROM ledger_daily_snapshots WHERE user_id = ? AND ledger_id = ?",
+            (user_id, ledger_id),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        self.assertEqual(0, int(row['cnt']))
+
     def test_delete_non_default_ledger_with_holdings_is_rejected(self):
         user_id = 'u_delete_non_empty_ledger'
         username = 'delete_non_empty_ledger_user'

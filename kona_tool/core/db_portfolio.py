@@ -1023,6 +1023,10 @@ class PortfolioDatabaseMixin:
             if holdings_count > 0:
                 return {"ok": False, "code": "HAS_HOLDINGS", "error": "账本下还有持仓，不能删除"}
             cursor.execute(
+                "DELETE FROM ledger_daily_snapshots WHERE ledger_id = ? AND user_id = ?",
+                (ledger_id, user_id),
+            )
+            cursor.execute(
                 "DELETE FROM investment_ledgers WHERE id = ? AND user_id = ?",
                 (ledger_id, user_id),
             )
