@@ -191,6 +191,24 @@
 - 管理后台 AI 助手页应新增“截图识别配置”，可以单独选截图识别供应商和模型，不影响聊天激活供应商
 - Web 构建、后端 OCR / AI 聊天相关测试通过；真实截图识别是否可用取决于后台是否配置了支持图片的模型
 
+## 2026-03-23-01
+
+### 这版一句话
+
+修掉空账本删除失败的后端判断 bug：现在非默认、无持仓的账本可以正常删除。
+
+### 主要变化
+- [kona_tool/core/db_portfolio.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_portfolio.py)：修正删除账本时把 `sqlite3.Row` 当 `dict` 调 `.get()` 的错误写法，避免空账本删除被误打成 `DELETE_FAILED`。
+- [kona_tool/tests/test_portfolio_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_portfolio_api.py)：补齐“空账本可删”“有持仓账本不可删”的回归测试，防止删除规则以后再次回退。
+
+### 影响范围
+- 后端：`DELETE /api/portfolio/ledgers/<ledger_id>`
+- Flutter：账本管理页删除账本
+
+### 验收重点
+- 非默认且没有持仓的账本，应能直接删除成功
+- 非默认但仍有持仓的账本，应继续返回“账本下还有持仓，不能删除”
+
 ## 2026-03-22-01
 
 ### 这版一句话

@@ -1011,7 +1011,9 @@ class PortfolioDatabaseMixin:
                 "SELECT COUNT(*) AS cnt FROM portfolio WHERE ledger_id = ? AND user_id = ? AND qty > 0",
                 (ledger_id, user_id),
             )
-            if (cursor.fetchone() or {}).get("cnt", 0) > 0:
+            holdings_row = cursor.fetchone()
+            holdings_count = int(holdings_row["cnt"]) if holdings_row else 0
+            if holdings_count > 0:
                 return {"ok": False, "code": "HAS_HOLDINGS", "error": "账本下还有持仓，不能删除"}
             cursor.execute(
                 "DELETE FROM investment_ledgers WHERE id = ? AND user_id = ?",

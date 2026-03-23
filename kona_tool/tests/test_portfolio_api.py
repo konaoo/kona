@@ -1242,6 +1242,54 @@ class PortfolioApiTests(unittest.TestCase):
         payload = resp.get_json() or {}
         self.assertEqual(payload.get('code'), 'INVALID_LEDGER_IDS')
 
+    def test_delete_empty_non_default_ledger_succeeds(self):
+        user_id = 'u_delete_empty_ledger'
+        username = 'delete_empty_ledger_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        ledger = app_module.db.create_ledger(user_id, '待删除账本')
+
+        resp = self.client.delete(
+            f"/api/portfolio/ledgers/{ledger['ledger_id']}",
+            headers=headers,
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get('ok'))
+
+        ledgers = app_module.db.get_ledgers(user_id)
+        self.assertNotIn(ledger['ledger_id'], [item['id'] for item in ledgers])
+
+    def test_delete_non_default_ledger_with_holdings_is_rejected(self):
+        user_id = 'u_delete_non_empty_ledger'
+        username = 'delete_non_empty_ledger_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        ledger = app_module.db.create_ledger(user_id, '有持仓账本')
+
+        add_resp = self.client.post(
+            '/api/portfolio/add',
+            json={
+                'code': 'sh600519',
+                'name': '贵州茅台',
+                'price': 1500.0,
+                'qty': 1.0,
+                'ledger_id': ledger['ledger_id'],
+            },
+            headers=headers,
+        )
+        self.assertEqual(add_resp.status_code, 200)
+
+        resp = self.client.delete(
+            f"/api/portfolio/ledgers/{ledger['ledger_id']}",
+            headers=headers,
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'HAS_HOLDINGS')
+
     def test_sell_all_keeps_realized_pnl_in_cumulative_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600010',
