@@ -12,6 +12,7 @@ class AppRefreshCoordinatorState {
   final AppSyncState _syncState;
   final String? Function() _username;
   final String? Function() _userId;
+  final int? Function() _currentLedgerId;
   final List<PortfolioItem> Function() _portfolio;
   final void Function(List<PortfolioItem>) _replacePortfolio;
   final List<Asset> Function() _cashAssets;
@@ -45,6 +46,7 @@ class AppRefreshCoordinatorState {
     required AppSyncState syncState,
     required String? Function() username,
     required String? Function() userId,
+    required int? Function() currentLedgerId,
     required List<PortfolioItem> Function() portfolio,
     required void Function(List<PortfolioItem>) replacePortfolio,
     required List<Asset> Function() cashAssets,
@@ -72,6 +74,7 @@ class AppRefreshCoordinatorState {
        _syncState = syncState,
        _username = username,
        _userId = userId,
+       _currentLedgerId = currentLedgerId,
        _portfolio = portfolio,
        _replacePortfolio = replacePortfolio,
        _cashAssets = cashAssets,
@@ -146,11 +149,13 @@ class AppRefreshCoordinatorState {
   Future<void> refreshByVersion({
     bool force = false,
     bool refreshQuotes = true,
+    int? ledgerId,
   }) async {
     await _refreshState.refreshByVersion(
       bindings: _bindings,
       force: force,
       refreshQuotes: refreshQuotes,
+      ledgerId: ledgerId,
     );
   }
 
@@ -158,10 +163,14 @@ class AppRefreshCoordinatorState {
     await _refreshState.refreshPricesOnly(bindings: _bindings);
   }
 
-  Future<void> refreshAll({bool force = false}) async {
+  Future<void> refreshAll({bool force = false, int? ledgerId}) async {
     final flow = startAppAsyncFlow('flutter.refreshAll');
     try {
-      await _refreshState.refreshAll(bindings: _bindings, force: force);
+      await _refreshState.refreshAll(
+        bindings: _bindings,
+        force: force,
+        ledgerId: ledgerId,
+      );
       _lastRefreshResult = finishAppAsyncFlow(
         flow,
         stage: force ? 'force-finished' : 'finished',
@@ -197,6 +206,7 @@ class AppRefreshCoordinatorState {
   AppRefreshBindings get _bindings => AppRefreshBindings(
     username: _username,
     userId: _userId,
+    currentLedgerId: _currentLedgerId,
     syncState: _syncState,
     syncVersions: () => _syncState.syncVersions,
     portfolio: _portfolio,

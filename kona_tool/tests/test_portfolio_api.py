@@ -1290,6 +1290,75 @@ class PortfolioApiTests(unittest.TestCase):
         payload = resp.get_json() or {}
         self.assertEqual(payload.get('code'), 'HAS_HOLDINGS')
 
+    def test_add_asset_update_only_touches_target_ledger(self):
+        user_id = 'u_add_asset_ledger_isolation'
+        username = 'add_asset_ledger_isolation_user'
+        _seed_user(user_id, username)
+        default_ledger_id = app_module.db.get_default_ledger_id(user_id)
+        second_ledger = app_module.db.create_ledger(user_id, '第二账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'sh600900',
+                    'name': '长江电力',
+                    'qty': 100.0,
+                    'price': 30.0,
+                    'curr': 'CNY',
+                    'asset_type': 'a',
+                },
+                user_id=user_id,
+                ledger_id=default_ledger_id,
+            )
+        )
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'sh600900',
+                    'name': '长江电力',
+                    'qty': 200.0,
+                    'price': 31.0,
+                    'curr': 'CNY',
+                    'asset_type': 'a',
+                },
+                user_id=user_id,
+                ledger_id=second_ledger_id,
+            )
+        )
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'sh600900',
+                    'name': '长江电力',
+                    'qty': 150.0,
+                    'price': 32.0,
+                    'curr': 'CNY',
+                    'asset_type': 'a',
+                },
+                user_id=user_id,
+                ledger_id=default_ledger_id,
+            )
+        )
+
+        default_item = app_module.db.get_asset(
+            'sh600900',
+            user_id=user_id,
+            ledger_id=default_ledger_id,
+        )
+        second_item = app_module.db.get_asset(
+            'sh600900',
+            user_id=user_id,
+            ledger_id=second_ledger_id,
+        )
+
+        self.assertIsNotNone(default_item)
+        self.assertIsNotNone(second_item)
+        self.assertAlmostEqual(float(default_item['qty']), 150.0)
+        self.assertAlmostEqual(float(default_item['price']), 32.0)
+        self.assertAlmostEqual(float(second_item['qty']), 200.0)
+        self.assertAlmostEqual(float(second_item['price']), 31.0)
+
     def test_sell_all_keeps_realized_pnl_in_cumulative_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600010',
@@ -1493,6 +1562,67 @@ class PortfolioApiTests(unittest.TestCase):
         undo_cash_item = next((item for item in cash_after_undo if item.get('id') == cash_id), None)
         self.assertIsNotNone(undo_cash_item)
         self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 2000.0)
+
+    def test_buy_with_cash_undo_only_removes_target_ledger_position(self):
+        user_id = 'u_buy_with_cash_undo_ledger'
+        username = 'buy_with_cash_undo_ledger_user'
+        _seed_user(user_id, username)
+        headers = _auth_headers(user_id, username)
+        default_ledger_id = app_module.db.get_default_ledger_id(user_id)
+        second_ledger = app_module.db.create_ledger(user_id, '第二账本')
+        second_ledger_id = int(second_ledger['ledger_id'])
+
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '银行卡',
+            'amount': 50000.0,
+            'curr': 'CNY',
+        }, headers=headers)
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_assets = (self.client.get('/api/cash_assets', headers=headers).get_json() or [])
+        cash_id = cash_assets[-1]['id']
+
+        add_default_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600900',
+            'name': '长江电力',
+            'price': 29.0,
+            'qty': 100.0,
+            'ledger_id': default_ledger_id,
+        }, headers=headers)
+        self.assertEqual(add_default_resp.status_code, 200)
+
+        buy_resp = self.client.post('/api/portfolio/buy_with_cash', json={
+            'code': 'sh600900',
+            'name': '长江电力',
+            'price': 30.0,
+            'qty': 200.0,
+            'cash_asset_id': cash_id,
+            'ledger_id': second_ledger_id,
+            'request_id': 'req-buy-with-cash-ledger-undo-1',
+        }, headers=headers)
+        self.assertEqual(buy_resp.status_code, 200)
+        undo_token = (buy_resp.get_json() or {}).get('undo_token')
+        self.assertTrue(isinstance(undo_token, str) and len(undo_token) > 0)
+
+        undo_resp = self.client.post('/api/portfolio/undo', json={
+            'undo_token': undo_token,
+        }, headers=headers)
+        self.assertEqual(undo_resp.status_code, 200)
+
+        default_item = app_module.db.get_asset(
+            'sh600900',
+            user_id=user_id,
+            ledger_id=default_ledger_id,
+        )
+        second_item = app_module.db.get_asset(
+            'sh600900',
+            user_id=user_id,
+            ledger_id=second_ledger_id,
+        )
+
+        self.assertIsNotNone(default_item)
+        self.assertAlmostEqual(float(default_item['qty']), 100.0)
+        self.assertIsNone(second_item)
 
     def test_buy_with_cash_supports_cross_currency_cash_account(self):
         add_cash_resp = self.client.post('/api/cash_assets/add', json={

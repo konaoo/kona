@@ -18,6 +18,7 @@ typedef AppRefreshPriceResolver =
 class AppRefreshBindings {
   final String? Function() username;
   final String? Function() userId;
+  final int? Function() currentLedgerId;
   final AppSyncState syncState;
   final Map<String, String> Function() syncVersions;
   final List<PortfolioItem> Function() portfolio;
@@ -49,6 +50,7 @@ class AppRefreshBindings {
   const AppRefreshBindings({
     required this.username,
     required this.userId,
+    required this.currentLedgerId,
     required this.syncState,
     required this.syncVersions,
     required this.portfolio,
@@ -545,6 +547,7 @@ class AppRefreshState {
     required AppRefreshBindings bindings,
     bool force = false,
     bool refreshQuotes = true,
+    int? ledgerId,
   }) async {
     final existing = _refreshByVersionInFlight;
     if (existing != null) return existing;
@@ -553,6 +556,7 @@ class AppRefreshState {
       bindings: bindings,
       force: force,
       refreshQuotes: refreshQuotes,
+      ledgerId: ledgerId,
     );
     _refreshByVersionInFlight = future;
     try {
@@ -569,11 +573,16 @@ class AppRefreshState {
   Future<void> refreshAll({
     required AppRefreshBindings bindings,
     bool force = false,
+    int? ledgerId,
   }) async {
     final existing = _refreshAllInFlight;
     if (existing != null) return existing;
 
-    final future = _refreshAllInternal(bindings: bindings, force: force);
+    final future = _refreshAllInternal(
+      bindings: bindings,
+      force: force,
+      ledgerId: ledgerId,
+    );
     _refreshAllInFlight = future;
     try {
       await future;
@@ -791,7 +800,23 @@ class AppRefreshState {
     required AppRefreshBindings bindings,
     required bool force,
     required bool refreshQuotes,
+    int? ledgerId,
   }) async {
+    final effectiveLedgerId = ledgerId ?? bindings.currentLedgerId();
+    if (effectiveLedgerId != null) {
+      await Future.wait([
+        refreshHomeData(bindings: bindings, ledgerId: effectiveLedgerId),
+        loadExchangeRates(bindings: bindings),
+      ]);
+      if (refreshQuotes) {
+        await refreshPortfolioPricesInBackground(
+          bindings: bindings,
+          force: true,
+        );
+      }
+      return;
+    }
+
     if (bindings.syncState.canSkipStaticSyncCheck(
       force: force,
       staticDataTtl: _staticDataTtl,
@@ -874,7 +899,7 @@ class AppRefreshState {
     } catch (e) {
       debugPrint('版本增量刷新失败，降级全量刷新: $e');
       await Future.wait([
-        refreshHomeData(bindings: bindings),
+        refreshHomeData(bindings: bindings, ledgerId: effectiveLedgerId),
         loadExchangeRates(bindings: bindings),
       ]);
     }
@@ -887,10 +912,12 @@ class AppRefreshState {
   Future<void> _refreshAllInternal({
     required AppRefreshBindings bindings,
     required bool force,
+    int? ledgerId,
   }) async {
+    final effectiveLedgerId = ledgerId ?? bindings.currentLedgerId();
     if (force) {
       await Future.wait([
-        refreshHomeData(bindings: bindings),
+        refreshHomeData(bindings: bindings, ledgerId: effectiveLedgerId),
         loadExchangeRates(bindings: bindings),
       ]);
       await refreshPortfolioPricesInBackground(bindings: bindings, force: true);
@@ -900,6 +927,7 @@ class AppRefreshState {
       bindings: bindings,
       force: false,
       refreshQuotes: true,
+      ledgerId: effectiveLedgerId,
     );
   }
 

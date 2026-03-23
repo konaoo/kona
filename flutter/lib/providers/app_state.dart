@@ -135,6 +135,7 @@ class AppState extends ChangeNotifier {
       syncState: _syncState,
       username: () => username,
       userId: () => userId,
+      currentLedgerId: () => _currentLedgerId,
       portfolio: () => _portfolio,
       replacePortfolio: (value) => _portfolio = value,
       cashAssets: () => _cashAssets,
@@ -798,6 +799,7 @@ class AppState extends ChangeNotifier {
     await _refreshCoordinatorState.refreshByVersion(
       force: force,
       refreshQuotes: refreshQuotes,
+      ledgerId: _currentLedgerId,
     );
   }
 
@@ -814,7 +816,10 @@ class AppState extends ChangeNotifier {
 
   /// 刷新所有核心数据（用于启动与下拉刷新）
   Future<void> refreshAll({bool force = false}) async {
-    await _refreshCoordinatorState.refreshAll(force: force);
+    await _refreshCoordinatorState.refreshAll(
+      force: force,
+      ledgerId: _currentLedgerId,
+    );
   }
 
   // ============================================================

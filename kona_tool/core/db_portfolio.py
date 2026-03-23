@@ -1250,10 +1250,10 @@ class PortfolioDatabaseMixin:
                 )
                 if user_id:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio
                         SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND user_id = ?
+                        WHERE code = ? AND user_id = ?{ledger_condition}
                         """,
                         (
                             next_name,
@@ -1264,14 +1264,15 @@ class PortfolioDatabaseMixin:
                             data.get("asset_type", "a"),
                             data["code"],
                             user_id,
-                        ),
+                        )
+                        + ledger_param,
                     )
                 else:
                     cursor.execute(
-                        """
+                        f"""
                         UPDATE portfolio
                         SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
-                        WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                        WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                         """,
                         (
                             next_name,
@@ -1281,7 +1282,8 @@ class PortfolioDatabaseMixin:
                             next_adjustment,
                             data.get("asset_type", "a"),
                             data["code"],
-                        ),
+                        )
+                        + ledger_param,
                     )
             else:
                 next_name = incoming_name or data["code"]
@@ -2552,17 +2554,27 @@ class PortfolioDatabaseMixin:
         correction_log_id = operation.get("correction_log_id")
         cash_asset_id = operation.get("cash_asset_id")
         cash_before_amount = operation.get("cash_before_amount")
+        raw_ledger_id = operation.get("ledger_id")
+        try:
+            ledger_id = int(raw_ledger_id) if raw_ledger_id is not None else None
+        except (TypeError, ValueError):
+            ledger_id = None
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             if before_asset is None:
                 if user_id:
-                    cursor.execute("DELETE FROM portfolio WHERE code = ? AND user_id = ?", (code, user_id))
+                    cursor.execute(
+                        f"DELETE FROM portfolio WHERE code = ? AND user_id = ?{ledger_condition}",
+                        (code, user_id) + ledger_param,
+                    )
                 else:
                     cursor.execute(
-                        "DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                        (code,),
+                        f"DELETE FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                        (code,) + ledger_param,
                     )
             else:
                 name = str(before_asset.get("name") or code)
@@ -2573,48 +2585,53 @@ class PortfolioDatabaseMixin:
                 asset_type = str(before_asset.get("asset_type") or "a")
 
                 if user_id:
-                    cursor.execute("SELECT id FROM portfolio WHERE code = ? AND user_id = ?", (code, user_id))
+                    cursor.execute(
+                        f"SELECT id FROM portfolio WHERE code = ? AND user_id = ?{ledger_condition}",
+                        (code, user_id) + ledger_param,
+                    )
                 else:
                     cursor.execute(
-                        "SELECT id FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = '')",
-                        (code,),
+                        f"SELECT id FROM portfolio WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}",
+                        (code,) + ledger_param,
                     )
                 existing = cursor.fetchone()
                 if existing:
                     if user_id:
                         cursor.execute(
-                            """
+                            f"""
                             UPDATE portfolio
                             SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
-                            WHERE code = ? AND user_id = ?
+                            WHERE code = ? AND user_id = ?{ledger_condition}
                             """,
-                            (name, qty, price, curr, adjustment, asset_type, code, user_id),
+                            (name, qty, price, curr, adjustment, asset_type, code, user_id)
+                            + ledger_param,
                         )
                     else:
                         cursor.execute(
-                            """
+                            f"""
                             UPDATE portfolio
                             SET name = ?, qty = ?, price = ?, curr = ?, adjustment = ?, asset_type = ?, updated_at = datetime('now','localtime')
-                            WHERE code = ? AND (user_id IS NULL OR user_id = '')
+                            WHERE code = ? AND (user_id IS NULL OR user_id = ''){ledger_condition}
                             """,
-                            (name, qty, price, curr, adjustment, asset_type, code),
+                            (name, qty, price, curr, adjustment, asset_type, code)
+                            + ledger_param,
                         )
                 else:
                     if user_id:
                         cursor.execute(
                             """
-                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                             """,
-                            (code, name, qty, price, curr, adjustment, asset_type, user_id),
+                            (code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id or 0),
                         )
                     else:
                         cursor.execute(
                             """
-                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, ledger_id, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                             """,
-                            (code, name, qty, price, curr, adjustment, asset_type),
+                            (code, name, qty, price, curr, adjustment, asset_type, ledger_id or 0),
                         )
 
             if tx_id is not None:

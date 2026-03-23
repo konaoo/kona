@@ -464,6 +464,7 @@ def create_portfolio_payload_handlers(
                     'tx_id': None,
                     'ledger_event_id': None,
                     'correction_log_id': detail.get('correction_log_id'),
+                    'ledger_id': mod_ledger_id,
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.modify")
@@ -560,6 +561,7 @@ def create_portfolio_payload_handlers(
                     'before_asset': detail.get('before_asset'),
                     'tx_id': None,
                     'ledger_event_id': detail.get('ledger_event_id'),
+                    'ledger_id': adj_ledger_id,
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.adjustment_event")
@@ -770,6 +772,7 @@ def create_portfolio_payload_handlers(
                     'code': data['code'],
                     'before_asset': detail.get('before_asset'),
                     'tx_id': detail.get('tx_id'),
+                    'ledger_id': buy_ledger_id,
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.buy")
@@ -905,6 +908,7 @@ def create_portfolio_payload_handlers(
                 'tx_id': detail.get('tx_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
                 'cash_before_amount': detail.get('cash_before_amount'),
+                'ledger_id': bwc_ledger_id,
             }
             payload = undo_decorator(
                 {
@@ -988,6 +992,7 @@ def create_portfolio_payload_handlers(
                     'before_asset': detail.get('before_asset'),
                     'tx_id': detail.get('tx_id'),
                     'ledger_event_id': detail.get('ledger_event_id'),
+                    'ledger_id': sell_ledger_id,
                 }
                 payload = undo_decorator({"status": "ok"}, user_id, operation)
                 _save_snapshot_async(user_id, "portfolio.sell")
@@ -1131,6 +1136,7 @@ def create_portfolio_payload_handlers(
                 'ledger_event_id': detail.get('ledger_event_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
                 'cash_before_amount': detail.get('cash_before_amount'),
+                'ledger_id': stc_ledger_id,
             }
             payload = undo_decorator(
                 {
