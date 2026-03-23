@@ -9,6 +9,7 @@ import { toNumber } from '@/shared/format'
 import { buildPortfolioSummary } from './portfolioMetrics'
 import type { MarketCode, PortfolioItem, PositionRow, PortfolioSummary } from './types'
 import { useMarketStore } from './market'
+import { useQuoteStore } from './quote'
 
 export const usePortfolioStore = defineStore('portfolio', () => {
   // ───────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
    */
   const rows = computed<PositionRow[]>(() => {
     const marketStore = useMarketStore()
+    const quoteStore = useQuoteStore()
 
     function pickNumber(item: PortfolioItem, keys: string[]): number | null {
       for (const key of keys) {
@@ -70,6 +72,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
 
     return portfolio.value.map(item => {
+      const code = String(item.code || '')
       const marketFromPayload = normalizeMarketCode((item as any).market)
       const market = marketFromPayload ?? inferMarket(item)
       const category = inferCategory(item)
@@ -79,30 +82,86 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const open = Boolean(marketStatus?.open)
       const marketTradingDay = Boolean(marketStatus?.trading_day)
 
-      const currentPrice = pickNumber(item, ['current_price', 'currentPrice']) ?? 0
-      const yclose = pickNumber(item, ['yclose']) ?? 0
+      const staticCurrentPrice = pickNumber(item, ['current_price', 'currentPrice']) ?? 0
+      const staticYclose = pickNumber(item, ['yclose']) ?? 0
       const displayCostPrice =
         pickNumber(item, ['display_cost_price', 'displayCostPrice']) ?? rawCostPrice
       const cost = pickNumber(item, ['cost']) ?? pickNumber(item, ['raw_cost_total']) ?? 0
       const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
-      const value = pickNumber(item, ['value']) ?? 0
-      const totalPnl = pickNumber(item, ['total_pnl']) ?? 0
-      const totalPnlBase = pickNumber(item, ['total_pnl_base']) ?? 0
-      const totalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
-      const dayPnlDisplay = pickNumber(item, ['day_pnl_display', 'day_pnl']) ?? 0
-      const dayPnlBaseDisplay = pickNumber(item, ['day_pnl_base_display', 'day_pnl_base']) ?? 0
-      const dayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
-      const dayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
-      const dayPnlBaseAggregate =
+      const staticValue = pickNumber(item, ['value']) ?? 0
+      const staticTotalPnl = pickNumber(item, ['total_pnl']) ?? 0
+      const staticTotalPnlBase = pickNumber(item, ['total_pnl_base']) ?? 0
+      const staticTotalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
+      const staticDayPnlDisplay = pickNumber(item, ['day_pnl_display', 'day_pnl']) ?? 0
+      const staticDayPnlBaseDisplay = pickNumber(item, ['day_pnl_base_display', 'day_pnl_base']) ?? 0
+      const staticDayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
+      const staticDayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
+      const staticDayPnlBaseAggregate =
         pickNumber(item, ['day_pnl_base_aggregate', 'day_pnl_base']) ?? 0
-      const dayPnlRateAggregate = pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
+      const staticDayPnlRateAggregate =
+        pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
       const navUpdatePending =
         pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
-      const quotePrice = pickNumber(item, ['quote_price'])
-      const quoteReady = pickBool(item, ['quote_ready']) ?? Boolean(quotePrice && quotePrice > 0)
-      const quotePending = pickBool(item, ['quote_pending']) ?? false
-      const dayPnlDisplayEnabled = pickBool(item, ['day_pnl_display_enabled']) ?? false
-      const dayPnlAggregateEnabled = pickBool(item, ['day_pnl_aggregate_enabled']) ?? false
+      const staticQuotePrice = pickNumber(item, ['quote_price'])
+      const rateToCny = pickNumber(item, ['rate_to_cny']) ?? undefined
+      const costCny = pickNumber(item, ['cost_cny']) ?? undefined
+      const quote = quoteStore.getQuote(code) as Record<string, unknown> | undefined
+      const liveQuotePrice =
+        quote && typeof quote === 'object'
+          ? toNumber(quote.price ?? quote.regular_price ?? quote.regularPrice)
+          : 0
+      const liveYclose =
+        quote && typeof quote === 'object'
+          ? toNumber(quote.yclose ?? quote.prev_close ?? quote.previous_close)
+          : 0
+      const hasLiveQuotePrice = Number.isFinite(liveQuotePrice) && liveQuotePrice > 0
+      const hasLiveYclose = Number.isFinite(liveYclose) && liveYclose > 0
+      const currentPrice = hasLiveQuotePrice ? liveQuotePrice : staticCurrentPrice
+      const yclose = hasLiveYclose ? liveYclose : staticYclose
+      const value = hasLiveQuotePrice && qty > 0 ? currentPrice * qty : staticValue
+      const valueCny = rateToCny != null ? value * rateToCny : pickNumber(item, ['value_cny']) ?? undefined
+      const liveDayPnl = hasLiveQuotePrice && hasLiveYclose ? (currentPrice - yclose) * qty : null
+      const liveDayPnlBase = hasLiveYclose ? Math.abs(yclose * qty) : null
+      const dayPnlDisplay = liveDayPnl ?? staticDayPnlDisplay
+      const dayPnlBaseDisplay = liveDayPnlBase ?? staticDayPnlBaseDisplay
+      const dayPnlRateDisplay =
+        liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
+          ? (liveDayPnl / liveDayPnlBase) * 100
+          : staticDayPnlRateDisplay
+      const dayPnlAggregate = liveDayPnl ?? staticDayPnlAggregate
+      const dayPnlBaseAggregate = liveDayPnlBase ?? staticDayPnlBaseAggregate
+      const dayPnlRateAggregate =
+        liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
+          ? (liveDayPnl / liveDayPnlBase) * 100
+          : staticDayPnlRateAggregate
+      const totalPnl = hasLiveQuotePrice ? value - cost : staticTotalPnl
+      const totalPnlBase = Math.abs(cost) || staticTotalPnlBase
+      const totalPnlRate =
+        totalPnlBase > 0 ? (totalPnl / totalPnlBase) * 100 : staticTotalPnlRate
+      const totalPnlCny = rateToCny != null ? totalPnl * rateToCny : pickNumber(item, ['total_pnl_cny']) ?? undefined
+      const dayPnlCny =
+        liveDayPnl != null && rateToCny != null
+          ? liveDayPnl * rateToCny
+          : pickNumber(item, ['day_pnl_cny']) ?? undefined
+      const dayPnlBaseCny =
+        liveDayPnlBase != null && rateToCny != null
+          ? liveDayPnlBase * rateToCny
+          : pickNumber(item, ['day_pnl_base_cny']) ?? undefined
+      const dayPnlAggregateCny =
+        liveDayPnl != null && rateToCny != null
+          ? liveDayPnl * rateToCny
+          : pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined
+      const dayPnlBaseAggregateCny =
+        liveDayPnlBase != null && rateToCny != null
+          ? liveDayPnlBase * rateToCny
+          : pickNumber(item, ['day_pnl_base_aggregate_cny']) ?? undefined
+      const quotePrice = hasLiveQuotePrice ? currentPrice : staticQuotePrice
+      const quoteReady = hasLiveQuotePrice || (pickBool(item, ['quote_ready']) ?? Boolean(staticQuotePrice && staticQuotePrice > 0))
+      const quotePending = hasLiveQuotePrice ? false : (pickBool(item, ['quote_pending']) ?? false)
+      const dayPnlDisplayEnabled =
+        liveDayPnl != null ? true : (pickBool(item, ['day_pnl_display_enabled']) ?? false)
+      const dayPnlAggregateEnabled =
+        liveDayPnl != null ? true : (pickBool(item, ['day_pnl_aggregate_enabled']) ?? false)
       const marketOpen = pickBool(item, ['market_open']) ?? open
       const marketTradingDayValue = pickBool(item, ['market_trading_day']) ?? marketTradingDay
       const marketStatusReason =
@@ -122,19 +181,19 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         currentPrice,
         yclose,
         value,
-        valueCny: pickNumber(item, ['value_cny']) ?? undefined,
-        costCny: pickNumber(item, ['cost_cny']) ?? undefined,
-        totalPnlCny: pickNumber(item, ['total_pnl_cny']) ?? undefined,
+        valueCny,
+        costCny,
+        totalPnlCny,
         totalPnlBase,
-        totalPnlBaseCny: pickNumber(item, ['total_pnl_base_cny']) ?? undefined,
-        dayPnlCny: pickNumber(item, ['day_pnl_cny']) ?? undefined,
+        totalPnlBaseCny:
+          costCny != null ? Math.abs(costCny) : pickNumber(item, ['total_pnl_base_cny']) ?? undefined,
+        dayPnlCny,
         dayPnlBase: dayPnlBaseAggregate,
-        dayPnlBaseCny: pickNumber(item, ['day_pnl_base_cny']) ?? undefined,
-        dayPnlAggregateCny: pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined,
+        dayPnlBaseCny,
+        dayPnlAggregateCny,
         dayPnlBaseAggregate,
-        dayPnlBaseAggregateCny:
-          pickNumber(item, ['day_pnl_base_aggregate_cny']) ?? undefined,
-        rateToCny: pickNumber(item, ['rate_to_cny']) ?? undefined,
+        dayPnlBaseAggregateCny,
+        rateToCny,
         totalPnl,
         dayPnl: dayPnlAggregate,
         dayPnlRate: dayPnlRateAggregate,

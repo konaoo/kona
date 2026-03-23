@@ -1,3 +1,22 @@
+## 2026-03-23-06
+
+### 这版一句话
+
+修掉 Web 投资页“停在页面也不跳数”的问题：自动刷新机制本来就在跑，但页面之前没吃到实时行情，现在会用 quote 实时重算持仓和汇总。
+
+### 主要变化
+- **确认根因不在定时器**：Web 投资页 [web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue) 本来就会启动自动刷新；真正的问题是页面汇总和持仓明细依赖的 [web/src/stores/portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts) 之前主要只读 `/api/portfolio` 返回的静态字段，没有把 `quoteStore` 的实时行情叠进去。
+- **在持仓主入口统一叠加实时行情**：同一文件现在会在 `rows` 里优先使用 `quoteStore` 的 `price / yclose`，并统一重算 `currentPrice / value / dayPnl / totalPnl / 对应 CNY 指标`。这样首页和投资页只要依赖 `rows / summary`，都能跟着实时行情跳数，不需要页面各自再补第二套口径。
+- **补齐最小回归测试**：新增 [web/tests/unit/portfolioStoreRealtime.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/portfolioStoreRealtime.test.ts)，锁住“只更新 quotes、不重拉 portfolio 时，持仓行和投资汇总也必须一起变化”。
+
+### 影响范围
+- Web：投资页的投资总资产、今日盈亏、累计盈亏、各市场汇总卡片
+- Web：首页里依赖同一套持仓 `rows / summary` 的投资数字
+
+### 验收重点
+- Web 投资页停留在前台不操作时，开盘阶段相关数字应能跟随自动行情刷新变化
+- 不应再出现“明明 quotes 在刷新，但投资页数字长时间完全不动”
+
 ## 2026-03-23-05
 
 ### 这版一句话
