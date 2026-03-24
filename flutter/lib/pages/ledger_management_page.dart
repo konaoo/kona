@@ -1,3 +1,5 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +22,7 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
   int? _renamingLedgerId;
 
   static final TextStyle _titleStyle = GoogleFonts.dmSans(
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: FontWeight.w700,
   );
   static final TextStyle _metaStyle = GoogleFonts.dmSans(
@@ -45,6 +47,47 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
   }
 
   bool get _isBusy => _creating || _isReordering || _renamingLedgerId != null;
+
+  Widget _buildActionButton({
+    required String tooltip,
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required Color color,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      iconSize: 20,
+      splashRadius: 18,
+      padding: const EdgeInsets.all(6),
+      constraints: const BoxConstraints(
+        minWidth: 32,
+        minHeight: 32,
+      ),
+      icon: Icon(icon, color: color),
+    );
+  }
+
+  Widget _buildDragProxy(
+    Widget child,
+    int index,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final elevation = lerpDouble(0, 10, animation.value) ?? 0;
+        return Material(
+          color: Colors.transparent,
+          elevation: elevation,
+          shadowColor: Colors.black.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        );
+      },
+    );
+  }
 
   Future<void> _showCreateLedgerDialog(AppState appState) async {
     final controller = TextEditingController();
@@ -201,7 +244,6 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
     final isDefault = ledger['is_default'] == true || ledger['is_default'] == 1;
     final isPending = ledger['pending'] == true;
     final isRenaming = _renamingLedgerId == ledger['id'];
-    final description = (ledger['description'] as String? ?? '').trim();
 
     return Container(
       key: ValueKey<int>(ledger['id'] as int),
@@ -223,7 +265,7 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
                 children: [
                   Row(
                     children: [
-                      Expanded(
+                      Flexible(
                         child: Text(
                           (ledger['name'] as String?) ?? '账本',
                           maxLines: 1,
@@ -234,18 +276,21 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
                         ),
                       ),
                       if (isDefault)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '默认',
-                            style: _metaStyle.copyWith(color: AppTheme.accent),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '默认账本',
+                              style: _metaStyle.copyWith(color: AppTheme.accent),
+                            ),
                           ),
                         ),
                       if (isPending) ...[
@@ -283,43 +328,46 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
                           ),
                         ),
                       ],
+                      const Spacer(),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    isRenaming
-                        ? '正在保存名称...'
-                        : (description.isEmpty ? '拖动右侧把手调整显示顺序' : description),
-                    style: _metaStyle.copyWith(color: AppTheme.textMuted),
-                  ),
+                  if (isRenaming) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '正在保存名称...',
+                      style: _metaStyle.copyWith(color: AppTheme.textMuted),
+                    ),
+                  ],
                 ],
               ),
             ),
-            IconButton(
+            const SizedBox(width: 8),
+            _buildActionButton(
               tooltip: '重命名',
               onPressed: _isBusy || isPending
                   ? null
                   : () => _showRenameLedgerDialog(appState, ledger),
-              icon: Icon(Icons.edit_outlined, color: AppTheme.textMuted),
+              icon: Icons.edit_outlined,
+              color: AppTheme.textMuted,
             ),
-            IconButton(
+            const SizedBox(width: 6),
+            _buildActionButton(
               tooltip: '删除',
               onPressed: _isBusy || isDefault || isPending
                   ? null
                   : () => _deleteLedger(appState, ledger),
-              icon: Icon(
-                Icons.delete_outline,
-                color: isDefault ? AppTheme.textMuted : AppTheme.danger,
-              ),
+              icon: Icons.delete_outline,
+              color: isDefault ? AppTheme.textMuted : AppTheme.danger,
             ),
             ReorderableDragStartListener(
               index: index,
               enabled: !_isBusy && !isPending,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
+                padding: const EdgeInsets.only(left: 6),
                 child: Icon(
                   Icons.drag_handle_rounded,
                   color: AppTheme.textMuted,
+                  size: 20,
                 ),
               ),
             ),
@@ -347,38 +395,33 @@ class _LedgerManagementPageState extends State<LedgerManagementPage> {
             onPressed: _isBusy
                 ? null
                 : () => _showCreateLedgerDialog(appState),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('新增'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: const StadiumBorder(),
+              backgroundColor: AppTheme.accent.withValues(
+                alpha: AppTheme.isLight ? 0.10 : 0.16,
+              ),
+              foregroundColor: AppTheme.accent,
+              textStyle: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('新增账本'),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                _isReordering
-                    ? '正在保存排序...'
-                    : '投资页顶部的账本选择器会按这里的顺序展示。',
-                style: _metaStyle.copyWith(color: AppTheme.textMuted),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              buildDefaultDragHandles: false,
-              itemCount: displayedLedgers.length,
-              onReorder: (oldIndex, newIndex) =>
-                  _reorderLedgers(appState, oldIndex, newIndex),
-              itemBuilder: (context, index) =>
-                  _buildLedgerCard(appState, index, displayedLedgers[index]),
-            ),
-          ),
-        ],
+      body: ReorderableListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        buildDefaultDragHandles: false,
+        proxyDecorator: _buildDragProxy,
+        itemCount: displayedLedgers.length,
+        onReorder: (oldIndex, newIndex) =>
+            _reorderLedgers(appState, oldIndex, newIndex),
+        itemBuilder: (context, index) =>
+            _buildLedgerCard(appState, index, displayedLedgers[index]),
       ),
     );
   }

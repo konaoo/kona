@@ -12,13 +12,16 @@
 - **Web 分析页补自动刷新**：同一文件在页面停留时会启动 quote 自动刷新，并每 60 秒重拉一次分析接口，避免投资页在跳、分析页长期停在旧值。
 - **Web 实时今日盈亏规则继续收口**：Web [web/src/stores/portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts) 会在持仓主入口统一应用“盘前不提前算今天”和“场外基金待净值更新不覆盖今日盈亏”的规则；[web/tests/unit/portfolioStoreRealtime.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/portfolioStoreRealtime.test.ts) 已补回归测试。
 - **添加资产里的‘添加账户’二级窗口层级修正**：Web [web/src/components/business/InvestTradeModal.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/components/business/InvestTradeModal.vue) 已把二级创建账户浮层提到父弹窗之上，避免窗口被压在底层。
+- **管理账本页样式继续收口**：Flutter [flutter/lib/pages/ledger_management_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/ledger_management_page.dart) 去掉了两处说明文案，把默认标签改成紧跟名称后的 `默认账本`，收小账本名称和右侧操作图标，右上角按钮改成胶囊 `新增账本`，并补了拖拽代理卡片的圆角和阴影，避免拖动时边角外露。
 
 ### 影响范围
 - Flutter：首页、投资页、分析页 `当日` 投资盈亏与总市值
+- Flutter：管理账本页视觉与拖拽交互
 - Web：投资页、分析页 `当日` 投资盈亏；添加资产页里的“添加账户”二级窗口
 
 ### 验收重点
 - 同一时刻同一账号，Flutter 首页 / 投资页 / 分析页 `当日` 应保持同方向和同口径
+- Flutter 管理账本页里，默认标签、右上角新增按钮和拖拽浮层样式应符合最新设计
 - 同一时刻同一账号，Web 投资页 / 分析页 `当日` 应保持一致
 - A 股/港股/场内基金在盘前不应把昨天地涨跌提前算成今天
 - 场外基金待净值更新时，不应出现伪“今日盈亏”
