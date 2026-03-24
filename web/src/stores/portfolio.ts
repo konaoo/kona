@@ -1,0 +1,444 @@
+/**
+ * Portfolio Store - 投资组合数据管理
+ */
+
+import { computed, ref } from 'vue'
+import { defineStore } from 'pinia'
+import { api } from '@/shared/http'
+import { toNumber } from '@/shared/format'
+import { buildPortfolioSummary } from './portfolioMetrics'
+import type { MarketCode, PortfolioItem, PositionRow, PortfolioSummary } from './types'
+import { useMarketStore } from './market'
+import { useQuoteStore } from './quote'
+import { useLedgerScopeStore } from './ledgerScope'
+
+const MARKET_PREOPEN_TIMEZONES: Partial<Record<MarketCode, string>> = {
+  a: 'Asia/Shanghai',
+  hk: 'Asia/Hong_Kong',
+  fund: 'Asia/Shanghai',
+}
+
+const MARKET_FIRST_SESSION_START_MINUTES: Partial<Record<MarketCode, number>> = {
+  a: 9 * 60 + 30,
+  hk: 9 * 60 + 30,
+  fund: 9 * 60 + 30,
+}
+
+function getMarketLocalMinutes(market: MarketCode, now: Date = new Date()): number | null {
+  const timeZone = MARKET_PREOPEN_TIMEZONES[market]
+  if (!timeZone) return null
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(now)
+    const hour = Number(parts.find(part => part.type === 'hour')?.value ?? '')
+    const minute = Number(parts.find(part => part.type === 'minute')?.value ?? '')
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+    return hour * 60 + minute
+  } catch {
+    return null
+  }
+}
+
+function isPreopenOffHoursMarket(
+  market: MarketCode,
+  marketOpen: boolean,
+  marketTradingDay: boolean,
+  marketStatusReason: string,
+): boolean {
+  if (!['a', 'hk', 'fund'].includes(market)) return false
+  if (marketOpen) return false
+  if (!marketTradingDay) return false
+  if (String(marketStatusReason || '').trim().toLowerCase() !== 'off_hours') return false
+  const minutes = getMarketLocalMinutes(market)
+  const firstSessionStart = MARKET_FIRST_SESSION_START_MINUTES[market]
+  if (minutes == null || firstSessionStart == null) return false
+  return minutes < firstSessionStart
+}
+
+export const usePortfolioStore = defineStore('portfolio', () => {
+  // ───────────────────────────────────────────────────────────────
+  // State
+  // ───────────────────────────────────────────────────────────────
+
+  const portfolio = ref<PortfolioItem[]>([])
+  const loading = ref(false)
+
+  // ───────────────────────────────────────────────────────────────
+  // Computed
+  // ───────────────────────────────────────────────────────────────
+
+  /**
+   * Rows - 计算后的持仓行数据
+   */
+  const rows = computed<PositionRow[]>(() => {
+    const marketStore = useMarketStore()
+    const quoteStore = useQuoteStore()
+
+    function pickNumber(item: PortfolioItem, keys: string[]): number | null {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null || value === '') continue
+        const n = toNumber(value)
+        if (Number.isFinite(n)) return n
+      }
+      return null
+    }
+
+    function pickBool(item: PortfolioItem, keys: string[]): boolean | null {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null) continue
+        return Boolean(value)
+      }
+      return null
+    }
+
+    function pickString(item: PortfolioItem, keys: string[]): string {
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(item, key)) continue
+        const value = (item as Record<string, unknown>)[key]
+        if (value === undefined || value === null) continue
+        return String(value)
+      }
+      return ''
+    }
+
+    function normalizeMarketCode(raw: unknown): MarketCode | null {
+      const text = String(raw || '')
+        .trim()
+        .toLowerCase()
+      if (text === 'a' || text === 'hk' || text === 'us' || text === 'fund') {
+        return text as MarketCode
+      }
+      return null
+    }
+
+    return portfolio.value.map(item => {
+      const code = String(item.code || '')
+      const marketFromPayload = normalizeMarketCode((item as any).market)
+      const market = marketFromPayload ?? inferMarket(item)
+      const category = inferCategory(item)
+      const qty = toNumber(item.qty)
+      const rawCostPrice = toNumber(item.price)
+      const marketStatus = marketStore.marketStatus[market]
+      const open = Boolean(marketStatus?.open)
+      const marketTradingDay = Boolean(marketStatus?.trading_day)
+
+      const staticCurrentPrice = pickNumber(item, ['current_price', 'currentPrice']) ?? 0
+      const staticYclose = pickNumber(item, ['yclose']) ?? 0
+      const displayCostPrice =
+        pickNumber(item, ['display_cost_price', 'displayCostPrice']) ?? rawCostPrice
+      const cost = pickNumber(item, ['cost']) ?? pickNumber(item, ['raw_cost_total']) ?? 0
+      const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
+      const staticValue = pickNumber(item, ['value']) ?? 0
+      const staticTotalPnl = pickNumber(item, ['total_pnl']) ?? 0
+      const staticTotalPnlBase = pickNumber(item, ['total_pnl_base']) ?? 0
+      const staticTotalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
+      const staticDayPnlDisplay = pickNumber(item, ['day_pnl_display', 'day_pnl']) ?? 0
+      const staticDayPnlBaseDisplay = pickNumber(item, ['day_pnl_base_display', 'day_pnl_base']) ?? 0
+      const staticDayPnlRateDisplay = pickNumber(item, ['day_pnl_rate_display', 'day_pnl_rate']) ?? 0
+      const staticDayPnlAggregate = pickNumber(item, ['day_pnl_aggregate', 'day_pnl']) ?? 0
+      const staticDayPnlBaseAggregate =
+        pickNumber(item, ['day_pnl_base_aggregate', 'day_pnl_base']) ?? 0
+      const staticDayPnlRateAggregate =
+        pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
+      const navUpdatePending =
+        pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
+      const staticDayPnlDisplayEnabled =
+        pickBool(item, ['day_pnl_display_enabled']) ?? false
+      const staticDayPnlAggregateEnabled =
+        pickBool(item, ['day_pnl_aggregate_enabled']) ?? false
+      const staticQuotePrice = pickNumber(item, ['quote_price'])
+      const rateToCny = pickNumber(item, ['rate_to_cny']) ?? undefined
+      const costCny = pickNumber(item, ['cost_cny']) ?? undefined
+      const marketOpen = pickBool(item, ['market_open']) ?? open
+      const marketTradingDayValue = pickBool(item, ['market_trading_day']) ?? marketTradingDay
+      const marketStatusReason =
+        pickString(item, ['market_status_reason']) || marketStatus?.reason || ''
+      const suppressDayPnlForPreopen = isPreopenOffHoursMarket(
+        market,
+        marketOpen,
+        marketTradingDayValue,
+        marketStatusReason,
+      )
+      const quote = quoteStore.getQuote(code) as Record<string, unknown> | undefined
+      const liveQuotePrice =
+        quote && typeof quote === 'object'
+          ? toNumber(quote.price ?? quote.regular_price ?? quote.regularPrice)
+          : 0
+      const liveYclose =
+        quote && typeof quote === 'object'
+          ? toNumber(quote.yclose ?? quote.prev_close ?? quote.previous_close)
+          : 0
+      const hasLiveQuotePrice = Number.isFinite(liveQuotePrice) && liveQuotePrice > 0
+      const hasLiveYclose = Number.isFinite(liveYclose) && liveYclose > 0
+      const currentPrice = hasLiveQuotePrice ? liveQuotePrice : staticCurrentPrice
+      const yclose = hasLiveYclose ? liveYclose : staticYclose
+      const value = hasLiveQuotePrice && qty > 0 ? currentPrice * qty : staticValue
+      const valueCny = rateToCny != null ? value * rateToCny : pickNumber(item, ['value_cny']) ?? undefined
+      const canUseLiveDayPnl = !navUpdatePending && !suppressDayPnlForPreopen && hasLiveQuotePrice && hasLiveYclose
+      const liveDayPnl = canUseLiveDayPnl ? (currentPrice - yclose) * qty : null
+      const liveDayPnlBase = canUseLiveDayPnl ? Math.abs(yclose * qty) : null
+      const dayPnlDisplay = suppressDayPnlForPreopen ? 0 : (liveDayPnl ?? staticDayPnlDisplay)
+      const dayPnlBaseDisplay = suppressDayPnlForPreopen ? 0 : (liveDayPnlBase ?? staticDayPnlBaseDisplay)
+      const dayPnlRateDisplay =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
+          ? (liveDayPnl / liveDayPnlBase) * 100
+          : staticDayPnlRateDisplay
+      const dayPnlAggregate = suppressDayPnlForPreopen ? 0 : (liveDayPnl ?? staticDayPnlAggregate)
+      const dayPnlBaseAggregate = suppressDayPnlForPreopen ? 0 : (liveDayPnlBase ?? staticDayPnlBaseAggregate)
+      const dayPnlRateAggregate =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
+          ? (liveDayPnl / liveDayPnlBase) * 100
+          : staticDayPnlRateAggregate
+      const totalPnl = hasLiveQuotePrice ? value - cost : staticTotalPnl
+      const totalPnlBase = Math.abs(cost) || staticTotalPnlBase
+      const totalPnlRate =
+        totalPnlBase > 0 ? (totalPnl / totalPnlBase) * 100 : staticTotalPnlRate
+      const totalPnlCny = rateToCny != null ? totalPnl * rateToCny : pickNumber(item, ['total_pnl_cny']) ?? undefined
+      const dayPnlCny =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnl != null && rateToCny != null
+          ? liveDayPnl * rateToCny
+          : pickNumber(item, ['day_pnl_cny']) ?? undefined
+      const dayPnlBaseCny =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnlBase != null && rateToCny != null
+          ? liveDayPnlBase * rateToCny
+          : pickNumber(item, ['day_pnl_base_cny']) ?? undefined
+      const dayPnlAggregateCny =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnl != null && rateToCny != null
+          ? liveDayPnl * rateToCny
+          : pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined
+      const dayPnlBaseAggregateCny =
+        suppressDayPnlForPreopen
+          ? 0
+          : liveDayPnlBase != null && rateToCny != null
+          ? liveDayPnlBase * rateToCny
+          : pickNumber(item, ['day_pnl_base_aggregate_cny']) ?? undefined
+      const quotePrice = hasLiveQuotePrice ? currentPrice : staticQuotePrice
+      const quoteReady = hasLiveQuotePrice || (pickBool(item, ['quote_ready']) ?? Boolean(staticQuotePrice && staticQuotePrice > 0))
+      const quotePending = hasLiveQuotePrice ? false : (pickBool(item, ['quote_pending']) ?? false)
+      const dayPnlDisplayEnabled =
+        suppressDayPnlForPreopen ? false : (liveDayPnl != null ? true : staticDayPnlDisplayEnabled)
+      const dayPnlAggregateEnabled =
+        suppressDayPnlForPreopen ? false : (liveDayPnl != null ? true : staticDayPnlAggregateEnabled)
+
+      return {
+        ...item,
+        market,
+        category,
+        curr: String(item.curr || 'CNY'),
+        qty,
+        costPrice: rawCostPrice,
+        rawCostPrice,
+        cost,
+        rawCostTotal,
+        displayCostPrice,
+        currentPrice,
+        yclose,
+        value,
+        valueCny,
+        costCny,
+        totalPnlCny,
+        totalPnlBase,
+        totalPnlBaseCny:
+          costCny != null ? Math.abs(costCny) : pickNumber(item, ['total_pnl_base_cny']) ?? undefined,
+        dayPnlCny,
+        dayPnlBase: dayPnlBaseAggregate,
+        dayPnlBaseCny,
+        dayPnlAggregateCny,
+        dayPnlBaseAggregate,
+        dayPnlBaseAggregateCny,
+        rateToCny,
+        totalPnl,
+        dayPnl: dayPnlAggregate,
+        dayPnlRate: dayPnlRateAggregate,
+        dayPnlDisplay,
+        dayPnlBaseDisplay,
+        dayPnlRateDisplay,
+        dayPnlAggregate,
+        dayPnlRateAggregate,
+        totalPnlRate,
+        quotePrice: quotePrice ?? undefined,
+        quoteChange: pickNumber(item, ['quote_change']) ?? undefined,
+        quoteChangePct: pickNumber(item, ['quote_change_pct']) ?? undefined,
+        session: 'closed',
+        marketOpen,
+        marketTradingDay: marketTradingDayValue,
+        marketStatusReason,
+        usExtendedActive: false,
+        navUpdatePending,
+        quoteReady,
+        quotePending,
+        dayPnlDisplayEnabled,
+        dayPnlAggregateEnabled
+      }
+    })
+  })
+
+  /**
+   * Summary - 投资组合摘要
+   */
+  const summary = computed<PortfolioSummary>(() => {
+    return buildPortfolioSummary(rows.value)
+  })
+
+  /**
+   * GroupedByMarket - 按市场分组的持仓
+   */
+  const groupedByMarket = computed(() => {
+    const groups: Record<MarketCode, PositionRow[]> = {
+      a: [],
+      hk: [],
+      us: [],
+      fund: []
+    }
+
+    for (const row of rows.value) {
+      groups[row.category].push(row)
+    }
+
+    return groups
+  })
+
+  // ───────────────────────────────────────────────────────────────
+  // Helpers
+  // ───────────────────────────────────────────────────────────────
+
+  /**
+   * InferMarket - 推断市场
+   */
+  function inferMarket(item: PortfolioItem): MarketCode {
+    const kind = String(item.asset_type || '').toLowerCase()
+    if (kind === 'hk') return 'hk'
+    if (kind === 'us') return 'us'
+    if (kind === 'fund') return 'fund'
+    if (kind === 'a') return 'a'
+
+    const code = String(item.code || '').toLowerCase()
+    if (code.startsWith('hk')) return 'hk'
+    if (code.startsWith('gb_') || /^[a-z][a-z.\-]*$/i.test(code)) return 'us'
+    if (code.startsWith('f_') || code.startsWith('ft_')) return 'fund'
+    return 'a'
+  }
+
+  function inferCategory(item: PortfolioItem): MarketCode {
+    const category = String(item.category_type || '').toLowerCase()
+    if (category === 'hk') return 'hk'
+    if (category === 'us') return 'us'
+    if (category === 'fund') return 'fund'
+    if (category === 'a') return 'a'
+    return inferMarket(item)
+  }
+
+  /**
+   * IsNavUpdatePendingAsset - 是否是 NAV 待更新资产
+   */
+  function isNavUpdatePendingAsset(item: PortfolioItem): boolean {
+    const code = String(item.code || '')
+      .trim()
+      .toLowerCase()
+    return code.startsWith('f_') || code.startsWith('ft_')
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // Actions
+  // ───────────────────────────────────────────────────────────────
+
+  /**
+   * LoadPortfolio - 加载投资组合
+   */
+  async function loadPortfolio() {
+    loading.value = true
+    try {
+      const ledgerScopeStore = useLedgerScopeStore()
+      const params = new URLSearchParams({ type: 'all', with_metrics: '1' })
+      if (ledgerScopeStore.currentLedgerId != null) {
+        params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+      }
+      const items = await api.get<PortfolioItem[]>(`/api/portfolio?${params.toString()}`, true)
+      portfolio.value = Array.isArray(items) ? items : []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * UpdatePortfolioItem - 更新单个持仓项
+   */
+  function updatePortfolioItem(code: string, updates: Partial<PortfolioItem>) {
+    const index = portfolio.value.findIndex(item => item.code === code)
+    if (index !== -1) {
+      portfolio.value[index] = { ...portfolio.value[index], ...updates } as PortfolioItem
+    }
+  }
+
+  /**
+   * RemovePortfolioItem - 移除持仓项
+   */
+  function removePortfolioItem(code: string) {
+    const index = portfolio.value.findIndex(item => item.code === code)
+    if (index !== -1) {
+      portfolio.value.splice(index, 1)
+    }
+  }
+
+  /**
+   * AddPortfolioItem - 添加持仓项
+   */
+  function addPortfolioItem(item: PortfolioItem) {
+    portfolio.value.push(item)
+  }
+
+  /**
+   * GetPortfolioItem - 获取持仓项
+   */
+  function getPortfolioItem(code: string): PortfolioItem | undefined {
+    return portfolio.value.find(item => item.code === code)
+  }
+
+  /**
+   * ClearPortfolio - 清空投资组合
+   */
+  function clearPortfolio() {
+    portfolio.value = []
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // Return
+  // ───────────────────────────────────────────────────────────────
+
+  return {
+    // State
+    portfolio,
+    loading,
+
+    // Computed
+    rows,
+    summary,
+    groupedByMarket,
+
+    // Actions
+    loadPortfolio,
+    updatePortfolioItem,
+    removePortfolioItem,
+    addPortfolioItem,
+    getPortfolioItem,
+    clearPortfolio
+  }
+})

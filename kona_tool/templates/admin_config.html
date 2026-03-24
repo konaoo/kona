@@ -1,0 +1,302 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'config' %}
+
+{% block title %}系统配置{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <div>
+        <h1 class="title">系统配置</h1>
+        <div class="hint">仅展示可安全调整的白名单配置，不显示任何密钥。</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="controls" style="justify-content:space-between;">
+        <div class="controls" style="margin-bottom:0;">
+            <button onclick="loadConfig()">刷新配置</button>
+            <button class="secondary" onclick="saveChangedOnly()">仅保存改动项</button>
+            <button class="warn" onclick="resetAllDefaults()">恢复全部默认值</button>
+        </div>
+        <div class="muted" id="changedMeta">当前无改动</div>
+    </div>
+
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>配置名称</th>
+                    <th>说明</th>
+                    <th>建议范围</th>
+                    <th>当前值</th>
+                    <th>新值</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="configRows"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const configState = {
+        items: [],
+        byKey: {},
+        changedKeys: new Set(),
+    };
+
+    function normalizedValue(item, value) {
+        const typ = item.type;
+        if (typ === 'int') {
+            const num = Number(value);
+            if (!Number.isFinite(num)) {
+                throw new Error(`【${item.display_name}】请输入数字`);
+            }
+            if (item.min != null && num < Number(item.min)) {
+                throw new Error(`【${item.display_name}】不能小于 ${item.min}`);
+            }
+            if (item.max != null && num > Number(item.max)) {
+                throw new Error(`【${item.display_name}】不能大于 ${item.max}`);
+            }
+            return num;
+        }
+        if (typ === 'bool') {
+            if (value === true || value === false) return value;
+            const text = String(value).trim().toLowerCase();
+            if (['true', '1', 'yes', 'on', '启用', '是'].includes(text)) return true;
+            if (['false', '0', 'no', 'off', '停用', '否'].includes(text)) return false;
+            throw new Error(`【${item.display_name}】请输入“启用”或“停用”`);
+        }
+        const text = String(value ?? '').trim();
+        if (item.choices && item.choices.length > 0 && !item.choices.includes(text)) {
+            throw new Error(`【${item.display_name}】只能填写：${item.choices.join(' / ')}`);
+        }
+        if (!text) {
+            throw new Error(`【${item.display_name}】不能为空`);
+        }
+        return text;
+    }
+
+    function currentInputValue(item) {
+        const el = document.getElementById(`cfg_${item.key}`);
+        if (!el) return '';
+        if (item.type === 'bool') {
+            return el.value === 'true';
+        }
+        return el.value;
+    }
+
+    function updateChangedMeta() {
+        const count = configState.changedKeys.size;
+        const text = count > 0 ? `当前有 ${count} 项待保存` : '当前无改动';
+        document.getElementById('changedMeta').innerText = text;
+    }
+
+    function markChanged(key) {
+        const item = configState.byKey[key];
+        if (!item) return;
+        const value = currentInputValue(item);
+        const original = item.value;
+        const changed = String(value) !== String(original);
+        if (changed) {
+            configState.changedKeys.add(key);
+        } else {
+            configState.changedKeys.delete(key);
+        }
+        updateChangedMeta();
+    }
+
+    function inputHtml(item) {
+        const value = item.value;
+        if (item.type === 'bool') {
+            return `
+                <select id="cfg_${item.key}" onchange="markChanged('${item.key}')">
+                    <option value="true" ${value ? 'selected' : ''}>启用</option>
+                    <option value="false" ${!value ? 'selected' : ''}>停用</option>
+                </select>
+            `;
+        }
+        if (item.type === 'int') {
+            return `<input id="cfg_${item.key}" type="number" value="${value ?? ''}" oninput="markChanged('${item.key}')">`;
+        }
+        return `<input id="cfg_${item.key}" value="${escapeHtml(value ?? '')}" oninput="markChanged('${item.key}')">`;
+    }
+
+    function devInfoHtml(item) {
+        const choices = item.choices && item.choices.length ? item.choices.join(' / ') : '-';
+        return `
+            <details>
+                <summary>查看开发信息</summary>
+                <div class="muted" style="margin-top:6px; line-height:1.6;">
+                    技术键：${escapeHtml(item.key)}<br>
+                    类型：${escapeHtml(item.type)}<br>
+                    最小值：${item.min == null ? '-' : item.min}<br>
+                    最大值：${item.max == null ? '-' : item.max}<br>
+                    可选值：${escapeHtml(choices)}
+                </div>
+            </details>
+        `;
+    }
+
+    async function saveConfigKey(key) {
+        const item = configState.byKey[key];
+        if (!item) return;
+        let value;
+        try {
+            value = normalizedValue(item, currentInputValue(item));
+        } catch (e) {
+            showToast(e.message, true);
+            return;
+        }
+
+        const confirmed = await confirmAction({
+            title: '保存配置修改',
+            message: `配置项：${item.display_name}\n当前值：${item.value}\n新值：${value}\n\n确认保存吗？`,
+            confirmText: '确认保存',
+            danger: false,
+        });
+        if (!confirmed) return;
+
+        try {
+            await adminFetch('/api/admin/config/update', {
+                method: 'POST',
+                body: JSON.stringify({ key, value }),
+            });
+            showToast(`已保存配置：${item.display_name}`);
+            await loadConfig();
+        } catch (e) {
+            showToast(`保存失败：${e.message}`, true);
+        }
+    }
+
+    async function resetDefault(key) {
+        const item = configState.byKey[key];
+        if (!item) return;
+        const confirmed = await confirmAction({
+            title: '恢复默认值',
+            message: `配置项：${item.display_name}\n将恢复为默认值：${item.default_value}\n确认继续吗？`,
+            confirmText: '恢复默认',
+            danger: true,
+        });
+        if (!confirmed) return;
+
+        try {
+            await adminFetch('/api/admin/config/reset', {
+                method: 'POST',
+                body: JSON.stringify({ key }),
+            });
+            showToast(`已恢复默认值：${item.display_name}`);
+            await loadConfig();
+        } catch (e) {
+            showToast(`恢复失败：${e.message}`, true);
+        }
+    }
+
+    async function resetAllDefaults() {
+        const confirmed = await confirmAction({
+            title: '恢复全部默认值',
+            message: '将把所有可配置项恢复为系统默认值，确认继续吗？',
+            confirmText: '确认恢复',
+            danger: true,
+            requireText: '恢复全部',
+        });
+        if (!confirmed) return;
+
+        try {
+            await adminFetch('/api/admin/config/reset', {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+            showToast('全部配置已恢复默认值');
+            await loadConfig();
+        } catch (e) {
+            showToast(`恢复失败：${e.message}`, true);
+        }
+    }
+
+    async function saveChangedOnly() {
+        const keys = Array.from(configState.changedKeys);
+        if (keys.length === 0) {
+            showToast('当前没有待保存的改动');
+            return;
+        }
+
+        const updates = [];
+        try {
+            for (const key of keys) {
+                const item = configState.byKey[key];
+                updates.push({ key, value: normalizedValue(item, currentInputValue(item)) });
+            }
+        } catch (e) {
+            showToast(e.message, true);
+            return;
+        }
+
+        const confirmed = await confirmAction({
+            title: '保存改动项',
+            message: `将保存 ${updates.length} 项配置改动，确认继续吗？`,
+            confirmText: '确认保存',
+        });
+        if (!confirmed) return;
+
+        try {
+            await adminFetch('/api/admin/config/update', {
+                method: 'POST',
+                body: JSON.stringify({ items: updates }),
+            });
+            showToast(`已保存 ${updates.length} 项配置`);
+            await loadConfig();
+        } catch (e) {
+            showToast(`保存失败：${e.message}`, true);
+        }
+    }
+
+    function renderConfig(items) {
+        const tbody = document.getElementById('configRows');
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="muted">暂无可管理配置</td></tr>';
+            return;
+        }
+
+        configState.items = items;
+        configState.byKey = {};
+        configState.changedKeys.clear();
+
+        for (const item of items) {
+            configState.byKey[item.key] = item;
+            const tr = document.createElement('tr');
+            const currentValueText = item.type === 'bool' ? (item.value ? '启用' : '停用') : String(item.value);
+            tr.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(item.display_name || item.key)}</strong>
+                    <div style="margin-top:6px;">${devInfoHtml(item)}</div>
+                </td>
+                <td>${escapeHtml(item.description || '-')}</td>
+                <td>${escapeHtml(item.recommended || '-')}</td>
+                <td>${escapeHtml(currentValueText)}</td>
+                <td>${inputHtml(item)}</td>
+                <td>
+                    <button onclick="saveConfigKey('${item.key}')">保存</button>
+                    <button class="secondary" onclick="resetDefault('${item.key}')">恢复默认</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+        updateChangedMeta();
+    }
+
+    async function loadConfig() {
+        try {
+            const data = await adminFetch('/api/admin/config');
+            renderConfig(data.items || []);
+        } catch (e) {
+            showToast(`配置加载失败：${e.message}`, true);
+        }
+    }
+
+    loadConfig();
+</script>
+{% endblock %}

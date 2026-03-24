@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>组件库展示 - Kaka Web</title>
+  <style>
+    /* 导入我们的设计系统 */
+    @import './src/styles/tokens.css' layer(design-system);
+    @import './src/styles/base.css' layer(design-system);
+    @import './src/styles/mixins.css' layer(design-system);
+    @import './src/styles/animations.css' layer(design-system);
+
+    body {
+      padding: var(--space-6);
+      max-width: 1400px;
+      margin: 0 auto;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-family);
+    }
+
+    .showcase-header {
+      margin-bottom: var(--space-8);
+      text-align: center;
+    }
+
+    .showcase-title {
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: var(--space-2);
+      color: var(--text);
+    }
+
+    .showcase-subtitle {
+      font-size: var(--font-size-lg);
+      color: var(--sub);
+    }
+
+    .showcase-section {
+      margin-bottom: var(--space-8);
+    }
+
+    .section-title {
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--space-4);
+      color: var(--text);
+      padding-bottom: var(--space-2);
+      border-bottom: 2px solid var(--border);
+    }
+
+    .component-demo {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      margin-bottom: var(--space-4);
+    }
+
+    .demo-title {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--space-4);
+      color: var(--text);
+    }
+
+    .demo-row {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .demo-label {
+      font-size: var(--font-size-sm);
+      color: var(--muted);
+      min-width: 80px;
+    }
+
+    /* 模拟组件样式 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-2) var(--space-4);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      border-radius: var(--radius-md);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all var(--duration-base) var(--easing-default);
+    }
+
+    .btn-primary { background: var(--blue); color: white; border-color: var(--blue); }
+    .btn-secondary { background: var(--s2); color: var(--text); border-color: var(--border); }
+    .btn-ghost { background: transparent; color: var(--text); border-color: transparent; }
+    .btn-danger { background: var(--red); color: white; border-color: var(--red); }
+    .btn-sm { padding: var(--space-1) var(--space-2); font-size: var(--font-size-sm); }
+    .btn-lg { padding: var(--space-3) var(--space-6); font-size: var(--font-size-md); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      border-radius: var(--radius-sm);
+    }
+
+    .badge-up { background: rgba(240, 90, 85, 0.15); color: var(--red); }
+    .badge-down { background: rgba(62, 207, 130, 0.15); color: var(--green); }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-medium);
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+    }
+
+    .tag-hk { background: rgba(212, 175, 100, 0.15); color: var(--gold); border-color: rgba(212, 175, 100, 0.3); }
+    .tag-us { background: rgba(91, 141, 239, 0.15); color: var(--blue); border-color: rgba(91, 141, 239, 0.3); }
+    .tag-a { background: rgba(240, 90, 85, 0.15); color: var(--red); border-color: rgba(240, 90, 85, 0.3); }
+
+    .card {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+    }
+
+    .input {
+      width: 200px;
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text);
+      font-size: var(--font-size-base);
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.1);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: var(--s1);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      margin-bottom: var(--space-3);
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--blue);
+      border-radius: var(--radius-sm);
+      transition: width var(--duration-slow) var(--easing-default);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .table th,
+    .table td {
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table th {
+      background: var(--s1);
+      font-weight: var(--font-weight-semibold);
+      color: var(--sub);
+      font-size: var(--font-size-sm);
+    }
+
+    .table tbody tr:hover {
+      background: var(--s1);
+    }
+
+    .mono {
+      font-family: var(--font-family-mono);
+    }
+
+    .text-up { color: var(--red); }
+    .text-down { color: var(--green); }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .stat-card {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+    }
+
+    .stat-label {
+      font-size: var(--font-size-xs);
+      color: var(--muted);
+      margin-bottom: var(--space-2);
+    }
+
+    .stat-value {
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text);
+    }
+
+    .component-count {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--s2);
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      color: var(--sub);
+    }
+
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--s2);
+      border-radius: var(--radius-md);
+    }
+
+    .feature-icon {
+      font-size: var(--font-size-lg);
+      flex-shrink: 0;
+    }
+
+    .feature-text {
+      flex: 1;
+    }
+
+    .feature-title {
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--space-1);
+      color: var(--text);
+    }
+
+    .feature-desc {
+      font-size: var(--font-size-sm);
+      color: var(--sub);
+    }
+  </style>
+</head>
+<body>
+  <div class="showcase-header">
+    <h1 class="showcase-title">🎨 Kaka Web 组件库</h1>
+    <p class="showcase-subtitle">20个高质量组件 | 完整TypeScript支持 | 设计系统集成</p>
+    <div style="margin-top: var(--space-4);">
+      <span class="component-count">✅ 11个基础组件</span>
+      <span class="component-count">✅ 9个业务组件</span>
+      <span class="component-count">✅ TypeScript严格模式</span>
+    </div>
+  </div>
+
+  <!-- 基础组件展示 -->
+  <section class="showcase-section">
+    <h2 class="section-title">基础组件</h2>
+
+    <!-- Button -->
+    <div class="component-demo">
+      <h3 class="demo-title">Button 按钮</h3>
+      <div class="demo-row">
+        <span class="demo-label">类型：</span>
+        <button class="btn btn-primary">主要按钮</button>
+        <button class="btn btn-secondary">次要按钮</button>
+        <button class="btn btn-ghost">幽灵按钮</button>
+        <button class="btn btn-danger">危险按钮</button>
+      </div>
+      <div class="demo-row">
+        <span class="demo-label">尺寸：</span>
+        <button class="btn btn-primary btn-sm">小按钮</button>
+        <button class="btn btn-primary">中按钮</button>
+        <button class="btn btn-primary btn-lg">大按钮</button>
+      </div>
+    </div>
+
+    <!-- Badge & Tag -->
+    <div class="component-demo">
+      <h3 class="demo-title">Badge & Tag 徽章与标签</h3>
+      <div class="demo-row">
+        <span class="demo-label">徽章：</span>
+        <span class="badge badge-up">+1.23%</span>
+        <span class="badge badge-down">-0.45%</span>
+      </div>
+      <div class="demo-row">
+        <span class="demo-label">标签：</span>
+        <span class="tag tag-hk">🇭🇰 港股</span>
+        <span class="tag tag-us">🇺🇸 美股</span>
+        <span class="tag tag-a">🇨🇳 A股</span>
+      </div>
+    </div>
+
+    <!-- Card -->
+    <div class="component-demo">
+      <h3 class="demo-title">Card 卡片</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-4);">
+        <div class="card">
+          <h4 style="margin-bottom: var(--space-2);">卡片标题</h4>
+          <p style="color: var(--sub); font-size: var(--font-size-sm);">这是卡片内容，支持自定义样式和交互。</p>
+        </div>
+        <div class="card" style="border-color: var(--blue);">
+          <h4 style="margin-bottom: var(--space-2);">高亮卡片</h4>
+          <p style="color: var(--sub); font-size: var(--font-size-sm);">支持自定义边框颜色和样式。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="component-demo">
+      <h3 class="demo-title">Progress 进度条</h3>
+      <div class="demo-row" style="flex-direction: column; align-items: stretch;">
+        <div>
+          <span class="demo-label">60%</span>
+          <div class="progress-track"><div class="progress-bar" style="width: 60%;"></div></div>
+        </div>
+        <div>
+          <span class="demo-label">80%</span>
+          <div class="progress-track"><div class="progress-bar" style="width: 80%; background: var(--green);"></div></div>
+        </div>
+        <div>
+          <span class="demo-label">40%</span>
+          <div class="progress-track"><div class="progress-bar" style="width: 40%; background: var(--red);"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="component-demo">
+      <h3 class="demo-title">Table 表格</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>代码</th>
+            <th>持有</th>
+            <th>当日盈亏</th>
+            <th>累计盈亏</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>腾讯控股</td>
+            <td class="mono">00700.HK</td>
+            <td class="mono">¥32,000</td>
+            <td class="mono text-up">+1,234.56</td>
+            <td class="mono text-up">+12,345.67</td>
+          </tr>
+          <tr>
+            <td>苹果公司</td>
+            <td class="mono">AAPL</td>
+            <td class="mono">¥45,000</td>
+            <td class="mono text-down">-567.89</td>
+            <td class="mono text-up">+3,456.78</td>
+          </tr>
+          <tr>
+            <td>贵州茅台</td>
+            <td class="mono">600519</td>
+            <td class="mono">¥28,000</td>
+            <td class="mono text-up">+890.12</td>
+            <td class="mono text-down">-1,234.56</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Input -->
+    <div class="component-demo">
+      <h3 class="demo-title">Input 输入框</h3>
+      <div class="demo-row">
+        <input class="input" type="text" placeholder="请输入内容" />
+        <input class="input" type="number" placeholder="数字" />
+        <input class="input" type="password" placeholder="密码" disabled />
+      </div>
+    </div>
+  </section>
+
+  <!-- 业务组件展示 -->
+  <section class="showcase-section">
+    <h2 class="section-title">业务组件</h2>
+
+    <!-- Asset Summary -->
+    <div class="component-demo">
+      <h3 class="demo-title">AssetSummary 资产摘要</h3>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">总资产</div>
+          <div class="stat-value mono">¥123,456.78</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">当日盈亏</div>
+          <div class="stat-value mono text-up">+1,234.56</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">累计盈亏</div>
+          <div class="stat-value mono text-up">+12,345.67</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Position Card -->
+    <div class="component-demo">
+      <h3 class="demo-title">PositionCard 持仓卡片</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4);">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-3);">
+            <div>
+              <div style="font-weight: var(--font-weight-semibold);">腾讯控股</div>
+              <div style="font-size: var(--font-size-xs); color: var(--sub);">00700.HK</div>
+            </div>
+            <span class="tag tag-hk">港股</span>
+          </div>
+          <div style="margin-bottom: var(--space-3);">
+            <div style="font-size: var(--font-size-xs); color: var(--muted);">持有金额</div>
+            <div class="mono" style="font-size: var(--font-size-xl);">¥32,000.00</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--border);">
+            <div>
+              <div style="font-size: var(--font-size-xs); color: var(--muted);">当日盈亏</div>
+              <div class="mono text-up" style="font-size: var(--font-size-sm);">+1,234.56</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-xs); color: var(--muted);">累计盈亏</div>
+              <div class="mono text-up" style="font-size: var(--font-size-sm);">+12,345.67</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-3);">
+            <div>
+              <div style="font-weight: var(--font-weight-semibold);">苹果公司</div>
+              <div style="font-size: var(--font-size-xs); color: var(--sub);">AAPL</div>
+            </div>
+            <span class="tag tag-us">美股</span>
+          </div>
+          <div style="margin-bottom: var(--space-3);">
+            <div style="font-size: var(--font-size-xs); color: var(--muted);">持有金额</div>
+            <div class="mono" style="font-size: var(--font-size-xl);">¥45,000.00</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--border);">
+            <div>
+              <div style="font-size: var(--font-size-xs); color: var(--muted);">当日盈亏</div>
+              <div class="mono text-down" style="font-size: var(--font-size-sm);">-567.89</div>
+            </div>
+            <div>
+              <div style="font-size: var(--font-size-xs); color: var(--muted);">累计盈亏</div>
+              <div class="mono text-up" style="font-size: var(--font-size-sm);">+3,456.78</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 特性说明 -->
+  <section class="showcase-section">
+    <h2 class="section-title">核心特性</h2>
+    <div class="feature-list">
+      <div class="feature-item">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-text">
+          <div class="feature-title">设计系统集成</div>
+          <div class="feature-desc">使用 Token 驱动的设计系统，确保视觉一致性</div>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🔷</div>
+        <div class="feature-text">
+          <div class="feature-title">TypeScript 严格模式</div>
+          <div class="feature-desc">完整的类型定义，0 any 类型</div>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">📦</div>
+        <div class="feature-text">
+          <div class="feature-title">高度可复用</div>
+          <div class="feature-desc">组件解耦，支持灵活组合</div>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-text">
+          <div class="feature-title">性能优化</div>
+          <div class="feature-desc">按需导入，摇树优化</div>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">📱</div>
+        <div class="feature-text">
+          <div class="feature-title">响应式设计</div>
+          <div class="feature-desc">支持各种屏幕尺寸</div>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🎯</div>
+        <div class="feature-text">
+          <div class="feature-title">业务聚焦</div>
+          <div class="feature-desc">专为金融投资场景设计</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 使用说明 -->
+  <section class="showcase-section">
+    <h2 class="section-title">快速开始</h2>
+    <div class="component-demo">
+      <pre style="background: var(--bg); padding: var(--space-4); border-radius: var(--radius-md); overflow-x: auto;"><code style="font-family: var(--font-family-mono); font-size: var(--font-size-sm); color: var(--text);"><span style="color: var(--green);">&lt;script setup&gt;</span>
+<span style="color: var(--blue);">import</span> { Button, Input, Modal } <span style="color: var(--blue);">from</span> <span style="color: var(--gold);">'@/components'</span>
+
+<span style="color: var(--blue);">const</span> showModal = <span style="color: var(--blue);">ref</span>(<span style="color: var(--red);">false</span>)
+<span style="color: var(--green);">&lt;/script&gt;</span>
+
+<span style="color: var(--green);">&lt;template&gt;</span>
+  <span style="color: var(--blue);">&lt;Button</span> <span style="color: var(--gold);">@click</span>=<span style="color: var(--gold);">"showModal = true"</span><span style="color: var(--blue);">&gt;</span>打开对话框<span style="color: var(--blue);">&lt;/Button&gt;</span>
+
+  <span style="color: var(--blue);">&lt;Modal</span> <span style="color: var(--gold);">v-model:show</span>=<span style="color: var(--gold);">"showModal"</span> <span style="color: var(--gold);">title</span>=<span style="color: var(--gold);">"提示"</span><span style="color: var(--blue);">&gt;</span>
+    <span style="color: var(--blue);">&lt;Input</span> <span style="color: var(--gold);">v-model</span>=<span style="color: var(--gold);">"value"</span> <span style="color: var(--gold);">placeholder</span>=<span style="color: var(--gold);">"请输入"</span> <span style="color: var(--blue);">/&gt;</span>
+  <span style="color: var(--blue);">&lt;/Modal&gt;</span>
+<span style="color: var(--green);">&lt;/template&gt;</span></code></pre>
+    </div>
+  </section>
+
+  <footer style="margin-top: var(--space-8); padding-top: var(--space-4); border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: var(--font-size-sm);">
+    <p>Kaka Web 组件库 v1.0 | 2026-03-06</p>
+    <p style="margin-top: var(--space-2);">详细文档：<code style="background: var(--s1); padding: 2px 6px; border-radius: var(--radius-sm);">COMPONENT-LIBRARY.md</code></p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,445 @@
+{% extends "admin_base.html" %}
+{% set admin_page = 'users' %}
+
+{% block title %}用户中心{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <div>
+        <h1 class="title">用户中心</h1>
+        <div class="hint">管理注册用户状态、管理员权限、密码重置与强制下线。</div>
+    </div>
+</div>
+
+<div class="grid-3">
+    <div class="card"><div class="muted">累计用户</div><div class="kpi" id="mTotal">-</div></div>
+    <div class="card"><div class="muted">今日新增用户</div><div class="kpi" id="mNewToday">-</div></div>
+    <div class="card"><div class="muted">今日活跃用户</div><div class="kpi" id="mDau">-</div></div>
+</div>
+
+<div class="card">
+    <div class="controls">
+        <input id="q" placeholder="搜索：用户编号 / 用户名 / 昵称 / 手机号" style="min-width:320px;">
+        <select id="status">
+            <option value="all">全部状态</option>
+            <option value="active">正常</option>
+            <option value="disabled">已停用</option>
+        </select>
+        <button onclick="loadUsers()">查询</button>
+        <button class="secondary" onclick="resetFilters()">重置</button>
+    </div>
+
+    <div class="controls" style="justify-content:space-between;">
+        <div class="controls" style="margin-bottom:0;">
+            <button class="warn" onclick="bulkSetStatus('disabled')">批量停用</button>
+            <button class="ok" onclick="bulkSetStatus('active')">批量启用</button>
+            <button class="danger" onclick="bulkRevokeSessions()">批量强制下线</button>
+        </div>
+        <div class="muted" id="listMeta">共 0 条</div>
+    </div>
+
+    <div style="overflow:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th><input id="selectAll" type="checkbox" onchange="toggleSelectAll()"></th>
+                    <th>用户编号</th>
+                    <th>用户名</th>
+                    <th>昵称</th>
+                    <th>手机号</th>
+                    <th>账号状态</th>
+                    <th>管理员权限</th>
+                    <th>需修改密码</th>
+                    <th>最近登录</th>
+                    <th>在线会话</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="userRows"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="resetPwdModal" class="modal-backdrop">
+    <div class="modal-card">
+        <h3 class="modal-title">重置用户登录密码</h3>
+        <div class="modal-msg" id="resetPwdDesc">-</div>
+        <div class="modal-extra">
+            <label class="muted" for="tempPasswordInput">临时密码（可留空，系统自动生成）</label>
+            <input id="tempPasswordInput" placeholder="例如：Abc12345" style="width:100%; margin-top:6px;">
+            <label style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+                <input id="forceChangeInput" type="checkbox" checked>
+                <span>要求该用户下次登录必须修改密码</span>
+            </label>
+        </div>
+        <div class="modal-actions">
+            <button class="secondary" onclick="closeResetPwdModal()">取消</button>
+            <button class="danger" onclick="submitResetPassword()">确认重置</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const usersState = {
+        items: [],
+        byId: {},
+        selected: new Set(),
+        resetTarget: null,
+    };
+
+    function statusPill(status) {
+        const key = String(status || '').toLowerCase();
+        const label = getStatusLabel(key);
+        if (key === 'active') {
+            return `<span class="status-pill status-ok">${label}</span>`;
+        }
+        return `<span class="status-pill status-danger">${label}</span>`;
+    }
+
+    function boolPill(value, trueLabel = '是', falseLabel = '否') {
+        return value
+            ? `<span class="status-pill status-warn">${trueLabel}</span>`
+            : `<span class="status-pill status-ok">${falseLabel}</span>`;
+    }
+
+    function checkedIds() {
+        return Array.from(usersState.selected).filter((id) => usersState.byId[id] && usersState.byId[id].can_manage);
+    }
+
+    function refreshSelectMeta() {
+        const selectedCount = checkedIds().length;
+        const total = usersState.items.length;
+        document.getElementById('listMeta').innerText = `共 ${total} 条，已选 ${selectedCount} 条`;
+    }
+
+    function toggleSelectAll() {
+        const checked = document.getElementById('selectAll').checked;
+        usersState.selected.clear();
+        if (checked) {
+            for (const item of usersState.items) {
+                if (item.can_manage) {
+                    usersState.selected.add(item.id);
+                }
+            }
+        }
+        renderUsers();
+    }
+
+    function toggleRowSelection(userId, checked) {
+        if (checked) {
+            usersState.selected.add(userId);
+        } else {
+            usersState.selected.delete(userId);
+        }
+        const selectable = usersState.items.filter((x) => x.can_manage).length;
+        const selectedCount = checkedIds().length;
+        document.getElementById('selectAll').checked = selectable > 0 && selectedCount === selectable;
+        refreshSelectMeta();
+    }
+
+    async function loadMetrics() {
+        try {
+            const m = await adminFetch('/api/admin/users/metrics');
+            document.getElementById('mTotal').innerText = m.user_total ?? 0;
+            document.getElementById('mNewToday').innerText = m.new_today ?? 0;
+            document.getElementById('mDau').innerText = m.dau ?? 0;
+        } catch (e) {
+            showToast(`指标加载失败：${e.message}`, true);
+        }
+    }
+
+    async function setStatus(userId, status) {
+        const target = usersState.byId[userId];
+        if (!target) return;
+        const actionText = status === 'active' ? '启用' : '停用';
+        const confirmed = await confirmAction({
+            title: `${actionText}用户账号`,
+            message: `用户：${target.username || '-'}\n用户编号：${target.user_number || '-'}\n\n确认${actionText}该账号吗？`,
+            confirmText: `确认${actionText}`,
+            danger: status !== 'active',
+        });
+        if (!confirmed) return;
+        try {
+            await adminFetch('/api/admin/users/status', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId, status }),
+            });
+            showToast(`已${actionText}用户：${target.username || userId}`);
+            await loadUsers();
+        } catch (e) {
+            showToast(`操作失败：${e.message}`, true);
+        }
+    }
+
+    async function toggleAdmin(userId, makeAdmin) {
+        const target = usersState.byId[userId];
+        if (!target) return;
+        const action = makeAdmin ? '授予管理员权限' : '取消管理员权限';
+        const confirmed = await confirmAction({
+            title: action,
+            message: `用户：${target.username || '-'}\n\n${makeAdmin ? '授予后可进入后台并管理运营配置。' : '取消后将无法进入后台。'}\n请确认是否继续。`,
+            confirmText: `确认${makeAdmin ? '授予' : '取消'}`,
+            danger: !makeAdmin,
+        });
+        if (!confirmed) return;
+        try {
+            await adminFetch('/api/admin/users/update', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId, is_admin: !!makeAdmin }),
+            });
+            showToast(`${target.username || userId} ${makeAdmin ? '已设为管理员' : '已取消管理员权限'}`);
+            await loadUsers();
+        } catch (e) {
+            showToast(`权限更新失败：${e.message}`, true);
+        }
+    }
+
+    async function openResetPwdModal(userId) {
+        const target = usersState.byId[userId];
+        if (!target) return;
+        usersState.resetTarget = target;
+        document.getElementById('tempPasswordInput').value = '';
+        document.getElementById('forceChangeInput').checked = true;
+        document.getElementById('resetPwdDesc').innerText = `用户：${target.username || '-'}（编号：${target.user_number || '-'}）\n重置后会自动撤销该用户当前登录会话。`;
+        document.getElementById('resetPwdModal').classList.add('show');
+    }
+
+    function closeResetPwdModal() {
+        usersState.resetTarget = null;
+        document.getElementById('resetPwdModal').classList.remove('show');
+    }
+
+    async function submitResetPassword() {
+        if (!usersState.resetTarget) return;
+        const target = usersState.resetTarget;
+        const tempPassword = document.getElementById('tempPasswordInput').value.trim();
+        const forceChange = !!document.getElementById('forceChangeInput').checked;
+        const payload = {
+            user_id: target.id,
+            force_change: forceChange,
+        };
+        if (tempPassword) payload.temp_password = tempPassword;
+
+        try {
+            const data = await adminFetch('/api/admin/users/password/reset', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            closeResetPwdModal();
+            showToast(`密码已重置，已撤销 ${data.revoked_refresh_tokens || 0} 个会话`);
+            if (data.temp_password) {
+                openDetailDrawer('临时密码（请立即复制）', [
+                    ['用户', target.username || '-'],
+                    ['用户编号', target.user_number || '-'],
+                    ['临时密码', data.temp_password],
+                    ['需修改密码', forceChange ? '是' : '否'],
+                ], data);
+            }
+            await loadUsers();
+        } catch (e) {
+            showToast(`重置密码失败：${e.message}`, true);
+        }
+    }
+
+    async function revokeSessions(userId) {
+        const target = usersState.byId[userId];
+        if (!target) return;
+        let activeSessions = target.active_sessions || 0;
+        try {
+            const preview = await adminFetch(`/api/admin/users/sessions/count?user_id=${encodeURIComponent(userId)}`);
+            activeSessions = preview.active_sessions || 0;
+        } catch (_) {
+            // 预估失败不阻断操作
+        }
+
+        const confirmed = await confirmAction({
+            title: '强制用户下线',
+            message: `用户：${target.username || '-'}\n预计影响在线会话：${activeSessions} 个\n\n确认立即撤销该用户所有登录会话吗？`,
+            confirmText: '确认强制下线',
+            danger: true,
+        });
+        if (!confirmed) return;
+        try {
+            const data = await adminFetch('/api/admin/users/sessions/revoke', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: userId }),
+            });
+            showToast(`已撤销 ${data.revoked_refresh_tokens || 0} 个会话`);
+            await loadUsers();
+        } catch (e) {
+            showToast(`强制下线失败：${e.message}`, true);
+        }
+    }
+
+    async function showDetail(userId) {
+        try {
+            const data = await adminFetch(`/api/admin/users/${encodeURIComponent(userId)}`);
+            openDetailDrawer('用户详情', [
+                ['用户编号', data.user_number || '-'],
+                ['用户名', data.username || '-'],
+                ['昵称', data.nickname || '-'],
+                ['手机号', data.phone || '-'],
+                ['注册方式', getRegisterMethodLabel(data.register_method)],
+                ['账号状态', getStatusLabel(data.status)],
+                ['管理员权限', data.is_admin ? '是' : '否'],
+                ['需修改密码', data.must_change_password ? '是' : '否'],
+                ['在线会话', data.active_sessions || 0],
+                ['注册时间', fmtDateTime(data.created_at)],
+                ['最近登录', fmtDateTime(data.last_login)],
+                ['内部ID', data.id || '-'],
+            ], data);
+        } catch (e) {
+            showToast(`详情加载失败：${e.message}`, true);
+        }
+    }
+
+    async function runBatch(ids, task, successLabel) {
+        if (ids.length === 0) {
+            showToast('请先勾选要操作的用户', true);
+            return;
+        }
+        let okCount = 0;
+        const failed = [];
+        for (const id of ids) {
+            try {
+                await task(id);
+                okCount += 1;
+            } catch (e) {
+                failed.push({ id, error: e.message || '未知错误' });
+            }
+        }
+        if (failed.length === 0) {
+            showToast(`${successLabel}完成：${okCount} 位用户`);
+        } else {
+            showToast(`${successLabel}完成：成功 ${okCount}，失败 ${failed.length}` +
+                `\n失败用户：${failed.slice(0, 3).map((x) => x.id).join('、')}`,
+                true);
+        }
+        await loadUsers();
+    }
+
+    async function bulkSetStatus(status) {
+        const ids = checkedIds();
+        if (ids.length === 0) {
+            showToast('请先勾选要操作的用户', true);
+            return;
+        }
+        const actionText = status === 'active' ? '批量启用' : '批量停用';
+        const confirmed = await confirmAction({
+            title: actionText,
+            message: `已选 ${ids.length} 位用户。\n确认${actionText}吗？`,
+            confirmText: `确认${actionText}`,
+            danger: status !== 'active',
+        });
+        if (!confirmed) return;
+        await runBatch(
+            ids,
+            async (id) => {
+                await adminFetch('/api/admin/users/status', {
+                    method: 'POST',
+                    body: JSON.stringify({ user_id: id, status }),
+                });
+            },
+            actionText
+        );
+    }
+
+    async function bulkRevokeSessions() {
+        const ids = checkedIds();
+        if (ids.length === 0) {
+            showToast('请先勾选要操作的用户', true);
+            return;
+        }
+        const confirmed = await confirmAction({
+            title: '批量强制下线',
+            message: `已选 ${ids.length} 位用户。\n确认撤销这些用户的全部登录会话吗？`,
+            confirmText: '确认批量下线',
+            danger: true,
+        });
+        if (!confirmed) return;
+        await runBatch(
+            ids,
+            async (id) => {
+                await adminFetch('/api/admin/users/sessions/revoke', {
+                    method: 'POST',
+                    body: JSON.stringify({ user_id: id }),
+                });
+            },
+            '批量强制下线'
+        );
+    }
+
+    function renderUsers() {
+        const tbody = document.getElementById('userRows');
+        tbody.innerHTML = '';
+        if (!usersState.items.length) {
+            tbody.innerHTML = '<tr><td colspan="11" class="muted">暂无数据</td></tr>';
+            refreshSelectMeta();
+            return;
+        }
+        for (const u of usersState.items) {
+            const tr = document.createElement('tr');
+            const selected = usersState.selected.has(u.id);
+            const canManage = !!u.can_manage;
+            const nextStatus = u.status === 'active' ? 'disabled' : 'active';
+            const statusActionText = nextStatus === 'active' ? '启用' : '停用';
+            tr.innerHTML = `
+                <td>
+                    <input type="checkbox" ${selected ? 'checked' : ''} ${canManage ? '' : 'disabled'} onchange="toggleRowSelection('${u.id}', this.checked)">
+                </td>
+                <td>${escapeHtml(u.user_number ?? '-')}</td>
+                <td>${escapeHtml(u.username || '-')}</td>
+                <td>${escapeHtml(u.nickname || '-')}</td>
+                <td>${escapeHtml(u.phone || '-')}</td>
+                <td>${statusPill(u.status)}</td>
+                <td>${boolPill(!!u.is_admin, '管理员', '普通用户')}</td>
+                <td>${boolPill(!!u.must_change_password, '是', '否')}</td>
+                <td>${fmtDateTime(u.last_login)}</td>
+                <td>${escapeHtml(u.active_sessions ?? 0)}</td>
+                <td>
+                    <button class="secondary" onclick="showDetail('${u.id}')">详情</button>
+                    ${canManage ? `
+                        <button class="${nextStatus === 'active' ? 'ok' : 'warn'}" onclick="setStatus('${u.id}', '${nextStatus}')">${statusActionText}</button>
+                        <button class="secondary" onclick="toggleAdmin('${u.id}', ${u.is_admin ? 'false' : 'true'})">${u.is_admin ? '取消管理员' : '设为管理员'}</button>
+                        <button onclick="openResetPwdModal('${u.id}')">重置密码</button>
+                        <button class="danger" onclick="revokeSessions('${u.id}')">强制下线</button>
+                    ` : '<span class="muted">只读</span>'}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+        refreshSelectMeta();
+    }
+
+    async function loadUsers() {
+        usersState.selected.clear();
+        document.getElementById('selectAll').checked = false;
+
+        const q = encodeURIComponent(document.getElementById('q').value.trim());
+        const status = encodeURIComponent(document.getElementById('status').value);
+        const url = `/api/admin/users?q=${q}&status=${status}&limit=200&offset=0`;
+        try {
+            const data = await adminFetch(url);
+            usersState.items = data.items || [];
+            usersState.byId = {};
+            for (const item of usersState.items) {
+                usersState.byId[item.id] = item;
+            }
+            renderUsers();
+            await loadMetrics();
+        } catch (e) {
+            showToast(`用户列表加载失败：${e.message}`, true);
+        }
+    }
+
+    function resetFilters() {
+        document.getElementById('q').value = '';
+        document.getElementById('status').value = 'all';
+        loadUsers();
+    }
+
+    loadUsers();
+</script>
+{% endblock %}

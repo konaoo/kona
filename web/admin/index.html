@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" class="admin-boot">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/assets/kaka-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>咔咔记账 - 管理后台</title>
+    <style>
+      html,
+      body,
+      #app {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      html.admin-boot,
+      html.admin-boot body,
+      html.admin-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
+      html.app-boot,
+      html.app-boot body,
+      html.app-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
+      html.portal-boot,
+      html.portal-boot body,
+      html.portal-boot #app {
+        background: #0a0b0e !important;
+      }
+
+      .boot-splash {
+        min-height: 100vh;
+        user-select: none;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-splash" aria-hidden="true"></div>
+    </div>
+    <script type="module" src="../src/main_admin.ts"></script>
+  </body>
+</html>

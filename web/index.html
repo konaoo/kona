@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>咔咔记账 - 投资记录工具</title>
+    <style>
+      html,
+      body,
+      #app {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      html.admin-boot,
+      html.admin-boot body,
+      html.admin-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
+      html.app-boot,
+      html.app-boot body,
+      html.app-boot #app {
+        background:
+          radial-gradient(1000px 520px at 86% -44%, rgba(88, 138, 228, 0.26) 0%, transparent 58%),
+          radial-gradient(880px 660px at -8% -20%, rgba(49, 90, 173, 0.35) 0%, transparent 56%),
+          radial-gradient(620px 460px at 42% 120%, rgba(74, 126, 220, 0.2) 0%, transparent 64%),
+          #060a14 !important;
+      }
+
+      html.portal-boot,
+      html.portal-boot body,
+      html.portal-boot #app {
+        background: #0a0b0e !important;
+      }
+
+      .boot-splash {
+        min-height: 100vh;
+        user-select: none;
+        pointer-events: none;
+      }
+    </style>
+    <script>
+      (function () {
+        var path = window.location.pathname || '/'
+        if (path === '/' || path === '/index.html') {
+          document.documentElement.classList.add('portal-boot')
+          return
+        }
+        if (path.indexOf('/admin') === 0) {
+          document.documentElement.classList.add('admin-boot')
+          return
+        }
+        if (path.indexOf('/app') === 0) {
+          document.documentElement.classList.add('app-boot')
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-splash" aria-hidden="true"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

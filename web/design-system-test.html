@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设计系统测试</title>
+  <style>
+    /* 导入我们的设计系统 */
+    @import './src/styles/tokens.css' layer(design-system);
+    @import './src/styles/base.css' layer(design-system);
+    @import './src/styles/mixins.css' layer(design-system);
+    @import './src/styles/animations.css' layer(design-system);
+  </style>
+</head>
+<body>
+  <div class="p-6">
+    <h1 class="text-3xl font-bold mb-4">设计系统测试</h1>
+
+    <!-- 颜色测试 -->
+    <div class="card mb-4">
+      <h2 class="text-lg font-semibold mb-4">颜色测试</h2>
+      <div class="flex gap-4">
+        <div class="p-4 border rounded-lg text-up">text-up (红/涨)</div>
+        <div class="p-4 border rounded-lg text-down">text-down (绿/跌)</div>
+        <div class="p-4 border rounded-lg text-primary">text-primary (主文本)</div>
+        <div class="p-4 border rounded-lg text-muted">text-muted (弱化文本)</div>
+      </div>
+    </div>
+
+    <!-- 间距测试 -->
+    <div class="card mb-4">
+      <h2 class="text-lg font-semibold mb-4">间距测试</h2>
+      <div class="space-y-2">
+        <div class="p-1 border">padding-1 (4px)</div>
+        <div class="p-2 border">padding-2 (8px)</div>
+        <div class="p-4 border">padding-4 (16px)</div>
+        <div class="p-6 border">padding-6 (24px)</div>
+      </div>
+    </div>
+
+    <!-- 圆角测试 -->
+    <div class="card mb-4">
+      <h2 class="text-lg font-semibold mb-4">圆角测试</h2>
+      <div class="flex gap-4">
+        <div class="p-4 border rounded-md">rounded-md (8px)</div>
+        <div class="p-4 border rounded-lg">rounded-lg (12px)</div>
+        <div class="p-4 border rounded-xl">rounded-xl (16px)</div>
+        <div class="p-4 border rounded-2xl">rounded-2xl (18px)</div>
+      </div>
+    </div>
+
+    <!-- 动画测试 -->
+    <div class="card">
+      <h2 class="text-lg font-semibold mb-4">动画测试</h2>
+      <div class="flex gap-4">
+        <button class="btn btn-primary hover-lift animate-pulse">脉冲动画</button>
+        <button class="btn btn-ghost hover-lift">悬停提升</button>
+        <div class="badge badge-up">badge-up</div>
+        <div class="badge badge-down">badge-down</div>
+        <div class="tag tag-us">美股</div>
+      </div>
+    </div>
+
+    <!-- 字体测试 -->
+    <div class="card mt-4">
+      <h2 class="text-lg font-semibold mb-4">字体测试</h2>
+      <div class="space-y-2">
+        <div class="text-xs">text-xs (10px)</div>
+        <div class="text-sm">text-sm (11px)</div>
+        <div class="text-base">text-base (12px)</div>
+        <div class="text-md">text-md (13px)</div>
+        <div class="text-lg">text-lg (14px)</div>
+        <div class="text-xl">text-xl (16px)</div>
+        <div class="text-2xl">text-2xl (18px)</div>
+        <div class="text-3xl">text-3xl (24px)</div>
+      </div>
+    </div>
+
+    <!-- 等宽字体测试 -->
+    <div class="card mt-4">
+      <h2 class="text-lg font-semibold mb-4">等宽字体测试</h2>
+      <div class="mono space-y-1">
+        <div>价格: ¥123,456.78</div>
+        <div>涨跌: +1.23%</div>
+        <div>代码: 00700.HK</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,164 @@
+import os
+import sys
+import tempfile
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+KONA_TOOL = ROOT / "kona_tool"
+if str(KONA_TOOL) not in sys.path:
+    sys.path.insert(0, str(KONA_TOOL))
+
+_tmp_dir = tempfile.TemporaryDirectory()
+os.environ["KONA_DATABASE_PATH"] = str(Path(_tmp_dir.name) / "test_admin_invites.db")
+os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
+
+import app as app_module  # noqa: E402
+import admin_routes  # noqa: E402
+
+
+def _seed_admin(user_id: str = "u_admin", username: str = "admin_user"):
+    conn = app_module.db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
+        VALUES (?, ?, ?, 0, 1, 'active')
+        """,
+        (user_id, username, "scrypt$16384$8$1$U0FMVA==$SEFTSA=="),
+    )
+    conn.commit()
+    conn.close()
+    token = app_module.generate_token(user_id, username)
+    return {"Authorization": f"Bearer {token}"}
+
+
+class AdminInviteTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app_module.app.testing = True
+        cls.client = app_module.app.test_client()
+
+    def setUp(self):
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM invite_codes")
+        cursor.execute("DELETE FROM users")
+        conn.commit()
+        conn.close()
+
+    def test_generate_list_revoke_export(self):
+        headers = _seed_admin()
+
+        gen = self.client.post(
+            "/api/admin/invites/generate",
+            headers=headers,
+            json={"count": 5, "batch_id": "batch_test"},
+        )
+        self.assertEqual(gen.status_code, 200)
+        body = gen.get_json()
+        self.assertEqual(body.get("batch_id"), "batch_test")
+        self.assertEqual(body.get("inserted"), 5)
+
+        listed = self.client.get("/api/admin/invites?status=all&batch_id=batch_test", headers=headers)
+        self.assertEqual(listed.status_code, 200)
+        items = listed.get_json().get("items", [])
+        self.assertEqual(len(items), 5)
+
+        stats = self.client.get("/api/admin/invites/stats?batch_id=batch_test", headers=headers)
+        self.assertEqual(stats.status_code, 200)
+        stats_body = stats.get_json()
+        self.assertEqual(stats_body.get("total"), 5)
+        self.assertEqual(stats_body.get("active"), 5)
+
+        code = items[0]["code"]
+        rev = self.client.post(
+            "/api/admin/invites/revoke",
+            headers=headers,
+            json={"code": code},
+        )
+        self.assertEqual(rev.status_code, 200)
+
+        stats2 = self.client.get("/api/admin/invites/stats?batch_id=batch_test", headers=headers)
+        self.assertEqual(stats2.status_code, 200)
+        stats2_body = stats2.get_json()
+        self.assertEqual(stats2_body.get("revoked"), 1)
+
+        export_resp = self.client.get("/api/admin/invites/export?batch_id=batch_test", headers=headers)
+        self.assertEqual(export_resp.status_code, 200)
+        text = export_resp.data.decode("utf-8")
+        self.assertIn("邀请码,批次标识,状态", text)
+        self.assertIn("使用用户名,使用用户编号,使用用户内部ID", text)
+
+    def test_invites_pagination_keeps_exact_total(self):
+        headers = _seed_admin()
+        gen = self.client.post(
+            "/api/admin/invites/generate",
+            headers=headers,
+            json={"count": 12, "batch_id": "batch_page"},
+        )
+        self.assertEqual(gen.status_code, 200)
+
+        listed = self.client.get(
+            "/api/admin/invites?status=all&batch_id=batch_page&limit=5&offset=10",
+            headers=headers,
+        )
+        self.assertEqual(listed.status_code, 200)
+        payload = listed.get_json() or {}
+        self.assertEqual(int(payload.get("total") or 0), 12)
+        self.assertEqual(len(payload.get("items") or []), 2)
+
+    def test_generate_invalidates_invites_read_cache(self):
+        headers = _seed_admin()
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+
+        first = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(int((first.get_json() or {}).get("total") or 0), 0)
+
+        gen = self.client.post(
+            "/api/admin/invites/generate",
+            headers=headers,
+            json={"count": 1, "batch_id": "batch_cache"},
+        )
+        self.assertEqual(gen.status_code, 200)
+
+        second = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(int((second.get_json() or {}).get("total") or 0), 1)
+
+    def test_force_param_bypasses_invites_read_cache(self):
+        headers = _seed_admin()
+        if hasattr(admin_routes, "_admin_cache_clear"):
+            admin_routes._admin_cache_clear()
+
+        first = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(int((first.get_json() or {}).get("total") or 0), 0)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO invite_codes (code, batch_id, status, created_by, note)
+            VALUES (?, ?, 'active', ?, ?)
+            """,
+            ("FORCECACHE1", "batch_force", "u_admin", ""),
+        )
+        conn.commit()
+        conn.close()
+
+        cached = self.client.get("/api/admin/invites?status=active&limit=10&offset=0", headers=headers)
+        self.assertEqual(cached.status_code, 200)
+        self.assertEqual(int((cached.get_json() or {}).get("total") or 0), 0)
+
+        forced = self.client.get("/api/admin/invites?status=active&limit=10&offset=0&force=1", headers=headers)
+        self.assertEqual(forced.status_code, 200)
+        self.assertEqual(int((forced.get_json() or {}).get("total") or 0), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

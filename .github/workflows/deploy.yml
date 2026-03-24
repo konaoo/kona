@@ -1,0 +1,477 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repo-guard:
+    name: Repo Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Repo hygiene guard
+        run: bash scripts/ci/check_repo_hygiene.sh
+
+      - name: Sync contract guard
+        run: bash scripts/ci/check_sync_contract_generated.sh
+
+      - name: CHANGELOG guard
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          BASE_SHA="$PUSH_BEFORE_SHA"
+          HEAD_SHA="$CURRENT_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="$PR_BASE_SHA"
+            HEAD_SHA="$PR_HEAD_SHA"
+          fi
+          bash scripts/ci/check_changelog_guard.sh "$BASE_SHA" "$HEAD_SHA"
+
+  backend-gate:
+    name: Backend Gate (Python ${{ matrix.python-version }})
+    needs: [ repo-guard ]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.11" ]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: kona_tool/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r kona_tool/requirements.txt
+
+      - name: Compile check
+        run: python -m compileall -q kona_tool
+
+      - name: Run backend unit tests
+        env:
+          JWT_SECRET: ci_dummy_secret_for_tests_only
+          PYTHONPATH: kona_tool
+          KONA_DATABASE_PATH: /tmp/kona_ci.db
+        run: python -m unittest discover -s kona_tool/tests -p "test_*.py" -v
+
+  frontend-gate:
+    name: Frontend Gate (Flutter + Web)
+    needs: [ repo-guard ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java (Gradle cache)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Detect frontend-impacting changes
+        id: frontend_scope
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            apk:
+              - 'flutter/android/**'
+            web_smoke:
+              - 'web/**'
+              - 'kona_tool/**'
+              - 'scripts/ci/**'
+              - '.github/workflows/deploy.yml'
+
+      - name: Flutter pub get
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Flutter analyze
+        working-directory: flutter
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Flutter test
+        working-directory: flutter
+        run: flutter test
+
+      - name: Flutter build apk (debug smoke)
+        if: steps.frontend_scope.outputs.apk == 'true' || github.event_name == 'workflow_dispatch'
+        working-directory: flutter
+        run: flutter build apk --debug
+
+      - name: Setup Python for Web smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: kona_tool/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install Web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Run Web unit tests
+        working-directory: web
+        run: npm run test
+
+      - name: Build Web
+        working-directory: web
+        run: npm run build
+
+      - name: Install backend dependencies for Web smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r kona_tool/requirements.txt
+
+      - name: Install Playwright browser
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Web e2e smoke
+        if: steps.frontend_scope.outputs.web_smoke == 'true' || github.event_name == 'workflow_dispatch'
+        working-directory: web
+        env:
+          CI: true
+        run: npm run test:e2e
+
+  deploy:
+    name: Deploy to Production
+    needs: [ backend-gate, frontend-gate ]
+    if: >-
+      github.event_name != 'pull_request' &&
+      needs.backend-gate.result == 'success' &&
+      needs.frontend-gate.result == 'success'
+    # 部署链路允许非代码原因失败（网络/SSH抖动），不阻塞代码检查结论。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REMOTE_WEB_ARCHIVE: /tmp/web-dist-${{ github.sha }}.tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Build Web artifact for deploy
+        working-directory: web
+        run: |
+          set -eu
+          npm ci
+          npm run build
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner -C dist -czf ../web-dist.tar.gz .
+          gzip -t ../web-dist.tar.gz
+
+      - name: Upload Web artifact to server (with retries)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          set -eu
+
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "Missing SSH_HOST or SSH_KEY secret."
+            exit 1
+          fi
+
+          KEY_FILE="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+
+          SSH_OPTS="-i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+
+          WARMUP_OK=0
+          for attempt in 1 2 3; do
+            echo "SSH warmup attempt $attempt ..."
+            if ssh $SSH_OPTS root@"$SSH_HOST" "echo warmup-ok" >/dev/null 2>&1; then
+              WARMUP_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$WARMUP_OK" -ne 1 ]; then
+            echo "SSH warmup failed after retries."
+            exit 1
+          fi
+
+          SCP_OK=0
+          LOCAL_SHA="$(sha256sum web-dist.tar.gz | awk '{print $1}')"
+          REMOTE_TMP_ARCHIVE="${REMOTE_WEB_ARCHIVE}.part"
+          for attempt in 1 2 3 4 5; do
+            echo "SCP attempt $attempt ..."
+            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'" >/dev/null 2>&1 || true
+            if scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":"$REMOTE_TMP_ARCHIVE" && \
+              ssh $SSH_OPTS root@"$SSH_HOST" "set -eu
+                actual_sha=\$(sha256sum '$REMOTE_TMP_ARCHIVE' | awk '{print \$1}')
+                [ \"\$actual_sha\" = '$LOCAL_SHA' ]
+                gzip -t '$REMOTE_TMP_ARCHIVE'
+                mv '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'
+              "; then
+              echo "Remote artifact verified: $REMOTE_WEB_ARCHIVE"
+              SCP_OK=1
+              break
+            fi
+            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE'" >/dev/null 2>&1 || true
+            sleep $((attempt * 2))
+          done
+          if [ "$SCP_OK" -ne 1 ]; then
+            echo "SCP upload or remote artifact verification failed after retries."
+            exit 1
+          fi
+
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: root
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -eu
+
+            APP_DIR="${{ secrets.APP_DIR }}"
+            TARGET_SHA="${{ github.sha }}"
+            REMOTE_WEB_ARCHIVE="/tmp/web-dist-${{ github.sha }}.tar.gz"
+            if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
+              echo "Invalid APP_DIR: $APP_DIR"
+              exit 1
+            fi
+
+            cd "$APP_DIR"
+            echo "Deploy dir: $(pwd)"
+            echo "Deploy target sha: $TARGET_SHA"
+            git config --global --add safe.directory "$APP_DIR"
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+              CURRENT_SHA="$(git rev-parse HEAD)"
+              echo "Server current sha: $CURRENT_SHA"
+
+              fetch_main_with_timeout() {
+                attempt="$1"
+                fetch_log="/tmp/kona_deploy_git_fetch_${attempt}.log"
+                rm -f "$fetch_log"
+                echo "git fetch attempt $attempt ..."
+                if timeout 45 git -c http.version=HTTP/1.1 fetch --depth=1 origin main >"$fetch_log" 2>&1; then
+                  cat "$fetch_log" || true
+                  rm -f "$fetch_log"
+                  return 0
+                else
+                  status="$?"
+                  echo "git fetch attempt $attempt failed with exit code: $status"
+                  cat "$fetch_log" || true
+                  rm -f "$fetch_log"
+                  return 1
+                fi
+              }
+
+              if [ "$CURRENT_SHA" = "$TARGET_SHA" ]; then
+                echo "Server already at target sha, skip git fetch."
+              else
+                FETCH_OK=0
+                for attempt in 1 2 3 4 5; do
+                  if fetch_main_with_timeout "$attempt"; then
+                    REMOTE_SHA="$(git rev-parse origin/main)"
+                    echo "Fetched origin/main sha: $REMOTE_SHA"
+                    if [ "$REMOTE_SHA" = "$TARGET_SHA" ]; then
+                      FETCH_OK=1
+                      break
+                    fi
+                    echo "Fetched sha does not match target sha yet, wait and retry."
+                  fi
+                  sleep $((attempt * 2))
+                done
+              fi
+
+              if [ "${FETCH_OK:-1}" -ne 1 ] && [ "$CURRENT_SHA" != "$TARGET_SHA" ]; then
+                echo "ERROR: git fetch origin main failed or target sha not reached."
+                echo "---- git remote -v ----"
+                git remote -v || true
+                echo "---- git branch -vv ----"
+                git branch -vv || true
+                echo "---- git status --short --branch ----"
+                git status --short --branch || true
+                echo "---- git ls-remote origin refs/heads/main ----"
+                timeout 15 git ls-remote origin refs/heads/main || true
+                echo "---- curl -I https://github.com ----"
+                timeout 15 curl -I https://github.com || true
+                exit 1
+              fi
+
+              if [ "$CURRENT_SHA" != "$TARGET_SHA" ]; then
+                if git reset --hard "$TARGET_SHA"; then
+                  FETCH_OK=1
+                else
+                  echo "Target sha not present locally, reset to origin/main."
+                  git reset --hard origin/main
+                fi
+              fi
+              echo "Server git status after reset:"
+              git log -1 --oneline
+            else
+              echo "ERROR: $APP_DIR is not a git repository! This will prevent backend updates."
+              exit 1
+            fi
+
+            WEB_DIR="$APP_DIR/kona_tool/static/web"
+            if [ ! -d "$APP_DIR/kona_tool" ]; then
+               WEB_DIR="$APP_DIR/static/web"
+            fi
+            echo "Static web target: $WEB_DIR"
+
+            PYTHON_BIN="python3"
+            IS_VENV=0
+            if [ -f "kona_tool/.venv/bin/python3" ]; then
+              PYTHON_BIN="kona_tool/.venv/bin/python3"
+              IS_VENV=1
+            fi
+            
+            if [ "$IS_VENV" -eq 1 ]; then
+              $PYTHON_BIN -m pip install -r kona_tool/requirements.txt
+            else
+              $PYTHON_BIN -m pip install -r kona_tool/requirements.txt --user
+            fi
+
+            if [ ! -f "$REMOTE_WEB_ARCHIVE" ]; then
+              echo "Missing $REMOTE_WEB_ARCHIVE"
+              exit 1
+            fi
+            if ! gzip -t "$REMOTE_WEB_ARCHIVE"; then
+              echo "Invalid gzip archive: $REMOTE_WEB_ARCHIVE"
+              exit 1
+            fi
+            TMP_WEB_DIR="$(mktemp -d)"
+            tar -xzf "$REMOTE_WEB_ARCHIVE" -C "$TMP_WEB_DIR"
+            rm -f "$REMOTE_WEB_ARCHIVE"
+            
+            BACKUP_WEB_DIR="${WEB_DIR}.bak.$(date +%s)"
+            if [ -d "$WEB_DIR" ]; then
+              cp -a "$WEB_DIR" "$BACKUP_WEB_DIR"
+            fi
+
+            rm -rf "$WEB_DIR"
+            mkdir -p "$WEB_DIR"
+            cp -a "$TMP_WEB_DIR"/. "$WEB_DIR"/
+            rm -rf "$TMP_WEB_DIR"
+            echo "Frontend assets updated in $WEB_DIR"
+            
+            rollback_web() {
+              if [ -d "$BACKUP_WEB_DIR" ]; then
+                echo "Rolling back web artifact from $BACKUP_WEB_DIR ..."
+                rm -rf "$WEB_DIR"
+                cp -a "$BACKUP_WEB_DIR" "$WEB_DIR"
+                sudo systemctl restart kona || true
+              else
+                echo "No web backup directory found, skip rollback."
+              fi
+            }
+
+            sudo systemctl restart kona
+            echo "Systemd service kona restarted."
+
+            i=1
+            while [ "$i" -le 60 ]; do
+              status=$(curl -sS -o /tmp/kona_health.json -w "%{http_code}" --max-time 2 http://127.0.0.1:5003/health || true)
+              echo "health attempt $i -> $status"
+              if [ "$status" = "200" ]; then
+                cat /tmp/kona_health.json || true
+                echo
+                echo "Health check passed."
+                break
+              fi
+              i=$((i + 1))
+              sleep 1
+            done
+
+            if [ "$i" -gt 60 ]; then
+              echo "Health check failed after restart."
+              sudo systemctl status kona -l --no-pager || true
+              sudo journalctl -u kona -n 120 --no-pager || true
+              exit 1
+            fi
+
+            echo "Running post-deploy API smoke checks..."
+            web_root=$(curl -sS -o /tmp/kona_web_root.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/ || true)
+            app_login=$(curl -sS -o /tmp/kona_app_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/app/login || true)
+            admin_login=$(curl -sS -o /tmp/kona_admin_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/admin/login || true)
+            market_status="000"
+            ms_try=1
+            while [ "$ms_try" -le 5 ]; do
+              market_status=$(curl -sS -o /tmp/kona_market_status.json -w "%{http_code}" --max-time 5 http://127.0.0.1:5003/api/market/status || true)
+              echo "market status attempt $ms_try -> $market_status"
+              if [ "$market_status" = "200" ]; then
+                break
+              fi
+              ms_try=$((ms_try + 1))
+              sleep 1
+            done
+            echo "web root -> $web_root"
+            echo "app login -> $app_login"
+            echo "admin login -> $admin_login"
+            echo "market status -> $market_status"
+            if [ "$web_root" != "200" ] || [ "$app_login" != "200" ] || [ "$admin_login" != "200" ]; then
+              echo "ERROR: web smoke failed."
+              rollback_web
+              exit 1
+            fi
+            if [ "$market_status" != "200" ]; then
+              echo "ERROR: /api/market/status unexpected status: $market_status"
+              cat /tmp/kona_market_status.json || true
+              rollback_web
+              exit 1
+            fi
+            python3 -c "import json; data=json.load(open('/tmp/kona_market_status.json','r',encoding='utf-8')); required=['server_time_utc','markets','all_closed']; missing=[k for k in required if k not in data]; assert not missing, f'missing keys in /api/market/status: {missing}'; print('market status payload OK')"
+
+            login_status=$(curl -sS -o /tmp/kona_login_probe.json -w "%{http_code}" --max-time 3 \
+              -H 'Content-Type: application/json' \
+              -X POST 'http://127.0.0.1:5003/api/auth/login' \
+              --data '{"username":"ci_probe_user","password":"ci_probe_bad_password"}' || true)
+            echo "login probe -> $login_status"
+            if [ "$login_status" != "401" ]; then
+              echo "ERROR: /api/auth/login probe unexpected status: $login_status"
+              cat /tmp/kona_login_probe.json || true
+              rollback_web
+              exit 1
+            fi
+            python3 -c "import json; data=json.load(open('/tmp/kona_login_probe.json','r',encoding='utf-8')); assert 'error' in data, 'missing error field in /api/auth/login probe response'; print('login probe payload OK')"
+            echo "Post-deploy smoke checks passed."

@@ -1,0 +1,54 @@
+name: tool
+description: "咔咔记账 - 投资组合管理系统"
+publish_to: 'none'
+version: 1.0.28
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # HTTP 请求
+  http: ^1.2.0
+  # 状态管理
+  provider: ^6.1.1
+  # 本地存储
+  shared_preferences: ^2.2.2
+  # 安全存储
+  flutter_secure_storage: ^9.2.2
+  # 生物识别
+  local_auth: ^2.2.0
+  # 外部浏览器打开链接
+  url_launcher: ^6.3.1
+  # 读取 App 版本号
+  package_info_plus: ^8.0.2
+  # SVG 资源渲染（登录页透明 logo）
+  flutter_svg: ^2.1.0
+  # 选择头像
+  image_picker: ^1.0.7
+  # 图表
+  fl_chart: ^0.66.2
+  # 下拉刷新
+  pull_to_refresh: ^2.0.0
+  # 启动页
+  flutter_native_splash: ^2.3.9
+  # 字体
+  google_fonts: ^6.1.0
+  # 保存图片到相册
+  gal: ^2.3.2
+  # 路径处理
+  path_provider: ^2.1.1
+  # Markdown 渲染（AI 聊天页）
+  flutter_markdown: ^0.7.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

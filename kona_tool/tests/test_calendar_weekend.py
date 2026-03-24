@@ -1,0 +1,335 @@
+import os
+import sys
+import importlib.util
+import tempfile
+import unittest
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[2]
+KONA_TOOL = ROOT / "kona_tool"
+if str(KONA_TOOL) not in sys.path:
+    sys.path.insert(0, str(KONA_TOOL))
+
+tmp_dir = tempfile.TemporaryDirectory()
+os.environ["KONA_DATABASE_PATH"] = str(Path(tmp_dir.name) / "test.db")
+os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
+
+db_path = KONA_TOOL / "core" / "db.py"
+spec = importlib.util.spec_from_file_location("db_module", db_path)
+db_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(db_module)
+# 记录并在模块结束时恢复，避免污染后续单测进程（不同 Python 版本下 patch 解析路径不一致）。
+_prev_core_db_module = sys.modules.get("core.db")
+_prev_kona_tool_core_db_module = sys.modules.get("kona_tool.core.db")
+# 这份测试用 importlib 动态加载 db.py，不会自动注册到 sys.modules。
+# 但拆分后的 db_analysis 会通过 sys.modules["core.db"] 查找可被 patch 的 db 模块，
+# 所以这里显式注册，保证 patch(datetime/_is_market_closed_date) 仍然生效。
+# 覆盖注册，确保后续 core.db_analysis 读取到的就是这份动态加载的 db_module，
+# 否则测试进程里可能已经存在其他名字的 core.db，导致 patch 失效。
+sys.modules["core.db"] = db_module
+sys.modules["kona_tool.core.db"] = db_module
+
+
+def tearDownModule():  # noqa: N802
+    """
+    恢复 sys.modules 的覆盖，避免影响其他 test_* 模块。
+
+    现象：若不恢复，后续测试里 `patch("core.db.datetime")` 可能会 patch 到
+    “core 包属性上的另一个 core.db 模块对象”，导致时间 patch 不生效，
+    进一步引发分析页概览类单测间歇性失败（Python 3.10 更容易触发）。
+    """
+    if _prev_core_db_module is None:
+        sys.modules.pop("core.db", None)
+    else:
+        sys.modules["core.db"] = _prev_core_db_module
+
+    if _prev_kona_tool_core_db_module is None:
+        sys.modules.pop("kona_tool.core.db", None)
+    else:
+        sys.modules["kona_tool.core.db"] = _prev_kona_tool_core_db_module
+
+
+def _insert_snapshot(
+    date,
+    total_pnl,
+    day_pnl,
+    user_id="u1",
+    updated_at=None,
+    total_invest=1000,
+):
+    conn = db_module.db.get_connection()
+    cursor = conn.cursor()
+    ts = updated_at or f"{date} 00:00:00"
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO daily_snapshots
+        (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (date, 0, total_invest, 0, 0, 0, total_pnl, day_pnl, user_id, ts),
+    )
+    conn.commit()
+    conn.close()
+
+
+class CalendarWeekendTests(unittest.TestCase):
+    def setUp(self):
+        conn = db_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM daily_snapshots")
+        try:
+            cursor.execute("DELETE FROM daily_snapshot_market_breakdowns")
+        except Exception:
+            pass
+        conn.commit()
+        conn.close()
+
+    def test_day_view_weekend_is_zero(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+        _insert_snapshot("2026-02-07", 200, 0)
+        _insert_snapshot("2026-02-08", 300, 0)
+        _insert_snapshot("2026-02-09", 305, 5)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 9)
+            data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("2-7"), 0)
+        self.assertEqual(items.get("2-8"), 0)
+
+    def test_day_view_zero_snapshot_stays_zero_even_if_total_pnl_changes(self):
+        _insert_snapshot("2026-02-10", 100, 10)
+        _insert_snapshot("2026-02-11", 108, 0)
+        _insert_snapshot("2026-02-12", 110, 2)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 12)
+            data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("2-11"), 0)
+
+    def test_day_view_keeps_nonzero_snapshot_value(self):
+        _insert_snapshot("2026-02-10", 100, 10, updated_at="2026-02-10 10:00:00")
+        _insert_snapshot("2026-02-11", 108, 8, updated_at="2026-02-11 23:00:00")
+        _insert_snapshot("2026-02-12", 110, 2, updated_at="2026-02-12 10:00:00")
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 12)
+            data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("2-11"), 8)
+
+    def test_day_view_keeps_value_even_when_snapshot_updated_cross_day(self):
+        _insert_snapshot("2026-02-11", 108, 8, updated_at="2026-02-17 23:00:00")
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 17)
+            data = db_module.db.get_calendar_data("day", "u1")
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("2-11"), 8)
+
+    def test_month_view_ignores_weekend_totals(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+        _insert_snapshot("2026-02-07", 200, 0)
+        _insert_snapshot("2026-02-08", 300, 0)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("month", "u1")
+
+        feb = [i for i in data["items"] if i["label"] == "2月"][0]
+        self.assertEqual(feb["pnl"], 10)
+
+    def test_year_view_ignores_weekend_totals(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+        _insert_snapshot("2026-02-07", 200, 0)
+        _insert_snapshot("2026-02-08", 300, 0)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("year", "u1")
+
+        year = [i for i in data["items"] if i["label"] == "2026"][0]
+        self.assertEqual(year["pnl"], 10)
+
+    def test_day_view_supports_specific_year_month_and_selectable(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+        _insert_snapshot("2026-03-06", 120, 20)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 12, 1)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=2)
+
+        self.assertEqual(data["period"]["year"], 2026)
+        self.assertEqual(data["period"]["month"], 2)
+        self.assertEqual(data["title"], "2026年2月累计")
+        self.assertEqual(data["selectable"]["day"]["years"], [2026])
+        self.assertEqual(
+            data["selectable"]["day"]["months_by_year"].get("2026"),
+            [2, 3, 12],
+        )
+
+    def test_month_view_supports_specific_year(self):
+        _insert_snapshot("2024-12-31", 100, 0)
+        _insert_snapshot("2025-01-15", 140, 0)
+        _insert_snapshot("2025-03-20", 180, 0)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("month", "u1", year=2025)
+
+        self.assertEqual(data["period"]["year"], 2025)
+        self.assertEqual(data["title"], "2025年累计")
+        self.assertEqual(len(data["items"]), 12)
+        self.assertEqual(data["items"][0]["label"], "1月")
+
+    def test_day_view_current_month_without_snapshot_is_accessible(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 3, 2)
+            data = db_module.db.get_calendar_data("day", "u1")
+
+        self.assertEqual(data["period"]["year"], 2026)
+        self.assertEqual(data["period"]["month"], 3)
+        self.assertNotEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+        self.assertEqual(data["items"], [])
+        self.assertEqual(
+            data["selectable"]["day"]["months_by_year"].get("2026"),
+            [2, 3],
+        )
+
+    def test_day_view_explicit_current_month_without_snapshot_is_accessible(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 3, 2)
+            data = db_module.db.get_calendar_data(
+                "day",
+                "u1",
+                year=2026,
+                month=3,
+            )
+
+        self.assertEqual(data["period"]["year"], 2026)
+        self.assertEqual(data["period"]["month"], 3)
+        self.assertNotEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+        self.assertEqual(data["items"], [])
+
+    def test_month_view_current_year_without_snapshot_is_accessible(self):
+        _insert_snapshot("2025-12-31", 100, 0)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 3, 2)
+            data = db_module.db.get_calendar_data("month", "u1", year=2026)
+
+        self.assertEqual(data["period"]["year"], 2026)
+        self.assertNotEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+        self.assertEqual(data["selectable"]["month"]["years"], [2025, 2026])
+        self.assertEqual(len(data["items"]), 3)
+        self.assertEqual(data["total_pnl"], 0.0)
+
+    def test_day_view_total_rate_uses_period_start_invest(self):
+        _insert_snapshot("2026-01-31", 0, 0, total_invest=2000)
+        _insert_snapshot("2026-02-03", 100, 100, total_invest=3000)
+        _insert_snapshot("2026-02-04", 150, 50, total_invest=3500)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 4)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=2)
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 150.0, places=2)
+        # 分母用月初前一日的本金 2000：150/2000*100 = 7.5
+        self.assertAlmostEqual(float(data["total_rate"]), 7.5, places=2)
+
+    def test_month_view_total_rate_uses_period_start_invest(self):
+        _insert_snapshot("2025-12-31", 0, 0, total_invest=5000)
+        _insert_snapshot("2026-01-12", 100, 100, total_invest=6000)
+        _insert_snapshot("2026-02-10", 300, 200, total_invest=7000)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 10)
+            data = db_module.db.get_calendar_data("month", "u1", year=2026)
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 300.0, places=2)
+        # 分母用年初前一日的本金 5000：300/5000*100 = 6.0
+        self.assertAlmostEqual(float(data["total_rate"]), 6.0, places=2)
+
+    def test_year_view_total_rate_uses_period_start_invest(self):
+        _insert_snapshot("2025-12-31", 0, 0, total_invest=4000)
+        _insert_snapshot("2026-01-12", 100, 100, total_invest=5000)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 1, 12)
+            data = db_module.db.get_calendar_data("year", "u1")
+
+        self.assertAlmostEqual(float(data["total_pnl"]), 100.0, places=2)
+        # 总累计分母用序列起点的本金 4000：100/4000*100 = 2.5
+        self.assertAlmostEqual(float(data["total_rate"]), 2.5, places=2)
+
+    def test_selected_empty_period_returns_invalid_code(self):
+        _insert_snapshot("2026-02-06", 100, 10)
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 2, 8)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=12)
+
+        self.assertEqual(data.get("code"), "INVALID_CALENDAR_PERIOD")
+
+    def test_day_view_snapshot_day_pnl_is_history_truth(self):
+        _insert_snapshot("2026-03-20", 31017.66, -1611.46, updated_at="2026-03-20 22:02:25")
+        _insert_snapshot("2026-03-21", 29441.75, 0.0, updated_at="2026-03-21 08:01:10")
+
+        conn = db_module.db.get_connection()
+        cursor = conn.cursor()
+        for market, pnl in {
+            "a": -1231.0,
+            "hk": 623.68,
+            "us": -793.89,
+            "fund": -526.0,
+            "unallocated": 0.0,
+        }.items():
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshot_market_breakdowns
+                (date, user_id, market, day_pnl, source, confidence, updated_at)
+                VALUES (?, ?, ?, ?, 'exact', 1.0, ?)
+                """,
+                ("2026-03-20", "u1", market, pnl, "2026-03-21 08:01:10"),
+            )
+        conn.commit()
+        conn.close()
+
+        real_dt = datetime
+        with patch.object(db_module, "datetime") as mock_dt:
+            mock_dt.now.return_value = real_dt(2026, 3, 22)
+            data = db_module.db.get_calendar_data("day", "u1", year=2026, month=3)
+
+        items = {i["label"]: i["pnl"] for i in data["items"]}
+        self.assertEqual(items.get("3-20"), -1611.46)
+        self.assertEqual(items.get("3-21"), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

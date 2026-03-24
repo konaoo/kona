@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.DS_Store
+app.log
+app_output.log
+*.db
+*.csv
+*.json
+!market_holidays.json
+.env
+venv/
+.venv/
+node_modules/
