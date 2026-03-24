@@ -19,6 +19,7 @@ class _FakeDb:
         self.saved_breakdowns = []
         self.partial_breakdowns = []
         self.synced_dates = []
+        self.synced_ledger_dates = []
         self.snapshot_dates = {"2026-03-13"}
 
     def save_daily_snapshot(self, stats, user_id, snapshot_date=None):
@@ -37,6 +38,10 @@ class _FakeDb:
 
     def sync_daily_snapshot_day_pnl_from_breakdown(self, date_str, user_id=None):
         self.synced_dates.append({"date_str": date_str, "user_id": user_id})
+        return True
+
+    def sync_ledger_daily_snapshot_day_pnl(self, date_str, user_id=None):
+        self.synced_ledger_dates.append({"date_str": date_str, "user_id": user_id})
         return True
 
     def has_daily_snapshot(self, date_str, user_id=None):

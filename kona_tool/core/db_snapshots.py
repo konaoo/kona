@@ -485,6 +485,70 @@ class SnapshotDatabaseMixin:
         finally:
             conn.close()
 
+    def sync_ledger_daily_snapshot_day_pnl(self, date_str: str, user_id: str = None) -> bool:
+        """
+        同步全局的 day_pnl 调整到 ledger_daily_snapshots。
+        如果只有一个活跃账本，直接 100% 覆盖。如果有多个账本，按当时的 total_market_value 比例分配全局的 day_pnl。
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            cursor.execute(
+                "SELECT day_pnl FROM daily_snapshots WHERE date = ? AND user_id = ?",
+                (str(date_str or ""), uid)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            global_day_pnl = float((row["day_pnl"] if row else 0.0) or 0.0)
+
+            cursor.execute(
+                "SELECT ledger_id, total_market_value FROM ledger_daily_snapshots WHERE date = ? AND user_id = ?",
+                (str(date_str or ""), uid)
+            )
+            ledgers = cursor.fetchall()
+            if not ledgers:
+                return False
+
+            if len(ledgers) == 1:
+                cursor.execute(
+                    """
+                    UPDATE ledger_daily_snapshots 
+                    SET day_pnl = ?, created_at = datetime('now','localtime') 
+                    WHERE date = ? AND user_id = ? AND ledger_id = ?
+                    """,
+                    (round(global_day_pnl, 2), str(date_str or ""), uid, ledgers[0]["ledger_id"])
+                )
+            else:
+                total_mv = sum(float((l["total_market_value"] if l else 0.0) or 0.0) for l in ledgers)
+                for l in ledgers:
+                    lid = l["ledger_id"]
+                    mv = float((l["total_market_value"] if l else 0.0) or 0.0)
+                    ratio = mv / total_mv if total_mv > 0 else 0
+                    allocated_pnl = round(global_day_pnl * ratio, 2)
+                    cursor.execute(
+                        """
+                        UPDATE ledger_daily_snapshots 
+                        SET day_pnl = ?, created_at = datetime('now','localtime') 
+                        WHERE date = ? AND user_id = ? AND ledger_id = ?
+                        """,
+                        (allocated_pnl, str(date_str or ""), uid, lid)
+                    )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to sync ledger day_pnl date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
     def save_ledger_daily_snapshot(
         self,
         *,

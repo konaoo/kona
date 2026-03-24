@@ -1161,6 +1161,7 @@ onBeforeUnmount(() => {
         </div>
         <!-- View toggle -->
         <div
+          class="home-view-toggle"
           style="
             display: flex;
             gap: 4px;
@@ -2532,7 +2533,16 @@ onBeforeUnmount(() => {
     border-bottom: none;
   }
   .c3-segment-val {
-    font-size: 28px;
+    font-size: 20px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Hide view toggle on mobile */
+  .home-view-toggle {
+    display: none !important;
   }
 
   /* 4. Drawer items */

@@ -454,8 +454,26 @@ const handleTradeSuccess = async () => {
 
         <!-- Holdings 1:1 Replica from Homepage -->
         <div class="holdings-section">
-          <div class="h-header">
-            <div class="section-label">持仓明细</div>
+          <div class="h-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="section-label" style="margin: 0;">持仓明细</div>
+            <button
+              @click="openAddTradeModal"
+              class="add-asset-btn mobile-add-btn"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              添加资产
+            </button>
           </div>
           <div class="h-filters" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
             <div class="tabs" style="width: fit-content">
@@ -1431,7 +1449,17 @@ const handleTradeSuccess = async () => {
   }
 }
 
+.mobile-add-btn {
+  display: none;
+}
+
 @media (max-width: 640px) {
+  .mobile-add-btn {
+    display: flex;
+  }
+  .h-actions .add-asset-btn:not(.mobile-add-btn) {
+    display: none;
+  }
   .hero-card {
     padding: 24px 20px;
     border-radius: 24px;

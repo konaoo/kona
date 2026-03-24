@@ -272,6 +272,8 @@ def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str
                 user_id,
                 effective_date,
             )
+        else:
+            db_obj.sync_ledger_daily_snapshot_day_pnl(effective_date, user_id=user_id)
 
 
 def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None = None) -> bool:
@@ -650,6 +652,10 @@ def take_snapshot(user_id: str = None) -> bool:
 
             # Save per-ledger snapshots
             _save_ledger_snapshots(uid, stats)
+            
+            if success:
+                snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+                db.sync_ledger_daily_snapshot_day_pnl(snapshot_date, user_id=uid)
 
         return success_any
     except Exception as e:
