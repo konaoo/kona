@@ -495,9 +495,9 @@ const handleTradeSuccess = async () => {
             </div>
           </div>
           <div class="h-filters">
-            <div class="tabs">
+            <div class="tabs" style="width: fit-content">
               <button
-                v-for="tab in ['all', 'hk', 'us', 'a', 'fund']"
+                v-for="tab in ['all', 'a', 'hk', 'us', 'fund']"
                 :key="tab"
                 @click="selectedTab = tab"
                 class="tab"
@@ -932,7 +932,7 @@ const handleTradeSuccess = async () => {
 }
 
 .modern-shell {
-  max-width: 1200px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
