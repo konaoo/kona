@@ -102,6 +102,66 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertAlmostEqual(8.0, float(rows[0]["total_pnl_rate"]), places=2)
         self.assertAlmostEqual(20.0, float(rows[0]["day_pnl"]), places=2)
 
+    def test_init_database_creates_default_ledger_for_snapshot_only_user(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "schema.db")
+            db = DatabaseManager(db_path)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO users (id, username, password_hash, legacy_needs_password_setup, is_admin, status)
+                VALUES ('u_snapshot_only', 'snapshot_only_user', 'hash', 0, 0, 'active')
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES ('2026-03-01', 1500, 1000, 500, 0, 0, 80, 20, 'u_snapshot_only')
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES ('2026-03-02', 1520, 1100, 420, 0, 0, 100, 20, 'u_snapshot_only')
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            db.init_database()
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, is_default
+                FROM investment_ledgers
+                WHERE user_id = 'u_snapshot_only'
+                ORDER BY id ASC
+                """
+            )
+            ledgers = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT ledger_id, date
+                FROM ledger_daily_snapshots
+                WHERE user_id = 'u_snapshot_only'
+                ORDER BY date ASC
+                """
+            )
+            rows = cursor.fetchall()
+            conn.close()
+
+        self.assertEqual(1, len(ledgers))
+        self.assertEqual(1, int(ledgers[0]["is_default"]))
+        self.assertEqual(2, len(rows))
+        self.assertEqual([str(row["date"]) for row in rows], ["2026-03-01", "2026-03-02"])
+        self.assertEqual([int(row["ledger_id"]) for row in rows], [int(ledgers[0]["id"]), int(ledgers[0]["id"])])
+
     def test_init_database_backfills_default_ledger_history_before_non_default_created(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "schema.db")

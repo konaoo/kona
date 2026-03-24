@@ -542,28 +542,48 @@ class DatabaseSchemaManager:
             cursor.execute(f"PRAGMA table_info({table})")
             return column in [row[1] for row in cursor.fetchall()]
 
-        if not _has_column("portfolio", "ledger_id"):
-            # 1. 为每个现有用户创建默认账本
-            cursor.execute(
-                "SELECT DISTINCT user_id FROM portfolio WHERE COALESCE(user_id, '') != ''"
-            )
-            user_ids = [row[0] for row in cursor.fetchall()]
-            for uid in user_ids:
+        def _collect_ledger_user_ids() -> list[str]:
+            user_ids: set[str] = set()
+            for table in (
+                "portfolio",
+                "transactions",
+                "portfolio_adjustment_ledger",
+                "portfolio_correction_logs",
+                "daily_snapshots",
+                "ledger_daily_snapshots",
+            ):
                 cursor.execute(
-                    """
-                    INSERT OR IGNORE INTO investment_ledgers (user_id, name, is_default, sort_order)
-                    VALUES (?, '默认账本', 1, 0)
-                    """,
-                    (uid,),
+                    f"SELECT DISTINCT user_id FROM {table} WHERE COALESCE(user_id, '') != ''"
                 )
+                user_ids.update(str(row[0]) for row in cursor.fetchall() if row[0] is not None)
+            return sorted(user_ids)
 
-            # 2. 为四张表添加 ledger_id 列
+        user_ids = _collect_ledger_user_ids()
+
+        # 无论是不是第一次迁移，都要给已有历史数据的用户补齐默认账本。
+        for uid in user_ids:
+            cursor.execute(
+                """
+                INSERT INTO investment_ledgers (user_id, name, is_default, sort_order)
+                SELECT ?, '默认账本', 1, 0
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM investment_ledgers
+                    WHERE user_id = ?
+                      AND is_default = 1
+                )
+                """,
+                (uid, uid),
+            )
+
+        if not _has_column("portfolio", "ledger_id"):
+            # 1. 为四张表添加 ledger_id 列
             for table in ("portfolio", "transactions", "portfolio_adjustment_ledger", "portfolio_correction_logs"):
                 cursor.execute(
                     f"ALTER TABLE {table} ADD COLUMN ledger_id INTEGER NOT NULL DEFAULT 0"
                 )
 
-            # 3. 将现有数据的 ledger_id 更新为对应用户的默认账本 ID
+            # 2. 将现有数据的 ledger_id 更新为对应用户的默认账本 ID
             for uid in user_ids:
                 cursor.execute(
                     "SELECT id FROM investment_ledgers WHERE user_id = ? AND is_default = 1",
