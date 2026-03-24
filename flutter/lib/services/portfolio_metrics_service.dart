@@ -91,7 +91,10 @@ class PortfolioMetricsService {
     if ((item.yclose ?? 0) > 0) {
       return item.yclose!;
     }
-    return item.price;
+    if (item.price > 0) {
+      return item.price;
+    }
+    return 0;
   }
 
   static double resolveYclose(
@@ -124,7 +127,11 @@ class PortfolioMetricsService {
     PortfolioItem item, {
     double? fallbackRateToCny,
   }) {
-    return item.cost ?? (item.price * item.qty);
+    final cost = item.cost ?? (item.price * item.qty);
+    if (cost <= 0) {
+      return 0;
+    }
+    return cost;
   }
 
   static double resolveCostCnyLive(

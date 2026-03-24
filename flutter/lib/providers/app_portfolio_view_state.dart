@@ -67,7 +67,12 @@ class AppPortfolioViewState extends ChangeNotifier {
 
   double get investDayPnl {
     return PortfolioMetricsService.sumMetricWhenAny(
-          _assetsState.portfolio,
+          _assetsState.portfolio.where(
+            (item) => isAssetDayPnlEnabled(
+              item,
+              priceInfo: resolvePriceInfo(item),
+            ),
+          ),
           (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
             item,
             priceInfo: resolvePriceInfo(item),
@@ -79,7 +84,12 @@ class AppPortfolioViewState extends ChangeNotifier {
 
   double get investDayPnlRate {
     final pnl = PortfolioMetricsService.sumMetricWhenAny(
-      _assetsState.portfolio,
+      _assetsState.portfolio.where(
+        (item) => isAssetDayPnlEnabled(
+          item,
+          priceInfo: resolvePriceInfo(item),
+        ),
+      ),
       (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
         item,
         priceInfo: resolvePriceInfo(item),
@@ -87,7 +97,12 @@ class AppPortfolioViewState extends ChangeNotifier {
       ),
     );
     final base = PortfolioMetricsService.sumMetricWhenAny(
-      _assetsState.portfolio,
+      _assetsState.portfolio.where(
+        (item) => isAssetDayPnlEnabled(
+          item,
+          priceInfo: resolvePriceInfo(item),
+        ),
+      ),
       (item) => PortfolioMetricsService.resolveCurrentDayPnlBaseCny(
         item,
         priceInfo: resolvePriceInfo(item),

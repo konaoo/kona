@@ -125,8 +125,8 @@ void main() {
     expect(assetsState.portfolio.first.code, 'sh600000');
     expect(assetsState.cashAssets.first.amount, 900);
     expect(homeTotalsState.totalCash, 900);
-    expect(homeTotalsState.totalInvest, 0);
-    expect(homeTotalsState.totalAsset, 900);
+    expect(homeTotalsState.totalInvest, 100);
+    expect(homeTotalsState.totalAsset, 1000);
     expect(refreshCalled, isTrue);
     expect(notifyCount, greaterThan(0));
   });
