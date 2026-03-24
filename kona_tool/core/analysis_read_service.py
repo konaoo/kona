@@ -117,7 +117,8 @@ class AnalysisReadService:
                         effective_dt = _dt.now()
                     if int(period.get("year") or 0) != effective_dt.year or int(period.get("month") or 0) != effective_dt.month:
                         return result
-                    today_label = f"{effective_dt.month}-{effective_dt.day}"
+                    
+                    today_label = str(effective_dt.day)
                     items = list(result.get("items") or [])
                     replaced = False
                     for item in items:
