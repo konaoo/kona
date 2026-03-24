@@ -124,8 +124,8 @@ async function handleLogout() {
 
     <!-- Main Content Area -->
     <main class="main">
-      <!-- Topbar: Only show if not explicitly hidden -->
-      <div v-if="!hideTopbar" class="topbar">
+      <!-- Topbar: Hidden as requested by user -->
+      <div v-if="false" class="topbar">
         <div class="container-inner topbar-content">
           <div class="topbar-title">{{ title || route.meta.title || '工作台' }}</div>
           <div class="topbar-actions">
@@ -340,7 +340,7 @@ async function handleLogout() {
 }
 
 .page {
-  height: calc(100vh - 56px);
+  height: 100vh;
   overflow-y: auto;
   padding: 24px 0; /* Vertical padding only, horiz handled by inner */
   background:
@@ -425,8 +425,8 @@ async function handleLogout() {
   }
   
   .page {
-    /* Keep full viewport minus topbar, use padding to push content above bottom nav */
-    height: calc(100vh - 56px);
+    /* Full viewport, use padding to push content above bottom nav */
+    height: 100vh;
     padding: 16px 0 calc(56px + 24px + env(safe-area-inset-bottom, 0px));
   }
   

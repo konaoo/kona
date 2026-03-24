@@ -9,7 +9,7 @@
         
         <div class="overview-hero">
            <div class="hero-label">{{ periodLabel }}总计盈亏</div>
-           <div class="hero-val" :class="valueClass(periodPnl)">{{ formatCny(periodPnl) }}</div>
+           <div class="hero-val" :class="valueClass(periodPnl)">{{ masked(formatCny(periodPnl)) }}</div>
            <div class="hero-rate" :class="valueClass(periodRate)">
               {{ formatPct(periodRate) }}
            </div>
@@ -77,13 +77,13 @@
         <div class="calendar-grid" :style="calendarGridStyle">
           <div v-for="cell in calendarGrid" :key="cell.key" class="cal-cell" :class="calendarCellClass(cell.pnl)">
              <div class="cal-date">{{ formatCalendarCellLabel(cell.key) }}</div>
-             <div class="cal-pnl">{{ formatCalendarCellPnl(cell.pnl) }}</div>
+             <div class="cal-pnl">{{ masked(formatCalendarCellPnl(cell.pnl)) }}</div>
           </div>
         </div>
 
         <div class="calendar-footer" v-if="calendarState.totalPnl !== null">
           <span class="calendar-footer-label">{{ calendarSummaryLabel }}</span>
-          <span class="calendar-footer-value" :class="valueClass(calendarState.totalPnl)">{{ formatCny(calendarState.totalPnl) }}</span>
+          <span class="calendar-footer-value" :class="valueClass(calendarState.totalPnl)">{{ masked(formatCny(calendarState.totalPnl)) }}</span>
           <span class="calendar-footer-rate" :class="valueClass(calendarState.totalRate)">{{ formatPct(calendarState.totalRate) }}</span>
         </div>
       </div>
@@ -114,7 +114,7 @@
                   </div>
                </div>
                <div class="rank-values" :class="valueClass(rankPnlValue(item))">
-                  <div class="val-pnl">{{ formatRankPnl(item) }}</div>
+                  <div class="val-pnl">{{ masked(formatRankPnl(item)) }}</div>
                   <div class="val-rate">{{ formatPct(toNum(item.pnl_rate)) }}</div>
                 </div>
             </div>
@@ -140,6 +140,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppShell from '../../layouts/AppShell.vue'
 import { toNumber } from '../../shared/format'
+import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../stores/composables'
 import {
   useAnalysisStore,
@@ -149,6 +150,8 @@ import {
 
 const konaStore = useKonaStore()
 const analysisStore = useAnalysisStore()
+const { maskValue } = usePrivacyMode()
+function masked(text: string): string { return maskValue(text) }
 const {
   overview,
   calendarState,
@@ -902,6 +905,47 @@ onBeforeUnmount(() => {
   }
   .card {
     padding: 16px;
+  }
+  
+  /* Optimize Overview Card */
+  .analysis-overview-card {
+    padding: 24px 16px;
+    border-radius: 20px;
+  }
+  .hero-val {
+    font-size: 32px;
+  }
+  .hero-label {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .hero-rate {
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  
+  /* Optimize Calendar for mobile screens */
+  .calendar-grid {
+    gap: 3px;
+  }
+  .cal-cell {
+    min-height: 58px;
+    padding: 4px 1px;
+    border-radius: 8px;
+    gap: 3px;
+  }
+  .cal-date {
+    font-size: 13px;
+  }
+  .cal-pnl {
+    font-size: 10px;
+    letter-spacing: -0.6px;
+    white-space: nowrap;
+  }
+  .view-tab {
+    padding: 4px 10px;
+    min-height: 32px;
+    font-size: 12px;
   }
 }
 </style>

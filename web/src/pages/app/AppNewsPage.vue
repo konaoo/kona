@@ -18,7 +18,6 @@
             class="news-filter-btn important" 
             :class="{ active: importantOnly }"
             @click="toggleImportantOnly"
-            style="margin-left:auto"
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -422,6 +421,7 @@ onUnmounted(() => {
   color: var(--sub);
   cursor: pointer;
   transition: all .14s;
+  white-space: nowrap;
 }
 [data-theme='light'] .news-filter-btn {
   background: rgba(15, 23, 42, 0.04);
@@ -612,6 +612,12 @@ onUnmounted(() => {
 @media (max-width: 900px) {
   .news-page-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .news-filter-btn {
+    flex-shrink: 0;
   }
 }
 </style>

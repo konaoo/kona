@@ -1101,10 +1101,10 @@ onUnmounted(() => {
 
 <style scoped>
 /* Scoped css mapped from prototype */
-.phone-bg-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 9999; }
-.sheet-overlay-modal { position: absolute; inset: 0; background: var(--overlay-soft); transition: opacity 0.2s; z-index: 1; }
+.phone-bg-modal { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: center; z-index: 9999; overflow-y: auto; padding: 24px 0; -webkit-overflow-scrolling: touch; }
+.sheet-overlay-modal { position: fixed; inset: 0; background: var(--overlay-soft); transition: opacity 0.2s; z-index: 1; }
 .sheet-overlay-modal.opacity-0 { opacity: 0; }
-.sheet { position: relative; width: 100%; max-width: 420px; background: var(--panel-elevated, #13151b); border-radius: 18px; border: 1px solid var(--border); box-shadow: var(--shadow-float); z-index: 10; overflow: visible; animation: popIn 0.22s cubic-bezier(0.34,1.2,0.64,1); margin: 0 16px; }
+.sheet { position: relative; width: 100%; max-width: 420px; background: var(--panel-elevated, #13151b); border-radius: 18px; border: 1px solid var(--border); box-shadow: var(--shadow-float); z-index: 10; overflow: visible; animation: popIn 0.22s cubic-bezier(0.34,1.2,0.64,1); margin: auto 16px; flex-shrink: 0; }
 .sheet.sheet-exiting { animation: popOut 0.2s cubic-bezier(0.34,1.2,0.64,1) forwards; }
 @keyframes popIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes popOut { from { opacity: 1; transform: scale(1) translateY(0); } to { opacity: 0; transform: scale(0.95) translateY(10px); } }
@@ -1246,11 +1246,11 @@ onUnmounted(() => {
 .btn-confirm:hover { background: linear-gradient(135deg, #6a99f5 0%, #5a8bef 100%); }
 .btn-confirm:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.create-sheet { position: fixed; inset: 0; z-index: 10020; display: none; align-items: center; justify-content: center; padding: 20px; }
+.create-sheet { position: fixed; inset: 0; z-index: 10020; display: none; align-items: flex-start; justify-content: center; padding: 24px 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .create-sheet.open { display: flex; }
-.create-overlay { position: absolute; inset: 0; background: var(--overlay-strong); animation: fadeBg 0.18s ease; }
+.create-overlay { position: fixed; inset: 0; background: var(--overlay-strong); animation: fadeBg 0.18s ease; }
 @keyframes fadeBg { from { opacity: 0; } to { opacity: 1; } }
-.create-panel { position: relative; width: 100%; max-width: 360px; background: var(--panel-elevated, #13151b); border-radius: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-float); overflow: hidden; animation: popInCreate 0.22s cubic-bezier(0.34,1.3,0.64,1); }
+.create-panel { position: relative; width: 100%; max-width: 360px; background: var(--panel-elevated, #13151b); border-radius: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-float); flex-shrink: 0; margin: auto 16px; overflow: hidden; animation: popInCreate 0.22s cubic-bezier(0.34,1.3,0.64,1); }
 @keyframes popInCreate { from { opacity: 0; transform: scale(0.93) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .create-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 18px 14px; border-bottom: 1px solid var(--surface-divider); }
 .create-title { font-size: 14px; font-weight: 600; color: var(--text); }
@@ -1307,10 +1307,6 @@ onUnmounted(() => {
   }
   .num-label {
     font-size: 10px;
-  }
-  /* Optional: Adjust modal sheet to fill bottom better on very small devices */
-  .sheet {
-    margin: auto 12px 16px 12px; /* slight margin adjustment for mobile */
   }
 }
 </style>

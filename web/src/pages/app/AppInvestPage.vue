@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { usePrivacyMode } from '@/shared/privacyMode'
 import { toNumber } from '@/shared/format'
 import { api } from '@/shared/http'
 import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
@@ -19,6 +20,8 @@ import AppShell from '@/layouts/AppShell.vue'
 // Stores & Composables
 const store = useKonaStore()
 const marketStore = useMarketStore()
+const { maskValue } = usePrivacyMode()
+function masked(text: string): string { return maskValue(text) }
 
 // State
 const selectedTab = ref('all')
@@ -351,26 +354,26 @@ const handleTradeSuccess = async () => {
           <!-- Hero Card: Total MV -->
           <div class="hero-card">
             <div class="card-label">投资总资产 ({{ currentCurrency }})</div>
-            <div class="main-val">{{ formatCurrency(investTotal.mv) }}</div>
+            <div class="main-val">{{ masked(formatCurrency(investTotal.mv)) }}</div>
             <div class="stats-row">
               <div class="stat-item">
                 <span class="sl">今日盈亏</span>
                 <div class="sv-group" :class="valueClass(investTotal.dayPnl)">
-                  <span class="sv-amt">{{ formatCurrency(investTotal.dayPnl, true, true) }}</span>
+                  <span class="sv-amt">{{ masked(formatCurrency(investTotal.dayPnl, true, true)) }}</span>
                   <span class="sv-pct">{{ formatPct(investTotal.dayRate) }}</span>
                 </div>
               </div>
               <div class="stat-item">
                 <span class="sl">持仓盈亏</span>
                 <div class="sv-group" :class="valueClass(investTotal.floatPnl)">
-                  <span class="sv-amt">{{ formatCurrency(investTotal.floatPnl, true, true) }}</span>
+                  <span class="sv-amt">{{ masked(formatCurrency(investTotal.floatPnl, true, true)) }}</span>
                   <span class="sv-pct">{{ formatPct(investTotal.floatRate) }}</span>
                 </div>
               </div>
               <div class="stat-item">
                 <span class="sl">累计盈亏</span>
                 <div class="sv-group" :class="valueClass(investTotal.totalPnl)">
-                  <span class="sv-amt">{{ formatCurrency(investTotal.totalPnl, true, true) }}</span>
+                  <span class="sv-amt">{{ masked(formatCurrency(investTotal.totalPnl, true, true)) }}</span>
                   <span class="sv-pct">{{ formatPct(investTotal.totalRate) }}</span>
                 </div>
               </div>
@@ -428,20 +431,20 @@ const handleTradeSuccess = async () => {
                 <span class="m-icon">{{ m.icon }}</span>
                 <span class="m-name">{{ m.name }}</span>
               </div>
-              <div class="m-mv">{{ formatCurrency(m.mv) }}</div>
+              <div class="m-mv">{{ masked(formatCurrency(m.mv)) }}</div>
             </div>
             <div class="m-stats">
               <div class="ms-item">
                 <div class="ms-lbl">今日盈亏</div>
                 <div class="ms-val-group" :class="valueClass(m.dayPnl)">
-                  <div class="ms-amt">{{ formatCurrency(m.dayPnl, true, true) }}</div>
+                  <div class="ms-amt">{{ masked(formatCurrency(m.dayPnl, true, true)) }}</div>
                   <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
                 </div>
               </div>
               <div class="ms-item">
                 <div class="ms-lbl">累计盈亏</div>
                 <div class="ms-val-group" :class="valueClass(m.totalPnl)">
-                  <div class="ms-amt">{{ formatCurrency(m.totalPnl, true, true) }}</div>
+                  <div class="ms-amt">{{ masked(formatCurrency(m.totalPnl, true, true)) }}</div>
                   <div class="ms-pct">{{ formatPct(m.totalRate) }}</div>
                 </div>
               </div>
@@ -452,48 +455,11 @@ const handleTradeSuccess = async () => {
         <!-- Holdings 1:1 Replica from Homepage -->
         <div class="holdings-section">
           <div class="h-header">
-            <div class="h-title-group">
-              <div class="section-label">持仓明细</div>
-              <div class="tabs">
-                <button
-                  v-for="tab in ['all', 'hk', 'us', 'a', 'fund']"
-                  :key="tab"
-                  @click="selectedTab = tab"
-                  class="tab"
-                  :class="{ active: selectedTab === tab }"
-                >
-                  {{
-                    tab === 'all'
-                      ? '全部'
-                      : tab === 'hk'
-                        ? '港股'
-                        : tab === 'us'
-                          ? '美股'
-                          : tab === 'a'
-                            ? 'A股'
-                            : '基金'
-                  }}
-                </button>
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px">
+            <div class="section-label">持仓明细</div>
+            <div class="h-actions">
               <button
                 @click="openAddTradeModal"
-                style="
-                  height: 28px;
-                  padding: 0 10px;
-                  border-radius: 6px;
-                  border: none;
-                  background: var(--surface-highlight);
-                  color: var(--blue);
-                  font-size: 12px;
-                  font-weight: 600;
-                  cursor: pointer;
-                  display: flex;
-                  align-items: center;
-                  gap: 4px;
-                  transition: all 0.2s;
-                "
+                class="add-asset-btn"
               >
                 <svg
                   width="12"
@@ -526,6 +492,29 @@ const handleTradeSuccess = async () => {
                   </svg>
                 </button>
               </div>
+            </div>
+          </div>
+          <div class="h-filters">
+            <div class="tabs">
+              <button
+                v-for="tab in ['all', 'hk', 'us', 'a', 'fund']"
+                :key="tab"
+                @click="selectedTab = tab"
+                class="tab"
+                :class="{ active: selectedTab === tab }"
+              >
+                {{
+                  tab === 'all'
+                    ? '全部'
+                    : tab === 'hk'
+                      ? '港股'
+                      : tab === 'us'
+                        ? '美股'
+                        : tab === 'a'
+                          ? 'A股'
+                          : '基金'
+                }}
+              </button>
             </div>
           </div>
 
@@ -579,7 +568,7 @@ const handleTradeSuccess = async () => {
                   </div>
                   <!-- Market Value in Top Right -->
                   <div class="h-mv-right">
-                    {{ formatHoldingCurrency(Number(row.mvCny) || 0) }}
+                    {{ masked(formatHoldingCurrency(Number(row.mvCny) || 0)) }}
                   </div>
                 </div>
 
@@ -633,7 +622,7 @@ const handleTradeSuccess = async () => {
                           font-weight: 600;
                         "
                       >
-                        {{ formatCurrency(row.dayPnl, true) }}
+                        {{ masked(formatCurrency(row.dayPnl, true)) }}
                       </div>
                     </div>
                     <div>
@@ -648,7 +637,7 @@ const handleTradeSuccess = async () => {
                           font-weight: 600;
                         "
                       >
-                        {{ formatCurrency(row.totalPnl, true) }}
+                        {{ masked(formatCurrency(row.totalPnl, true)) }}
                       </div>
                     </div>
                     <div>
@@ -663,10 +652,7 @@ const handleTradeSuccess = async () => {
                           color: var(--sub);
                         "
                       >
-                        <span style="font-size: 10px; opacity: 0.6; margin-right: 2px">{{
-                          getCurrencySymbol(row.curr)
-                        }}</span
-                        >{{ formatAssetPrice(row.costPrice) }}
+                        {{ masked(getCurrencySymbol(row.curr) + formatAssetPrice(row.costPrice)) }}
                       </div>
                     </div>
                     <div>
@@ -817,10 +803,7 @@ const handleTradeSuccess = async () => {
                         color: var(--muted);
                       "
                     >
-                      <span style="font-size: 10px; opacity: 0.6; margin-right: 2px">{{
-                        getCurrencySymbol(row.curr)
-                      }}</span
-                      >{{ formatAssetPrice(row.costPrice) }}
+                      {{ masked(getCurrencySymbol(row.curr) + formatAssetPrice(row.costPrice)) }}
                     </div>
                   </div>
                   <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
@@ -833,7 +816,7 @@ const handleTradeSuccess = async () => {
                         color: var(--text);
                       "
                     >
-                      {{ formatHoldingCurrency(Number(row.mvCny) || 0) }}
+                      {{ masked(formatHoldingCurrency(Number(row.mvCny) || 0)) }}
                     </div>
                   </div>
                   <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
@@ -848,7 +831,7 @@ const handleTradeSuccess = async () => {
                         font-weight: 600;
                       "
                     >
-                      {{ formatCurrency(row.dayPnl, true) }}
+                      {{ masked(formatCurrency(row.dayPnl, true)) }}
                     </div>
                     <div
                       style="font-size: 11px; margin-top: 1px"
@@ -869,7 +852,7 @@ const handleTradeSuccess = async () => {
                         font-weight: 600;
                       "
                     >
-                      {{ formatCurrency(row.totalPnl, true) }}
+                      {{ masked(formatCurrency(row.totalPnl, true)) }}
                     </div>
                     <div
                       style="font-size: 11px; margin-top: 1px"
@@ -1199,12 +1182,16 @@ const handleTradeSuccess = async () => {
 .h-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 16px;
 }
-.h-title-group .section-label {
-  margin: 0 0 12px;
+.section-label {
+  margin: 0;
   font-size: 16px;
+  font-weight: 700;
+}
+.h-filters {
+  margin-bottom: 20px;
 }
 .view-toggle {
   display: flex;
@@ -1230,6 +1217,30 @@ const handleTradeSuccess = async () => {
 .view-toggle button.active {
   background: var(--surface-strong);
   color: var(--text);
+}
+
+.h-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.add-asset-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  background: var(--surface-highlight);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Holdings 1:1 Styles */
@@ -1400,6 +1411,66 @@ const handleTradeSuccess = async () => {
   }
   .row-view-list > .hrow > div:nth-child(2) {
     display: none;
+  }
+  
+  .h-header {
+    margin-bottom: 12px;
+  }
+  
+  .h-filters {
+    margin-bottom: 16px;
+  }
+  
+  .view-toggle {
+    display: none !important;
+  }
+  
+  .add-asset-btn {
+    height: 32px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-card {
+    padding: 24px 20px;
+    border-radius: 24px;
+  }
+  .main-val {
+    font-size: 34px;
+    margin-bottom: 18px;
+  }
+  .stats-row {
+    gap: 8px;
+  }
+  .sv-amt {
+    font-size: 15px;
+  }
+  .sv-pct {
+    font-size: 10px;
+  }
+  .sl {
+    font-size: 10px;
+  }
+  .card-label {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  
+  .dist-card {
+    padding: 24px 20px;
+    border-radius: 24px;
+  }
+  .dist-content {
+    gap: 16px;
+  }
+  .chart-container {
+    width: 90px;
+    height: 90px;
+  }
+  .legend-item {
+    font-size: 12px;
   }
 }
 
