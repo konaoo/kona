@@ -143,7 +143,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_calendar_today_cell_uses_stats_getter(self):
         """日历当月视图里，今天那格应用实时 day_pnl 替换快照值"""
         today = datetime.now()
-        today_label = f"{today.month}-{today.day}"
+        today_label = str(today.day)
 
         # db 返回今天那格的快照值 10.0
         db = _FakeDb()
@@ -174,7 +174,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_calendar_today_cell_added_when_no_snapshot_yet(self):
         """今天还没有快照时，今天那格应从实时计算补上"""
         today = datetime.now()
-        today_label = f"{today.month}-{today.day}"
+        today_label = str(today.day)
 
         db = _FakeDb()
         db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
@@ -203,8 +203,8 @@ class ReadServicesTests(unittest.TestCase):
         """跨时区夜盘应覆盖到收益归属日，不是北京时间今天。"""
         today = datetime.now()
         effective_dt = today - timedelta(days=1)
-        effective_label = f"{effective_dt.month}-{effective_dt.day}"
-        today_label = f"{today.month}-{today.day}"
+        effective_label = str(effective_dt.day)
+        today_label = str(today.day)
 
         db = _FakeDb()
         db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
