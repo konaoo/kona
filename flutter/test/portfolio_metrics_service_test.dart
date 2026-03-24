@@ -7,27 +7,43 @@ void main() {
     double? valueCny,
     double? costCny,
     double? dayPnlAggregateCny,
+    double? dayPnlBaseAggregateCny,
     double? totalPnlCny,
     double? value,
     double? cost,
     double? dayPnlAggregate,
+    double? dayPnlBaseAggregate,
     double? totalPnl,
     double? rateToCny,
+    bool? marketOpen,
+    bool? marketTradingDay,
+    String? marketStatusReason,
+    bool? dayPnlAggregateEnabled,
+    bool? navUpdatePending,
+    String market = 'a',
   }) {
     return PortfolioItem(
       code: 'sh600000',
       name: '测试资产',
       qty: 10,
       price: 10,
+      market: market,
       valueCny: valueCny,
       costCny: costCny,
       dayPnlAggregateCny: dayPnlAggregateCny,
+      dayPnlBaseAggregateCny: dayPnlBaseAggregateCny,
       totalPnlCny: totalPnlCny,
       value: value,
       cost: cost,
       dayPnlAggregate: dayPnlAggregate,
+      dayPnlBaseAggregate: dayPnlBaseAggregate,
       totalPnl: totalPnl,
       rateToCny: rateToCny,
+      marketOpen: marketOpen,
+      marketTradingDay: marketTradingDay,
+      marketStatusReason: marketStatusReason,
+      dayPnlAggregateEnabled: dayPnlAggregateEnabled,
+      navUpdatePending: navUpdatePending,
     );
   }
 
@@ -130,6 +146,79 @@ void main() {
         (item) => item.dayPnlAggregateCny,
       ),
       isNull,
+    );
+  });
+
+  test('当前日盈亏会在缺少实时口径时回退到后端 aggregate 字段', () {
+    final item = buildItem(
+      navUpdatePending: true,
+      dayPnlAggregate: 5,
+      dayPnlAggregateCny: 5,
+      dayPnlBaseAggregate: 100,
+      dayPnlBaseAggregateCny: 100,
+      rateToCny: 1,
+      market: 'fund',
+    );
+
+    expect(PortfolioMetricsService.resolveCurrentDayPnl(item), 5);
+    expect(PortfolioMetricsService.resolveCurrentDayPnlCny(item), 5);
+    expect(PortfolioMetricsService.resolveCurrentDayPnlBase(item), 100);
+    expect(PortfolioMetricsService.resolveCurrentDayPnlBaseCny(item), 100);
+    expect(PortfolioMetricsService.resolveCurrentDayPnlRate(item), 5);
+  });
+
+  test('交易日盘前的 A/HK/基金今日盈亏会被压成 0', () {
+    final item = buildItem(
+      market: 'fund',
+      marketOpen: false,
+      marketTradingDay: true,
+      marketStatusReason: 'off_hours',
+      dayPnlAggregateEnabled: true,
+      dayPnlAggregate: 88,
+      dayPnlAggregateCny: 88,
+      dayPnlBaseAggregate: 1000,
+      dayPnlBaseAggregateCny: 1000,
+      rateToCny: 1,
+    );
+    final priceInfo = PriceInfo(
+      price: 101.5,
+      yclose: 100.5,
+      change: 1.0,
+      changePct: 0.99,
+    );
+
+    expect(
+      PortfolioMetricsService.isPreopenOffHoursAsset(
+        item,
+        now: DateTime(2026, 3, 24, 9, 15),
+      ),
+      isTrue,
+    );
+    expect(
+      PortfolioMetricsService.resolveCurrentDayPnl(
+        item,
+        priceInfo: priceInfo,
+        now: DateTime(2026, 3, 24, 9, 15),
+      ),
+      0,
+    );
+    expect(
+      PortfolioMetricsService.resolveCurrentDayPnlCny(
+        item,
+        priceInfo: priceInfo,
+        fallbackRateToCny: 1,
+        now: DateTime(2026, 3, 24, 9, 15),
+      ),
+      0,
+    );
+    expect(
+      PortfolioMetricsService.resolveCurrentDayPnlRate(
+        item,
+        priceInfo: priceInfo,
+        fallbackRateToCny: 1,
+        now: DateTime(2026, 3, 24, 9, 15),
+      ),
+      0,
     );
   });
 }

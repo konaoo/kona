@@ -851,7 +851,7 @@ class InvestPageState extends State<InvestPage> {
     );
     final dayPnlCny = PortfolioMetricsService.sumMetricWhenAny(
       items,
-      (item) => PortfolioMetricsService.resolveLiveDayPnlCny(
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
         item,
         priceInfo: appState.resolvePriceInfo(item),
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
@@ -859,7 +859,7 @@ class InvestPageState extends State<InvestPage> {
     );
     final dayPnlBaseCny = PortfolioMetricsService.sumMetricWhenAny(
       items,
-      (item) => PortfolioMetricsService.resolveLiveDayPnlBaseCny(
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlBaseCny(
         item,
         priceInfo: appState.resolvePriceInfo(item),
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
@@ -1141,7 +1141,7 @@ class InvestPageState extends State<InvestPage> {
 
     final catDayPnl = PortfolioMetricsService.sumMetricWhenAny(
       filtered,
-      (item) => PortfolioMetricsService.resolveLiveDayPnlCny(
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
         item,
         priceInfo: appState.resolvePriceInfo(item),
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
@@ -1149,7 +1149,7 @@ class InvestPageState extends State<InvestPage> {
     );
     final catDayPnlBase = PortfolioMetricsService.sumMetricWhenAny(
       filtered,
-      (item) => PortfolioMetricsService.resolveLiveDayPnlBaseCny(
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlBaseCny(
         item,
         priceInfo: appState.resolvePriceInfo(item),
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
@@ -1291,12 +1291,12 @@ class InvestPageState extends State<InvestPage> {
 
     // Sort by today's PnL descending
     filtered.sort((a, b) {
-      final pnlA = PortfolioMetricsService.resolveLiveDayPnlCny(
+      final pnlA = PortfolioMetricsService.resolveCurrentDayPnlCny(
         a,
         priceInfo: appState.resolvePriceInfo(a),
         fallbackRateToCny: appState.getCurrencyRate(a.curr),
       );
-      final pnlB = PortfolioMetricsService.resolveLiveDayPnlCny(
+      final pnlB = PortfolioMetricsService.resolveCurrentDayPnlCny(
         b,
         priceInfo: appState.resolvePriceInfo(b),
         fallbackRateToCny: appState.getCurrencyRate(b.curr),
@@ -1367,11 +1367,11 @@ class InvestPageState extends State<InvestPage> {
       item,
       priceInfo: priceInfo,
     );
-    final dailyPnl = PortfolioMetricsService.resolveLiveDayPnl(
+    final dailyPnl = PortfolioMetricsService.resolveCurrentDayPnl(
       item,
       priceInfo: priceInfo,
     );
-    final dailyPnlPct = PortfolioMetricsService.resolveLiveDayPnlRate(
+    final dailyPnlPct = PortfolioMetricsService.resolveCurrentDayPnlRate(
       item,
       priceInfo: priceInfo,
       fallbackRateToCny: fallbackRateToCny,

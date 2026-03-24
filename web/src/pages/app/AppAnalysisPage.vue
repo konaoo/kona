@@ -136,16 +136,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppShell from '../../layouts/AppShell.vue'
 import { toNumber } from '../../shared/format'
+import { useKonaStore } from '../../stores/composables'
 import {
   useAnalysisStore,
   type AnalysisCalendarType,
   type AnalysisRankItem,
 } from '../../stores/analysis'
 
+const konaStore = useKonaStore()
 const analysisStore = useAnalysisStore()
 const {
   overview,
@@ -167,6 +169,7 @@ const {
 const rankExpanded = ref(false)
 const overviewPeriod = ref<'day' | 'month' | 'year' | 'all'>('day')
 const showDatePicker = ref(false)
+let analysisRefreshTimer: number | null = null
 
 function onPickYear(year: number) {
   showDatePicker.value = false
@@ -188,12 +191,18 @@ const periodLabel = computed(() => {
 })
 
 const periodPnl = computed(() => {
+  if (overviewPeriod.value === 'day') {
+    return toNum(konaStore.summary.value?.todayPnl)
+  }
   const key = overviewPeriod.value
   const value = overview.value[key]?.pnl
   return value == null ? null : toNum(value)
 })
 
 const periodRate = computed(() => {
+  if (overviewPeriod.value === 'day') {
+    return toNum(konaStore.summary.value?.dayRate)
+  }
   const key = overviewPeriod.value
   const value = overview.value[key]?.pnl_rate
   return value == null ? null : toNum(value)
@@ -309,7 +318,20 @@ function onCalendarTypeChange(nextType: AnalysisCalendarType) {
 // Redundant masked handler removed
 
 onMounted(() => {
-  analysisStore.initialize()
+  void analysisStore.initialize()
+  konaStore.startAutoRefresh()
+  void konaStore.refreshQuotesOnly()
+  analysisRefreshTimer = window.setInterval(() => {
+    void analysisStore.reload('light', true)
+  }, 60_000)
+})
+
+onBeforeUnmount(() => {
+  konaStore.stopAutoRefresh()
+  if (analysisRefreshTimer !== null) {
+    window.clearInterval(analysisRefreshTimer)
+    analysisRefreshTimer = null
+  }
 })
 </script>
 

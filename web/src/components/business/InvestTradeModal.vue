@@ -1246,7 +1246,7 @@ onUnmounted(() => {
 .btn-confirm:hover { background: linear-gradient(135deg, #6a99f5 0%, #5a8bef 100%); }
 .btn-confirm:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.create-sheet { position: fixed; inset: 0; z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px; }
+.create-sheet { position: fixed; inset: 0; z-index: 10020; display: none; align-items: center; justify-content: center; padding: 20px; }
 .create-sheet.open { display: flex; }
 .create-overlay { position: absolute; inset: 0; background: var(--overlay-strong); animation: fadeBg 0.18s ease; }
 @keyframes fadeBg { from { opacity: 0; } to { opacity: 1; } }

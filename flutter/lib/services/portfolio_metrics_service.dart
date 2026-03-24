@@ -4,6 +4,34 @@ import '../models/portfolio.dart';
 class PortfolioMetricsService {
   const PortfolioMetricsService._();
 
+  static const int _preopenSessionStartMinutes = 9 * 60 + 30;
+
+  static bool _supportsPreopenSuppression(String marketType) {
+    return marketType == 'a' || marketType == 'hk' || marketType == 'fund';
+  }
+
+  static bool isPreopenOffHoursAsset(
+    PortfolioItem item, {
+    DateTime? now,
+  }) {
+    final marketType = item.marketType.trim().toLowerCase();
+    if (!_supportsPreopenSuppression(marketType)) {
+      return false;
+    }
+    if (item.marketOpen == true) {
+      return false;
+    }
+    if (item.marketTradingDay != true) {
+      return false;
+    }
+    if ((item.marketStatusReason ?? '').trim().toLowerCase() != 'off_hours') {
+      return false;
+    }
+    final clock = now ?? DateTime.now();
+    final minutes = clock.hour * 60 + clock.minute;
+    return minutes < _preopenSessionStartMinutes;
+  }
+
   static double? _metricWithRate(double? metric, double? rateToCny) {
     if (metric == null) return null;
     if (rateToCny != null && rateToCny > 0) {
@@ -161,9 +189,13 @@ class PortfolioMetricsService {
   static double? resolveLiveDayPnl(
     PortfolioItem item, {
     PriceInfo? priceInfo,
+    DateTime? now,
   }) {
     if (item.navUpdatePending == true) {
       return null;
+    }
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
     }
     if (item.dayPnlAggregateEnabled == false) {
       return null;
@@ -180,8 +212,13 @@ class PortfolioMetricsService {
     PortfolioItem item, {
     PriceInfo? priceInfo,
     double? fallbackRateToCny,
+    DateTime? now,
   }) {
-    final pnl = resolveLiveDayPnl(item, priceInfo: priceInfo);
+    final pnl = resolveLiveDayPnl(
+      item,
+      priceInfo: priceInfo,
+      now: now,
+    );
     if (pnl == null) return null;
     return pnl * resolveRateToCny(item, fallbackRateToCny: fallbackRateToCny);
   }
@@ -189,18 +226,131 @@ class PortfolioMetricsService {
   static double? resolveLiveDayPnlBase(
     PortfolioItem item, {
     PriceInfo? priceInfo,
+    DateTime? now,
   }) {
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
+    }
     final yclose = resolveYclose(item, priceInfo: priceInfo);
     if (yclose <= 0) return null;
     return yclose * item.qty;
+  }
+
+  static double? resolveCurrentDayPnl(
+    PortfolioItem item, {
+    PriceInfo? priceInfo,
+    DateTime? now,
+  }) {
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
+    }
+    final live = resolveLiveDayPnl(
+      item,
+      priceInfo: priceInfo,
+      now: now,
+    );
+    if (live != null) {
+      return live;
+    }
+    return item.dayPnlAggregate;
+  }
+
+  static double? resolveCurrentDayPnlCny(
+    PortfolioItem item, {
+    PriceInfo? priceInfo,
+    double? fallbackRateToCny,
+    DateTime? now,
+  }) {
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
+    }
+    final live = resolveLiveDayPnlCny(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+      now: now,
+    );
+    if (live != null) {
+      return live;
+    }
+    return resolveDayPnlAggregateCny(item);
+  }
+
+  static double? resolveCurrentDayPnlBase(
+    PortfolioItem item, {
+    PriceInfo? priceInfo,
+    DateTime? now,
+  }) {
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
+    }
+    final live = resolveLiveDayPnlBase(
+      item,
+      priceInfo: priceInfo,
+      now: now,
+    );
+    if (live != null) {
+      return live;
+    }
+    return item.dayPnlBaseAggregate;
+  }
+
+  static double? resolveCurrentDayPnlBaseCny(
+    PortfolioItem item, {
+    PriceInfo? priceInfo,
+    double? fallbackRateToCny,
+    DateTime? now,
+  }) {
+    if (isPreopenOffHoursAsset(item, now: now)) {
+      return 0;
+    }
+    final live = resolveLiveDayPnlBaseCny(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+      now: now,
+    );
+    if (live != null) {
+      return live;
+    }
+    return resolveDayPnlBaseCny(item);
+  }
+
+  static double? resolveCurrentDayPnlRate(
+    PortfolioItem item, {
+    PriceInfo? priceInfo,
+    double? fallbackRateToCny,
+    DateTime? now,
+  }) {
+    final pnl = resolveCurrentDayPnlCny(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+      now: now,
+    );
+    final base = resolveCurrentDayPnlBaseCny(
+      item,
+      priceInfo: priceInfo,
+      fallbackRateToCny: fallbackRateToCny,
+      now: now,
+    );
+    if (pnl == null || base == null || base <= 0) {
+      return 0;
+    }
+    return pnl / base * 100;
   }
 
   static double? resolveLiveDayPnlBaseCny(
     PortfolioItem item, {
     PriceInfo? priceInfo,
     double? fallbackRateToCny,
+    DateTime? now,
   }) {
-    final base = resolveLiveDayPnlBase(item, priceInfo: priceInfo);
+    final base = resolveLiveDayPnlBase(
+      item,
+      priceInfo: priceInfo,
+      now: now,
+    );
     if (base == null) return null;
     return base * resolveRateToCny(item, fallbackRateToCny: fallbackRateToCny);
   }
@@ -244,16 +394,19 @@ class PortfolioMetricsService {
     PortfolioItem item, {
     PriceInfo? priceInfo,
     double? fallbackRateToCny,
+    DateTime? now,
   }) {
     final pnl = resolveLiveDayPnlCny(
       item,
       priceInfo: priceInfo,
       fallbackRateToCny: fallbackRateToCny,
+      now: now,
     );
     final base = resolveLiveDayPnlBaseCny(
       item,
       priceInfo: priceInfo,
       fallbackRateToCny: fallbackRateToCny,
+      now: now,
     );
     if (pnl == null || base == null || base <= 0) return null;
     return pnl / base * 100;

@@ -55,25 +55,78 @@ class AppPortfolioViewState extends ChangeNotifier {
   }
 
   double get investTotalMV {
-    return PortfolioMetricsService.calcInvestTotalMV(_assetsState.portfolio);
+    return PortfolioMetricsService.sumMetricIgnoreNull(
+      _assetsState.portfolio,
+      (item) => PortfolioMetricsService.resolveLiveValueCny(
+        item,
+        priceInfo: resolvePriceInfo(item),
+        fallbackRateToCny: getCurrencyRate(item.curr),
+      ),
+    );
   }
 
   double get investDayPnl {
-    return PortfolioMetricsService.calcInvestDayPnl(_assetsState.portfolio);
+    return PortfolioMetricsService.sumMetricWhenAny(
+          _assetsState.portfolio,
+          (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
+            item,
+            priceInfo: resolvePriceInfo(item),
+            fallbackRateToCny: getCurrencyRate(item.curr),
+          ),
+        ) ??
+        0;
   }
 
   double get investDayPnlRate {
-    return PortfolioMetricsService.calcInvestDayPnlRate(_assetsState.portfolio);
+    final pnl = PortfolioMetricsService.sumMetricWhenAny(
+      _assetsState.portfolio,
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
+        item,
+        priceInfo: resolvePriceInfo(item),
+        fallbackRateToCny: getCurrencyRate(item.curr),
+      ),
+    );
+    final base = PortfolioMetricsService.sumMetricWhenAny(
+      _assetsState.portfolio,
+      (item) => PortfolioMetricsService.resolveCurrentDayPnlBaseCny(
+        item,
+        priceInfo: resolvePriceInfo(item),
+        fallbackRateToCny: getCurrencyRate(item.curr),
+      ),
+    );
+    return PortfolioMetricsService.calcDayPnlRateNullable(pnl, base) ?? 0;
   }
 
   double get investHoldingPnl {
-    return PortfolioMetricsService.calcInvestHoldingPnl(_assetsState.portfolio);
+    return PortfolioMetricsService.sumMetricOrNull(
+          _assetsState.portfolio,
+          (item) => PortfolioMetricsService.resolveLiveFloatPnlCny(
+            item,
+            priceInfo: resolvePriceInfo(item),
+            fallbackRateToCny: getCurrencyRate(item.curr),
+          ),
+        ) ??
+        0;
   }
 
   double get investHoldingPnlRate {
-    return PortfolioMetricsService.calcInvestHoldingPnlRate(
+    final pnl = PortfolioMetricsService.sumMetricOrNull(
       _assetsState.portfolio,
+      (item) => PortfolioMetricsService.resolveLiveFloatPnlCny(
+        item,
+        priceInfo: resolvePriceInfo(item),
+        fallbackRateToCny: getCurrencyRate(item.curr),
+      ),
     );
+    final costAbs = PortfolioMetricsService.sumAbsMetricOrNull(
+      _assetsState.portfolio,
+      (item) => PortfolioMetricsService.resolveCostCnyLive(
+        item,
+        fallbackRateToCny: getCurrencyRate(item.curr),
+      ),
+    );
+    return PortfolioMetricsService.calcHoldingPnlRateNullable(pnl, costAbs) ??
+        0;
   }
 
   void replacePrices(Map<String, PriceInfo> next, {bool notify = true}) {
@@ -161,6 +214,9 @@ class AppPortfolioViewState extends ChangeNotifier {
   }
 
   bool isAssetDayPnlDisplayEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (PortfolioMetricsService.isPreopenOffHoursAsset(item)) {
+      return false;
+    }
     if (item.dayPnlDisplayEnabled != null) {
       return item.dayPnlDisplayEnabled!;
     }
@@ -172,6 +228,9 @@ class AppPortfolioViewState extends ChangeNotifier {
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
+    if (PortfolioMetricsService.isPreopenOffHoursAsset(item)) {
+      return false;
+    }
     if (item.dayPnlAggregateEnabled != null) {
       return item.dayPnlAggregateEnabled!;
     }

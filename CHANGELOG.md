@@ -1,3 +1,28 @@
+## 2026-03-24-03
+
+### 这版一句话
+
+把 Web 和 Flutter 的投资“当日”实时口径往同一套规则上收：双端现在都会按当前有效日重算今日盈亏，Web 分析页也补上了自动刷新，避免首页、投资页、分析页各看各的。
+
+### 主要变化
+- **Flutter 投资聚合口径改成统一实时入口**：Flutter [flutter/lib/services/portfolio_metrics_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/portfolio_metrics_service.dart) 新增“当前有效日”口径，统一处理三件事：实时价格优先、场外基金待净值更新时回退后端 aggregate、A 股/港股/场内基金在交易日盘前 `off_hours` 时今日盈亏强制按 `0` 处理。[flutter/lib/providers/app_portfolio_view_state.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/providers/app_portfolio_view_state.dart) 现在也改成使用这套入口，首页、分析页和投资页不再各读各的。
+- **Flutter 投资页跟主聚合入口对齐**： [flutter/lib/pages/invest_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/invest_page.dart) 的顶部总卡、分类汇总、列表排序和单条持仓卡片都改成使用 `resolveCurrentDayPnl*`，不再绕开主 provider 直接用另一套“live-only”规则。
+- **Web 分析页“当日”改成和投资页同源**：Web [web/src/pages/app/AppAnalysisPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAnalysisPage.vue) 现在在 `当日` 模式下直接读取 `konaStore.summary.todayPnl / dayRate`，和投资页使用同一套实时汇总；`本月 / 本年 / 全部` 继续使用分析接口，历史口径边界不变。
+- **Web 分析页补自动刷新**：同一文件在页面停留时会启动 quote 自动刷新，并每 60 秒重拉一次分析接口，避免投资页在跳、分析页长期停在旧值。
+- **Web 实时今日盈亏规则继续收口**：Web [web/src/stores/portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts) 会在持仓主入口统一应用“盘前不提前算今天”和“场外基金待净值更新不覆盖今日盈亏”的规则；[web/tests/unit/portfolioStoreRealtime.test.ts](/Users/kona/Desktop/kaka/kona_repo/web/tests/unit/portfolioStoreRealtime.test.ts) 已补回归测试。
+- **添加资产里的‘添加账户’二级窗口层级修正**：Web [web/src/components/business/InvestTradeModal.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/components/business/InvestTradeModal.vue) 已把二级创建账户浮层提到父弹窗之上，避免窗口被压在底层。
+
+### 影响范围
+- Flutter：首页、投资页、分析页 `当日` 投资盈亏与总市值
+- Web：投资页、分析页 `当日` 投资盈亏；添加资产页里的“添加账户”二级窗口
+
+### 验收重点
+- 同一时刻同一账号，Flutter 首页 / 投资页 / 分析页 `当日` 应保持同方向和同口径
+- 同一时刻同一账号，Web 投资页 / 分析页 `当日` 应保持一致
+- A 股/港股/场内基金在盘前不应把昨天地涨跌提前算成今天
+- 场外基金待净值更新时，不应出现伪“今日盈亏”
+- Web 添加资产时打开“添加账户”，二级窗口应稳定显示在最上层
+
 ## 2026-03-24-02
 
 ### 这版一句话
