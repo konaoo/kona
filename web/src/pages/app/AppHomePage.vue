@@ -907,8 +907,9 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <button
+              class="hero-privacy-btn"
               @click.stop="togglePrivacy"
-              style="margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.6; padding: 0 4px;"
+              style="background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.6; padding: 0 4px;"
             >
               {{ isPrivacyMode ? '🙈' : '👁️' }}
             </button>
@@ -2531,7 +2532,7 @@ onBeforeUnmount(() => {
     border-bottom: none;
   }
   .c3-segment-val {
-    font-size: 14px;
+    font-size: 28px;
   }
 
   /* 4. Drawer items */
@@ -2570,6 +2571,15 @@ onBeforeUnmount(() => {
   /* Card grid */
   .hcard {
     min-width: 100%;
+  }
+}
+
+.hero-privacy-btn {
+  margin-left: 8px;
+}
+@media (max-width: 768px) {
+  .hero-privacy-btn {
+    margin-left: auto;
   }
 }
 </style>

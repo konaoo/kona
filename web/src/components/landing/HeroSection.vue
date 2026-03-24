@@ -2,10 +2,6 @@
   <div class="hero">
     <div class="hero-inner">
       <div class="hero-left">
-        <div class="hero-badge">
-          <span class="badge-dot"></span>
-          GLOBAL ASSET DESK · v1.0
-        </div>
         <h1 class="hero-title">
           全球资产<br>
           <span class="hero-title-accent">一站式管理</span>

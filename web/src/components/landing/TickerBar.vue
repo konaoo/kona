@@ -28,7 +28,6 @@
   height: 30px;
   background: rgba(10,11,14,0.88);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
   overflow: hidden;
   z-index: 180;
   display: flex;

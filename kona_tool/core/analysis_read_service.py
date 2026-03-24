@@ -211,6 +211,7 @@ class AnalysisReadService:
                             "pnl_rate": round(pnl_rate, 2),
                             "market": item["market"],
                             "curr": curr,
+                            "ledger_name": item.get("ledger_name"),
                         },
                     )
                 )

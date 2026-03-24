@@ -883,16 +883,17 @@ class AnalysisDatabaseMixin:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_condition = "p.user_id = ?" if user_id else "(p.user_id IS NULL OR p.user_id = '')"
         user_param = (user_id,) if user_id else ()
-        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_condition = " AND p.ledger_id = ?" if ledger_id is not None else ""
         ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             if market == "all":
                 cursor.execute(
                     f"""
-                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
+                    SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
+                    FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
                     WHERE {user_condition}{ledger_condition}
                     """,
                     user_param + ledger_param,
@@ -900,32 +901,36 @@ class AnalysisDatabaseMixin:
             elif market == "a":
                 cursor.execute(
                     f"""
-                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE (code LIKE 'sh%' OR code LIKE 'sz%' OR code LIKE 'bj%') AND {user_condition}{ledger_condition}
+                    SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
+                    FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
+                    WHERE (p.code LIKE 'sh%' OR p.code LIKE 'sz%' OR p.code LIKE 'bj%') AND {user_condition}{ledger_condition}
                     """,
                     user_param + ledger_param,
                 )
             elif market == "us":
                 cursor.execute(
                     f"""
-                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'gb_%' AND {user_condition}{ledger_condition}
+                    SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
+                    FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
+                    WHERE p.code LIKE 'gb_%' AND {user_condition}{ledger_condition}
                     """,
                     user_param + ledger_param,
                 )
             elif market == "hk":
                 cursor.execute(
                     f"""
-                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE code LIKE 'hk%' AND {user_condition}{ledger_condition}
+                    SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
+                    FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
+                    WHERE p.code LIKE 'hk%' AND {user_condition}{ledger_condition}
                     """,
                     user_param + ledger_param,
                 )
             elif market == "fund":
                 cursor.execute(
                     f"""
-                    SELECT code, name, qty, price, curr, adjustment FROM portfolio
-                    WHERE (code LIKE 'f_%' OR code LIKE 'ft_%') AND {user_condition}{ledger_condition}
+                    SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
+                    FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
+                    WHERE (p.code LIKE 'f_%' OR p.code LIKE 'ft_%') AND {user_condition}{ledger_condition}
                     """,
                     user_param + ledger_param,
                 )
@@ -980,6 +985,7 @@ class AnalysisDatabaseMixin:
                         "realized_pnl_adjustment": realized_pnl_adjustment,
                         "legacy_adjustment_ignored": not include_legacy_adjustment,
                         "market": self._detect_market(code),
+                        "ledger_name": row["ledger_name"] if row and "ledger_name" in row.keys() else None,
                     }
                 )
 

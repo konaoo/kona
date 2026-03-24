@@ -119,6 +119,7 @@ class _AnalysisPageState extends State<AnalysisPage>
   final LayerLink _datePickerLink = LayerLink();
   OverlayEntry? _datePickerOverlay;
   static const int _maxTransientRetry = 3;
+  static const int _cacheTtlMs = 10 * 60 * 1000; // 10 minutes
   static const String _legacyOverviewStorageKey = 'cache_analysis_overview';
   String _currentPeriod = 'day';
   Map<String, dynamic> _overview = {};
@@ -311,6 +312,11 @@ class _AnalysisPageState extends State<AnalysisPage>
           await _cache.getJson(_overviewStorageKey()) ??
           await _cache.getJson(_legacyOverviewStorageKey);
       if (payload == null) return null;
+      final savedAt = payload['saved_at'];
+      if (savedAt is int) {
+        final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+        if (age > _cacheTtlMs) return null;
+      }
       final data = payload['data'];
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
@@ -341,10 +347,21 @@ class _AnalysisPageState extends State<AnalysisPage>
 
     if (!force) {
       var cached = _calendarCache[requestCacheKey];
+      var cacheExpired = false;
+      if (cached != null) {
+        final cachedAt = cached['_cached_at'];
+        if (cachedAt is int) {
+          final age = DateTime.now().millisecondsSinceEpoch - cachedAt;
+          if (age > _cacheTtlMs) cacheExpired = true;
+        }
+      }
       if (cached == null) {
         cached = await _loadCalendarFromStorage(requestStorageKey);
         if (cached != null) {
-          _calendarCache[requestCacheKey] = cached;
+          _calendarCache[requestCacheKey] = {
+            ...cached,
+            '_cached_at': DateTime.now().millisecondsSinceEpoch,
+          };
         }
       }
       if (cached != null && mounted) {
@@ -355,6 +372,10 @@ class _AnalysisPageState extends State<AnalysisPage>
           _calendarData = cachedData;
         });
         renderedByCache = true;
+      }
+      // SWR: show stale cache but still refresh from API
+      if (cacheExpired) {
+        force = true;
       }
     }
 
@@ -382,7 +403,10 @@ class _AnalysisPageState extends State<AnalysisPage>
         _normalizeCalendarSelections();
         _calendarData = data;
         final resolvedCacheKey = _calendarCacheKey();
-        _calendarCache[resolvedCacheKey] = data;
+        _calendarCache[resolvedCacheKey] = {
+          ...data,
+          '_cached_at': DateTime.now().millisecondsSinceEpoch,
+        };
       });
       _calendarRetryTimer?.cancel();
       _calendarRetryCount = 0;
@@ -469,6 +493,11 @@ class _AnalysisPageState extends State<AnalysisPage>
     try {
       final payload = await _cache.getJson(key);
       if (payload == null) return null;
+      final savedAt = payload['saved_at'];
+      if (savedAt is int) {
+        final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+        if (age > _cacheTtlMs) return null;
+      }
       final data = payload['data'];
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);

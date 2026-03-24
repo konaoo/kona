@@ -4,10 +4,9 @@
       <!-- LEFT: FORM PANEL -->
       <div class="form-panel">
         <RouterLink to="/" class="panel-logo">
-          <img class="logo-icon" src="/assets/kaka-logo.png" alt="咔咔记账 logo" />
+          <img class="logo-icon" src="/assets/logo.svg" alt="咔咔记账 logo" />
           <div>
             <div class="logo-name">咔咔记账</div>
-            <div class="logo-tag">GLOBAL ASSET DESK</div>
           </div>
         </RouterLink>
 
@@ -149,7 +148,6 @@
         </svg>
 
         <div class="brand-top">
-          <div class="brand-eyebrow">GLOBAL ASSET DESK</div>
           <h2 class="brand-title">全球资产<br><span class="brand-title-accent">一站式管理</span></h2>
 
         </div>
@@ -452,11 +450,15 @@ async function fetchWebConfig() {
 .card {
   position: relative; z-index: 1; width: 100%; max-width: 940px; min-height: 580px;
   border-radius: 26px; display: grid; grid-template-columns: 1fr 1fr;
+  padding: 0 !important; border: none !important;
   overflow: hidden;
   background: var(--auth-card-bg);
   box-shadow: var(--auth-card-shadow);
   animation: cardIn .55s cubic-bezier(.25,1,.5,1) both;
   backdrop-filter: blur(18px);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 @keyframes cardIn { from { opacity:0; transform:translateY(22px) scale(.985); } to { opacity:1; transform:none; } }
 
@@ -474,7 +476,8 @@ async function fetchWebConfig() {
 
 .panel-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-bottom: 20px; position: relative; z-index: 1; }
 .logo-icon {
-  width: 36px; height: 36px; border-radius: 10px;
+  width: 36px; height: 36px;
+  border-radius: 10px;
   display: block;
   object-fit: cover;
   box-shadow: 0 6px 16px rgba(240,39,158,0.26);

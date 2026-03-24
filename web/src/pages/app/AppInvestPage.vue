@@ -932,8 +932,7 @@ const handleTradeSuccess = async () => {
 }
 
 .modern-shell {
-  max-width: 1040px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .stats-grid {

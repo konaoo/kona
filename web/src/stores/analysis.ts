@@ -52,6 +52,7 @@ export type AnalysisRankItem = {
   pnl_rate?: number
   market?: string
   curr?: string
+  ledger_name?: string
 }
 
 type AnalysisCachePayload = {

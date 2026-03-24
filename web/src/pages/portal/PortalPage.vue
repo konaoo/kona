@@ -14,17 +14,15 @@
       <div class="container">
         <header class="topbar">
           <div class="brand">
-            <img class="brand-logo" alt="咔咔记账 logo" src="/assets/kaka-logo.png" />
+            <img class="brand-logo" alt="咔咔记账 logo" src="/assets/logo.svg" />
             <div class="brand-text">
               <div class="brand-name">咔咔记账</div>
-              <div class="brand-sub">GLOBAL ASSET DESK</div>
             </div>
           </div>
         </header>
 
         <main class="content">
           <section class="left">
-            <p class="eyebrow">GLOBAL ASSET DESK</p>
             <h1 class="title">咔咔记账</h1>
             <p class="subtitle">一站式管理全球市场资产</p>
 
@@ -55,8 +53,7 @@
                 <div class="screen-glow" aria-hidden="true"></div>
 
                 <div class="app-mark">
-                  <img class="app-logo" alt="咔咔记账 logo" src="/assets/kaka-logo.png" />
-                  <div class="app-caption">GLOBAL ASSET DESK</div>
+                  <img class="app-logo" alt="咔咔记账 logo" src="/assets/logo.svg" />
                 </div>
 
                 <div class="float f1" aria-hidden="true"></div>
@@ -223,10 +220,9 @@ function onApkClick(event: Event) {
 .brand-logo {
   width: 40px;
   height: 40px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(240, 39, 158, 0.2);
+  object-fit: cover;
 }
 
 .brand-text {
@@ -404,9 +400,8 @@ function onApkClick(event: Event) {
   width: 120px;
   height: 120px;
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 18px 46px rgba(240, 39, 158, 0.2);
+  object-fit: cover;
 }
 
 .app-caption {

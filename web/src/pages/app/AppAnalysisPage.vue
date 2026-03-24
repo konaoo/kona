@@ -109,7 +109,10 @@
                      <i class="icon-medal" v-else>★</i>
                   </span>
                   <div class="asset-core">
-                    <div class="asset-name">{{ item.name || item.code }}</div>
+                    <div class="asset-name">
+                      {{ item.name || item.code }}
+                      <span v-if="item.ledger_name" class="ledger-tag">{{ item.ledger_name }}</span>
+                    </div>
                     <div class="asset-code">{{ formatDisplayCode(item.code) }}</div>
                   </div>
                </div>
@@ -866,6 +869,19 @@ onBeforeUnmount(() => {
 .asset-name {
   font-size: 14px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ledger-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: var(--bg-secondary, rgba(0,0,0,0.05));
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .asset-code {

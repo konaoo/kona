@@ -1,11 +1,7 @@
 <template>
   <footer>
     <div class="footer-brand">
-      <div class="footer-logo">
-        <svg width="16" height="12" viewBox="0 0 18 14" fill="none">
-          <polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
+      <img class="footer-logo" src="/assets/logo.svg" alt="logo" />
       <div>
         <div class="footer-name">咔咔记账</div>
         <div class="footer-copy">2026 kaka wallet</div>
@@ -28,7 +24,7 @@ footer {
 }
 
 .footer-brand { display: flex; align-items: center; gap: 8px; }
-.footer-logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #ff7b67, #f24688 55%, #f0279e); display: flex; align-items: center; justify-content: center; }
+.footer-logo { width: 26px; height: 26px; border-radius: 7px; object-fit: cover; display: block; }
 .footer-name { font-size: 13px; font-weight: 700; color: var(--text); }
 .footer-copy { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
 .footer-links { display: flex; gap: 18px; }

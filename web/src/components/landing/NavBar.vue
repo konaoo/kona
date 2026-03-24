@@ -1,14 +1,9 @@
 <template>
   <nav>
     <a href="#" class="nav-brand">
-      <div class="nav-logo">
-        <svg width="16" height="12" viewBox="0 0 18 14" fill="none">
-          <polyline points="1,13 5,5 9,9 13,3 17,7" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
+      <img class="nav-logo" src="/assets/logo.svg" alt="logo" />
       <div>
         <div class="nav-name">咔咔记账</div>
-        <div class="nav-tag">GLOBAL ASSET DESK</div>
       </div>
     </a>
   </nav>
@@ -26,7 +21,6 @@ nav {
   z-index: 190;
   background: rgba(10,11,14,0.75);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
 }
 
 .nav-brand {
@@ -35,8 +29,7 @@ nav {
 
 .nav-logo {
   width: 34px; height: 34px; border-radius: 10px;
-  background: linear-gradient(135deg, #ff7b67, #f24688 55%, #f0279e);
-  display: flex; align-items: center; justify-content: center;
+  object-fit: cover; display: block;
   box-shadow: 0 6px 16px rgba(240,39,158,0.3);
 }
 
