@@ -91,6 +91,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('管理账本'), findsOneWidget);
-    expect(find.text('新增'), findsOneWidget);
+    expect(find.text('新增账本'), findsOneWidget);
   });
 }
