@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 KONA_TOOL = ROOT / "kona_tool"
@@ -8,6 +10,7 @@ if str(KONA_TOOL) not in sys.path:
     sys.path.insert(0, str(KONA_TOOL))
 
 from snapshot_runtime import create_snapshot_runtime  # noqa: E402
+from core.snapshot import persist_snapshot_stats  # noqa: E402
 
 
 class _FakeDb:
@@ -143,6 +146,40 @@ class SnapshotRuntimeTests(unittest.TestCase):
 
         self.assertEqual(self.snapshot_calls, ["snapshot"])
         self.assertEqual(self.provider_calls, ["provider"])
+
+    def test_persist_snapshot_stats_moves_preopen_a_share_pnl_back_to_previous_day(self):
+        stats = {
+            "snapshot_date": "2026-03-24",
+            "snapshot_day_pnl": 100.0,
+            "snapshot_day_pnl_by_market": {"a": 100.0, "hk": 0.0, "us": 0.0, "fund": 0.0, "unallocated": 0.0},
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-24": {"a": 100.0, "hk": 0.0, "us": 0.0, "fund": 0.0, "unallocated": 0.0},
+            },
+            "now_utc": datetime(2026, 3, 24, 0, 30, tzinfo=timezone.utc),
+        }
+        statuses = {
+            "a": {"open": False, "trading_day": True, "reason": "off_hours"},
+            "hk": {"open": False, "trading_day": True, "reason": "off_hours"},
+            "us": {"open": False, "trading_day": True, "reason": "off_hours"},
+            "fund": {"open": False, "trading_day": True, "reason": "off_hours"},
+        }
+        self.db.snapshot_dates.add("2026-03-23")
+
+        with patch("core.snapshot.get_market_statuses", return_value=statuses):
+            with patch("core.snapshot.get_previous_trading_day") as mocked_prev:
+                mocked_prev.side_effect = lambda market, target_date: datetime(2026, 3, 23).date()
+                ok = persist_snapshot_stats(self.db, self.logger, stats, user_id="u_preopen")
+
+        self.assertTrue(ok)
+        self.assertEqual(len(self.db.saved_stats), 1)
+        self.assertAlmostEqual(float(self.db.saved_stats[0]["stats"]["day_pnl"]), 0.0, places=2)
+        self.assertEqual(len(self.db.saved_breakdowns), 1)
+        self.assertAlmostEqual(float(self.db.saved_breakdowns[0]["day_pnl_by_market"]["a"]), 0.0, places=2)
+        self.assertEqual(len(self.db.partial_breakdowns), 1)
+        self.assertEqual(self.db.partial_breakdowns[0]["date_str"], "2026-03-23")
+        self.assertEqual(self.db.partial_breakdowns[0]["market_updates"]["a"], 100.0)
+        self.assertEqual(len(self.db.synced_dates), 1)
+        self.assertEqual(self.db.synced_dates[0]["date_str"], "2026-03-23")
 
 
 if __name__ == "__main__":

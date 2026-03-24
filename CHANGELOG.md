@@ -1,3 +1,23 @@
+## 2026-03-24-02
+
+### 这版一句话
+
+修掉盘前快照把昨天地涨跌提前写进今天的口径 bug：A 股、港股和场内基金在未开盘前，不会再把前一交易日的日盈亏误记到当天快照。
+
+### 主要变化
+- **盘前快照会把昨日日收益回拨到前一交易日**：后端 [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py) 现在会区分“交易日但未开盘”和“收盘后”。如果市场只是盘前 `off_hours`，当天快照不会再把昨收留下的涨跌记成今天，而是继续归到前一个交易日。
+- **账本快照同样按这套规则收口**：同一文件里，账本级 `ledger_daily_snapshots` 也改成按有效归属日写 `day_pnl`，避免分析页带账本时盘前先出现一条看似“今天已经有日盈亏”的错快照。
+- **补齐盘前回拨回归测试**：后端 [kona_tool/tests/test_snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_snapshot_runtime.py) 新增“盘前 A 股日盈亏回拨到前一交易日”的测试；[kona_tool/tests/test_api_baseline.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_api_baseline.py) 也把快照写入测试的市场状态前提固定下来，避免被当前真实时间误伤。
+
+### 影响范围
+- 后端：`daily_snapshots`、`daily_snapshot_market_breakdowns`、`ledger_daily_snapshots`
+- Flutter / Web / App：分析页、收益日历、账本分析里读取当天快照的地方
+
+### 验收重点
+- 在 A 股、港股、场内基金还没开盘时，当天快照的 `day_pnl` 不应提前带出昨天地涨跌
+- 前一交易日的快照拆分应继续保留这些市场的真实日盈亏
+- 收盘后再写快照时，当天 `day_pnl` 仍应正常落到当天
+
 ## 2026-03-24-01
 
 ### 这版一句话

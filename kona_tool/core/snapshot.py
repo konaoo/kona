@@ -17,6 +17,7 @@ from .fund import get_fund_latest_nav_date
 from .market_calendar import (
     all_markets_closed,
     get_market_statuses,
+    get_previous_trading_day,
     is_markets_closed_on_date,
     is_trading_day,
     market_from_asset,
@@ -25,12 +26,18 @@ from .price import batch_get_prices, get_forex_rates, is_exchange_fund_code
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
-LATE_SETTLEMENT_MARKETS = ("us", "fund")
+LATE_SETTLEMENT_MARKETS = ("a", "hk", "us", "fund")
 MARKET_TIMEZONES = {
     "a": "Asia/Shanghai",
     "hk": "Asia/Hong_Kong",
     "us": "America/New_York",
     "fund": "Asia/Shanghai",
+}
+MARKET_FIRST_SESSION_START = {
+    "a": 9 * 60 + 30,
+    "hk": 9 * 60 + 30,
+    "us": 9 * 60 + 30,
+    "fund": 9 * 60 + 30,
 }
 
 
@@ -63,6 +70,85 @@ def _market_trading_day_now(
         if bool(status.get("open")):
             return True
         return str(status.get("reason") or "").lower() in {"off_hours", "open_session"}
+
+
+def _is_preopen_off_hours_market(
+    market: str,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+) -> bool:
+    m = str(market or "a").lower()
+    status = market_statuses.get(m) or {}
+    if bool(status.get("open")):
+        return False
+    if not bool(status.get("trading_day")):
+        return False
+    if str(status.get("reason") or "").lower() != "off_hours":
+        return False
+    local_now = now_utc.astimezone(ZoneInfo(MARKET_TIMEZONES.get(m, "UTC")))
+    minutes = local_now.hour * 60 + local_now.minute
+    first_start = MARKET_FIRST_SESSION_START.get(m)
+    if first_start is None:
+        return False
+    return minutes < first_start
+
+
+def _adjust_snapshot_breakdowns_for_preopen(
+    *,
+    day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]],
+    snapshot_date: str,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+) -> Dict[str, Dict[str, float]]:
+    adjusted: Dict[str, Dict[str, float]] = {
+        date_str: _round_market_breakdown(market_map)
+        for date_str, market_map in (day_pnl_breakdowns_by_date or {}).items()
+    }
+    snapshot_bucket = adjusted.setdefault(snapshot_date, _empty_market_breakdown())
+    for market in ("a", "hk", "fund"):
+        if not _is_preopen_off_hours_market(market, now_utc, market_statuses):
+            continue
+        amount = float(snapshot_bucket.get(market) or 0.0)
+        if abs(amount) < 1e-9:
+            continue
+        previous_day = get_previous_trading_day(market, snapshot_date)
+        if previous_day is None:
+            continue
+        previous_key = previous_day.strftime("%Y-%m-%d")
+        previous_bucket = adjusted.setdefault(previous_key, _empty_market_breakdown())
+        previous_bucket[market] = round(float(previous_bucket.get(market) or 0.0) + amount, 2)
+        snapshot_bucket[market] = 0.0
+    return adjusted
+
+
+def _resolve_snapshot_exchange_effective_date(
+    *,
+    market: str,
+    now_utc: datetime,
+    current_price: float,
+    yclose: float,
+    market_statuses: Dict[str, Dict[str, str]],
+    epsilon: float = 1e-9,
+) -> str | None:
+    if current_price <= 0 or yclose <= 0:
+        return None
+    if abs(current_price - yclose) / yclose < epsilon:
+        return None
+
+    local_date = _market_local_date(market, now_utc)
+    status = market_statuses.get(str(market or "").lower()) or {}
+    if bool(status.get("open")):
+        return local_date.strftime("%Y-%m-%d")
+
+    if _is_preopen_off_hours_market(market, now_utc, market_statuses):
+        previous_day = get_previous_trading_day(market, local_date)
+        return previous_day.strftime("%Y-%m-%d") if previous_day is not None else None
+
+    if bool(status.get("trading_day")):
+        return local_date.strftime("%Y-%m-%d")
+
+    previous_day = get_previous_trading_day(market, local_date)
+    return previous_day.strftime("%Y-%m-%d") if previous_day is not None else None
 
 
 def _rate_to_cny(curr: Any, rates: Dict[str, Any]) -> float:
@@ -190,20 +276,30 @@ def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str
 
 def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None = None) -> bool:
     """保存当天快照，并按市场局部结算晚到收益。"""
+    now_utc = stats.get("now_utc")
+    if not isinstance(now_utc, datetime):
+        now_utc = datetime.now(timezone.utc)
     snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
+    market_statuses = get_market_statuses(DEFAULT_MARKETS, now=now_utc)
+    persist_breakdowns_by_date = _adjust_snapshot_breakdowns_for_preopen(
+        day_pnl_breakdowns_by_date=stats.get("day_pnl_breakdowns_by_date") or {},
+        snapshot_date=snapshot_date,
+        now_utc=now_utc,
+        market_statuses=market_statuses,
+    )
+    snapshot_market_map = _round_market_breakdown(persist_breakdowns_by_date.get(snapshot_date))
     snapshot_payload = {
         **stats,
-        "day_pnl": float(stats.get("snapshot_day_pnl", 0.0) or 0.0),
+        "day_pnl": round(sum(float(v or 0.0) for v in snapshot_market_map.values()), 2),
     }
     success = db_obj.save_daily_snapshot(snapshot_payload, user_id, snapshot_date=snapshot_date)
     if not success:
         return False
 
-    market_map = stats.get("snapshot_day_pnl_by_market") or _empty_market_breakdown()
     breakdown_ok = db_obj.save_daily_snapshot_market_breakdown(
         date_str=snapshot_date,
-        day_pnl_by_market=market_map,
-        total_day_pnl=sum(float(v or 0.0) for v in market_map.values()),
+        day_pnl_by_market=snapshot_market_map,
+        total_day_pnl=sum(float(v or 0.0) for v in snapshot_market_map.values()),
         user_id=user_id,
         source="exact",
         confidence=1.0,
@@ -211,7 +307,13 @@ def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: s
     if not breakdown_ok:
         logger_obj.warning("Market breakdown save failed: user=%s date=%s", user_id, snapshot_date)
 
-    _persist_late_effective_date_settlements(db_obj, logger_obj, stats, user_id)
+    persist_stats = {
+        **stats,
+        "snapshot_day_pnl": snapshot_payload["day_pnl"],
+        "snapshot_day_pnl_by_market": snapshot_market_map,
+        "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
+    }
+    _persist_late_effective_date_settlements(db_obj, logger_obj, persist_stats, user_id)
     return True
 
 
@@ -421,6 +523,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         'day_pnl_breakdowns_by_date': rounded_breakdowns_by_date,
         'day_pnl_bases_by_date': rounded_bases_by_date,
         'snapshot_date': snapshot_date,
+        'now_utc': now_utc,
     }
 
 def is_weekend() -> bool:
@@ -439,6 +542,10 @@ def _save_ledger_snapshots(user_id: str | None, stats: Dict[str, Any]) -> None:
         ledgers = db.get_ledgers(user_id)
         if not ledgers:
             return
+        now_utc = stats.get("now_utc")
+        if not isinstance(now_utc, datetime):
+            now_utc = datetime.now(timezone.utc)
+        market_statuses = get_market_statuses(DEFAULT_MARKETS, now=now_utc)
         # Fetch prices and rates once for all ledgers
         all_portfolio = db.get_portfolio(user_id=user_id, include_closed=True)
         all_codes = [p["code"] for p in all_portfolio]
@@ -476,8 +583,25 @@ def _save_ledger_snapshots(user_id: str | None, stats: Dict[str, Any]) -> None:
 
                 item_mv = cur_price * qty * rate
                 item_cost = cost_price * qty * rate
-                item_day_pnl = (cur_price - yclose) * qty * rate if yclose > 0 else 0.0
+                item_day_pnl = 0.0
                 item_total_pnl = (cur_price - cost_price) * qty * rate + adj * rate
+                market = market_from_asset(asset)
+                if market not in DEFAULT_MARKETS:
+                    market = "a"
+
+                nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+                if nav_update_pending:
+                    effective_date = resolve_fund_nav_effective_date(get_fund_latest_nav_date(code))
+                else:
+                    effective_date = _resolve_snapshot_exchange_effective_date(
+                        market=market,
+                        now_utc=now_utc,
+                        current_price=cur_price,
+                        yclose=yclose,
+                        market_statuses=market_statuses,
+                    )
+                if effective_date == snapshot_date and yclose > 0:
+                    item_day_pnl = (cur_price - yclose) * qty * rate
 
                 ledger_invest_mv += item_mv
                 ledger_total_cost += item_cost

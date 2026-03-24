@@ -276,6 +276,7 @@ class ApiBaselineTests(unittest.TestCase):
     def test_take_snapshot_only_writes_snapshot_date_breakdown(self):
         fake_stats = {
             "snapshot_date": "2026-03-21",
+            "now_utc": datetime(2026, 3, 21, 2, 0, tzinfo=timezone.utc),
             "total_asset": 100.0,
             "total_invest": 80.0,
             "total_cash": 20.0,
@@ -310,7 +311,17 @@ class ApiBaselineTests(unittest.TestCase):
         }
 
         with patch.object(snapshot_module, "calculate_portfolio_stats", return_value=fake_stats):
-            ok = snapshot_module.take_snapshot(user_id="u_test")
+            with patch.object(
+                snapshot_module,
+                "get_market_statuses",
+                return_value={
+                    "a": {"open": True, "trading_day": True, "reason": "open_session"},
+                    "hk": {"open": False, "trading_day": False, "reason": "holiday_or_weekend"},
+                    "us": {"open": False, "trading_day": False, "reason": "holiday_or_weekend"},
+                    "fund": {"open": False, "trading_day": False, "reason": "holiday_or_weekend"},
+                },
+            ):
+                ok = snapshot_module.take_snapshot(user_id="u_test")
         self.assertTrue(ok)
 
         conn = app_module.db.get_connection()
