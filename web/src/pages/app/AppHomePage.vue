@@ -32,7 +32,7 @@ type ChartPeriod = '1m' | '3m' | '6m' | '1y' | 'all'
 const store = useKonaStore()
 const homeStore = useHomeStore()
 const router = useRouter()
-const { maskValue } = usePrivacyMode()
+const { maskValue, isPrivacyMode, togglePrivacy } = usePrivacyMode()
 const marketStore = useMarketStore()
 const {
   cashAssets,
@@ -906,6 +906,12 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
+            <button
+              @click.stop="togglePrivacy"
+              style="margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.6; padding: 0 4px;"
+            >
+              {{ isPrivacyMode ? '🙈' : '👁️' }}
+            </button>
           </div>
           <div class="c3-total">{{ masked(formatCurrency(totalAssetsCny)) }}</div>
           <div class="c3-stats">

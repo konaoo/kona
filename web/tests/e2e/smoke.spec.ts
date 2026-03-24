@@ -23,7 +23,7 @@ test('登录后关键页面可正常打开', async ({ page }) => {
   await page.locator('button.submit-btn').click()
 
   await expect(page).toHaveURL(/\/app\/home$/)
-  await expect(page.getByText('我的资产')).toBeVisible()
+  await expect(page.getByText('总资产').first()).toBeVisible()
   await expect(page.locator('.market-strip')).toBeVisible()
 
   const historyResponse = await homeHistoryResponse
