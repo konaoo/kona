@@ -456,6 +456,29 @@ const handleTradeSuccess = async () => {
         <div class="holdings-section">
           <div class="h-header">
             <div class="section-label">持仓明细</div>
+          </div>
+          <div class="h-filters" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div class="tabs" style="width: fit-content">
+              <button
+                v-for="tab in ['all', 'a', 'hk', 'us', 'fund']"
+                :key="tab"
+                @click="selectedTab = tab"
+                class="tab"
+                :class="{ active: selectedTab === tab }"
+              >
+                {{
+                  tab === 'all'
+                    ? '全部'
+                    : tab === 'hk'
+                      ? '港股'
+                      : tab === 'us'
+                        ? '美股'
+                        : tab === 'a'
+                          ? 'A股'
+                          : '基金'
+                }}
+              </button>
+            </div>
             <div class="h-actions">
               <button
                 @click="openAddTradeModal"
@@ -492,29 +515,6 @@ const handleTradeSuccess = async () => {
                   </svg>
                 </button>
               </div>
-            </div>
-          </div>
-          <div class="h-filters">
-            <div class="tabs" style="width: fit-content">
-              <button
-                v-for="tab in ['all', 'a', 'hk', 'us', 'fund']"
-                :key="tab"
-                @click="selectedTab = tab"
-                class="tab"
-                :class="{ active: selectedTab === tab }"
-              >
-                {{
-                  tab === 'all'
-                    ? '全部'
-                    : tab === 'hk'
-                      ? '港股'
-                      : tab === 'us'
-                        ? '美股'
-                        : tab === 'a'
-                          ? 'A股'
-                          : '基金'
-                }}
-              </button>
             </div>
           </div>
 
