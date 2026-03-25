@@ -347,6 +347,22 @@ def repair_breakdowns(
                 )
                 conn.commit()
 
+                # 同步 ledger_daily_snapshots.day_pnl
+                cursor.execute(
+                    """
+                    UPDATE ledger_daily_snapshots
+                    SET day_pnl = (
+                        SELECT COALESCE(SUM(day_pnl), 0.0)
+                        FROM daily_snapshot_market_breakdowns
+                        WHERE date = ? AND user_id = ?
+                    ),
+                    updated_at = datetime('now','localtime')
+                    WHERE date = ? AND user_id = ?
+                    """,
+                    (date_str, uid, date_str, uid),
+                )
+                conn.commit()
+
                 # 同步 daily_snapshots.day_pnl
                 cursor.execute(
                     """
