@@ -616,8 +616,8 @@ class PricePreloader:
 _forex_cache_lock = threading.Lock()
 _forex_cache: Dict[str, float] = {}
 _forex_cache_ts: float = 0.0
-_FOREX_CACHE_TTL = 60.0       # 正常缓存 60 秒
-_FOREX_STALE_TTL = 300.0      # 过期最多容忍 5 分钟
+_FOREX_CACHE_TTL = 600.0       # 10 分钟（汇率日波动极小）
+_FOREX_STALE_TTL = 1800.0      # 过期最多容忍 30 分钟
 
 
 def get_forex_rates() -> Dict[str, float]:
