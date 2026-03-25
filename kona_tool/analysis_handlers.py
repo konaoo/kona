@@ -7,6 +7,7 @@ from flask import g, request
 def create_analysis_payload_handlers(
     *,
     analysis_read_service,
+    realtime_today_service,
 ):
     def _parse_positive_int_arg(name: str):
         raw = request.args.get(name)
@@ -162,9 +163,21 @@ def create_analysis_payload_handlers(
             ledger_id=ledger_id,
         )
 
+    def build_realtime_today_payload():
+        user_id = g.user_id
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
+        return realtime_today_service.build_payload(
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+
     return {
         'overview': build_analysis_overview_payload,
         'calendar': build_analysis_calendar_payload,
         'market_breakdown': build_analysis_market_breakdown_payload,
         'rank': build_analysis_rank_payload,
+        'realtime_today': build_realtime_today_payload,
     }

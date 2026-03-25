@@ -9,10 +9,38 @@ from .request_trace import trace_request_stage
 
 logger = logging.getLogger(__name__)
 
-# 共享线程池，用于给 stats_getter 调用加超时
+# 共享线程池，用于给 realtime_today_service 调用加超时
 _stats_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis_stats")
 
 _DEFAULT_STATS_TIMEOUT = 20.0  # seconds — 待调优，先用宽松值观测实际耗时后再收紧
+
+
+class _StatsGetterRealtimeTodayAdapter:
+    """将旧 stats_getter 转接为 realtime_today_service 接口。
+
+    要求 stats_getter 签名支持 (user_id, *, ledger_id=None)。
+    """
+
+    def __init__(self, stats_getter: Callable[..., Dict[str, Any]]) -> None:
+        self.stats_getter = stats_getter
+
+    def build_payload(self, *, user_id: str | None, ledger_id: int | None = None) -> Dict[str, Any]:
+        stats = self.stats_getter(user_id, ledger_id=ledger_id)
+        day_pnl = float(stats.get("day_pnl") or 0.0)
+        day_pnl_base = float(stats.get("day_pnl_base") or stats.get("total_invest") or 0.0)
+        return {
+            "effective_date": stats.get("day_pnl_effective_date"),
+            "source": "realtime",
+            "scope": {
+                "ledger_id": ledger_id,
+                "mode": "ledger" if ledger_id is not None else "global",
+            },
+            "totals": {
+                "day_pnl": round(day_pnl, 2),
+                "day_pnl_base": round(day_pnl_base, 2),
+                "day_pnl_rate": round(day_pnl / day_pnl_base * 100, 2) if day_pnl_base > 0 else 0.0,
+            },
+        }
 
 
 class AnalysisReadService:
@@ -21,7 +49,8 @@ class AnalysisReadService:
         *,
         db: Any,
         price_batch_getter: Callable[[list[str]], Dict[str, Any]],
-        stats_getter: Callable[[str | None], Dict[str, Any]] | None = None,
+        realtime_today_service: Any | None = None,
+        stats_getter: Callable[..., Dict[str, Any]] | None = None,
         rates_getter: Callable[[], Dict[str, float]] | None = None,
         convert_amount: Callable[[float, str, str, Dict[str, float]], float] | None = None,
         all_markets_closed_getter: Callable[[], bool] | None = None,
@@ -29,7 +58,9 @@ class AnalysisReadService:
     ) -> None:
         self.db = db
         self.price_batch_getter = price_batch_getter
-        self.stats_getter = stats_getter
+        self.realtime_today_service = realtime_today_service or (
+            _StatsGetterRealtimeTodayAdapter(stats_getter) if stats_getter is not None else None
+        )
         self.rates_getter = rates_getter
         self.convert_amount = convert_amount
         self.all_markets_closed_getter = all_markets_closed_getter
@@ -38,33 +69,37 @@ class AnalysisReadService:
     def _get_day_overview(self, user_id: str | None, ledger_id: int | None = None) -> Dict[str, Any]:
         """获取当日盈亏。
 
-        当日概览统一认实时统计层：
-        - 开市时显示盘中实时值
-        - 休市后显示最后一个有效收益日的最终值
-
-        只有 stats_getter 超时或失败时，才 fallback 到快照。
+        优先走实时计算，超时或失败时 fallback 到快照。
         """
-        if ledger_id is None and self.stats_getter is not None:
+        if self.realtime_today_service is not None:
             try:
                 t0 = _time.monotonic()
-                future = _stats_executor.submit(self.stats_getter, user_id)
-                stats = future.result(timeout=self.stats_timeout)
+                future = _stats_executor.submit(
+                    self.realtime_today_service.build_payload,
+                    user_id=user_id,
+                    ledger_id=ledger_id,
+                )
+                realtime_today = future.result(timeout=self.stats_timeout)
                 elapsed = _time.monotonic() - t0
-                logger.info("stats_getter completed in %.3fs", elapsed)
-                pnl = float(stats.get("day_pnl") or 0.0)
-                base = float(stats.get("day_pnl_base") or stats.get("total_invest") or 0.0)
+                logger.info("realtime_today_service completed in %.3fs", elapsed)
+                totals = realtime_today.get("totals") or {}
                 return {
-                    "pnl": round(pnl, 2),
-                    "pnl_rate": round(pnl / base * 100, 2) if base > 0 else 0.0,
-                    "base_value": round(base, 2),
+                    "pnl": round(float(totals.get("day_pnl") or 0.0), 2),
+                    "pnl_rate": round(float(totals.get("day_pnl_rate") or 0.0), 2),
+                    "base_value": round(float(totals.get("day_pnl_base") or 0.0), 2),
+                    "effective_date": realtime_today.get("effective_date"),
+                    "source": "realtime",
                 }
             except _FuturesTimeoutError:
                 elapsed = _time.monotonic() - t0
-                logger.warning("stats_getter timed out after %.3fs, falling back to snapshot", elapsed)
-                pass  # fallback 到快照
+                logger.warning(
+                    "realtime_today_service timed out after %.3fs, falling back to snapshot",
+                    elapsed,
+                )
             except Exception as exc:
-                logger.warning("stats_getter failed (%s), falling back to snapshot", exc)
-                pass  # fallback 到快照
+                logger.warning(
+                    "realtime_today_service failed (%s), falling back to snapshot", exc
+                )
         return self.db.get_pnl_overview("day", user_id, ledger_id=ledger_id)
 
     def build_overview_payload(self, *, period: str, user_id: str | None, ledger_id: int | None = None):
@@ -103,21 +138,27 @@ class AnalysisReadService:
         with trace_request_stage("analysis.calendar.db", time_type=time_type):
             result = self.db.get_calendar_data(time_type, user_id, year=year, month=month, ledger_id=ledger_id)
 
-        # 仅在查询日视图且是当月时，把今天那格替换为实时值（仅全局视图）
-        if time_type == "day" and ledger_id is None and self.stats_getter is not None:
+        # 仅在查询日视图且当月时，把今天那格替换为实时值
+        if time_type == "day" and self.realtime_today_service is not None:
             period = result.get("period") or {}
             if int(period.get("year") or 0) > 0 and int(period.get("month") or 0) > 0:
                 try:
-                    stats = self.stats_getter(user_id)
-                    realtime_pnl = round(float(stats.get("day_pnl") or 0.0), 2)
-                    effective_date = str(stats.get("day_pnl_effective_date") or "").strip()
+                    realtime = self.realtime_today_service.build_payload(
+                        user_id=user_id, ledger_id=ledger_id,
+                    )
+                    totals = realtime.get("totals") or {}
+                    realtime_pnl = round(float(totals.get("day_pnl") or 0.0), 2)
+                    effective_date = str(realtime.get("effective_date") or "").strip()
                     if effective_date:
                         effective_dt = _dt.strptime(effective_date[:10], "%Y-%m-%d")
                     else:
                         effective_dt = _dt.now()
-                    if int(period.get("year") or 0) != effective_dt.year or int(period.get("month") or 0) != effective_dt.month:
+                    if (
+                        int(period.get("year") or 0) != effective_dt.year
+                        or int(period.get("month") or 0) != effective_dt.month
+                    ):
                         return result
-                    
+
                     today_label = str(effective_dt.day)
                     items = list(result.get("items") or [])
                     replaced = False

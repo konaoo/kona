@@ -197,6 +197,32 @@ export type PortfolioSummary = {
   totalRate: number
 }
 
+export type RealtimeTodayPayload = {
+  effective_date?: string
+  source?: string
+  scope?: {
+    ledger_id?: number | null
+    mode?: string
+  }
+  totals?: {
+    total_asset?: number
+    total_market_value?: number
+    total_cash?: number
+    total_other?: number
+    total_liability?: number
+    total_pnl?: number
+    total_pnl_rate?: number
+    day_pnl?: number
+    day_pnl_base?: number
+    day_pnl_rate?: number
+  }
+  breakdown_by_market?: Record<string, {
+    day_pnl?: number
+    day_pnl_base?: number
+  }>
+  generated_at?: string
+}
+
 /** 市场代码列表 */
 export const MARKET_CODES: MarketCode[] = ['a', 'hk', 'us', 'fund']
 

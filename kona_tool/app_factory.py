@@ -64,6 +64,7 @@ from core.analysis_read_service import AnalysisReadService
 from core.history_read_service import HistoryReadService
 from core.portfolio_read_service import PortfolioReadService
 from core.price import PricePreloader
+from core.realtime_today_service import RealtimeTodayService
 
 
 @dataclass(frozen=True)
@@ -259,10 +260,13 @@ def create_app_components(
     else:
         logger.warning("admin_routes module not found; admin APIs are disabled")
 
+    realtime_today_service = RealtimeTodayService(
+        stats_getter=wiring.calculate_portfolio_stats,
+    )
     analysis_read_service = AnalysisReadService(
         db=db,
         price_batch_getter=wiring.batch_get_prices_getter,
-        stats_getter=wiring.calculate_portfolio_stats,
+        realtime_today_service=realtime_today_service,
         rates_getter=wiring.forex_rates_getter,
         convert_amount=portfolio_runtime.convert_amount,
         all_markets_closed_getter=lambda: bool(
@@ -271,6 +275,7 @@ def create_app_components(
     )
     analysis_payload_handlers = create_analysis_payload_handlers(
         analysis_read_service=analysis_read_service,
+        realtime_today_service=realtime_today_service,
     )
     web_entry_handlers = create_web_entry_handlers(
         web_app_dist_dir_getter=wiring.web_app_dist_dir_getter,
@@ -366,6 +371,7 @@ def create_app_components(
             analysis_calendar_payload_getter=analysis_payload_handlers["calendar"],
             analysis_market_breakdown_payload_getter=analysis_payload_handlers["market_breakdown"],
             analysis_rank_payload_getter=analysis_payload_handlers["rank"],
+            realtime_today_payload_getter=analysis_payload_handlers["realtime_today"],
         )
     )
     app.register_blueprint(

@@ -52,6 +52,43 @@ WEB_APP_DIST_DIR = config.BASE_DIR / "static" / "web" / "app"
 WEB_ADMIN_DIST_DIR = config.BASE_DIR / "static" / "web" / "admin"
 
 
+def _calculate_portfolio_stats_proxy(
+    user_id: str | None = None,
+    now_utc=None,
+    ledger_id: int | None = None,
+):
+    """通过 app.py 全局符号代理实时计算，保留单测 patch 入口。"""
+    from core import snapshot as snapshot_module
+
+    original_batch_get_prices = snapshot_module.batch_get_prices
+    original_get_forex_rates = snapshot_module.get_forex_rates
+    try:
+        snapshot_module.batch_get_prices = batch_get_prices
+        snapshot_module.get_forex_rates = get_forex_rates
+        return calculate_portfolio_stats(user_id=user_id, now_utc=now_utc, ledger_id=ledger_id)
+    finally:
+        snapshot_module.batch_get_prices = original_batch_get_prices
+        snapshot_module.get_forex_rates = original_get_forex_rates
+
+
+def _take_snapshot_proxy(user_id: str | None = None):
+    """通过 app.py 全局符号代理快照计算，保留单测 patch 入口。"""
+    from core import snapshot as snapshot_module
+
+    original_batch_get_prices = snapshot_module.batch_get_prices
+    original_get_forex_rates = snapshot_module.get_forex_rates
+    original_get_fund_latest_nav_date = snapshot_module.get_fund_latest_nav_date
+    try:
+        snapshot_module.batch_get_prices = batch_get_prices
+        snapshot_module.get_forex_rates = get_forex_rates
+        snapshot_module.get_fund_latest_nav_date = get_fund_latest_nav_date
+        return take_snapshot(user_id)
+    finally:
+        snapshot_module.batch_get_prices = original_batch_get_prices
+        snapshot_module.get_forex_rates = original_get_forex_rates
+        snapshot_module.get_fund_latest_nav_date = original_get_fund_latest_nav_date
+
+
 def _issue_auth_tokens(user_id: str, username: str, device_id: str = "") -> dict:
     """兼容旧测试入口，内部实现已迁到 auth_routes.py。"""
     return _issue_auth_tokens_impl(db, user_id, username, device_id=device_id)
@@ -87,9 +124,13 @@ _wiring = AppWiring(
     price_runtime_metrics_getter=lambda: get_price_runtime_metrics(),
     price_source_health_getter=lambda: get_price_source_health(),
     fund_latest_nav_date_getter=lambda code: get_fund_latest_nav_date(code),
-    calculate_portfolio_stats=calculate_portfolio_stats,
-    background_snapshot_runner=lambda: take_snapshot(),
-    take_snapshot_for_user=lambda user_id: take_snapshot(user_id),
+    calculate_portfolio_stats=lambda user_id=None, now_utc=None, ledger_id=None: _calculate_portfolio_stats_proxy(
+        user_id=user_id,
+        now_utc=now_utc,
+        ledger_id=ledger_id,
+    ),
+    background_snapshot_runner=lambda: _take_snapshot_proxy(),
+    take_snapshot_for_user=lambda user_id: _take_snapshot_proxy(user_id),
     parse_code=parse_code,
     infer_asset_type=infer_asset_type,
     market_statuses_getter=lambda *args, **kwargs: get_market_statuses(*args, **kwargs),

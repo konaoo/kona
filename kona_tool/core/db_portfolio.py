@@ -2788,16 +2788,22 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def get_today_buy_transactions(self, date_str: str, user_id: str = None) -> Dict[str, Dict[str, float]]:
+    def get_today_buy_transactions(
+        self,
+        date_str: str,
+        user_id: str = None,
+        ledger_id: int | None = None,
+    ) -> Dict[str, Dict[str, float]]:
         """返回指定日期的加仓记录，按 code 聚合 qty 和 amount。
 
         Returns: {code: {"qty": float, "amount": float}}
         """
-        return self.get_buy_transactions_by_effective_date(date_str, user_id=user_id)
+        return self.get_buy_transactions_by_effective_date(date_str, user_id=user_id, ledger_id=ledger_id)
 
     def get_buy_transactions_grouped_by_effective_date(
         self,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
         """按市场本地日期聚合加仓记录。
 
@@ -2813,6 +2819,8 @@ class PortfolioDatabaseMixin:
         cursor = conn.cursor()
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
         try:
             cursor.execute(
                 """
@@ -2820,8 +2828,8 @@ class PortfolioDatabaseMixin:
                 FROM transactions
                 WHERE type = '加仓' AND
                 """
-                + f" {user_condition}",
-                user_param,
+                + f" {user_condition}{ledger_condition}",
+                user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 identity = self._resolve_transaction_row_identity(row)
@@ -2844,8 +2852,9 @@ class PortfolioDatabaseMixin:
         self,
         date_str: str,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Dict[str, float]]:
-        grouped = self.get_buy_transactions_grouped_by_effective_date(user_id=user_id)
+        grouped = self.get_buy_transactions_grouped_by_effective_date(user_id=user_id, ledger_id=ledger_id)
         return grouped.get(str(date_str or "").strip(), {})
 
     def get_portfolio_transactions(self, code: str, user_id: str = None, ledger_id: int | None = None) -> list:
@@ -2951,15 +2960,21 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
-    def get_realized_pnl_by_date(self, date_str: str, user_id: str = None) -> Dict[str, float]:
+    def get_realized_pnl_by_date(
+        self,
+        date_str: str,
+        user_id: str = None,
+        ledger_id: int | None = None,
+    ) -> Dict[str, float]:
         """获取指定日期按市场聚合的已实现盈亏。"""
-        grouped = self.get_realized_pnl_grouped_by_effective_date(user_id=user_id)
+        grouped = self.get_realized_pnl_grouped_by_effective_date(user_id=user_id, ledger_id=ledger_id)
         normalized = str(date_str or "").strip()
         return grouped.get(normalized, {k: 0.0 for k in DEFAULT_MARKETS})
 
     def get_realized_pnl_grouped_by_effective_date(
         self,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, Dict[str, float]]:
         """按市场本地日期聚合已实现盈亏。"""
         conn = self.get_connection()
@@ -2967,6 +2982,8 @@ class PortfolioDatabaseMixin:
         grouped: Dict[str, Dict[str, float]] = {}
         user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
             cursor.execute(
@@ -2975,8 +2992,8 @@ class PortfolioDatabaseMixin:
                 FROM transactions
                 WHERE type = '减仓'
                 """
-                + f" {user_condition}",
-                user_param,
+                + f" {user_condition}{ledger_condition}",
+                user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 identity = self._resolve_transaction_row_identity(row)
@@ -2998,15 +3015,18 @@ class PortfolioDatabaseMixin:
         code: str,
         effective_date: str,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> float:
         """反推出某只资产在 effective_date 当日收盘后的持仓数量。"""
         conn = self.get_connection()
         cursor = conn.cursor()
         user_condition = "AND user_id = ?" if user_id else "AND (user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
 
         try:
-            current_row = self._fetch_portfolio_row_by_code(cursor, code, user_id)
+            current_row = self._fetch_portfolio_row_by_code(cursor, code, user_id, ledger_id=ledger_id)
             qty = float(current_row["qty"] or 0.0) if current_row else 0.0
             cursor.execute(
                 """
@@ -3015,8 +3035,9 @@ class PortfolioDatabaseMixin:
                 WHERE code = ?
                 """
                 + f" {user_condition}"
+                + ledger_condition
                 + " ORDER BY time DESC, id DESC",
-                (code,) + user_param,
+                (code,) + user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 tx_effective_date = self._resolve_transaction_row_identity(row, fallback_code=code)["effective_date"]
@@ -3038,8 +3059,9 @@ class PortfolioDatabaseMixin:
                   AND created_at > ?
                 """
                 + f" {user_condition}"
+                + ledger_condition
                 + " ORDER BY created_at DESC, id DESC",
-                (code, f"{effective_date} 23:59:59") + user_param,
+                (code, f"{effective_date} 23:59:59") + user_param + ledger_param,
             )
             for row in cursor.fetchall():
                 before_qty = row["before_qty"]

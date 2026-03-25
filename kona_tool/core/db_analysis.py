@@ -755,14 +755,27 @@ class AnalysisDatabaseMixin:
 
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
+        use_ledger_tables = ledger_id is not None and bool(user_id)
 
         try:
             now = _get_datetime_now()
-            all_dates = self._fetch_all_calendar_dates(
-                cursor,
-                user_condition=user_condition,
-                user_param=user_param,
-            )
+            if use_ledger_tables:
+                cursor.execute(
+                    """
+                    SELECT date
+                    FROM ledger_daily_snapshots
+                    WHERE user_id = ? AND ledger_id = ?
+                    ORDER BY date ASC
+                    """,
+                    (str(user_id or ""), int(ledger_id)),
+                )
+                all_dates = [str(row["date"]) for row in cursor.fetchall() if row["date"]]
+            else:
+                all_dates = self._fetch_all_calendar_dates(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                )
 
             if not all_dates:
                 return {
@@ -812,23 +825,46 @@ class AnalysisDatabaseMixin:
             if target_year == now.year and target_month == now.month:
                 month_end = min(month_end, now.strftime("%Y-%m-%d"))
 
-            effective_series = self._build_effective_pnl_series(
-                cursor,
-                user_condition=user_condition,
-                user_param=user_param,
-                start_date=month_start,
-                end_date=month_end,
-            )
-
-            cursor.execute(
-                f"""
-                SELECT date, market, day_pnl, source
-                FROM daily_snapshot_market_breakdowns
-                WHERE date >= ? AND date <= ? AND {user_condition}
-                ORDER BY date ASC
-                """,
-                (month_start, month_end) + user_param,
-            )
+            if use_ledger_tables:
+                cursor.execute(
+                    """
+                    SELECT date, day_pnl
+                    FROM ledger_daily_snapshots
+                    WHERE date >= ? AND date <= ? AND user_id = ? AND ledger_id = ?
+                    ORDER BY date ASC
+                    """,
+                    (month_start, month_end, str(user_id or ""), int(ledger_id)),
+                )
+                effective_series = [
+                    {"date": str(row["date"]), "pnl": _round_pnl(row["day_pnl"])}
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(
+                    """
+                    SELECT date, market, day_pnl, source
+                    FROM ledger_daily_snapshot_market_breakdowns
+                    WHERE date >= ? AND date <= ? AND user_id = ? AND ledger_id = ?
+                    ORDER BY date ASC
+                    """,
+                    (month_start, month_end, str(user_id or ""), int(ledger_id)),
+                )
+            else:
+                effective_series = self._build_effective_pnl_series(
+                    cursor,
+                    user_condition=user_condition,
+                    user_param=user_param,
+                    start_date=month_start,
+                    end_date=month_end,
+                )
+                cursor.execute(
+                    f"""
+                    SELECT date, market, day_pnl, source
+                    FROM daily_snapshot_market_breakdowns
+                    WHERE date >= ? AND date <= ? AND {user_condition}
+                    ORDER BY date ASC
+                    """,
+                    (month_start, month_end) + user_param,
+                )
             breakdown_rows = cursor.fetchall()
 
             by_date: Dict[str, Dict[str, Any]] = {}

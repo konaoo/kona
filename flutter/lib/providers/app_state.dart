@@ -277,8 +277,10 @@ class AppState extends ChangeNotifier {
   // ─── 账本状态 ─────────────────────────────────────
   List<Map<String, dynamic>> _ledgers = [];
   int? _currentLedgerId;
+  Map<String, dynamic> _realtimeToday = const {};
   List<Map<String, dynamic>> get ledgers => _ledgers;
   int? get currentLedgerId => _currentLedgerId;
+  Map<String, dynamic> get realtimeToday => _realtimeToday;
 
   List<Map<String, dynamic>> _cloneLedgers(
     List<Map<String, dynamic>> source,
@@ -893,9 +895,23 @@ class AppState extends ChangeNotifier {
   /// 刷新首页数据（全量）
   /// 刷新首页数据
   Future<void> refreshHomeData({int? ledgerId}) async {
-    await _refreshCoordinatorState.refreshHomeData(
-      ledgerId: ledgerId ?? _currentLedgerId,
-    );
+    final resolvedLedgerId = ledgerId ?? _currentLedgerId;
+    await Future.wait<void>([
+      _refreshCoordinatorState.refreshHomeData(ledgerId: resolvedLedgerId),
+      refreshRealtimeToday(ledgerId: resolvedLedgerId),
+    ]);
+  }
+
+  Future<void> refreshRealtimeToday({int? ledgerId}) async {
+    try {
+      final payload = await _api.getRealtimeToday(
+        ledgerId: ledgerId ?? _currentLedgerId,
+      );
+      _realtimeToday = payload;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to load realtime today: $e');
+    }
   }
 
   /// 按版本增量刷新，失败时自动回退全量刷新。

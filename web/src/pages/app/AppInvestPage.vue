@@ -6,6 +6,7 @@ import { api } from '@/shared/http'
 import { buildTrendSparklinePath, type TrendItem } from '@/shared/assetTrend'
 import { useKonaStore } from '@/stores/composables'
 import { useMarketStore } from '@/stores/market'
+import { useRealtimeTodayStore } from '@/stores/realtimeToday'
 import {
   buildMarketSummaries,
   buildPortfolioSummary,
@@ -20,6 +21,7 @@ import AppShell from '@/layouts/AppShell.vue'
 // Stores & Composables
 const store = useKonaStore()
 const marketStore = useMarketStore()
+const realtimeTodayStore = useRealtimeTodayStore()
 const { maskValue } = usePrivacyMode()
 function masked(text: string): string { return maskValue(text) }
 
@@ -76,15 +78,17 @@ const rows = computed(() => (store?.rows as any)?.value || [])
 
 const investTotal = computed(() => {
   const summary = buildPortfolioSummary(rows.value || [])
+  const totals = realtimeTodayStore.payload?.totals || {}
   return {
-    mv: summary.totalValue,
+    mv: Number(totals.total_asset ?? summary.totalValue),
     cost: summary.totalCostAbs,
-    dayPnl: summary.todayPnl,
+    marketValue: Number(totals.total_market_value ?? summary.totalValue),
+    dayPnl: Number(totals.day_pnl ?? summary.todayPnl),
     floatPnl: summary.floatPnl,
-    totalPnl: summary.totalPnl,
-    dayRate: summary.dayRate,
+    totalPnl: Number(totals.total_pnl ?? summary.totalPnl),
+    dayRate: Number(totals.day_pnl_rate ?? summary.dayRate),
     floatRate: summary.floatRate,
-    totalRate: summary.totalRate
+    totalRate: Number(totals.total_pnl_rate ?? summary.totalRate)
   }
 })
 
@@ -93,7 +97,7 @@ const marketCards = computed(() => buildMarketSummaries(rows.value || []))
 
 // Distribution Donut Chart
 const distributionData = computed(() => {
-  const total = investTotal.value.mv || 1
+  const total = investTotal.value.marketValue || 1
   return marketCards.value
     .map(m => ({
       name: m.name,
@@ -280,6 +284,7 @@ async function loadAssetTrends() {
 async function refreshInvestReadState() {
   try {
     await store.refreshStaticOnly()
+    await realtimeTodayStore.load()
     await loadAssetTrends()
     void store.refreshQuotesOnly()
   } catch (e) {

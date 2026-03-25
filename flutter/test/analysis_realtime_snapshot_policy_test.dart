@@ -9,13 +9,13 @@ class _RealtimeAppState extends AppState {
   _RealtimeAppState() : super(tokenLoader: () async => null);
 
   @override
-  bool get portfolioLoaded => true;
-
-  @override
-  double get investDayPnl => 88;
-
-  @override
-  double get investDayPnlRate => 1.23;
+  Map<String, dynamic> get realtimeToday => {
+    'effective_date': DateTime.now().toIso8601String().split('T').first,
+    'totals': {
+      'day_pnl': 88.0,
+      'day_pnl_rate': 1.23,
+    },
+  };
 }
 
 void main() {
@@ -130,7 +130,7 @@ void main() {
     expect(find.text('+3.33%'), findsOneWidget);
   });
 
-  testWidgets('当前月今天那格展示快照口径', (tester) async {
+  testWidgets('当前月今天那格展示 realtime today 口径', (tester) async {
     final now = DateTime.now();
     final todayLabel = '${now.month}-${now.day}';
     await tester.pumpWidget(
@@ -151,10 +151,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('¥88'), findsOneWidget);
-    expect(find.text('41'), findsWidgets);
+    expect(find.text('88'), findsWidgets);
   });
 
-  testWidgets('非当前月今天那格保持快照，不会被实时值覆盖', (tester) async {
+  testWidgets('非当前月历史格子保持快照，不会被 realtime today 覆盖', (tester) async {
     final now = DateTime.now();
     final previousMonth = now.month == 1
         ? DateTime(now.year - 1, 12, 1)

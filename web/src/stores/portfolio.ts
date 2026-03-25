@@ -10,6 +10,7 @@ import { buildPortfolioSummary } from './portfolioMetrics'
 import type { MarketCode, PortfolioItem, PositionRow, PortfolioSummary } from './types'
 import { useMarketStore } from './market'
 import { useQuoteStore } from './quote'
+import { useLedgerScopeStore } from './ledgerScope'
 
 const MARKET_PREOPEN_TIMEZONES: Partial<Record<MarketCode, string>> = {
   a: 'Asia/Shanghai',
@@ -365,7 +366,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   async function loadPortfolio() {
     loading.value = true
     try {
-      const items = await api.get<PortfolioItem[]>('/api/portfolio?type=all&with_metrics=1', true)
+      const ledgerScopeStore = useLedgerScopeStore()
+      const params = new URLSearchParams({ type: 'all', with_metrics: '1' })
+      if (ledgerScopeStore.currentLedgerId != null) {
+        params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+      }
+      const items = await api.get<PortfolioItem[]>(`/api/portfolio?${params.toString()}`, true)
       portfolio.value = Array.isArray(items) ? items : []
     } finally {
       loading.value = false

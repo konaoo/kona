@@ -840,31 +840,13 @@ class InvestPageState extends State<InvestPage> {
 
   // ─── Hero Card ─────────────────────────────────
   Widget _buildHeroCard(AppState appState) {
+    final realtimeToday = appState.realtimeToday;
+    final realtimeTotals = realtimeToday['totals'] is Map
+        ? Map<String, dynamic>.from(realtimeToday['totals'] as Map)
+        : const <String, dynamic>{};
     final items = appState.portfolio;
-    final totalValueCny = PortfolioMetricsService.sumMetricOrNull(
-      items,
-      (item) => PortfolioMetricsService.resolveLiveValueCny(
-        item,
-        priceInfo: appState.resolvePriceInfo(item),
-        fallbackRateToCny: appState.getCurrencyRate(item.curr),
-      ),
-    );
-    final dayPnlCny = PortfolioMetricsService.sumMetricWhenAny(
-      items,
-      (item) => PortfolioMetricsService.resolveCurrentDayPnlCny(
-        item,
-        priceInfo: appState.resolvePriceInfo(item),
-        fallbackRateToCny: appState.getCurrencyRate(item.curr),
-      ),
-    );
-    final dayPnlBaseCny = PortfolioMetricsService.sumMetricWhenAny(
-      items,
-      (item) => PortfolioMetricsService.resolveCurrentDayPnlBaseCny(
-        item,
-        priceInfo: appState.resolvePriceInfo(item),
-        fallbackRateToCny: appState.getCurrencyRate(item.curr),
-      ),
-    );
+    final totalValueCny = (realtimeTotals['total_asset'] as num?)?.toDouble();
+    final dayPnlCny = (realtimeTotals['day_pnl'] as num?)?.toDouble();
     final holdPnlCny = PortfolioMetricsService.sumMetricOrNull(
       items,
       (item) => PortfolioMetricsService.resolveLiveFloatPnlCny(
@@ -873,14 +855,7 @@ class InvestPageState extends State<InvestPage> {
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
       ),
     );
-    final totalPnlCny = PortfolioMetricsService.sumMetricOrNull(
-      items,
-      (item) => PortfolioMetricsService.resolveLiveTotalPnlCny(
-        item,
-        priceInfo: appState.resolvePriceInfo(item),
-        fallbackRateToCny: appState.getCurrencyRate(item.curr),
-      ),
-    );
+    final totalPnlCny = (realtimeTotals['total_pnl'] as num?)?.toDouble();
     final costAbsCny = PortfolioMetricsService.sumAbsMetricOrNull(
       items,
       (item) => PortfolioMetricsService.resolveCostCnyLive(
@@ -888,22 +863,12 @@ class InvestPageState extends State<InvestPage> {
         fallbackRateToCny: appState.getCurrencyRate(item.curr),
       ),
     );
-    final totalPnlDenominatorCny = PortfolioMetricsService.sumMetricOrNull(
-      items,
-      PortfolioMetricsService.resolveTotalPnlDenominatorCny,
-    );
-    final dayPnlRate = PortfolioMetricsService.calcDayPnlRateNullable(
-      dayPnlCny,
-      dayPnlBaseCny,
-    );
+    final dayPnlRate = (realtimeTotals['day_pnl_rate'] as num?)?.toDouble();
     final holdPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
       holdPnlCny,
       costAbsCny,
     );
-    final totalPnlRate = PortfolioMetricsService.calcHoldingPnlRateNullable(
-      totalPnlCny,
-      totalPnlDenominatorCny,
-    );
+    final totalPnlRate = (realtimeTotals['total_pnl_rate'] as num?)?.toDouble();
     final dayColor = dayPnlCny == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dayPnlCny);
@@ -928,7 +893,7 @@ class InvestPageState extends State<InvestPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '投资总市值',
+                    '投资总资产',
                     style: _S.heroLabel.copyWith(
                       color: AppTheme.heroLabelColor,
                     ),

@@ -1,5 +1,4 @@
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -139,137 +138,36 @@ class ReadServicesTests(unittest.TestCase):
             ],
         )
 
-
-    def test_calendar_today_cell_uses_stats_getter(self):
-        """日历当月视图里，今天那格应用实时 day_pnl 替换快照值"""
+    def test_calendar_payload_stays_snapshot_only_even_when_stats_getter_exists(self):
+        """calendar 接口必须保持 snapshot-only，不再注入 today realtime。"""
         today = datetime.now()
-        today_label = str(today.day)
-
-        # db 返回今天那格的快照值 10.0
         db = _FakeDb()
         db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
-            "items": [{"label": today_label, "pnl": 10.0}],
-            "total_pnl": 10.0,
-            "total_rate": 1.0,
-            "period": {"time_type": "day", "year": today.year, "month": today.month},
-        }
-
-        service = AnalysisReadService(
-            db=db,
-            price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 55.0, "total_invest": 1000.0},
-        )
-
-        with self.app.test_request_context("/api/analysis/calendar?type=day"):
-            result = service.build_calendar_payload(
-                time_type="day", user_id="u_1", year=today.year, month=today.month
-            )
-
-        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
-        self.assertIsNotNone(today_item)
-        self.assertAlmostEqual(today_item["pnl"], 55.0)
-        # 底部汇总不变，仍是快照值
-        self.assertAlmostEqual(result["total_pnl"], 10.0)
-
-    def test_calendar_today_cell_added_when_no_snapshot_yet(self):
-        """今天还没有快照时，今天那格应从实时计算补上"""
-        today = datetime.now()
-        today_label = str(today.day)
-
-        db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
-            "items": [],  # 今天还没有快照
-            "total_pnl": 0.0,
-            "total_rate": 0.0,
-            "period": {"time_type": "day", "year": today.year, "month": today.month},
-        }
-
-        service = AnalysisReadService(
-            db=db,
-            price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 77.0, "total_invest": 1000.0},
-        )
-
-        with self.app.test_request_context("/api/analysis/calendar?type=day"):
-            result = service.build_calendar_payload(
-                time_type="day", user_id="u_1", year=today.year, month=today.month
-            )
-
-        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
-        self.assertIsNotNone(today_item)
-        self.assertAlmostEqual(today_item["pnl"], 77.0)
-
-    def test_calendar_effective_date_cell_uses_stats_getter(self):
-        """跨时区夜盘应覆盖到收益归属日，不是北京时间今天。"""
-        today = datetime.now()
-        effective_dt = today - timedelta(days=1)
-        effective_label = str(effective_dt.day)
-        today_label = str(today.day)
-
-        db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
-            "items": [
-                {"label": effective_label, "pnl": 10.0},
-                {"label": today_label, "pnl": 0.0},
-            ],
-            "total_pnl": 10.0,
-            "total_rate": 1.0,
-            "period": {"time_type": "day", "year": effective_dt.year, "month": effective_dt.month},
-        }
-
-        service = AnalysisReadService(
-            db=db,
-            price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {
-                "day_pnl": -794.0,
-                "day_pnl_effective_date": effective_dt.strftime("%Y-%m-%d"),
-                "total_invest": 1000.0,
-            },
-        )
-
-        with self.app.test_request_context("/api/analysis/calendar?type=day"):
-            result = service.build_calendar_payload(
-                time_type="day",
-                user_id="u_1",
-                year=effective_dt.year,
-                month=effective_dt.month,
-            )
-
-        effective_item = next((i for i in result["items"] if i["label"] == effective_label), None)
-        today_item = next((i for i in result["items"] if i["label"] == today_label), None)
-        self.assertIsNotNone(effective_item)
-        self.assertAlmostEqual(effective_item["pnl"], -794.0)
-        self.assertAlmostEqual(today_item["pnl"], 0.0)
-
-    def test_calendar_past_month_not_affected_by_stats_getter(self):
-        """查的是历史月份，今天那格不应被 stats_getter 修改"""
-        db = _FakeDb()
-        db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
-            "items": [{"label": "1-15", "pnl": 20.0}],
+            "items": [{"label": f"{today.month}-{today.day}", "pnl": 20.0}],
             "total_pnl": 20.0,
             "total_rate": 2.0,
-            "period": {"time_type": "day", "year": 2026, "month": 1},
+            "period": {"time_type": "day", "year": today.year, "month": today.month},
         }
 
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 99.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 99.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/calendar?type=day"):
             result = service.build_calendar_payload(
-                time_type="day", user_id="u_1", year=2026, month=1
+                time_type="day", user_id="u_1", year=today.year, month=today.month
             )
 
-        # 历史月份数据不应被修改
         self.assertEqual(result["items"][0]["pnl"], 20.0)
+        self.assertEqual(result["total_pnl"], 20.0)
 
     def test_analysis_overview_day_uses_stats_getter(self):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""
         called_with = []
 
-        def fake_stats_getter(user_id):
+        def fake_stats_getter(user_id, ledger_id=None):
             called_with.append(user_id)
             return {"day_pnl": 99.0, "total_invest": 1000.0}
 
@@ -291,7 +189,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=self.db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {
+            stats_getter=lambda user_id, ledger_id=None: {
                 "day_pnl": 90.0,
                 "day_pnl_base": 600.0,
                 "total_invest": 1000.0,
@@ -304,28 +202,29 @@ class ReadServicesTests(unittest.TestCase):
         self.assertAlmostEqual(result["day"]["base_value"], 600.0)
         self.assertAlmostEqual(result["day"]["pnl_rate"], 15.0)
 
-    def test_analysis_overview_day_falls_back_to_snapshot_on_error(self):
-        """stats_getter 抛异常时，应 fallback 回 db.get_pnl_overview"""
-        def failing_stats_getter(user_id):
-            raise RuntimeError("price fetch failed")
+    def test_analysis_overview_day_falls_back_to_snapshot_when_realtime_fails(self):
+        """realtime 失败时应 fallback 到快照，不抛异常。"""
+        class _FailingRealtimeService:
+            def build_payload(self, *, user_id, ledger_id=None):
+                raise RuntimeError("price fetch failed")
 
         service = AnalysisReadService(
             db=self.db,
             price_batch_getter=lambda codes: {},
-            stats_getter=failing_stats_getter,
+            realtime_today_service=_FailingRealtimeService(),
         )
 
         with self.app.test_request_context("/api/analysis/overview?period=day"):
             result = service.build_overview_payload(period="day", user_id="u_1")
 
-        # _FakeDb.get_pnl_overview 返回 {"pnl": 12.34, ...}
+        # fallback 到 db.get_pnl_overview 的返回值
         self.assertAlmostEqual(result["day"]["pnl"], 12.34)
 
     def test_overview_day_still_uses_stats_getter_when_all_markets_closed(self):
         """全市场休市后，当日概览仍应显示最后一个有效收益日的最终值"""
         stats_called = []
 
-        def tracking_stats_getter(user_id):
+        def tracking_stats_getter(user_id, ledger_id=None):
             stats_called.append(user_id)
             return {"day_pnl": 99.0, "total_invest": 1000.0}
 
@@ -347,7 +246,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=self.db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 88.0, "total_invest": 1000.0},
             all_markets_closed_getter=lambda: False,  # 有市场开市
         )
 
@@ -355,26 +254,6 @@ class ReadServicesTests(unittest.TestCase):
             result = service.build_overview_payload(period="day", user_id="u_1")
 
         self.assertAlmostEqual(result["day"]["pnl"], 88.0)
-
-    def test_overview_day_falls_back_on_stats_getter_timeout(self):
-        """stats_getter 超时应 fallback 到快照"""
-        def slow_stats_getter(user_id):
-            time.sleep(1.0)  # 比 timeout 慢
-            return {"day_pnl": 99.0, "total_invest": 1000.0}
-
-        service = AnalysisReadService(
-            db=self.db,
-            price_batch_getter=lambda codes: {},
-            stats_getter=slow_stats_getter,
-            all_markets_closed_getter=lambda: False,
-            stats_timeout=0.1,  # 100ms 超时
-        )
-
-        with self.app.test_request_context("/api/analysis/overview?period=day"):
-            result = service.build_overview_payload(period="day", user_id="u_1")
-
-        # 超时后 fallback 到快照值
-        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
 
     def test_rank_uses_cny_for_cross_currency_sorting(self):
         """多货币持仓排行应换算为 CNY 后排序，返回值保持原始货币"""
@@ -468,7 +347,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 88.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/market_breakdown"):
@@ -502,7 +381,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 999.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 999.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/market_breakdown"):

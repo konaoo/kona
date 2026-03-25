@@ -311,6 +311,7 @@ class SnapshotDatabaseMixin:
         day_pnl_by_market: Dict[str, float],
         total_day_pnl: float,
         user_id: str = None,
+        snapshot_date: str | None = None,
         source: str = "exact",
         confidence: float = 1.0,
         meta_by_market: Optional[Dict[str, Any]] = None,
@@ -343,10 +344,11 @@ class SnapshotDatabaseMixin:
                 cursor.execute(
                     """
                     INSERT INTO daily_snapshot_market_breakdowns
-                    (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    (date, user_id, market, day_pnl, snapshot_date, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                     ON CONFLICT(date, user_id, market) DO UPDATE SET
                         day_pnl = excluded.day_pnl,
+                        snapshot_date = excluded.snapshot_date,
                         source = excluded.source,
                         confidence = excluded.confidence,
                         meta_json = excluded.meta_json,
@@ -357,6 +359,7 @@ class SnapshotDatabaseMixin:
                         uid,
                         market,
                         round(float(normalized[market]), 2),
+                        str(snapshot_date or date_str or ""),
                         str(source or "exact"),
                         float(confidence),
                         meta_json,
@@ -376,6 +379,7 @@ class SnapshotDatabaseMixin:
         date_str: str,
         market_updates: Dict[str, float],
         user_id: str = None,
+        snapshot_date: str | None = None,
         source: str = "exact",
         confidence: float = 1.0,
         meta_by_market: Optional[Dict[str, Any]] = None,
@@ -408,10 +412,11 @@ class SnapshotDatabaseMixin:
                 cursor.execute(
                     """
                     INSERT INTO daily_snapshot_market_breakdowns
-                    (date, user_id, market, day_pnl, source, confidence, meta_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    (date, user_id, market, day_pnl, snapshot_date, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                     ON CONFLICT(date, user_id, market) DO UPDATE SET
                         day_pnl = excluded.day_pnl,
+                        snapshot_date = excluded.snapshot_date,
                         source = excluded.source,
                         confidence = excluded.confidence,
                         meta_json = excluded.meta_json,
@@ -422,6 +427,7 @@ class SnapshotDatabaseMixin:
                         uid,
                         market,
                         value,
+                        str(snapshot_date or date_str or ""),
                         str(source or "exact"),
                         float(confidence),
                         meta_json,
@@ -484,6 +490,329 @@ class SnapshotDatabaseMixin:
             return False
         finally:
             conn.close()
+
+    def sync_ledger_daily_snapshot_day_pnl_from_breakdown(
+        self,
+        *,
+        date_str: str,
+        user_id: str,
+        ledger_id: int,
+    ) -> bool:
+        """按账本分市场拆分回写指定日期的账本 day_pnl。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(day_pnl), 0.0) AS total
+                FROM ledger_daily_snapshot_market_breakdowns
+                WHERE date = ? AND user_id = ? AND ledger_id = ?
+                """,
+                (str(date_str or ""), uid, int(ledger_id)),
+            )
+            row = cursor.fetchone()
+            total = round(float((row["total"] if row else 0.0) or 0.0), 2)
+            cursor.execute(
+                """
+                UPDATE ledger_daily_snapshots
+                SET day_pnl = ?, created_at = datetime('now','localtime')
+                WHERE date = ? AND user_id = ? AND ledger_id = ?
+                """,
+                (total, str(date_str or ""), uid, int(ledger_id)),
+            )
+            updated = int(cursor.rowcount or 0)
+            conn.commit()
+            return updated > 0
+        except Exception as exc:
+            logger.error(
+                "Failed to sync ledger day_pnl from breakdown date=%s user_id=%s ledger_id=%s: %s",
+                date_str,
+                uid,
+                ledger_id,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_ledger_daily_snapshot_market_breakdown(
+        self,
+        *,
+        user_id: str,
+        ledger_id: int,
+        date_str: str,
+        day_pnl_by_market: Dict[str, float],
+        total_day_pnl: float,
+        snapshot_date: str | None = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """保存账本级分市场收益快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            normalized = {k: 0.0 for k in MARKET_BREAKDOWN_MARKETS}
+            for market in ("a", "hk", "us", "fund"):
+                normalized[market] = float((day_pnl_by_market or {}).get(market, 0.0) or 0.0)
+            explicit_unallocated = (day_pnl_by_market or {}).get("unallocated")
+            if explicit_unallocated is None:
+                allocated = sum(normalized[m] for m in ("a", "hk", "us", "fund"))
+                normalized["unallocated"] = float(total_day_pnl or 0.0) - allocated
+            else:
+                normalized["unallocated"] = float(explicit_unallocated or 0.0)
+
+            market_meta = meta_by_market or {}
+            for market in MARKET_BREAKDOWN_MARKETS:
+                payload = market_meta.get(market)
+                meta_json = None
+                if payload is not None:
+                    try:
+                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    except Exception:
+                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
+                cursor.execute(
+                    """
+                    INSERT INTO ledger_daily_snapshot_market_breakdowns
+                    (user_id, ledger_id, date, snapshot_date, market, day_pnl, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    ON CONFLICT(user_id, ledger_id, date, market) DO UPDATE SET
+                        snapshot_date = excluded.snapshot_date,
+                        day_pnl = excluded.day_pnl,
+                        source = excluded.source,
+                        confidence = excluded.confidence,
+                        meta_json = excluded.meta_json,
+                        updated_at = datetime('now','localtime')
+                    """,
+                    (
+                        uid,
+                        int(ledger_id),
+                        str(date_str or ""),
+                        str(snapshot_date or date_str or ""),
+                        market,
+                        round(float(normalized[market]), 2),
+                        str(source or "exact"),
+                        float(confidence),
+                        meta_json,
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to save ledger market breakdown ledger=%s date=%s user_id=%s: %s",
+                ledger_id,
+                date_str,
+                uid,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_ledger_daily_snapshot_market_breakdown_partial(
+        self,
+        *,
+        user_id: str,
+        ledger_id: int,
+        date_str: str,
+        market_updates: Dict[str, float],
+        snapshot_date: str | None = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """局部更新账本级分市场收益快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            clean_updates = {}
+            for raw_market, raw_value in (market_updates or {}).items():
+                market = str(raw_market or "").strip().lower()
+                if market not in MARKET_BREAKDOWN_MARKETS:
+                    continue
+                clean_updates[market] = round(float(raw_value or 0.0), 2)
+
+            if not clean_updates:
+                return True
+
+            market_meta = meta_by_market or {}
+            for market, value in clean_updates.items():
+                payload = market_meta.get(market)
+                meta_json = None
+                if payload is not None:
+                    try:
+                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    except Exception:
+                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
+                cursor.execute(
+                    """
+                    INSERT INTO ledger_daily_snapshot_market_breakdowns
+                    (user_id, ledger_id, date, snapshot_date, market, day_pnl, source, confidence, meta_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    ON CONFLICT(user_id, ledger_id, date, market) DO UPDATE SET
+                        snapshot_date = excluded.snapshot_date,
+                        day_pnl = excluded.day_pnl,
+                        source = excluded.source,
+                        confidence = excluded.confidence,
+                        meta_json = excluded.meta_json,
+                        updated_at = datetime('now','localtime')
+                    """,
+                    (
+                        uid,
+                        int(ledger_id),
+                        str(date_str or ""),
+                        str(snapshot_date or date_str or ""),
+                        market,
+                        value,
+                        str(source or "exact"),
+                        float(confidence),
+                        meta_json,
+                    ),
+                )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to partially save ledger market breakdown ledger=%s date=%s user_id=%s: %s",
+                ledger_id,
+                date_str,
+                uid,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def aggregate_daily_snapshot_from_ledgers(
+        self,
+        *,
+        user_id: str,
+        date_str: str,
+        total_asset: float,
+        total_invest: float,
+        total_cash: float,
+        total_other: float,
+        total_liability: float,
+        total_pnl: float,
+        source: str = "recalculated",
+        snapshot_date: str | None = None,
+    ) -> bool:
+        """根据账本聚合结果回写全局主快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(day_pnl), 0.0) AS total_day_pnl
+                FROM ledger_daily_snapshots
+                WHERE user_id = ? AND date = ?
+                """,
+                (uid, str(date_str or "")),
+            )
+            row = cursor.fetchone()
+            day_pnl = round(float((row["total_day_pnl"] if row else 0.0) or 0.0), 2)
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots (
+                    date, total_asset, total_invest, total_cash,
+                    total_other, total_liability, total_pnl, day_pnl,
+                    snapshot_date, source, user_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                ON CONFLICT(date, user_id) DO UPDATE SET
+                    total_asset = excluded.total_asset,
+                    total_invest = excluded.total_invest,
+                    total_cash = excluded.total_cash,
+                    total_other = excluded.total_other,
+                    total_liability = excluded.total_liability,
+                    total_pnl = excluded.total_pnl,
+                    day_pnl = excluded.day_pnl,
+                    snapshot_date = excluded.snapshot_date,
+                    source = excluded.source,
+                    updated_at = datetime('now','localtime')
+                """,
+                (
+                    str(date_str or ""),
+                    round(float(total_asset or 0.0), 2),
+                    round(float(total_invest or 0.0), 2),
+                    round(float(total_cash or 0.0), 2),
+                    round(float(total_other or 0.0), 2),
+                    round(float(total_liability or 0.0), 2),
+                    round(float(total_pnl or 0.0), 2),
+                    day_pnl,
+                    str(snapshot_date or date_str or ""),
+                    str(source or "recalculated"),
+                    uid,
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error("Failed to aggregate global snapshot from ledgers date=%s user_id=%s: %s", date_str, uid, exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def aggregate_daily_snapshot_market_breakdown_from_ledgers(
+        self,
+        *,
+        user_id: str,
+        date_str: str,
+        snapshot_date: str | None = None,
+        source: str = "recalculated",
+    ) -> bool:
+        """按账本分市场快照聚合全局分市场快照。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            cursor.execute(
+                """
+                SELECT market, COALESCE(SUM(day_pnl), 0.0) AS total_day_pnl
+                FROM ledger_daily_snapshot_market_breakdowns
+                WHERE user_id = ? AND date = ?
+                GROUP BY market
+                """,
+                (uid, str(date_str or "")),
+            )
+            totals = {market: 0.0 for market in MARKET_BREAKDOWN_MARKETS}
+            for row in cursor.fetchall():
+                market = str(row["market"] or "").strip().lower()
+                if market in totals:
+                    totals[market] = round(float(row["total_day_pnl"] or 0.0), 2)
+            total_day_pnl = sum(float(value or 0.0) for value in totals.values())
+            conn.close()
+            return self.save_daily_snapshot_market_breakdown(
+                date_str=str(date_str or ""),
+                day_pnl_by_market=totals,
+                total_day_pnl=total_day_pnl,
+                user_id=uid,
+                snapshot_date=snapshot_date or date_str,
+                source=source,
+                confidence=1.0,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to aggregate global market breakdown from ledgers date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                exc,
+            )
+            conn.close()
+            return False
 
     def sync_ledger_daily_snapshot_day_pnl(self, date_str: str, user_id: str = None) -> bool:
         """
@@ -560,6 +889,8 @@ class SnapshotDatabaseMixin:
         total_pnl: float = 0,
         total_pnl_rate: float = 0,
         day_pnl: float = 0,
+        snapshot_date: str | None = None,
+        source: str = "recalculated",
         holdings_count: int = 0,
     ) -> bool:
         """保存单个账本的每日快照。"""
@@ -571,14 +902,16 @@ class SnapshotDatabaseMixin:
                 INSERT INTO ledger_daily_snapshots (
                     user_id, ledger_id, date,
                     total_market_value, total_cost, total_pnl, total_pnl_rate,
-                    day_pnl, holdings_count, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    day_pnl, snapshot_date, source, holdings_count, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(user_id, ledger_id, date) DO UPDATE SET
                     total_market_value = excluded.total_market_value,
                     total_cost = excluded.total_cost,
                     total_pnl = excluded.total_pnl,
                     total_pnl_rate = excluded.total_pnl_rate,
                     day_pnl = excluded.day_pnl,
+                    snapshot_date = excluded.snapshot_date,
+                    source = excluded.source,
                     holdings_count = excluded.holdings_count,
                     created_at = datetime('now','localtime')
                 """,
@@ -586,7 +919,7 @@ class SnapshotDatabaseMixin:
                     user_id, ledger_id, date_str,
                     round(total_market_value, 2), round(total_cost, 2),
                     round(total_pnl, 2), round(total_pnl_rate, 2),
-                    round(day_pnl, 2), holdings_count,
+                    round(day_pnl, 2), str(snapshot_date or date_str or ""), str(source or "recalculated"), holdings_count,
                 ),
             )
             conn.commit()
@@ -617,7 +950,13 @@ class SnapshotDatabaseMixin:
         finally:
             conn.close()
 
-    def save_daily_snapshot(self, data: Dict[str, float], user_id: str = None, snapshot_date: str = None) -> bool:
+    def save_daily_snapshot(
+        self,
+        data: Dict[str, float],
+        user_id: str = None,
+        snapshot_date: str = None,
+        source: str = "recalculated",
+    ) -> bool:
         """保存每日资产快照。"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -631,8 +970,9 @@ class SnapshotDatabaseMixin:
                 """
                 INSERT INTO daily_snapshots (
                     date, total_asset, total_invest, total_cash,
-                    total_other, total_liability, total_pnl, day_pnl, user_id, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                    total_other, total_liability, total_pnl, day_pnl,
+                    snapshot_date, source, user_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
                 ON CONFLICT(date, user_id) DO UPDATE SET
                     total_asset = excluded.total_asset,
                     total_invest = excluded.total_invest,
@@ -641,6 +981,8 @@ class SnapshotDatabaseMixin:
                     total_liability = excluded.total_liability,
                     total_pnl = excluded.total_pnl,
                     day_pnl = excluded.day_pnl,
+                    snapshot_date = excluded.snapshot_date,
+                    source = excluded.source,
                     updated_at = datetime('now','localtime')
                 """,
                 (
@@ -652,6 +994,8 @@ class SnapshotDatabaseMixin:
                     data.get("total_liability", 0),
                     data.get("total_pnl", 0),
                     data.get("day_pnl", 0),
+                    data.get("snapshot_date") or today,
+                    str(data.get("source") or source or "recalculated"),
                     uid,
                 ),
             )

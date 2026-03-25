@@ -1463,6 +1463,23 @@ class ApiService {
     };
   }
 
+  Future<Map<String, dynamic>> getRealtimeToday({int? ledgerId}) async {
+    final query = <String, String>{
+      if (ledgerId != null) 'ledger_id': '$ledgerId',
+    };
+    final endpoint = query.isEmpty
+        ? ApiConfig.realtimeToday
+        : '${ApiConfig.realtimeToday}?${Uri(queryParameters: query).query}';
+    final data = await _get(endpoint);
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return {};
+  }
+
   /// 获取汇率
   Future<Map<String, dynamic>> getExchangeRates() async {
     try {

@@ -5,7 +5,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 from zoneinfo import ZoneInfo
 
 from .day_pnl_attribution import (
@@ -220,12 +220,43 @@ def _pick_latest_prior_effective_date(
     return max(candidates) if candidates else None
 
 
-def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None) -> None:
-    """把晚到收益按市场局部结算到对应有效日期，避免整天覆盖历史。"""
+def _has_ledger_daily_snapshot(
+    db_obj,
+    *,
+    date_str: str,
+    user_id: str | None,
+    ledger_id: int,
+) -> bool:
+    conn = db_obj.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM ledger_daily_snapshots
+            WHERE date = ? AND user_id = ? AND ledger_id = ?
+            LIMIT 1
+            """,
+            (str(date_str or ""), str(user_id or ""), int(ledger_id)),
+        )
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def _persist_late_effective_date_settlements(
+    db_obj,
+    logger_obj,
+    stats: Dict[str, Any],
+    user_id: str | None,
+    *,
+    ledger_id: int | None = None,
+) -> set[str]:
+    """把晚到收益按 market 级别局部结算到对应 effective_date。"""
     snapshot_date = str(stats.get("snapshot_date") or "").strip()
     day_pnl_breakdowns_by_date = stats.get("day_pnl_breakdowns_by_date") or {}
     if not snapshot_date or not day_pnl_breakdowns_by_date:
-        return
+        return set()
 
     latest_prior_dates = {
         market: _pick_latest_prior_effective_date(
@@ -236,28 +267,52 @@ def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str
         for market in LATE_SETTLEMENT_MARKETS
     }
 
-    handled_dates = set()
+    handled_dates: set[str] = set()
     for market in LATE_SETTLEMENT_MARKETS:
         effective_date = latest_prior_dates.get(market)
         if not effective_date:
             continue
-        if not db_obj.has_daily_snapshot(effective_date, user_id=user_id):
-            continue
+        if ledger_id is None:
+            if not db_obj.has_daily_snapshot(effective_date, user_id=user_id):
+                continue
+        else:
+            if not _has_ledger_daily_snapshot(
+                db_obj,
+                date_str=effective_date,
+                user_id=user_id,
+                ledger_id=ledger_id,
+            ):
+                continue
+
         market_map = day_pnl_breakdowns_by_date.get(effective_date) or {}
         value = round(float(market_map.get(market, 0.0) or 0.0), 2)
         if abs(value) < 0.005:
             continue
-        ok = db_obj.save_daily_snapshot_market_breakdown_partial(
-            date_str=effective_date,
-            market_updates={market: value},
-            user_id=user_id,
-            source="exact",
-            confidence=1.0,
-        )
+
+        if ledger_id is None:
+            ok = db_obj.save_daily_snapshot_market_breakdown_partial(
+                date_str=effective_date,
+                market_updates={market: value},
+                user_id=user_id,
+                snapshot_date=snapshot_date,
+                source="backfill",
+                confidence=1.0,
+            )
+        else:
+            ok = db_obj.save_ledger_daily_snapshot_market_breakdown_partial(
+                user_id=str(user_id or ""),
+                ledger_id=int(ledger_id),
+                date_str=effective_date,
+                market_updates={market: value},
+                snapshot_date=snapshot_date,
+                source="backfill",
+                confidence=1.0,
+            )
         if not ok:
             logger_obj.warning(
-                "Late settlement save failed: user=%s date=%s market=%s",
+                "Late settlement save failed: user=%s ledger_id=%s date=%s market=%s",
                 user_id,
+                ledger_id,
                 effective_date,
                 market,
             )
@@ -265,15 +320,22 @@ def _persist_late_effective_date_settlements(db_obj, logger_obj, stats: Dict[str
         handled_dates.add(effective_date)
 
     for effective_date in sorted(handled_dates):
-        ok = db_obj.sync_daily_snapshot_day_pnl_from_breakdown(effective_date, user_id=user_id)
+        if ledger_id is None:
+            ok = db_obj.sync_daily_snapshot_day_pnl_from_breakdown(effective_date, user_id=user_id)
+        else:
+            ok = db_obj.sync_ledger_daily_snapshot_day_pnl_from_breakdown(
+                date_str=effective_date,
+                user_id=str(user_id or ""),
+                ledger_id=int(ledger_id),
+            )
         if not ok:
             logger_obj.warning(
-                "Late settlement sync failed: user=%s date=%s",
+                "Late settlement sync failed: user=%s ledger_id=%s date=%s",
                 user_id,
+                ledger_id,
                 effective_date,
             )
-        else:
-            db_obj.sync_ledger_daily_snapshot_day_pnl(effective_date, user_id=user_id)
+    return handled_dates
 
 
 def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None = None) -> bool:
@@ -318,8 +380,137 @@ def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: s
     _persist_late_effective_date_settlements(db_obj, logger_obj, persist_stats, user_id)
     return True
 
+def _persist_ledger_snapshot_stats(
+    db_obj,
+    logger_obj,
+    stats: Dict[str, Any],
+    *,
+    user_id: str,
+    ledger_id: int,
+) -> tuple[bool, set[str]]:
+    snapshot_date = str(stats.get("snapshot_date") or "").strip()
+    if not snapshot_date:
+        return False, set()
 
-def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> Dict[str, Any]:
+    now_utc = stats.get("now_utc")
+    if not isinstance(now_utc, datetime):
+        now_utc = datetime.now(timezone.utc)
+    market_statuses = get_market_statuses(DEFAULT_MARKETS, now=now_utc)
+    persist_breakdowns_by_date = _adjust_snapshot_breakdowns_for_preopen(
+        day_pnl_breakdowns_by_date=stats.get("day_pnl_breakdowns_by_date") or {},
+        snapshot_date=snapshot_date,
+        now_utc=now_utc,
+        market_statuses=market_statuses,
+    )
+    snapshot_market_map = _round_market_breakdown(persist_breakdowns_by_date.get(snapshot_date))
+    snapshot_day_pnl = round(sum(float(v or 0.0) for v in snapshot_market_map.values()), 2)
+    total_cost = round(float(stats.get("total_cost") or 0.0), 2)
+    total_pnl = round(float(stats.get("total_pnl") or 0.0), 2)
+    total_market_value = round(float(stats.get("total_invest") or 0.0), 2)
+    total_pnl_rate = round(total_pnl / total_cost * 100, 2) if total_cost > 0 else 0.0
+    holdings_count = int(stats.get("holdings_count") or 0)
+
+    success = db_obj.save_ledger_daily_snapshot(
+        user_id=str(user_id or ""),
+        ledger_id=int(ledger_id),
+        date_str=snapshot_date,
+        total_market_value=total_market_value,
+        total_cost=total_cost,
+        total_pnl=total_pnl,
+        total_pnl_rate=total_pnl_rate,
+        day_pnl=snapshot_day_pnl,
+        snapshot_date=snapshot_date,
+        source="recalculated",
+        holdings_count=holdings_count,
+    )
+    if not success:
+        return False, set()
+
+    breakdown_ok = db_obj.save_ledger_daily_snapshot_market_breakdown(
+        user_id=str(user_id or ""),
+        ledger_id=int(ledger_id),
+        date_str=snapshot_date,
+        day_pnl_by_market=snapshot_market_map,
+        total_day_pnl=snapshot_day_pnl,
+        snapshot_date=snapshot_date,
+        source="recalculated",
+        confidence=1.0,
+    )
+    if not breakdown_ok:
+        logger_obj.warning(
+            "Ledger market breakdown save failed: user=%s ledger_id=%s date=%s",
+            user_id,
+            ledger_id,
+            snapshot_date,
+        )
+
+    persist_stats = {
+        **stats,
+        "snapshot_day_pnl": snapshot_day_pnl,
+        "snapshot_day_pnl_by_market": snapshot_market_map,
+        "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
+    }
+    handled_dates = _persist_late_effective_date_settlements(
+        db_obj,
+        logger_obj,
+        persist_stats,
+        user_id,
+        ledger_id=ledger_id,
+    )
+    handled_dates.add(snapshot_date)
+    return True, handled_dates
+
+
+def _sum_market_breakdowns_by_date(
+    stats_list: Iterable[Dict[str, Any]],
+) -> Dict[str, Dict[str, float]]:
+    combined: Dict[str, Dict[str, float]] = {}
+    for stats in stats_list:
+        for date_str, market_map in (stats.get("day_pnl_breakdowns_by_date") or {}).items():
+            bucket = combined.setdefault(str(date_str), _empty_market_breakdown())
+            for market in DEFAULT_MARKETS:
+                bucket[market] = round(
+                    float(bucket.get(market, 0.0) or 0.0) + float((market_map or {}).get(market, 0.0) or 0.0),
+                    2,
+                )
+    return {date_str: _round_market_breakdown(market_map) for date_str, market_map in combined.items()}
+
+
+def _sum_day_pnl_bases_by_date(stats_list: Iterable[Dict[str, Any]]) -> Dict[str, float]:
+    combined: Dict[str, float] = {}
+    for stats in stats_list:
+        for date_str, value in (stats.get("day_pnl_bases_by_date") or {}).items():
+            combined[str(date_str)] = round(
+                float(combined.get(str(date_str), 0.0) or 0.0) + float(value or 0.0),
+                2,
+            )
+    return combined
+
+
+def _list_user_ledgers(user_id: str | None) -> list[Dict[str, Any]]:
+    if not user_id:
+        return []
+    try:
+        ledgers = db.get_ledgers(user_id)
+    except Exception:
+        return []
+    result: list[Dict[str, Any]] = []
+    for ledger in ledgers or []:
+        try:
+            ledger_id = int(ledger.get("id"))
+        except Exception:
+            continue
+        result.append({**ledger, "id": ledger_id})
+    return result
+
+
+def _calculate_portfolio_stats_direct(
+    user_id: str | None = None,
+    *,
+    now_utc: datetime | None = None,
+    ledger_id: int | None = None,
+    include_non_invest_assets: bool = True,
+) -> Dict[str, Any]:
     """
     计算当前时刻的投资组合统计数据
     
@@ -335,10 +526,10 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         }
     """
     # 1. 获取所有基础数据
-    portfolio = db.get_portfolio(user_id=user_id, include_closed=True)
-    cash_assets = db.get_cash_assets(user_id=user_id)
-    other_assets = db.get_other_assets(user_id=user_id)
-    liabilities = db.get_liabilities(user_id=user_id)
+    portfolio = db.get_portfolio(user_id=user_id, include_closed=True, ledger_id=ledger_id)
+    cash_assets = db.get_cash_assets(user_id=user_id) if include_non_invest_assets else []
+    other_assets = db.get_other_assets(user_id=user_id) if include_non_invest_assets else []
+    liabilities = db.get_liabilities(user_id=user_id) if include_non_invest_assets else []
     
     # 2. 获取实时价格和汇率
     codes = [p['code'] for p in portfolio]
@@ -359,7 +550,10 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         for market in DEFAULT_MARKETS
     }
     snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
-    today_buys_by_effective_date = db.get_buy_transactions_grouped_by_effective_date(user_id=user_id)
+    today_buys_by_effective_date = db.get_buy_transactions_grouped_by_effective_date(
+        user_id=user_id,
+        ledger_id=ledger_id,
+    )
     otc_fund_codes = [
         code for code in codes
         if str(code or "").lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
@@ -420,7 +614,12 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         if nav_update_pending:
             effective_date = resolve_fund_nav_effective_date(latest_nav_dates.get(code))
             effective_qty = (
-                db.get_position_qty_as_of_effective_date(code, effective_date, user_id=user_id)
+                    db.get_position_qty_as_of_effective_date(
+                        code,
+                        effective_date,
+                        user_id=user_id,
+                        ledger_id=ledger_id,
+                    )
                 if effective_date else 0.0
             )
             if (
@@ -474,7 +673,10 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     # 5. 获取今日已实现盈亏（卖出）
     relevant_effective_dates = set(day_pnl_breakdowns_by_date.keys())
     relevant_effective_dates.add(snapshot_date)
-    realized_pnl_grouped = db.get_realized_pnl_grouped_by_effective_date(user_id=user_id)
+    realized_pnl_grouped = db.get_realized_pnl_grouped_by_effective_date(
+        user_id=user_id,
+        ledger_id=ledger_id,
+    )
     for effective_date, market_map in realized_pnl_grouped.items():
         if effective_date not in relevant_effective_dates:
             continue
@@ -510,6 +712,7 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
     
     return {
         'total_invest': round(invest_mv, 2),
+        'total_cost': round(sum(float(asset.get("price") or 0.0) * float(asset.get("qty") or 0.0) * _rate_to_cny(asset.get("curr"), rates) for asset in portfolio), 2),
         'total_cash': round(total_cash, 2),
         'total_other': round(total_other, 2),
         'total_liability': round(total_liability, 2),
@@ -526,104 +729,103 @@ def calculate_portfolio_stats(user_id: str = None, now_utc: datetime = None) -> 
         'day_pnl_bases_by_date': rounded_bases_by_date,
         'snapshot_date': snapshot_date,
         'now_utc': now_utc,
+        'holdings_count': len(portfolio),
+        'scope': {
+            'ledger_id': ledger_id,
+            'mode': 'ledger' if ledger_id is not None else 'global',
+        },
     }
+
+def calculate_portfolio_stats(
+    user_id: str | None = None,
+    now_utc: datetime | None = None,
+    ledger_id: int | None = None,
+) -> Dict[str, Any]:
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+
+    if ledger_id is not None:
+        return _calculate_portfolio_stats_direct(
+            user_id,
+            now_utc=now_utc,
+            ledger_id=ledger_id,
+            include_non_invest_assets=False,
+        )
+
+    ledgers = _list_user_ledgers(user_id)
+    if not ledgers:
+        return _calculate_portfolio_stats_direct(
+            user_id,
+            now_utc=now_utc,
+            ledger_id=None,
+            include_non_invest_assets=True,
+        )
+
+    ledger_stats_list = [
+        _calculate_portfolio_stats_direct(
+            user_id,
+            now_utc=now_utc,
+            ledger_id=int(ledger["id"]),
+            include_non_invest_assets=False,
+        )
+        for ledger in ledgers
+    ]
+    aggregated_breakdowns = _sum_market_breakdowns_by_date(ledger_stats_list)
+    aggregated_bases = _sum_day_pnl_bases_by_date(ledger_stats_list)
+    snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+    effective_dates = [
+        str(stats.get("day_pnl_effective_date") or "").strip()
+        for stats in ledger_stats_list
+        if str(stats.get("day_pnl_effective_date") or "").strip()
+    ]
+    effective_date = max(effective_dates) if effective_dates else snapshot_date
+
+    total_invest = round(sum(float(stats.get("total_invest") or 0.0) for stats in ledger_stats_list), 2)
+    total_cost = round(sum(float(stats.get("total_cost") or 0.0) for stats in ledger_stats_list), 2)
+    total_pnl = round(sum(float(stats.get("total_pnl") or 0.0) for stats in ledger_stats_list), 2)
+    total_cash = sum(_asset_amount_to_cny(a, get_forex_rates()) for a in db.get_cash_assets(user_id=user_id))
+    total_other = sum(_asset_amount_to_cny(a, get_forex_rates()) for a in db.get_other_assets(user_id=user_id))
+    total_liability = sum(_asset_amount_to_cny(a, get_forex_rates(), use_abs=True) for a in db.get_liabilities(user_id=user_id))
+    total_asset = round(total_cash + total_invest + total_other - total_liability, 2)
+    realtime_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(effective_date))
+    realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
+    realtime_day_pnl_base = round(float(aggregated_bases.get(effective_date) or 0.0), 2)
+    snapshot_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(snapshot_date))
+    snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
+    snapshot_day_pnl_base = round(float(aggregated_bases.get(snapshot_date) or 0.0), 2)
+
+    return {
+        'total_invest': total_invest,
+        'total_cost': total_cost,
+        'total_cash': round(total_cash, 2),
+        'total_other': round(total_other, 2),
+        'total_liability': round(total_liability, 2),
+        'total_asset': total_asset,
+        'total_pnl': total_pnl,
+        'day_pnl': realtime_day_pnl,
+        'day_pnl_base': realtime_day_pnl_base,
+        'day_pnl_effective_date': effective_date,
+        'day_pnl_by_market': realtime_day_pnl_by_market,
+        'snapshot_day_pnl': snapshot_day_pnl,
+        'snapshot_day_pnl_base': snapshot_day_pnl_base,
+        'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
+        'day_pnl_breakdowns_by_date': aggregated_breakdowns,
+        'day_pnl_bases_by_date': aggregated_bases,
+        'snapshot_date': snapshot_date,
+        'now_utc': now_utc,
+        'holdings_count': sum(int(stats.get("holdings_count") or 0) for stats in ledger_stats_list),
+        'scope': {
+            'ledger_id': None,
+            'mode': 'global',
+        },
+    }
+
 
 def is_weekend() -> bool:
     """判断是否周末"""
     return datetime.now().weekday() >= 5
-
-
-def _save_ledger_snapshots(user_id: str | None, stats: Dict[str, Any]) -> None:
-    """为指定用户的每个账本计算并保存快照。"""
-    if not user_id:
-        return
-    snapshot_date = str(stats.get("snapshot_date") or "")
-    if not snapshot_date:
-        return
-    try:
-        ledgers = db.get_ledgers(user_id)
-        if not ledgers:
-            return
-        now_utc = stats.get("now_utc")
-        if not isinstance(now_utc, datetime):
-            now_utc = datetime.now(timezone.utc)
-        market_statuses = get_market_statuses(DEFAULT_MARKETS, now=now_utc)
-        # Fetch prices and rates once for all ledgers
-        all_portfolio = db.get_portfolio(user_id=user_id, include_closed=True)
-        all_codes = [p["code"] for p in all_portfolio]
-        prices = batch_get_prices(all_codes) if all_codes else {}
-        rates = get_forex_rates()
-
-        for ledger in ledgers:
-            lid = ledger["id"]
-            ledger_portfolio = db.get_portfolio(user_id=user_id, ledger_id=lid)
-            if not ledger_portfolio:
-                db.save_ledger_daily_snapshot(
-                    user_id=user_id, ledger_id=lid, date_str=snapshot_date,
-                )
-                continue
-
-            ledger_invest_mv = 0.0
-            ledger_total_cost = 0.0
-            ledger_day_pnl = 0.0
-            ledger_total_pnl = 0.0
-            for asset in ledger_portfolio:
-                code = asset["code"]
-                qty = float(asset["qty"])
-                cost_price = float(asset["price"])
-                curr = asset["curr"]
-                adj = float(asset["adjustment"] or 0)
-                rate = _rate_to_cny(curr, rates)
-
-                price_data = prices.get(code, (0, 0, 0, 0))
-                cur_price = price_data[0]
-                yclose = price_data[1]
-                if cur_price <= 0:
-                    cur_price = yclose if yclose > 0 else (cost_price if cost_price > 0 else 0.0)
-                if yclose <= 0:
-                    yclose = cost_price if cost_price > 0 else 0.0
-
-                item_mv = cur_price * qty * rate
-                item_cost = cost_price * qty * rate
-                item_day_pnl = 0.0
-                item_total_pnl = (cur_price - cost_price) * qty * rate + adj * rate
-                market = market_from_asset(asset)
-                if market not in DEFAULT_MARKETS:
-                    market = "a"
-
-                nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
-                if nav_update_pending:
-                    effective_date = resolve_fund_nav_effective_date(get_fund_latest_nav_date(code))
-                else:
-                    effective_date = _resolve_snapshot_exchange_effective_date(
-                        market=market,
-                        now_utc=now_utc,
-                        current_price=cur_price,
-                        yclose=yclose,
-                        market_statuses=market_statuses,
-                    )
-                if effective_date == snapshot_date and yclose > 0:
-                    item_day_pnl = (cur_price - yclose) * qty * rate
-
-                ledger_invest_mv += item_mv
-                ledger_total_cost += item_cost
-                ledger_day_pnl += item_day_pnl
-                ledger_total_pnl += item_total_pnl
-
-            pnl_rate = (ledger_total_pnl / ledger_total_cost * 100) if ledger_total_cost > 0 else 0.0
-            db.save_ledger_daily_snapshot(
-                user_id=user_id,
-                ledger_id=lid,
-                date_str=snapshot_date,
-                total_market_value=ledger_invest_mv,
-                total_cost=ledger_total_cost,
-                total_pnl=ledger_total_pnl,
-                total_pnl_rate=pnl_rate,
-                day_pnl=ledger_day_pnl,
-                holdings_count=len(ledger_portfolio),
-            )
-    except Exception as e:
-        logger.warning("Failed to save per-ledger snapshots: user=%s err=%s", user_id, e)
 
 
 def take_snapshot(user_id: str = None) -> bool:
@@ -642,20 +844,86 @@ def take_snapshot(user_id: str = None) -> bool:
 
         success_any = False
         for uid in user_ids:
-            stats = calculate_portfolio_stats(uid)
-            success = persist_snapshot_stats(db, logger, stats, uid)
-            success_any = success_any or success
-            if success:
-                logger.info(f"Snapshot saved successfully: user={uid}, Total={stats['total_asset']}, DayPnl={stats['day_pnl']}")
-            else:
-                logger.error(f"Failed to save snapshot to database: user={uid}")
+            now_utc = datetime.now(timezone.utc)
+            ledgers = _list_user_ledgers(uid)
+            if ledgers:
+                handled_dates: set[str] = set()
+                snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+                ledger_stats_list: list[Dict[str, Any]] = []
+                for ledger in ledgers:
+                    ledger_id = int(ledger["id"])
+                    ledger_stats = calculate_portfolio_stats(uid, now_utc=now_utc, ledger_id=ledger_id)
+                    ledger_stats_list.append(ledger_stats)
+                    ledger_success, ledger_dates = _persist_ledger_snapshot_stats(
+                        db,
+                        logger,
+                        ledger_stats,
+                        user_id=str(uid or ""),
+                        ledger_id=ledger_id,
+                    )
+                    success_any = success_any or ledger_success
+                    handled_dates.update(ledger_dates)
 
-            # Save per-ledger snapshots
-            _save_ledger_snapshots(uid, stats)
-            
-            if success:
-                snapshot_date = str(stats.get("snapshot_date") or datetime.now().strftime("%Y-%m-%d"))
-                db.sync_ledger_daily_snapshot_day_pnl(snapshot_date, user_id=uid)
+                # 从已有 ledger_stats 聚合全局数据，避免重复计算
+                rates = get_forex_rates()
+                total_invest = round(sum(float(s.get("total_invest") or 0.0) for s in ledger_stats_list), 2)
+                total_cost = round(sum(float(s.get("total_cost") or 0.0) for s in ledger_stats_list), 2)
+                total_pnl = round(sum(float(s.get("total_pnl") or 0.0) for s in ledger_stats_list), 2)
+                total_cash = round(sum(_asset_amount_to_cny(a, rates) for a in db.get_cash_assets(user_id=uid)), 2)
+                total_other = round(sum(_asset_amount_to_cny(a, rates) for a in db.get_other_assets(user_id=uid)), 2)
+                total_liability = round(sum(_asset_amount_to_cny(a, rates, use_abs=True) for a in db.get_liabilities(user_id=uid)), 2)
+                total_asset = round(total_cash + total_invest + total_other - total_liability, 2)
+
+                global_success = db.aggregate_daily_snapshot_from_ledgers(
+                    user_id=str(uid or ""),
+                    date_str=snapshot_date,
+                    total_asset=total_asset,
+                    total_invest=total_invest,
+                    total_cash=total_cash,
+                    total_other=total_other,
+                    total_liability=total_liability,
+                    total_pnl=total_pnl,
+                    source="recalculated",
+                    snapshot_date=snapshot_date,
+                )
+                breakdown_success = db.aggregate_daily_snapshot_market_breakdown_from_ledgers(
+                    user_id=str(uid or ""),
+                    date_str=snapshot_date,
+                    snapshot_date=snapshot_date,
+                    source="recalculated",
+                )
+                db.sync_daily_snapshot_day_pnl_from_breakdown(snapshot_date, user_id=uid)
+                for effective_date in sorted(date_str for date_str in handled_dates if date_str != snapshot_date):
+                    db.aggregate_daily_snapshot_market_breakdown_from_ledgers(
+                        user_id=str(uid or ""),
+                        date_str=effective_date,
+                        snapshot_date=snapshot_date,
+                        source="backfill",
+                    )
+                    db.sync_daily_snapshot_day_pnl_from_breakdown(effective_date, user_id=uid)
+
+                success_any = success_any or global_success or breakdown_success
+                if global_success:
+                    logger.info(
+                        "Snapshot saved successfully: user=%s total=%s day_pnl(aggregated)",
+                        uid,
+                        total_asset,
+                    )
+                else:
+                    logger.error("Failed to aggregate global snapshot: user=%s", uid)
+            else:
+                stats = calculate_portfolio_stats(uid, now_utc=now_utc)
+                success = persist_snapshot_stats(db, logger, stats, uid)
+                success_any = success_any or success
+                if success:
+                    logger.info(
+                        "Snapshot saved successfully: user=%s total=%s day_pnl=%s",
+                        uid,
+                        stats["total_asset"],
+                        stats["day_pnl"],
+                    )
+                else:
+                    logger.error("Failed to save snapshot to database: user=%s", uid)
 
         return success_any
     except Exception as e:

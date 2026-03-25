@@ -9,6 +9,7 @@ import { toNumber } from '@/shared/format'
 import { readPageCache, writePageCache } from '@/shared/pageCache'
 import { useAuthStore } from './auth'
 import { useRefreshCoordinatorStore } from './refreshCoordinator'
+import { useLedgerScopeStore } from './ledgerScope'
 
 export type AnalysisCalendarType = 'day' | 'month' | 'year'
 export type AnalysisPeriodKey = 'day' | 'month' | 'year' | 'all'
@@ -304,13 +305,19 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadOverview() {
-    const payload = await api.get<Record<string, AnalysisOverviewItem>>('/api/analysis/overview?period=all')
+    const ledgerScopeStore = useLedgerScopeStore()
+    const params = new URLSearchParams({ period: 'all' })
+    if (ledgerScopeStore.currentLedgerId != null) {
+      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+    }
+    const payload = await api.get<Record<string, AnalysisOverviewItem>>(`/api/analysis/overview?${params.toString()}`)
     Object.assign(overview, payload)
   }
 
   async function loadCalendar(recoverOnInvalid = true) {
     const requestId = ++calendarRequestId
     const params = new URLSearchParams({ type: calendarType.value })
+    const ledgerScopeStore = useLedgerScopeStore()
 
     if (calendarType.value === 'day') {
       ensureDaySelection()
@@ -320,6 +327,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
       }
     } else if (calendarType.value === 'month' && selectedMonthYear.value) {
       params.set('year', String(selectedMonthYear.value))
+    }
+    if (ledgerScopeStore.currentLedgerId != null) {
+      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
     }
 
     try {
@@ -343,8 +353,13 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadRank() {
+    const ledgerScopeStore = useLedgerScopeStore()
+    const params = new URLSearchParams({ type: 'all', market: 'all' })
+    if (ledgerScopeStore.currentLedgerId != null) {
+      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+    }
     const payload = await api.get<{ gain?: AnalysisRankItem[]; loss?: AnalysisRankItem[] }>(
-      '/api/analysis/rank?type=all&market=all'
+      `/api/analysis/rank?${params.toString()}`
     )
     rank.gain = payload.gain || []
     rank.loss = payload.loss || []

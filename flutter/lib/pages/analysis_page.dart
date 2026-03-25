@@ -163,6 +163,10 @@ class _AnalysisPageState extends State<AnalysisPage>
     _loadData();
     _loadCalendar();
     _loadRank();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(context.read<AppState>().refreshRealtimeToday());
+    });
     _syncAutoRefreshTimer();
   }
 
@@ -227,6 +231,7 @@ class _AnalysisPageState extends State<AnalysisPage>
   void _triggerSilentRefresh() {
     if (!mounted || !_canAutoRefresh) return;
     _calendarCache.clear();
+    unawaited(context.read<AppState>().refreshRealtimeToday());
     unawaited(_loadData(force: true, showLoadingUi: false));
     unawaited(_loadCalendar(force: true, showLoadingUi: false));
     unawaited(_loadRank(force: true));
@@ -248,6 +253,7 @@ class _AnalysisPageState extends State<AnalysisPage>
       _rankLoading = true;
       _rankRetryCount = 0;
     });
+    unawaited(context.read<AppState>().refreshRealtimeToday(ledgerId: _activeLedgerId));
     unawaited(_loadData(force: true));
     unawaited(_loadCalendar(force: true));
     unawaited(_loadRank(force: true));
@@ -623,6 +629,20 @@ class _AnalysisPageState extends State<AnalysisPage>
     return result;
   }
 
+  Map<String, dynamic> _realtimeTodayTotals(AppState appState) {
+    return _asMap(_asMap(appState.realtimeToday)['totals']);
+  }
+
+  DateTime? _realtimeTodayEffectiveDate(AppState appState) {
+    final raw = _asMap(appState.realtimeToday)['effective_date']?.toString() ?? '';
+    if (raw.isEmpty) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _onCalendarTypeChanged(String nextType) {
     if (_calendarTimeType == nextType) return;
     setState(() => _calendarTimeType = nextType);
@@ -712,11 +732,16 @@ class _AnalysisPageState extends State<AnalysisPage>
 
   Widget _buildOverviewCard(AppState appState) {
     final periodData = _asMap(_overview[_currentPeriod]);
-    final useRealtimeDay = _currentPeriod == 'day' && appState.portfolioLoaded;
+    final realtimeTotals = _realtimeTodayTotals(appState);
+    final useRealtimeDay = _currentPeriod == 'day';
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
-    final effectivePnl = useRealtimeDay ? appState.investDayPnl : apiPnl;
-    final effectiveRate = useRealtimeDay ? appState.investDayPnlRate : apiRate;
+    final effectivePnl = useRealtimeDay
+        ? (realtimeTotals['day_pnl'] as num?)?.toDouble()
+        : apiPnl;
+    final effectiveRate = useRealtimeDay
+        ? (realtimeTotals['day_pnl_rate'] as num?)?.toDouble()
+        : apiRate;
     final hasPnl = effectivePnl != null;
     final hasRate = effectiveRate != null;
     final pnl = effectivePnl ?? 0;
@@ -903,6 +928,21 @@ class _AnalysisPageState extends State<AnalysisPage>
       final key = gridItem['day'] as int;
       if (pnlMap.containsKey(key)) {
         gridItem['pnl'] = pnlMap[key];
+      }
+    }
+    final effectiveDate = _realtimeTodayEffectiveDate(appState);
+    final realtimeDayPnl =
+        (_realtimeTodayTotals(appState)['day_pnl'] as num?)?.toDouble();
+    if (_calendarTimeType == 'day' &&
+        effectiveDate != null &&
+        realtimeDayPnl != null &&
+        effectiveDate.year == dayYear &&
+        effectiveDate.month == dayMonth) {
+      for (final gridItem in calendarGrid) {
+        if (gridItem['day'] == effectiveDate.day) {
+          gridItem['pnl'] = realtimeDayPnl;
+          break;
+        }
       }
     }
 
@@ -1176,12 +1216,13 @@ class _AnalysisPageState extends State<AnalysisPage>
       itemBuilder: (context, index) {
         final item = calendarGrid[index];
         final pnl = item['pnl'] as double?;
-        final isSelected = _calendarTimeType == 'day'
-            ? item['day'] == DateTime.now().day &&
+        final effectiveDate = _realtimeTodayEffectiveDate(appState);
+        final isSelected = _calendarTimeType == 'day' && effectiveDate != null
+            ? item['day'] == effectiveDate.day &&
                   (_selectedDayYear == null ||
-                      _selectedDayYear == DateTime.now().year) &&
+                      _selectedDayYear == effectiveDate.year) &&
                   (_selectedDayMonth == null ||
-                      _selectedDayMonth == DateTime.now().month)
+                      _selectedDayMonth == effectiveDate.month)
             : false;
 
         return _buildCalendarItem(item['date'], pnl, isSelected, appState);

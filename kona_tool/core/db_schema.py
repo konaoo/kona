@@ -274,6 +274,8 @@ class DatabaseSchemaManager:
                 total_liability REAL NOT NULL,
                 total_pnl REAL NOT NULL,
                 day_pnl REAL NOT NULL,
+                snapshot_date TEXT,
+                source TEXT NOT NULL DEFAULT 'recalculated',
                 user_id TEXT NOT NULL DEFAULT '',
                 updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(date, user_id)
@@ -288,6 +290,7 @@ class DatabaseSchemaManager:
                 user_id TEXT NOT NULL DEFAULT '',
                 market TEXT NOT NULL,
                 day_pnl REAL NOT NULL,
+                snapshot_date TEXT,
                 source TEXT NOT NULL DEFAULT 'exact',
                 confidence REAL NOT NULL DEFAULT 1.0,
                 meta_json TEXT,
@@ -383,9 +386,30 @@ class DatabaseSchemaManager:
                 total_pnl REAL DEFAULT 0,
                 total_pnl_rate REAL DEFAULT 0,
                 day_pnl REAL DEFAULT 0,
+                snapshot_date TEXT,
+                source TEXT NOT NULL DEFAULT 'recalculated',
                 holdings_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT (datetime('now','localtime')),
                 UNIQUE(user_id, ledger_id, date),
+                FOREIGN KEY (ledger_id) REFERENCES investment_ledgers(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ledger_daily_snapshot_market_breakdowns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                ledger_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                snapshot_date TEXT,
+                market TEXT NOT NULL,
+                day_pnl REAL NOT NULL,
+                source TEXT NOT NULL DEFAULT 'exact',
+                confidence REAL NOT NULL DEFAULT 1.0,
+                meta_json TEXT,
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                UNIQUE(user_id, ledger_id, date, market),
                 FOREIGN KEY (ledger_id) REFERENCES investment_ledgers(id)
             )
             """
@@ -420,12 +444,42 @@ class DatabaseSchemaManager:
         _ensure_column("liabilities", "created_at", "created_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
         _ensure_column("liabilities", "updated_at", "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))")
         _ensure_column("daily_snapshots", "user_id", "user_id TEXT DEFAULT ''")
+        _ensure_column("daily_snapshots", "snapshot_date", "snapshot_date TEXT")
+        _ensure_column("daily_snapshots", "source", "source TEXT NOT NULL DEFAULT 'recalculated'")
         _ensure_column("daily_snapshot_market_breakdowns", "user_id", "user_id TEXT DEFAULT ''")
+        _ensure_column("daily_snapshot_market_breakdowns", "snapshot_date", "snapshot_date TEXT")
         _ensure_column("daily_snapshot_market_breakdowns", "source", "source TEXT NOT NULL DEFAULT 'exact'")
         _ensure_column("daily_snapshot_market_breakdowns", "confidence", "confidence REAL NOT NULL DEFAULT 1.0")
         _ensure_column("daily_snapshot_market_breakdowns", "meta_json", "meta_json TEXT")
         _ensure_column(
             "daily_snapshot_market_breakdowns",
+            "updated_at",
+            "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
+        )
+        _ensure_column("ledger_daily_snapshots", "snapshot_date", "snapshot_date TEXT")
+        _ensure_column("ledger_daily_snapshots", "source", "source TEXT NOT NULL DEFAULT 'recalculated'")
+        _ensure_column(
+            "ledger_daily_snapshot_market_breakdowns",
+            "snapshot_date",
+            "snapshot_date TEXT",
+        )
+        _ensure_column(
+            "ledger_daily_snapshot_market_breakdowns",
+            "source",
+            "source TEXT NOT NULL DEFAULT 'exact'",
+        )
+        _ensure_column(
+            "ledger_daily_snapshot_market_breakdowns",
+            "confidence",
+            "confidence REAL NOT NULL DEFAULT 1.0",
+        )
+        _ensure_column(
+            "ledger_daily_snapshot_market_breakdowns",
+            "meta_json",
+            "meta_json TEXT",
+        )
+        _ensure_column(
+            "ledger_daily_snapshot_market_breakdowns",
             "updated_at",
             "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
         )
@@ -499,6 +553,9 @@ class DatabaseSchemaManager:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_market_breakdowns_date ON daily_snapshot_market_breakdowns(date)")
         cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_market_breakdowns_snapshot_date ON daily_snapshot_market_breakdowns(snapshot_date)"
+        )
+        cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_market_breakdowns_source ON daily_snapshot_market_breakdowns(source)"
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_user_id ON admin_audit_logs(admin_user_id)")
@@ -533,6 +590,14 @@ class DatabaseSchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_ledger_daily_snapshots_user_ledger_date"
             " ON ledger_daily_snapshots(user_id, ledger_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_market_breakdowns_user_ledger_date"
+            " ON ledger_daily_snapshot_market_breakdowns(user_id, ledger_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_market_breakdowns_snapshot_date"
+            " ON ledger_daily_snapshot_market_breakdowns(snapshot_date)"
         )
 
     def _ensure_ledger_schema(self, cursor: Any) -> None:

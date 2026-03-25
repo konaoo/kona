@@ -33,6 +33,8 @@ class AnalysisApiTests(unittest.TestCase):
         cursor.execute("DELETE FROM liabilities")
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
+        cursor.execute("DELETE FROM ledger_daily_snapshot_market_breakdowns")
+        cursor.execute("DELETE FROM daily_snapshot_market_breakdowns")
         cursor.execute("DELETE FROM ledger_daily_snapshots")
         cursor.execute("DELETE FROM investment_ledgers")
         cursor.execute("DELETE FROM daily_snapshots")
@@ -213,6 +215,28 @@ class AnalysisApiTests(unittest.TestCase):
         )
         self.assertIsNotNone(today_item)
         self.assertAlmostEqual(float(today_item.get('pnl', 0)), 41.0)
+
+    def test_realtime_today_endpoint_returns_single_source_payload(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600001',
+            'name': '单源测试',
+            'price': 10.0,
+            'qty': 10.0,
+            'curr': 'CNY',
+            'asset_type': 'a',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600001': (12.0, 11.0, 0.0, 0.0)}):
+            resp = self.client.get('/api/realtime/today')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('source'), 'realtime')
+        self.assertIn('effective_date', payload)
+        totals = payload.get('totals') or {}
+        self.assertAlmostEqual(float(totals.get('day_pnl') or 0.0), 10.0, places=2)
+        self.assertAlmostEqual(float(totals.get('day_pnl_rate') or 0.0), 9.09, places=2)
 
     def test_analysis_overview_month_uses_snapshot_day_pnl_not_breakdown_sum(self):
         fixed_now = datetime(2026, 3, 22, 12, 0, 0)
