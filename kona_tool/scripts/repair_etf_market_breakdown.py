@@ -347,13 +347,32 @@ def repair_breakdowns(
                 )
                 conn.commit()
 
+                # 同步 ledger_daily_snapshot_market_breakdowns
+                cursor.execute(
+                    """
+                    DELETE FROM ledger_daily_snapshot_market_breakdowns
+                    WHERE date = ? AND user_id = ?
+                    """,
+                    (date_str, uid),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO ledger_daily_snapshot_market_breakdowns (user_id, ledger_id, date, market, day_pnl, snapshot_date, source, confidence)
+                    SELECT user_id, (SELECT MAX(id) FROM investment_ledgers WHERE user_id = ?), date, market, day_pnl, snapshot_date, source, confidence
+                    FROM daily_snapshot_market_breakdowns
+                    WHERE date = ? AND user_id = ?
+                    """,
+                    (uid, date_str, uid),
+                )
+                conn.commit()
+
                 # 同步 ledger_daily_snapshots.day_pnl
                 cursor.execute(
                     """
                     UPDATE ledger_daily_snapshots
                     SET day_pnl = (
                         SELECT COALESCE(SUM(day_pnl), 0.0)
-                        FROM daily_snapshot_market_breakdowns
+                        FROM ledger_daily_snapshot_market_breakdowns
                         WHERE date = ? AND user_id = ?
                     )
                     WHERE date = ? AND user_id = ?
