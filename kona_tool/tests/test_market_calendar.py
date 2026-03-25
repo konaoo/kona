@@ -55,6 +55,32 @@ class MarketCalendarTests(unittest.TestCase):
         asset = {"code": "sh600000", "asset_type": "us"}
         self.assertEqual(market_calendar.market_from_asset(asset), "us")
 
+    def test_market_from_asset_exchange_etf_returns_a(self):
+        """场内 ETF（asset_type=fund 但代码非 f_/ft_）应归入 A 股市场。"""
+        self.assertEqual(
+            market_calendar.market_from_asset({"code": "159201", "asset_type": "fund"}),
+            "a",
+        )
+        self.assertEqual(
+            market_calendar.market_from_asset({"code": "512890", "asset_type": "fund"}),
+            "a",
+        )
+        self.assertEqual(
+            market_calendar.market_from_asset({"code": "513530", "asset_type": "fund"}),
+            "a",
+        )
+
+    def test_market_from_asset_otc_fund_returns_fund(self):
+        """场外基金（f_/ft_ 开头）保持归入 fund 市场。"""
+        self.assertEqual(
+            market_calendar.market_from_asset({"code": "f_110018", "asset_type": "fund"}),
+            "fund",
+        )
+        self.assertEqual(
+            market_calendar.market_from_asset({"code": "ft_LU1116320737", "asset_type": "fund"}),
+            "fund",
+        )
+
     def test_market_from_asset_code_fallback(self):
         self.assertEqual(
             market_calendar.market_from_asset({"code": "hk00700", "asset_type": ""}),

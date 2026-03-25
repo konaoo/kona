@@ -433,6 +433,16 @@ def market_from_asset(asset: Any) -> str:
         code = str((asset or {}).get("code", "")).strip()
         asset_type = str((asset or {}).get("asset_type", "")).strip().lower()
 
+    # 场内 ETF（asset_type=fund 但代码不以 f_/ft_ 开头）按 A 股市场处理：
+    # 它们在 A 股交易所交易，共享交易时段和结算周期。
+    # 如果归入 "fund" 市场，late settlement 回填时场外基金 NAV 会覆写
+    # 场内 ETF 的 day_pnl，导致日历收益数据丢失。
+    if asset_type == "fund":
+        c = code.lower()
+        if not c.startswith(("f_", "ft_")):
+            return "a"
+        return "fund"
+
     if asset_type in MARKET_KEYS:
         return asset_type
 
