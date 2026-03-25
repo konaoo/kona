@@ -849,9 +849,11 @@ def take_snapshot(user_id: str = None) -> bool:
             if ledgers:
                 handled_dates: set[str] = set()
                 snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+                ledger_stats_list: list[Dict[str, Any]] = []
                 for ledger in ledgers:
                     ledger_id = int(ledger["id"])
                     ledger_stats = calculate_portfolio_stats(uid, now_utc=now_utc, ledger_id=ledger_id)
+                    ledger_stats_list.append(ledger_stats)
                     ledger_success, ledger_dates = _persist_ledger_snapshot_stats(
                         db,
                         logger,
@@ -861,16 +863,26 @@ def take_snapshot(user_id: str = None) -> bool:
                     )
                     success_any = success_any or ledger_success
                     handled_dates.update(ledger_dates)
-                global_stats = calculate_portfolio_stats(uid, now_utc=now_utc)
+
+                # 从已有 ledger_stats 聚合全局数据，避免重复计算
+                rates = get_forex_rates()
+                total_invest = round(sum(float(s.get("total_invest") or 0.0) for s in ledger_stats_list), 2)
+                total_cost = round(sum(float(s.get("total_cost") or 0.0) for s in ledger_stats_list), 2)
+                total_pnl = round(sum(float(s.get("total_pnl") or 0.0) for s in ledger_stats_list), 2)
+                total_cash = round(sum(_asset_amount_to_cny(a, rates) for a in db.get_cash_assets(user_id=uid)), 2)
+                total_other = round(sum(_asset_amount_to_cny(a, rates) for a in db.get_other_assets(user_id=uid)), 2)
+                total_liability = round(sum(_asset_amount_to_cny(a, rates, use_abs=True) for a in db.get_liabilities(user_id=uid)), 2)
+                total_asset = round(total_cash + total_invest + total_other - total_liability, 2)
+
                 global_success = db.aggregate_daily_snapshot_from_ledgers(
                     user_id=str(uid or ""),
                     date_str=snapshot_date,
-                    total_asset=float(global_stats.get("total_asset") or 0.0),
-                    total_invest=float(global_stats.get("total_invest") or 0.0),
-                    total_cash=float(global_stats.get("total_cash") or 0.0),
-                    total_other=float(global_stats.get("total_other") or 0.0),
-                    total_liability=float(global_stats.get("total_liability") or 0.0),
-                    total_pnl=float(global_stats.get("total_pnl") or 0.0),
+                    total_asset=total_asset,
+                    total_invest=total_invest,
+                    total_cash=total_cash,
+                    total_other=total_other,
+                    total_liability=total_liability,
+                    total_pnl=total_pnl,
                     source="recalculated",
                     snapshot_date=snapshot_date,
                 )
@@ -893,10 +905,9 @@ def take_snapshot(user_id: str = None) -> bool:
                 success_any = success_any or global_success or breakdown_success
                 if global_success:
                     logger.info(
-                        "Snapshot saved successfully: user=%s total=%s day_pnl=%s",
+                        "Snapshot saved successfully: user=%s total=%s day_pnl(aggregated)",
                         uid,
-                        global_stats.get("total_asset"),
-                        global_stats.get("day_pnl"),
+                        total_asset,
                     )
                 else:
                     logger.error("Failed to aggregate global snapshot: user=%s", uid)

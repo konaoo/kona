@@ -152,7 +152,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 99.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 99.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/calendar?type=day"):
@@ -167,7 +167,7 @@ class ReadServicesTests(unittest.TestCase):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""
         called_with = []
 
-        def fake_stats_getter(user_id):
+        def fake_stats_getter(user_id, ledger_id=None):
             called_with.append(user_id)
             return {"day_pnl": 99.0, "total_invest": 1000.0}
 
@@ -189,7 +189,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=self.db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {
+            stats_getter=lambda user_id, ledger_id=None: {
                 "day_pnl": 90.0,
                 "day_pnl_base": 600.0,
                 "total_invest": 1000.0,
@@ -202,8 +202,8 @@ class ReadServicesTests(unittest.TestCase):
         self.assertAlmostEqual(result["day"]["base_value"], 600.0)
         self.assertAlmostEqual(result["day"]["pnl_rate"], 15.0)
 
-    def test_analysis_overview_day_raises_when_realtime_service_fails(self):
-        """today 不允许 fallback 回 snapshot，realtime 失败应显式暴露。"""
+    def test_analysis_overview_day_falls_back_to_snapshot_when_realtime_fails(self):
+        """realtime 失败时应 fallback 到快照，不抛异常。"""
         class _FailingRealtimeService:
             def build_payload(self, *, user_id, ledger_id=None):
                 raise RuntimeError("price fetch failed")
@@ -215,14 +215,16 @@ class ReadServicesTests(unittest.TestCase):
         )
 
         with self.app.test_request_context("/api/analysis/overview?period=day"):
-            with self.assertRaises(RuntimeError):
-                service.build_overview_payload(period="day", user_id="u_1")
+            result = service.build_overview_payload(period="day", user_id="u_1")
+
+        # fallback 到 db.get_pnl_overview 的返回值
+        self.assertAlmostEqual(result["day"]["pnl"], 12.34)
 
     def test_overview_day_still_uses_stats_getter_when_all_markets_closed(self):
         """全市场休市后，当日概览仍应显示最后一个有效收益日的最终值"""
         stats_called = []
 
-        def tracking_stats_getter(user_id):
+        def tracking_stats_getter(user_id, ledger_id=None):
             stats_called.append(user_id)
             return {"day_pnl": 99.0, "total_invest": 1000.0}
 
@@ -244,7 +246,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=self.db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 88.0, "total_invest": 1000.0},
             all_markets_closed_getter=lambda: False,  # 有市场开市
         )
 
@@ -345,7 +347,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 88.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 88.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/market_breakdown"):
@@ -379,7 +381,7 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {},
-            stats_getter=lambda user_id: {"day_pnl": 999.0, "total_invest": 1000.0},
+            stats_getter=lambda user_id, ledger_id=None: {"day_pnl": 999.0, "total_invest": 1000.0},
         )
 
         with self.app.test_request_context("/api/analysis/market_breakdown"):
