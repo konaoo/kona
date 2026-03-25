@@ -423,14 +423,14 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
             name: name,
             amount: amount!,
             curr: _cashCurrency,
-            awaitRefresh: true,
+            awaitRefresh: false,
           )
         : await appState.addAsset(
             type: _assetType,
             name: name,
             amount: amount!,
             curr: _cashCurrency,
-            awaitRefresh: true,
+            awaitRefresh: false,
           );
 
     if (!mounted) return;
@@ -448,24 +448,35 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
 
     int? createdId;
     if (!_isEdit) {
-      final afterAssets = _assetsByType(
-        appState,
-        _assetType,
-      ).where((asset) => (asset.id ?? 0) > 0).toList();
-      final fresh =
-          afterAssets
-              .where((asset) => !beforeIds.contains(asset.id ?? 0))
-              .toList()
-            ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
-
-      if (fresh.isNotEmpty) {
-        createdId = fresh.first.id;
-      } else {
-        final byName =
-            afterAssets.where((asset) => asset.name.trim() == name).toList()
+      if (result.data != null && result.data!['id'] != null) {
+        final idVal = result.data!['id'];
+        if (idVal is int) {
+          createdId = idVal;
+        } else if (idVal != null) {
+          createdId = int.tryParse(idVal.toString());
+        }
+      }
+      
+      if (createdId == null || createdId <= 0) {
+        final afterAssets = _assetsByType(
+          appState,
+          _assetType,
+        ).where((asset) => (asset.id ?? 0) > 0).toList();
+        final fresh =
+            afterAssets
+                .where((asset) => !beforeIds.contains(asset.id ?? 0))
+                .toList()
               ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
-        if (byName.isNotEmpty) {
-          createdId = byName.first.id;
+
+        if (fresh.isNotEmpty) {
+          createdId = fresh.first.id;
+        } else {
+          final byName =
+              afterAssets.where((asset) => asset.name.trim() == name).toList()
+                ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0));
+          if (byName.isNotEmpty) {
+            createdId = byName.first.id;
+          }
         }
       }
     }
@@ -1176,10 +1187,10 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             height: 42,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: canSubmit ? null : _kSurface3,
-                                gradient: canSubmit ? _blueGrad : null,
+                                color: (canSubmit || _saving) ? null : _kSurface3,
+                                gradient: (canSubmit || _saving) ? _blueGrad : null,
                                 borderRadius: BorderRadius.circular(8),
-                                border: canSubmit
+                                border: (canSubmit || _saving)
                                     ? null
                                     : Border.all(color: _kBorder, width: 1),
                               ),

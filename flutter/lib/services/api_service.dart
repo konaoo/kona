@@ -1190,12 +1190,12 @@ class ApiService {
     String curr = 'CNY',
   }) async {
     try {
-      await _post('${ApiConfig.cashAssets}/add', {
+      final response = await _post('${ApiConfig.cashAssets}/add', {
         'name': name,
         'amount': amount,
         'curr': curr,
       });
-      return const AssetActionResult.success();
+      return _okResultOrFailure(response);
     } catch (e) {
       return _failureResult(e);
     }
@@ -1208,12 +1208,12 @@ class ApiService {
     String curr = 'CNY',
   }) async {
     try {
-      await _post('${ApiConfig.otherAssets}/add', {
+      final response = await _post('${ApiConfig.otherAssets}/add', {
         'name': name,
         'amount': amount,
         'curr': curr,
       });
-      return const AssetActionResult.success();
+      return _okResultOrFailure(response);
     } catch (e) {
       return _failureResult(e);
     }
@@ -1226,12 +1226,12 @@ class ApiService {
     String curr = 'CNY',
   }) async {
     try {
-      await _post('${ApiConfig.liabilities}/add', {
+      final response = await _post('${ApiConfig.liabilities}/add', {
         'name': name,
         'amount': amount,
         'curr': curr,
       });
-      return const AssetActionResult.success();
+      return _okResultOrFailure(response);
     } catch (e) {
       return _failureResult(e);
     }

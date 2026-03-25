@@ -612,9 +612,17 @@ class PricePreloader:
             self._stop_event.wait(timeout=self._interval)
 
 
+# ── 汇率缓存 ──────────────────────────────────────────────────
+_forex_cache_lock = threading.Lock()
+_forex_cache: Dict[str, float] = {}
+_forex_cache_ts: float = 0.0
+_FOREX_CACHE_TTL = 60.0       # 正常缓存 60 秒
+_FOREX_STALE_TTL = 300.0      # 过期最多容忍 5 分钟
+
+
 def get_forex_rates() -> Dict[str, float]:
     """
-    获取实时汇率
+    获取实时汇率（带 60 秒内存缓存）。
 
     优先使用 exchangerate-api.com（免费、无需注册），
     回退到新浪外汇接口，最终兜底使用 config 默认值。
@@ -622,6 +630,28 @@ def get_forex_rates() -> Dict[str, float]:
     Returns:
         汇率字典 {'USD': 7.0, 'HKD': 0.9, 'CNY': 1.0}
     """
+    global _forex_cache, _forex_cache_ts
+    now = time.time()
+
+    # 1) 命中缓存：直接返回
+    with _forex_cache_lock:
+        if _forex_cache and (now - _forex_cache_ts) < _FOREX_CACHE_TTL:
+            return _forex_cache.copy()
+        stale = _forex_cache.copy() if _forex_cache and (now - _forex_cache_ts) < _FOREX_STALE_TTL else None
+
+    # 2) 实际拉取
+    rates = _fetch_forex_rates_uncached()
+
+    # 3) 写入缓存
+    with _forex_cache_lock:
+        _forex_cache = rates
+        _forex_cache_ts = time.time()
+
+    return rates
+
+
+def _fetch_forex_rates_uncached() -> Dict[str, float]:
+    """不带缓存地获取汇率（内部实现）。"""
     rates = config.DEFAULT_FOREX_RATES.copy()
 
     if not is_policy_enabled("upstream.rate", default=True):

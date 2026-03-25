@@ -63,7 +63,19 @@ class AppAssetWriteState {
       return result;
     }
     await bindings.triggerHomeRefresh(awaitRefresh);
-    return const AssetActionResult.success();
+    
+    // 捕获新创建的资产 ID：返回后由前端弹窗立即应用（避免 awaitRefresh 带来的延时等待）
+    int? createdId;
+    if (result.data != null) {
+      final rawId = result.data!['id'] ?? result.data!['cash_asset_id'];
+      if (rawId is int) {
+        createdId = rawId;
+      } else if (rawId != null) {
+        createdId = int.tryParse(rawId.toString());
+      }
+    }
+    
+    return AssetActionResult.success(data: {'id': createdId});
   }
 
   Future<AssetActionResult> deleteAsset({

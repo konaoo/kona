@@ -554,6 +554,10 @@ def _calculate_portfolio_stats_direct(
         user_id=user_id,
         ledger_id=ledger_id,
     )
+    today_sells_by_effective_date = db.get_sell_transactions_grouped_by_effective_date(
+        user_id=user_id,
+        ledger_id=ledger_id,
+    )
     otc_fund_codes = [
         code for code in codes
         if str(code or "").lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
@@ -646,6 +650,14 @@ def _calculate_portfolio_stats_direct(
             )
             if effective_date:
                 buy_info = (today_buys_by_effective_date.get(effective_date) or {}).get(code)
+                sell_info = (today_sells_by_effective_date.get(effective_date) or {}).get(code)
+
+                sold_qty = 0.0
+                sold_amount = 0.0
+                if sell_info and sell_info.get("qty", 0) > 0:
+                    sold_qty = float(sell_info["qty"])
+                    sold_amount = float(sell_info["amount"])
+
                 if buy_info and buy_info.get("qty", 0) > 0:
                     effective_buy_qty = min(float(buy_info["qty"]), qty)
                     effective_avg_price = float(buy_info["amount"]) / effective_buy_qty
@@ -653,11 +665,13 @@ def _calculate_portfolio_stats_direct(
                     item_day_pnl = (
                         (cur_price - yclose_ref) * pre_trade_qty
                         + (cur_price - effective_avg_price) * effective_buy_qty
+                        + (sold_amount - yclose_ref * sold_qty)
                     ) * rate
-                    item_day_base = yclose_ref * pre_trade_qty * rate
+                    item_day_base = yclose_ref * (pre_trade_qty + sold_qty) * rate
                 else:
-                    item_day_pnl = (cur_price - yclose_ref) * qty * rate
-                    item_day_base = yclose_ref * qty * rate
+                    item_day_pnl = ((cur_price - yclose_ref) * qty + (sold_amount - yclose_ref * sold_qty)) * rate
+                    item_day_base = yclose_ref * (qty + sold_qty) * rate
+                    
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
                 _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
 
@@ -670,27 +684,10 @@ def _calculate_portfolio_stats_direct(
     total_other = sum(_asset_amount_to_cny(a, rates) for a in other_assets)
     total_liability = sum(_asset_amount_to_cny(a, rates, use_abs=True) for a in liabilities)
     
-    # 5. 获取今日已实现盈亏（卖出）
-    relevant_effective_dates = set(day_pnl_breakdowns_by_date.keys())
-    relevant_effective_dates.add(snapshot_date)
-    realized_pnl_grouped = db.get_realized_pnl_grouped_by_effective_date(
-        user_id=user_id,
-        ledger_id=ledger_id,
-    )
-    for effective_date, market_map in realized_pnl_grouped.items():
-        if effective_date not in relevant_effective_dates:
-            continue
-        for market, realized_pnl in (market_map or {}).items():
-            _add_market_breakdown(
-                day_pnl_breakdowns_by_date,
-                effective_date,
-                market,
-                float(realized_pnl or 0.0),
-            )
-    # 注意：total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
-    # 这里的 adjustment 已经是“旧 portfolio.adjustment + 流水表汇总”的总调整值。
-    # 所以 total_pnl 已经包含了历史所有 realized_pnl / 分红 / 手工补差。
-    # 因此这里只需要将 realized_pnl 加到 day_pnl 中即可（因为 loop calculated floating day pnl only）。
+    # 5. 今日已实现盈亏（卖出或日内回转差价）已在上方遍历 portfolio 过程的 sold_day_pnl 完全计算并入
+    # 至于 total_pnl 在上面计算的是 (当前持仓市值 - 当前持仓成本 + adjustment)。
+    # 这里的 adjustment 已经是“旧 portfolio.adjustment + 流水表汇总”的总历史调整值。
+    # 所以 total_pnl 已经天然包含所有长期的已实现历史盈亏(realized_pnl) / 分红 / 手工补差。
     
     # 6. 汇总
     total_asset = total_cash + invest_mv + total_other - total_liability

@@ -2848,6 +2848,46 @@ class PortfolioDatabaseMixin:
         finally:
             conn.close()
 
+    def get_sell_transactions_grouped_by_effective_date(
+        self,
+        user_id: str = None,
+        ledger_id: int | None = None,
+    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """按市场本地日期聚合减仓记录。"""
+        result: Dict[str, Dict[str, Dict[str, float]]] = {}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
+        user_param = (user_id,) if user_id else ()
+        ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
+        ledger_param = (ledger_id,) if ledger_id is not None else ()
+        try:
+            cursor.execute(
+                """
+                SELECT time, code, qty, amount, curr, market, effective_date
+                FROM transactions
+                WHERE type = '减仓' AND
+                """
+                + f" {user_condition}{ledger_condition}",
+                user_param + ledger_param,
+            )
+            for row in cursor.fetchall():
+                identity = self._resolve_transaction_row_identity(row)
+                code = identity["code"]
+                effective_date = identity["effective_date"]
+                if not effective_date:
+                    continue
+                by_code = result.setdefault(effective_date, {})
+                bucket = by_code.setdefault(code, {"qty": 0.0, "amount": 0.0})
+                bucket["qty"] += float(row["qty"] or 0.0)
+                bucket["amount"] += float(row["amount"] or 0.0)
+            return result
+        except Exception as exc:
+            logger.error("Failed to get sell transactions grouped by effective date: %s", exc)
+            return result
+        finally:
+            conn.close()
+
     def get_buy_transactions_by_effective_date(
         self,
         date_str: str,
