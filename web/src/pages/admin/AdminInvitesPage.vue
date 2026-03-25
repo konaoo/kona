@@ -155,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../../shared/http'
 import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { shortDateTime } from '../../shared/format'
@@ -381,9 +381,23 @@ onMounted(() => {
 .code-text { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #000; transition: all 0.2s; }
 .code-text.clickable { cursor: pointer; }
 .code-text.clickable:hover { background: #000; color: #fff; }
-.code-wrapper { display: flex; align-items: center; gap: 10px; }
-.copy-hint { font-size: 12px; color: #10b981; font-weight: 700; animation: fadeIn 0.2s; }
-@keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+.code-wrapper { display: flex; align-items: center; gap: 10px; position: relative; }
+.copy-hint { 
+  position: absolute; 
+  left: 100%; 
+  top: 50%; 
+  transform: translateY(-50%); 
+  margin-left: 10px; 
+  white-space: nowrap; 
+  font-size: 12px; 
+  color: #10b981; 
+  font-weight: 700; 
+  animation: fadeIn 0.2s ease-out; 
+}
+@keyframes fadeIn { 
+  from { opacity: 0; transform: translateY(-50%) translateX(-5px); } 
+  to { opacity: 1; transform: translateY(-50%) translateX(0); } 
+}
 .status-tag { padding: 4px 12px; background: #e6f9ee; color: #10b981; border-radius: 99px; font-size: 12px; font-weight: 700; }
 
 .table-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
@@ -425,6 +439,7 @@ onMounted(() => {
     margin-bottom: 20px;
   }
   .mobile-invite-card {
+    position: relative;
     background: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
     border: 1px solid #edeef1;
     border-radius: 22px;
@@ -457,10 +472,21 @@ onMounted(() => {
     padding: 8px 10px;
   }
   .mobile-copy-hint {
-    margin-top: 10px;
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
     color: #10b981;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
+    background: #e6f9ee;
+    padding: 4px 10px;
+    border-radius: 8px;
+    animation: fadeInMobile 0.2s ease-out;
+  }
+  @keyframes fadeInMobile {
+    from { opacity: 0; transform: translateY(-50%) scale(0.9); }
+    to { opacity: 1; transform: translateY(-50%) scale(1); }
   }
   .mobile-used-tag {
     flex-shrink: 0;

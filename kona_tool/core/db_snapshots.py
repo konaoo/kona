@@ -21,6 +21,256 @@ MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 class SnapshotDatabaseMixin:
     """给 DatabaseManager 提供快照、历史与同步版本相关方法。"""
 
+    def _fetch_snapshot_day_pnl(
+        self,
+        cursor,
+        *,
+        date_str: str,
+        user_id: str = "",
+        ledger_id: int | None = None,
+    ) -> float | None:
+        if ledger_id is None:
+            cursor.execute(
+                """
+                SELECT day_pnl
+                FROM daily_snapshots
+                WHERE date = ? AND user_id = ?
+                LIMIT 1
+                """,
+                (str(date_str or ""), str(user_id or "")),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT day_pnl
+                FROM ledger_daily_snapshots
+                WHERE date = ? AND user_id = ? AND ledger_id = ?
+                LIMIT 1
+                """,
+                (str(date_str or ""), str(user_id or ""), int(ledger_id)),
+            )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return round(float((row["day_pnl"] if row["day_pnl"] is not None else 0.0) or 0.0), 2)
+
+    def _fetch_market_breakdown_rows(
+        self,
+        cursor,
+        *,
+        date_str: str,
+        user_id: str = "",
+        ledger_id: int | None = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        if ledger_id is None:
+            cursor.execute(
+                """
+                SELECT market, day_pnl, snapshot_date, source, confidence, meta_json
+                FROM daily_snapshot_market_breakdowns
+                WHERE date = ? AND user_id = ?
+                """,
+                (str(date_str or ""), str(user_id or "")),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT market, day_pnl, snapshot_date, source, confidence, meta_json
+                FROM ledger_daily_snapshot_market_breakdowns
+                WHERE date = ? AND user_id = ? AND ledger_id = ?
+                """,
+                (str(date_str or ""), str(user_id or ""), int(ledger_id)),
+            )
+        rows: Dict[str, Dict[str, Any]] = {}
+        for row in cursor.fetchall():
+            market = str(row["market"] or "").strip().lower()
+            if market not in MARKET_BREAKDOWN_MARKETS:
+                continue
+            rows[market] = {
+                "day_pnl": round(float((row["day_pnl"] if row["day_pnl"] is not None else 0.0) or 0.0), 2),
+                "snapshot_date": str(row["snapshot_date"] or "").strip(),
+                "source": str(row["source"] or "").strip(),
+                "confidence": float((row["confidence"] if row["confidence"] is not None else 1.0) or 1.0),
+                "meta_json": row["meta_json"],
+            }
+        return rows
+
+    def _upsert_market_breakdown_row(
+        self,
+        cursor,
+        *,
+        date_str: str,
+        user_id: str = "",
+        market: str,
+        day_pnl: float,
+        snapshot_date: str,
+        source: str,
+        confidence: float,
+        meta_json: str | None = None,
+        ledger_id: int | None = None,
+    ) -> None:
+        if ledger_id is None:
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshot_market_breakdowns
+                (date, user_id, market, day_pnl, snapshot_date, source, confidence, meta_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                ON CONFLICT(date, user_id, market) DO UPDATE SET
+                    day_pnl = excluded.day_pnl,
+                    snapshot_date = excluded.snapshot_date,
+                    source = excluded.source,
+                    confidence = excluded.confidence,
+                    meta_json = excluded.meta_json,
+                    updated_at = datetime('now','localtime')
+                """,
+                (
+                    str(date_str or ""),
+                    str(user_id or ""),
+                    str(market or ""),
+                    round(float(day_pnl or 0.0), 2),
+                    str(snapshot_date or date_str or ""),
+                    str(source or "exact"),
+                    float(confidence),
+                    meta_json,
+                ),
+            )
+            return
+
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshot_market_breakdowns
+            (user_id, ledger_id, date, snapshot_date, market, day_pnl, source, confidence, meta_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            ON CONFLICT(user_id, ledger_id, date, market) DO UPDATE SET
+                snapshot_date = excluded.snapshot_date,
+                day_pnl = excluded.day_pnl,
+                source = excluded.source,
+                confidence = excluded.confidence,
+                meta_json = excluded.meta_json,
+                updated_at = datetime('now','localtime')
+            """,
+            (
+                str(user_id or ""),
+                int(ledger_id),
+                str(date_str or ""),
+                str(snapshot_date or date_str or ""),
+                str(market or ""),
+                round(float(day_pnl or 0.0), 2),
+                str(source or "exact"),
+                float(confidence),
+                meta_json,
+            ),
+        )
+
+    def _reconcile_market_breakdown_rows(
+        self,
+        cursor,
+        *,
+        date_str: str,
+        user_id: str = "",
+        ledger_id: int | None = None,
+        snapshot_date: str | None = None,
+        source: str = "recalculated",
+        confidence: float = 1.0,
+        market_updates: Optional[Dict[str, float]] = None,
+        meta_by_market: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, float] | None:
+        total_day_pnl = self._fetch_snapshot_day_pnl(
+            cursor,
+            date_str=date_str,
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        if total_day_pnl is None:
+            return None
+
+        existing = self._fetch_market_breakdown_rows(
+            cursor,
+            date_str=date_str,
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        values = {market: 0.0 for market in MARKET_BREAKDOWN_MARKETS}
+        for market, payload in existing.items():
+            values[market] = round(float(payload.get("day_pnl") or 0.0), 2)
+
+        clean_updates: Dict[str, float] = {}
+        for raw_market, raw_value in (market_updates or {}).items():
+            market = str(raw_market or "").strip().lower()
+            if market not in ("a", "hk", "us", "fund"):
+                continue
+            clean_updates[market] = round(float(raw_value or 0.0), 2)
+            values[market] = clean_updates[market]
+
+        allocated = sum(float(values[market] or 0.0) for market in ("a", "hk", "us", "fund"))
+        values["unallocated"] = round(float(total_day_pnl) - allocated, 2)
+
+        meta_map = meta_by_market or {}
+        write_markets = {"unallocated"}
+        write_markets.update(clean_updates.keys())
+        write_markets.update(market for market in MARKET_BREAKDOWN_MARKETS if market not in existing)
+
+        for market in write_markets:
+            current = existing.get(market) or {}
+            row_snapshot_date = str(current.get("snapshot_date") or snapshot_date or date_str or "")
+            row_source = str(current.get("source") or source or "exact")
+            row_confidence = float(current.get("confidence") if current.get("confidence") is not None else confidence)
+            row_meta_json = current.get("meta_json")
+
+            if market in clean_updates or market == "unallocated" or market not in existing:
+                payload = meta_map.get(market)
+                if payload is not None:
+                    try:
+                        row_meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    except Exception:
+                        row_meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
+                row_snapshot_date = str(snapshot_date or row_snapshot_date or date_str or "")
+                row_source = str(source or row_source or "exact")
+                row_confidence = float(confidence)
+
+            self._upsert_market_breakdown_row(
+                cursor,
+                date_str=date_str,
+                user_id=user_id,
+                ledger_id=ledger_id,
+                market=market,
+                day_pnl=values[market],
+                snapshot_date=row_snapshot_date,
+                source=row_source,
+                confidence=row_confidence,
+                meta_json=row_meta_json,
+            )
+
+        return values
+
+    def _ensure_ledger_breakdowns_complete_for_date(
+        self,
+        cursor,
+        *,
+        user_id: str,
+        date_str: str,
+        snapshot_date: str | None = None,
+        source: str = "recalculated",
+        confidence: float = 1.0,
+    ) -> None:
+        cursor.execute(
+            """
+            SELECT ledger_id
+            FROM ledger_daily_snapshots
+            WHERE user_id = ? AND date = ?
+            """,
+            (str(user_id or ""), str(date_str or "")),
+        )
+        for row in cursor.fetchall():
+            self._reconcile_market_breakdown_rows(
+                cursor,
+                date_str=date_str,
+                user_id=user_id,
+                ledger_id=int(row["ledger_id"]),
+                snapshot_date=snapshot_date,
+                source=source,
+                confidence=confidence,
+            )
+
     def cleanup_orphan_ledger_daily_snapshots(self, cursor, user_id: str | None = None) -> int:
         """清理已经失去对应账本主表记录的孤儿账本快照。"""
         params: list[Any] = []
@@ -390,49 +640,18 @@ class SnapshotDatabaseMixin:
         uid = user_id or ""
 
         try:
-            clean_updates = {}
-            for raw_market, raw_value in (market_updates or {}).items():
-                market = str(raw_market or "").strip().lower()
-                if market not in MARKET_BREAKDOWN_MARKETS:
-                    continue
-                clean_updates[market] = round(float(raw_value or 0.0), 2)
-
-            if not clean_updates:
+            values = self._reconcile_market_breakdown_rows(
+                cursor,
+                date_str=str(date_str or ""),
+                user_id=uid,
+                snapshot_date=str(snapshot_date or date_str or ""),
+                source=str(source or "exact"),
+                confidence=float(confidence),
+                market_updates=market_updates,
+                meta_by_market=meta_by_market,
+            )
+            if values is None:
                 return True
-
-            market_meta = meta_by_market or {}
-            for market, value in clean_updates.items():
-                payload = market_meta.get(market)
-                meta_json = None
-                if payload is not None:
-                    try:
-                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-                    except Exception:
-                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
-                cursor.execute(
-                    """
-                    INSERT INTO daily_snapshot_market_breakdowns
-                    (date, user_id, market, day_pnl, snapshot_date, source, confidence, meta_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
-                    ON CONFLICT(date, user_id, market) DO UPDATE SET
-                        day_pnl = excluded.day_pnl,
-                        snapshot_date = excluded.snapshot_date,
-                        source = excluded.source,
-                        confidence = excluded.confidence,
-                        meta_json = excluded.meta_json,
-                        updated_at = datetime('now','localtime')
-                    """,
-                    (
-                        str(date_str or ""),
-                        uid,
-                        market,
-                        value,
-                        str(snapshot_date or date_str or ""),
-                        str(source or "exact"),
-                        float(confidence),
-                        meta_json,
-                    ),
-                )
             conn.commit()
             return True
         except Exception as exc:
@@ -440,6 +659,58 @@ class SnapshotDatabaseMixin:
                 "Failed to partially save market breakdown date=%s user_id=%s: %s",
                 date_str,
                 uid,
+                exc,
+            )
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_daily_snapshot_market_breakdown_row(
+        self,
+        *,
+        date_str: str,
+        market: str,
+        day_pnl: float,
+        user_id: str = None,
+        snapshot_date: str | None = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        meta_json: str | None = None,
+        ledger_id: int | None = None,
+    ) -> bool:
+        """只覆盖单个市场行，不自动改写其他市场或 unallocated。"""
+        normalized_market = str(market or "").strip().lower()
+        if normalized_market not in MARKET_BREAKDOWN_MARKETS:
+            logger.error("Invalid market breakdown row market=%s date=%s", market, date_str)
+            return False
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+
+        try:
+            self._upsert_market_breakdown_row(
+                cursor,
+                date_str=str(date_str or ""),
+                user_id=uid,
+                ledger_id=ledger_id,
+                market=normalized_market,
+                day_pnl=round(float(day_pnl or 0.0), 2),
+                snapshot_date=str(snapshot_date or date_str or ""),
+                source=str(source or "exact"),
+                confidence=float(confidence),
+                meta_json=meta_json,
+            )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to save single market breakdown row date=%s user_id=%s ledger_id=%s market=%s: %s",
+                date_str,
+                uid,
+                ledger_id,
+                normalized_market,
                 exc,
             )
             conn.rollback()
@@ -634,50 +905,19 @@ class SnapshotDatabaseMixin:
         uid = user_id or ""
 
         try:
-            clean_updates = {}
-            for raw_market, raw_value in (market_updates or {}).items():
-                market = str(raw_market or "").strip().lower()
-                if market not in MARKET_BREAKDOWN_MARKETS:
-                    continue
-                clean_updates[market] = round(float(raw_value or 0.0), 2)
-
-            if not clean_updates:
+            values = self._reconcile_market_breakdown_rows(
+                cursor,
+                date_str=str(date_str or ""),
+                user_id=uid,
+                ledger_id=int(ledger_id),
+                snapshot_date=str(snapshot_date or date_str or ""),
+                source=str(source or "exact"),
+                confidence=float(confidence),
+                market_updates=market_updates,
+                meta_by_market=meta_by_market,
+            )
+            if values is None:
                 return True
-
-            market_meta = meta_by_market or {}
-            for market, value in clean_updates.items():
-                payload = market_meta.get(market)
-                meta_json = None
-                if payload is not None:
-                    try:
-                        meta_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-                    except Exception:
-                        meta_json = json.dumps({"raw": str(payload)}, ensure_ascii=False, separators=(",", ":"))
-                cursor.execute(
-                    """
-                    INSERT INTO ledger_daily_snapshot_market_breakdowns
-                    (user_id, ledger_id, date, snapshot_date, market, day_pnl, source, confidence, meta_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
-                    ON CONFLICT(user_id, ledger_id, date, market) DO UPDATE SET
-                        snapshot_date = excluded.snapshot_date,
-                        day_pnl = excluded.day_pnl,
-                        source = excluded.source,
-                        confidence = excluded.confidence,
-                        meta_json = excluded.meta_json,
-                        updated_at = datetime('now','localtime')
-                    """,
-                    (
-                        uid,
-                        int(ledger_id),
-                        str(date_str or ""),
-                        str(snapshot_date or date_str or ""),
-                        market,
-                        value,
-                        str(source or "exact"),
-                        float(confidence),
-                        meta_json,
-                    ),
-                )
             conn.commit()
             return True
         except Exception as exc:
@@ -779,6 +1019,14 @@ class SnapshotDatabaseMixin:
         uid = user_id or ""
 
         try:
+            self._ensure_ledger_breakdowns_complete_for_date(
+                cursor,
+                user_id=uid,
+                date_str=str(date_str or ""),
+                snapshot_date=snapshot_date,
+                source=source,
+                confidence=1.0,
+            )
             cursor.execute(
                 """
                 SELECT market, COALESCE(SUM(day_pnl), 0.0) AS total_day_pnl

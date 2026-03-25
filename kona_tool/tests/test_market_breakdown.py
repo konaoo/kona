@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import subprocess
+import json
 from pathlib import Path
 import unittest
 
@@ -33,6 +34,9 @@ class MarketBreakdownTests(unittest.TestCase):
     def setUp(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
+        _safe_delete(cursor, "ledger_daily_snapshot_market_breakdowns")
+        _safe_delete(cursor, "ledger_daily_snapshots")
+        _safe_delete(cursor, "investment_ledgers")
         _safe_delete(cursor, "daily_snapshot_market_breakdowns")
         _safe_delete(cursor, "daily_snapshots")
         _safe_delete(cursor, "transactions")
@@ -222,6 +226,391 @@ class MarketBreakdownTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["day_pnl"]), 50.0, places=2)
         self.assertEqual(str(row["source"]), "estimated")
         self.assertLessEqual(float(row["confidence"]), 0.5)
+
+    def test_partial_market_backfill_keeps_daily_total_stable(self):
+        user_id = "u_partial_total"
+        self._insert_snapshot("2026-02-18", total_pnl=120.0, day_pnl=50.0, user_id=user_id)
+
+        ok = app_module.db.save_daily_snapshot_market_breakdown_partial(
+            date_str="2026-02-18",
+            market_updates={"fund": 20.0},
+            user_id=user_id,
+            snapshot_date="2026-02-19",
+            source="backfill",
+            confidence=1.0,
+        )
+        self.assertTrue(ok)
+        self.assertTrue(app_module.db.sync_daily_snapshot_day_pnl_from_breakdown("2026-02-18", user_id=user_id))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT market, day_pnl
+            FROM daily_snapshot_market_breakdowns
+            WHERE user_id = ? AND date = ?
+            ORDER BY market
+            """,
+            (user_id, "2026-02-18"),
+        )
+        rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM daily_snapshots
+            WHERE user_id = ? AND date = ?
+            """,
+            (user_id, "2026-02-18"),
+        )
+        snapshot_row = cursor.fetchone()
+        conn.close()
+
+        self.assertEqual(len(rows), 5)
+        by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in rows}
+        self.assertAlmostEqual(by_market["a"], 0.0, places=2)
+        self.assertAlmostEqual(by_market["hk"], 0.0, places=2)
+        self.assertAlmostEqual(by_market["us"], 0.0, places=2)
+        self.assertAlmostEqual(by_market["fund"], 20.0, places=2)
+        self.assertAlmostEqual(by_market["unallocated"], 30.0, places=2)
+        self.assertIsNotNone(snapshot_row)
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 50.0, places=2)
+
+    def test_ledger_partial_backfill_aggregates_without_zeroing_missing_markets(self):
+        user_id = "u_ledger_partial"
+        ledger = app_module.db.create_ledger(user_id, "主账本")
+        ledger_id = int(ledger["ledger_id"])
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+            VALUES (?, ?, '2026-02-18', 1000, 900, 100, 11.11, 50, 1)
+            """,
+            (user_id, ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES ('2026-02-18', 1000, 1000, 0, 0, 0, 100, 50, ?, '2026-02-18 23:00:00')
+            """,
+            (user_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        ok = app_module.db.save_ledger_daily_snapshot_market_breakdown_partial(
+            user_id=user_id,
+            ledger_id=ledger_id,
+            date_str="2026-02-18",
+            market_updates={"fund": 20.0},
+            snapshot_date="2026-02-19",
+            source="backfill",
+            confidence=1.0,
+        )
+        self.assertTrue(ok)
+        self.assertTrue(
+            app_module.db.aggregate_daily_snapshot_market_breakdown_from_ledgers(
+                user_id=user_id,
+                date_str="2026-02-18",
+                snapshot_date="2026-02-19",
+                source="backfill",
+            )
+        )
+        self.assertTrue(app_module.db.sync_daily_snapshot_day_pnl_from_breakdown("2026-02-18", user_id=user_id))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT market, day_pnl
+            FROM ledger_daily_snapshot_market_breakdowns
+            WHERE user_id = ? AND ledger_id = ? AND date = ?
+            ORDER BY market
+            """,
+            (user_id, ledger_id, "2026-02-18"),
+        )
+        ledger_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT market, day_pnl
+            FROM daily_snapshot_market_breakdowns
+            WHERE user_id = ? AND date = ?
+            ORDER BY market
+            """,
+            (user_id, "2026-02-18"),
+        )
+        global_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM daily_snapshots
+            WHERE user_id = ? AND date = ?
+            """,
+            (user_id, "2026-02-18"),
+        )
+        snapshot_row = cursor.fetchone()
+        conn.close()
+
+        self.assertEqual(len(ledger_rows), 5)
+        self.assertEqual(len(global_rows), 5)
+        ledger_by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in ledger_rows}
+        global_by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in global_rows}
+        self.assertAlmostEqual(ledger_by_market["fund"], 20.0, places=2)
+        self.assertAlmostEqual(ledger_by_market["unallocated"], 30.0, places=2)
+        self.assertAlmostEqual(global_by_market["fund"], 20.0, places=2)
+        self.assertAlmostEqual(global_by_market["unallocated"], 30.0, places=2)
+        self.assertIsNotNone(snapshot_row)
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 50.0, places=2)
+
+    def test_save_single_market_breakdown_row_does_not_rebalance_other_markets(self):
+        user_id = "u_single_market"
+        self._insert_snapshot("2026-03-03", total_pnl=100.0, day_pnl=50.0, user_id=user_id)
+        ok = app_module.db.save_daily_snapshot_market_breakdown(
+            date_str="2026-03-03",
+            day_pnl_by_market={"a": 10.0, "hk": 20.0, "us": 30.0, "fund": 40.0},
+            total_day_pnl=100.0,
+            user_id=user_id,
+            source="exact",
+            confidence=1.0,
+        )
+        self.assertTrue(ok)
+
+        ok = app_module.db.save_daily_snapshot_market_breakdown_row(
+            date_str="2026-03-03",
+            market="fund",
+            day_pnl=25.0,
+            user_id=user_id,
+            snapshot_date="2026-03-03",
+            source="manual_fix",
+            confidence=1.0,
+            meta_json='{"reason":"test"}',
+        )
+        self.assertTrue(ok)
+        self.assertTrue(app_module.db.sync_daily_snapshot_day_pnl_from_breakdown("2026-03-03", user_id=user_id))
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT market, day_pnl, source
+            FROM daily_snapshot_market_breakdowns
+            WHERE user_id = ? AND date = ?
+            ORDER BY market
+            """,
+            (user_id, "2026-03-03"),
+        )
+        rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM daily_snapshots
+            WHERE user_id = ? AND date = ?
+            """,
+            (user_id, "2026-03-03"),
+        )
+        snapshot_row = cursor.fetchone()
+        conn.close()
+
+        by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in rows}
+        by_source = {str(row["market"]): str(row["source"] or "") for row in rows}
+        self.assertAlmostEqual(by_market["a"], 10.0, places=2)
+        self.assertAlmostEqual(by_market["hk"], 20.0, places=2)
+        self.assertAlmostEqual(by_market["us"], 30.0, places=2)
+        self.assertAlmostEqual(by_market["fund"], 25.0, places=2)
+        self.assertAlmostEqual(by_market["unallocated"], 0.0, places=2)
+        self.assertEqual(by_source["fund"], "manual_fix")
+        self.assertIsNotNone(snapshot_row)
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 85.0, places=2)
+
+    def test_rebuild_fund_breakdown_script_replaces_fund_row_and_syncs_day_total(self):
+        user_id = "u_rebuild_fund"
+        self._insert_snapshot("2026-03-03", total_pnl=100.0, day_pnl=100.0, user_id=user_id)
+        ok = app_module.db.save_daily_snapshot_market_breakdown(
+            date_str="2026-03-03",
+            day_pnl_by_market={"a": 10.0, "hk": 20.0, "us": 30.0, "fund": 40.0},
+            total_day_pnl=100.0,
+            user_id=user_id,
+            source="repair",
+            confidence=1.0,
+        )
+        self.assertTrue(ok)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio
+            (code, name, qty, price, curr, asset_type, user_id, ledger_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            ("f_110018", "测试基金", 100.0, 1.0, "CNY", "fund", user_id),
+        )
+        conn.commit()
+        conn.close()
+
+        nav_file = Path(tmp_dir.name) / "fund_navs.json"
+        nav_file.write_text(
+            json.dumps(
+                {
+                    "funds": {
+                        "f_110018": {
+                            "currency": "CNY",
+                            "navs": {
+                                "2026-03-02": 1.00,
+                                "2026-03-03": 1.20,
+                            },
+                        }
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        script_path = KONA_TOOL / "scripts" / "rebuild_fund_breakdown_from_navs.py"
+        self.assertTrue(script_path.exists())
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                "--db-path",
+                str(app_module.db.db_path),
+                "--user-id",
+                user_id,
+                "--start-date",
+                "2026-03-03",
+                "--end-date",
+                "2026-03-03",
+                "--nav-file",
+                str(nav_file),
+                "--apply",
+                "--sync-day-pnl",
+            ],
+            cwd=str(KONA_TOOL),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, msg=f"stdout={proc.stdout}\nstderr={proc.stderr}")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT day_pnl, source
+            FROM daily_snapshot_market_breakdowns
+            WHERE user_id = ? AND date = ? AND market = 'fund'
+            """,
+            (user_id, "2026-03-03"),
+        )
+        fund_row = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM daily_snapshots
+            WHERE user_id = ? AND date = ?
+            """,
+            (user_id, "2026-03-03"),
+        )
+        snapshot_row = cursor.fetchone()
+        conn.close()
+
+        self.assertIsNotNone(fund_row)
+        self.assertAlmostEqual(float(fund_row["day_pnl"] or 0.0), 20.0, places=2)
+        self.assertEqual(str(fund_row["source"] or ""), "manual_fix")
+        self.assertIsNotNone(snapshot_row)
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 80.0, places=2)
+
+    def test_rebuild_fund_breakdown_script_skips_ledger_total_sync_when_breakdown_incomplete(self):
+        user_id = "u_rebuild_fund_ledger"
+        ledger = app_module.db.create_ledger(user_id, "主账本")
+        ledger_id = int(ledger["ledger_id"])
+        self._insert_snapshot("2026-03-03", total_pnl=100.0, day_pnl=100.0, user_id=user_id)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+            VALUES (?, ?, '2026-03-03', 1000, 900, 100, 11.11, 123.0, 1)
+            """,
+            (user_id, ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO portfolio
+            (code, name, qty, price, curr, asset_type, user_id, ledger_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("f_110018", "测试基金", 100.0, 1.0, "CNY", "fund", user_id, ledger_id),
+        )
+        conn.commit()
+        conn.close()
+
+        nav_file = Path(tmp_dir.name) / "fund_navs_ledger.json"
+        nav_file.write_text(
+            json.dumps(
+                {
+                    "funds": {
+                        "f_110018": {
+                            "currency": "CNY",
+                            "navs": {
+                                "2026-03-02": 1.00,
+                                "2026-03-03": 1.20,
+                            },
+                        }
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        script_path = KONA_TOOL / "scripts" / "rebuild_fund_breakdown_from_navs.py"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                "--db-path",
+                str(app_module.db.db_path),
+                "--user-id",
+                user_id,
+                "--ledger-id",
+                str(ledger_id),
+                "--start-date",
+                "2026-03-03",
+                "--end-date",
+                "2026-03-03",
+                "--nav-file",
+                str(nav_file),
+                "--apply",
+                "--sync-day-pnl",
+            ],
+            cwd=str(KONA_TOOL),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, msg=f"stdout={proc.stdout}\nstderr={proc.stderr}")
+        self.assertIn("跳过账本 day_pnl 同步", proc.stdout)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM ledger_daily_snapshots
+            WHERE user_id = ? AND ledger_id = ? AND date = ?
+            """,
+            (user_id, ledger_id, "2026-03-03"),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(float(row["day_pnl"] or 0.0), 123.0, places=2)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,21 @@
+## 2026-03-25-05
+
+### 这版一句话
+按真实基金净值修正了 `kona` 账号 2026 年 3 月上半月的基金收益日历，并补上了账本分市场不完整时禁止误同步日总额的保护。
+
+### 主要变化
+- **线上 `kona` 3 月基金历史收益已修正**：根据 `f_110018`、`f_968048`、`f_968163`、`ft_LU1116320737` 的真实历史净值与美元汇率，重建了 `2026-03-03` 到 `2026-03-13` 的 `fund` 分市场收益，并同步修正全局与账本日历 `day_pnl`。
+- **重建脚本补上账本保护**：更新 [kona_tool/scripts/rebuild_fund_breakdown_from_navs.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/scripts/rebuild_fund_breakdown_from_navs.py)，当账本分市场行不完整时，跳过账本 `day_pnl` 同步，避免只剩 `fund` 一行时把整天收益误改坏。
+- **补回归测试**：更新 [kona_tool/tests/test_market_breakdown.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_breakdown.py)，覆盖“单市场修复不重平衡其他市场”和“账本分市场不完整时不得误同步日总额”两类风险。
+
+### 影响范围
+- 线上 `kona` 账号 2026 年 3 月收益日历
+- 后端基金历史修复脚本与快照写库安全保护
+
+### 验收重点
+- `kona` 的 2026 年 3 月收益日历里，`2026-03-03` 到 `2026-03-13` 的基金分市场收益应和真实净值方向一致，不再沿用 3 月 18 日那轮 `repair` 脚本的脏值。
+- 使用重建脚本修 `fund` 行时，如果账本分市场表不完整，脚本应明确跳过账本 `day_pnl` 同步，不得把整天收益误改成单市场金额。
+
 ## 2026-03-25-04
 
 ### 这版一句话
