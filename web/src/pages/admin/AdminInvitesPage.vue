@@ -159,20 +159,33 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '../../shared/http'
 import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { shortDateTime } from '../../shared/format'
+import { storeToRefs } from 'pinia'
+import { useAdminStore } from '../../stores/admin'
 
-const invites = reactive<Record<string, any>>({ items: [], total: 0 })
+const adminStore = useAdminStore()
+const { invites: invitesState } = storeToRefs(adminStore)
+
+const inviteStatus = computed({
+  get: () => invitesState.value.inviteStatus,
+  set: (val) => { invitesState.value.inviteStatus = val }
+})
+const pageSize = computed({
+  get: () => invitesState.value.pageSize,
+  set: (val) => { invitesState.value.pageSize = val }
+})
+const currentPage = computed({
+  get: () => invitesState.value.currentPage,
+  set: (val) => { invitesState.value.currentPage = val }
+})
+
+const invites = computed(() => invitesState.value)
 const count = ref(10)
 const message = ref('')
 const ok = ref(true)
 const copiedCode = ref('')
-const inviteStatus = ref<'active' | 'used'>('active')
-const pageSize = ref(10)
 const pageSizeOptions = [10, 20, 50, 100]
-const currentPage = ref(1)
-let lastRequestKey = ''
-let inflightKey = ''
 
-const totalRows = computed(() => Number(invites.total || 0))
+const totalRows = computed(() => Number(invites.value.total || 0))
 const totalPages = computed(() => {
   const total = totalRows.value
   return total > 0 ? Math.ceil(total / pageSize.value) : 1
@@ -204,28 +217,10 @@ function formatDateOnly(value: unknown): string {
 }
 
 async function load(options: { force?: boolean } = {}) {
-  const status = inviteStatus.value
-  const limit = pageSize.value
-  const offset = (currentPage.value - 1) * pageSize.value
-  const force = Boolean(options.force)
-  // 增加 random 和 refresh_id 标识以支持缓存隔离
-  const refreshId = Math.random().toString(36).substring(7)
-  const key = `${status}|${limit}|${offset}|random|${refreshId}|${force ? '1' : '0'}`
-  if (!force && (key === lastRequestKey || key === inflightKey)) return
-  inflightKey = key
   try {
-    const params = new URLSearchParams({
-      status,
-      limit: String(limit),
-      offset: String(offset),
-      random: '1',
-      refresh_id: refreshId,
-    })
-    if (force) params.set('force', '1')
-    Object.assign(invites, await api.get(`/api/admin/invites?${params.toString()}`))
-    if (!force) lastRequestKey = key
-  } finally {
-    if (inflightKey === key) inflightKey = ''
+    await adminStore.loadInvites(options.force)
+  } catch (e) {
+    console.error('Failed to load invites', e)
   }
 }
 

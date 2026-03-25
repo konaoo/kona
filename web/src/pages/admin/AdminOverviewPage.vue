@@ -159,17 +159,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { api } from '../../shared/http'
+import { computed, onMounted, ref, watch } from 'vue'
 import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { useKonaStore } from '../../stores/composables'
+import { useAdminStore } from '../../stores/admin'
 
 const store = useKonaStore()
+const adminStore = useAdminStore()
 
-const overview = reactive<Record<string, any>>({
-  dashboard: {},
-  retention_rows: [],
-})
+const overview = computed(() => adminStore.overview.data || { dashboard: {}, retention_rows: [] })
 
 const pageSize = ref(10)
 const pageSizeOptions = [10, 30, 50, 100]
@@ -184,7 +182,7 @@ const greeting = computed(() => {
   return '晚上好'
 })
 
-const retentionRows = computed(() => (overview.retention_rows || []) as Array<Record<string, any>>)
+const retentionRows = computed(() => (overview.value?.retention_rows || []) as Array<Record<string, any>>)
 const totalRows = computed(() => retentionRows.value.length)
 const totalPages = computed(() => Math.ceil(totalRows.value / pageSize.value) || 1)
 const startIndex = computed(() => (currentPage.value - 1) * pageSize.value)
@@ -202,12 +200,10 @@ const visiblePages = computed(() => {
 
 
 async function load(force = false) {
-  const suffix = force ? '?force=1' : ''
   try {
-    const payload = await api.get<Record<string, any>>(`/api/admin/overview${suffix}`)
-    overview.dashboard = payload?.dashboard || {}
-    overview.retention_rows = payload?.retention_rows || []
-    currentPage.value = 1
+    await adminStore.loadOverview(force)
+    // 只有在数据真正更新时才重置页码，或者保持当前页码以提升体验
+    // currentPage.value = 1 
   } catch (e) {
     console.error('Failed to load overview data', e)
   }

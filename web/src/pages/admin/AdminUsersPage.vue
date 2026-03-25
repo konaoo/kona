@@ -311,22 +311,41 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '../../shared/http'
 import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
 import { money, shortDateTime } from '../../shared/format'
+import { storeToRefs } from 'pinia'
+import { useAdminStore } from '../../stores/admin'
 
 type UserSortBy = 'last_active_at' | 'total_asset_cny' | 'total_invest_cny' | 'created_at'
 
-const query = ref('')
-const sortBy = ref<UserSortBy>('last_active_at')
-const sortDir = ref<'asc' | 'desc'>('desc')
-const users = reactive<Record<string, any>>({ items: [], total: 0 })
+const adminStore = useAdminStore()
+const { users: usersState } = storeToRefs(adminStore)
+
+const query = computed({
+  get: () => usersState.value.query,
+  set: (val) => { usersState.value.query = val }
+})
+const sortBy = computed({
+  get: () => usersState.value.sortBy,
+  set: (val) => { usersState.value.sortBy = val as any }
+})
+const sortDir = computed({
+  get: () => usersState.value.sortDir,
+  set: (val) => { usersState.value.sortDir = val }
+})
+const currentPage = computed({
+  get: () => usersState.value.currentPage,
+  set: (val) => { usersState.value.currentPage = val }
+})
+const pageSize = computed({
+  get: () => usersState.value.pageSize,
+  set: (val) => { usersState.value.pageSize = val }
+})
+
+const users = computed(() => usersState.value)
 const message = ref('')
 const ok = ref(true)
-const currentPage = ref(1)
-const pageSize = ref(10)
 const pageSizeOptions = [10, 20, 50, 100]
-let lastRequestKey = ''
-let inflightKey = ''
 
-const totalRows = computed(() => Number(users.total || 0))
+const totalRows = computed(() => Number(users.value.total || 0))
 const totalPages = computed(() => {
   const total = totalRows.value
   return total > 0 ? Math.ceil(total / pageSize.value) : 1
@@ -366,27 +385,10 @@ function flash(msg: string, success: boolean) {
 }
 
 async function load(options: { force?: boolean } = {}) {
-  const force = Boolean(options.force)
-  const offset = (currentPage.value - 1) * pageSize.value
-  const key = [query.value, sortBy.value, sortDir.value, String(pageSize.value), String(offset), force ? '1' : '0'].join('|')
-  if (!force && (key === lastRequestKey || key === inflightKey)) return
-
-  inflightKey = key
   try {
-    const params = new URLSearchParams({
-      q: query.value,
-      status: 'all',
-      include_local: '0',
-      sort_by: sortBy.value,
-      sort_dir: sortDir.value,
-      limit: String(pageSize.value),
-      offset: String(offset),
-    })
-    if (force) params.set('force', '1')
-    Object.assign(users, await api.get(`/api/admin/users?${params.toString()}`))
-    if (!force) lastRequestKey = key
-  } finally {
-    if (inflightKey === key) inflightKey = ''
+    await adminStore.loadUsers(options.force)
+  } catch (e) {
+    console.error('Failed to load users', e)
   }
 }
 

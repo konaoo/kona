@@ -2,6 +2,7 @@
   <div class="admin-layout">
     <aside class="admin-sidebar">
       <div class="brand">
+        <img src="/assets/logo.svg" class="brand-logo" alt="logo" />
         <div class="brand-title">管理后台</div>
       </div>
 
@@ -86,7 +87,17 @@ async function goApp() {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 2px calc(10px * var(--admin-space-scale)) calc(16px * var(--admin-space-scale));
+}
+
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  object-fit: cover;
 }
 
 .brand-title {

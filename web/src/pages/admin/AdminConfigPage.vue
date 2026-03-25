@@ -76,11 +76,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { api } from '../../shared/http'
-import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
-import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
-import OpsAppUpdateEditorModal from '../../components/admin/OpsAppUpdateEditorModal.vue'
 
 type OpsConfigPayload = { text?: string; image_url?: string }
 type OpsAppUpdatePayload = { text?: string; download_url?: string }
@@ -136,24 +131,25 @@ const APP_UPDATE_META = {
   saveError: '检查更新配置保存失败',
 }
 
-const configForm = reactive<Record<ConfigScene, Required<OpsConfigPayload>>>({
-  invite: { text: '', image_url: '' },
-  user_group: { text: '', image_url: '' },
-  ios_qr: { text: '', image_url: '' },
-})
+import { computed, onMounted, reactive, ref } from 'vue'
+import { api } from '../../shared/http'
+import AdminConsoleNav from '../../components/admin/AdminConsoleNav.vue'
+import OpsConfigEditorModal from '../../components/admin/OpsConfigEditorModal.vue'
+import OpsAppUpdateEditorModal from '../../components/admin/OpsAppUpdateEditorModal.vue'
+import { storeToRefs } from 'pinia'
+import { useAdminStore } from '../../stores/admin'
+
+const adminStore = useAdminStore()
+const { ops: opsState } = storeToRefs(adminStore)
+
+const configForm = computed(() => opsState.value.configs)
+const appUpdateState = computed(() => opsState.value.appUpdate)
+const thumbLoadFailed = computed(() => opsState.value.thumbLoadFailed)
 
 const loading = reactive<Record<ConfigScene, boolean>>({
   invite: false, user_group: false, ios_qr: false,
 })
-
 const loadingAppUpdate = ref(false)
-const thumbLoadFailed = reactive<Record<ConfigScene, boolean>>({
-  invite: false, user_group: false, ios_qr: false,
-})
-
-const appUpdateState = reactive<Required<OpsAppUpdatePayload>>({
-  text: '', download_url: '',
-})
 
 const pageMessage = ref('')
 const pageOk = ref(true)
@@ -174,19 +170,19 @@ const currentMeta = computed(() => META[editor.scene])
 
 const appUpdateUrlMeta = computed(() => {
   if (loadingAppUpdate.value) return '下载链接读取中...'
-  const url = String(appUpdateState.download_url || '').trim()
+  const url = String(appUpdateState.value.download_url || '').trim()
   if (!url) return '未配置下载链接'
   return /^https?:\/\//i.test(url) ? '已配置下载资源' : '下载链接格式异常'
 })
 
 const appUpdateUrlMetaClass = computed(() => {
-  const url = String(appUpdateState.download_url || '').trim()
+  const url = String(appUpdateState.value.download_url || '').trim()
   if (!url) return ''
   return /^https?:\/\//i.test(url) ? '' : 'is-error'
 })
 
 const appUpdatePreviewTag = computed(() => {
-  const text = String(appUpdateState.text || '').trim()
+  const text = String(appUpdateState.value.text || '').trim()
   return text ? '已配更新文案' : '默认更新文案'
 })
 
@@ -207,61 +203,40 @@ function sceneIcon(scene: ConfigScene): string {
   return '📱'
 }
 function scenePreviewTag(scene: ConfigScene): string {
-  const text = String(configForm[scene].text || '').trim()
+  const text = String(configForm.value[scene]?.text || '').trim()
   return text ? '已配文案' : '默认文案'
 }
 function scenePreviewText(scene: ConfigScene): string {
-  const text = String(configForm[scene].text || '').trim()
+  const text = String(configForm.value[scene]?.text || '').trim()
   return text || META[scene].defaultText
 }
 function sceneImageMeta(scene: ConfigScene): string {
   if (loading[scene]) return '图片读取中...';
-  const imageUrl = String(configForm[scene].image_url || '').trim();
+  const imageUrl = String(configForm.value[scene]?.image_url || '').trim();
   if (!imageUrl) return '未配置图片';
-  return thumbLoadFailed[scene] ? '图片链接无效' : '已配置预览图';
+  return thumbLoadFailed.value[scene] ? '图片链接无效' : '已配置预览图';
 }
 
 const appUpdatePreviewText = computed(() => {
-  const text = String(appUpdateState.text || '').trim()
+  const text = String(appUpdateState.value.text || '').trim()
   return text || APP_UPDATE_META.defaultText
 })
 
-async function loadConfig(scene: ConfigScene) {
-  loading[scene] = true; thumbLoadFailed[scene] = false;
-  try {
-    const payload = await api.get<OpsConfigPayload>(META[scene].loadPath)
-    const normalized = normalizePayload(payload)
-    configForm[scene].text = normalized.text
-    configForm[scene].image_url = normalized.image_url
-  } catch (e) {
-    flashPage(e instanceof Error ? e.message : META[scene].loadError, false)
-  } finally {
-    loading[scene] = false
-  }
-}
-
-async function loadAppUpdateConfig() {
-  loadingAppUpdate.value = true
-  try {
-    const payload = await api.get<OpsAppUpdatePayload>(APP_UPDATE_META.loadPath)
-    const normalized = normalizeAppUpdatePayload(payload)
-    appUpdateState.text = normalized.text
-    appUpdateState.download_url = normalized.download_url
-  } catch (e) {
-    flashPage(e instanceof Error ? e.message : APP_UPDATE_META.loadError, false)
-  } finally {
-    loadingAppUpdate.value = false
-  }
-}
-
-async function refreshAll() {
+async function refreshAll(force = false) {
+  loading.invite = true; loading.user_group = true; loading.ios_qr = true; loadingAppUpdate.value = true
   pageMessage.value = ''
-  await Promise.all([...SCENES.map((scene) => loadConfig(scene)), loadAppUpdateConfig()])
+  try {
+    await adminStore.loadOpsConfigs(SCENES, force)
+  } catch (e) {
+    flashPage(e instanceof Error ? e.message : '加载配置失败', false)
+  } finally {
+    loading.invite = false; loading.user_group = false; loading.ios_qr = false; loadingAppUpdate.value = false
+  }
 }
 
 function openEditor(scene: ConfigScene) {
   editor.scene = scene; editor.visible = true; editor.saving = false; editor.message = ''; editor.ok = true;
-  editor.draft = normalizePayload(configForm[scene])
+  editor.draft = normalizePayload(configForm.value[scene])
 }
 function closeEditor(force = false) {
   if (editor.saving && !force) return
@@ -270,7 +245,7 @@ function closeEditor(force = false) {
 
 function openAppUpdateEditor() {
   appUpdateEditor.visible = true; appUpdateEditor.saving = false; appUpdateEditor.message = ''; appUpdateEditor.ok = true;
-  appUpdateEditor.draft = normalizeAppUpdatePayload(appUpdateState)
+  appUpdateEditor.draft = normalizeAppUpdatePayload(appUpdateState.value)
 }
 function closeAppUpdateEditor(force = false) {
   if (appUpdateEditor.saving && !force) return
@@ -284,9 +259,12 @@ async function saveEditor() {
   try {
     const payload = await api.post<OpsConfigPayload>(META[scene].savePath, payloadToSave)
     const normalized = normalizePayload(payload, payloadToSave)
-    configForm[scene].text = normalized.text
-    configForm[scene].image_url = normalized.image_url
-    thumbLoadFailed[scene] = false
+    // 更新 Store 中的数据
+    adminStore.ops.configs[scene] = {
+      text: normalized.text,
+      image_url: normalized.image_url
+    }
+    adminStore.ops.thumbLoadFailed[scene] = false
     flashPage(META[scene].saveSuccess, true)
     closeEditor(true)
   } catch (e) {
@@ -303,8 +281,11 @@ async function saveAppUpdateEditor() {
   try {
     const payload = await api.post<OpsAppUpdatePayload>(APP_UPDATE_META.savePath, payloadToSave)
     const normalized = normalizeAppUpdatePayload(payload, payloadToSave)
-    appUpdateState.text = normalized.text
-    appUpdateState.download_url = normalized.download_url
+    // 更新 Store 中的数据
+    adminStore.ops.appUpdate = {
+      text: normalized.text,
+      download_url: normalized.download_url
+    }
     flashPage(APP_UPDATE_META.saveSuccess, true)
     closeAppUpdateEditor(true)
   } catch (e) {

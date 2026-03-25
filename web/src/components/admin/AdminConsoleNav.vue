@@ -1,7 +1,9 @@
 <template>
   <aside class="admin-sidebar">
     <div class="logo">
-      <div class="logo-icon">🏠</div>
+      <div class="logo-icon">
+        <img src="/assets/logo.svg" alt="logo" class="logo-img" />
+      </div>
       <span>咔咔管理后台</span>
     </div>
 
@@ -126,6 +128,13 @@ async function goApp() {
   justify-content: center;
   color: white;
   font-size: 18px;
+  overflow: hidden;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .admin-nav {
