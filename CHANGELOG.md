@@ -1,3 +1,39 @@
+## 2026-03-25-04
+
+### 这版一句话
+更换管理后台品牌 Logo，并通过 Pinia 全局状态管理消除各管理页面切换时的数据重复加载问题。
+
+### 主要变化
+- **管理后台 Logo 品牌化**：将管理后台所有页面侧边栏顶部的 Emoji 占位符替换为统一的品牌 SVG Logo（[AdminConsoleNav.vue](web/src/components/admin/AdminConsoleNav.vue)、[LegacyAdminShell.vue](web/src/layouts/LegacyAdminShell.vue)）。
+- **引入 AdminStore 全局状态管理**：新增 [web/src/stores/admin.ts](web/src/stores/admin.ts)，集中管理数据概览、用户列表、邀请码列表及运营配置四个模块的状态，并实现基础的 API 数据缓存（30~60 秒有效期）。
+- **页面状态持久化**：重构了 `AdminOverviewPage`、`AdminUsersPage`、`AdminInvitesPage`、`AdminConfigPage` 四个核心页面，将分页页码、搜索关键词、排序方式、标签页选中等交互状态全部提升至 Store，确保在不同管理页面间切换后仍能立即还原之前的浏览进度，无需等待数据重新加载。
+
+### 影响范围
+- Web 管理后台：数据概览、用户管理、邀请码管理、运营配置四个页面
+
+### 验收重点
+- 进入用户管理页，输入搜索词并翻页后，切换到数据概览页再切回，搜索词和页码应完整保留，数据应即时呈现而不重新请求。
+- 侧边栏顶部应显示品牌 SVG Logo，不再显示 Emoji。
+
+## 2026-03-25-03
+
+
+### 这版一句话
+补上正式的基金分市场重建工具，避免再用临时 repair 脚本把场外基金和海外基金的历史收益写偏。
+
+### 主要变化
+- **新增正式修复脚本**：后端新增 [kona_tool/scripts/rebuild_fund_breakdown_from_navs.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/scripts/rebuild_fund_breakdown_from_navs.py)，支持按用户提供的历史净值和汇率重建 `fund` 市场收益，不再混进场内 ETF，也不再直接跳过 `ft_` 海外基金。
+- **新增单市场直写入口**：后端 [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) 新增单市场行写入方法，允许只覆盖 `fund` 行并按需同步 `day_pnl`，不再被局部回填逻辑自动改写 `unallocated`。
+- **补回归测试**：后端 [kona_tool/tests/test_market_breakdown.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_breakdown.py) 新增“单市场直写不重平衡其他市场”和“按净值重建 fund 行并同步日总额”的测试。
+
+### 影响范围
+- 后端数据修复工具链
+- 历史收益日历里 `fund` 分市场的补数方式
+
+### 验收重点
+- 用历史净值重建 `fund` 行时，场外基金和海外基金的日收益应能按净值直接算出来，不再依赖临时 repair 脚本的估值口径。
+- 只修 `fund` 行时，A/HK/US 和现有 `unallocated` 不应被自动重平衡改乱。
+
 ## 2026-03-25-02
 
 ### 这版一句话
