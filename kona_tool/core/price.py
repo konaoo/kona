@@ -48,19 +48,21 @@ class PriceCache:
         self.max_size = max(0, int(max_size or 0))
         self.evictions = 0
     
-    def get(self, code: str) -> Optional[Tuple[float, float, float, float]]:
+    def get(self, code: str, ttl_override: Optional[int] = None) -> Optional[Tuple[float, float, float, float]]:
         """
         从缓存获取价格
         
         Args:
             code: 证券代码
+            ttl_override: 可选的 TTL 覆盖（秒），用于收盘后延长缓存。
             
         Returns:
             (价格, 昨收, 涨跌额, 涨跌幅%) 或 None
         """
         if code in self.cache:
             price_data, timestamp = self.cache[code]
-            if time.time() - timestamp < self.ttl:
+            effective_ttl = ttl_override if ttl_override is not None else self.ttl
+            if time.time() - timestamp < effective_ttl:
                 logger.debug(f"Cache hit for {code}")
                 return price_data
             else:
@@ -127,6 +129,21 @@ price_cache = PriceCache(
     stale_ttl=config.CACHE_STALE_TTL,
     max_size=getattr(config, "PRICE_CACHE_MAX_SIZE", 0),
 )
+
+# ── 收盘后动态 TTL ─────────────────────────────────────────────
+_CLOSED_MARKET_CACHE_TTL = 3600  # 收盘后缓存 1 小时
+
+
+def _get_effective_ttl(code: str) -> int:
+    """根据该股票所属市场的开盘状态返回缓存 TTL。"""
+    try:
+        from .market_calendar import market_from_asset, is_market_open_now
+        market = market_from_asset(code)
+        if not is_market_open_now(market):
+            return _CLOSED_MARKET_CACHE_TTL
+    except Exception:
+        pass
+    return price_cache.ttl
 
 _runtime_lock = threading.Lock()
 _runtime_metrics: Dict[str, Any] = {
@@ -334,7 +351,7 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
 
     if use_cache:
         for code in codes:
-            cached = price_cache.get(code)
+            cached = price_cache.get(code, ttl_override=_get_effective_ttl(code))
             if cached:
                 results[code] = cached
             elif code not in seen_missing:
@@ -387,7 +404,7 @@ def batch_get_prices_fast(
     missing_codes: List[str] = []
 
     for code in normalized_codes:
-        cached = price_cache.get(code)
+        cached = price_cache.get(code, ttl_override=_get_effective_ttl(code))
         if cached:
             results[code] = cached
             continue
