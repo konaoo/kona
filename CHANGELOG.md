@@ -11,6 +11,7 @@
 
 ### 影响范围
 - 后端：快照聚合底层、分析页概览接口、市场维度归类算法
+- 数据脚本：`repair_etf_market_breakdown.py` 修复了底层漏刷 `ledger_daily_snapshot_market_breakdowns` 的隐患，全面对接 4 级表数据。
 - 前端：多账本管理范围、分析页今日实时刷新、收益日历 A 股及基金分组显示
 
 ### 验收重点
