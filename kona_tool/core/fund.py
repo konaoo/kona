@@ -406,8 +406,37 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
         return []
 
 
+# ── 基金净值日期缓存 ──────────────────────────────────────────
+import threading as _threading
+import time as _time
+
+_nav_date_cache_lock = _threading.Lock()
+_nav_date_cache: Dict[str, Tuple[Optional[str], float]] = {}
+_NAV_DATE_CACHE_TTL = 300.0  # 5 分钟（净值日期一天最多变化一次）
+
+
 def get_fund_latest_nav_date(code: str) -> Optional[str]:
+    """获取基金最新净值确认日期（带 5 分钟内存缓存）。"""
     code_str = str(code or "").strip()
+    if not code_str:
+        return None
+
+    now = _time.time()
+    with _nav_date_cache_lock:
+        if code_str in _nav_date_cache:
+            cached_val, ts = _nav_date_cache[code_str]
+            if (now - ts) < _NAV_DATE_CACHE_TTL:
+                return cached_val
+
+    result = _fetch_fund_latest_nav_date_uncached(code_str)
+
+    with _nav_date_cache_lock:
+        _nav_date_cache[code_str] = (result, _time.time())
+    return result
+
+
+def _fetch_fund_latest_nav_date_uncached(code_str: str) -> Optional[str]:
+    """不带缓存地获取基金最新净值确认日期（内部实现）。"""
     clean_code = re.sub(r"[^0-9]", "", code_str)
 
     if not clean_code:
