@@ -602,7 +602,7 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
-    def test_take_snapshot_settles_latest_prior_us_and_fund_without_overwriting_older_dates(self):
+    def test_take_snapshot_keeps_prior_day_pnl_while_settling_latest_prior_us_and_fund_breakdowns(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -698,7 +698,7 @@ class ApiBaselineTests(unittest.TestCase):
         cursor.execute(
             "SELECT day_pnl FROM daily_snapshots WHERE date = '2026-03-20' AND user_id = 'u_settle'"
         )
-        self.assertAlmostEqual(float(cursor.fetchone()["day_pnl"] or 0.0), -2772.45, places=2)
+        self.assertAlmostEqual(float(cursor.fetchone()["day_pnl"] or 0.0), -1611.46, places=2)
         cursor.execute(
             """
             SELECT market, day_pnl
