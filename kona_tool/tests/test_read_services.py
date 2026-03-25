@@ -138,8 +138,8 @@ class ReadServicesTests(unittest.TestCase):
             ],
         )
 
-    def test_calendar_payload_stays_snapshot_only_even_when_stats_getter_exists(self):
-        """calendar 接口必须保持 snapshot-only，不再注入 today realtime。"""
+    def test_calendar_today_cell_replaced_by_realtime(self):
+        """calendar 当月当天格子应被实时值替换。"""
         today = datetime.now()
         db = _FakeDb()
         db.get_calendar_data = lambda time_type, user_id, year=None, month=None, ledger_id=None: {
@@ -160,7 +160,9 @@ class ReadServicesTests(unittest.TestCase):
                 time_type="day", user_id="u_1", year=today.year, month=today.month
             )
 
-        self.assertEqual(result["items"][0]["pnl"], 20.0)
+        # 当天格子应被实时值替换
+        self.assertEqual(result["items"][0]["pnl"], 99.0)
+        # 底部汇总不变，仍是快照值
         self.assertEqual(result["total_pnl"], 20.0)
 
     def test_analysis_overview_day_uses_stats_getter(self):

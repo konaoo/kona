@@ -159,7 +159,8 @@ class AnalysisReadService:
                     ):
                         return result
 
-                    today_label = str(effective_dt.day)
+                    target_month = int(period.get("month") or effective_dt.month)
+                    today_label = f"{target_month}-{effective_dt.day}"
                     items = list(result.get("items") or [])
                     replaced = False
                     for item in items:
