@@ -105,6 +105,7 @@ type AnalysisCachePayload = {
 const ANALYSIS_CACHE_DOMAIN = 'analysis'
 const ANALYSIS_CACHE_KEY = 'page'
 const ANALYSIS_CACHE_TTL_MS = 5 * 60_000
+const ANALYSIS_DETAIL_CACHE_TTL_MS = 5 * 60_000
 
 function invalidCalendarPeriodPayload(error: unknown): AnalysisCalendarPayload | null {
   const apiError = error as ApiError
@@ -238,6 +239,13 @@ export const useAnalysisStore = defineStore('analysis', () => {
   let reloadInflight: Promise<void> | null = null
   let calendarRequestId = 0
   let detailRequestId = 0
+  const detailCache = new Map<
+    string,
+    {
+      savedAt: number
+      payload: AnalysisCalendarDetailPayload
+    }
+  >()
 
   function cacheUserId(): string {
     return String(authStore.user?.id || 'guest')
@@ -245,6 +253,34 @@ export const useAnalysisStore = defineStore('analysis', () => {
 
   function getDayMonths(year: number | null): number[] {
     return year ? (selectableDayMonthsByYear.value[String(year)] || []) : []
+  }
+
+  function buildDetailCacheKey(selection: AnalysisCalendarDetailSelection): string {
+    const ledgerKey = ledgerScopeStore.currentLedgerId == null ? 'all' : String(ledgerScopeStore.currentLedgerId)
+    return `${ledgerKey}:${selection.scope}:${selection.date}`
+  }
+
+  function getCachedDetailPayload(selection: AnalysisCalendarDetailSelection): AnalysisCalendarDetailPayload | null {
+    const cached = detailCache.get(buildDetailCacheKey(selection))
+    if (!cached) return null
+    if (Date.now() - cached.savedAt > ANALYSIS_DETAIL_CACHE_TTL_MS) return null
+    return cached.payload
+  }
+
+  function writeDetailCache(selection: AnalysisCalendarDetailSelection, payload: AnalysisCalendarDetailPayload) {
+    detailCache.set(buildDetailCacheKey(selection), {
+      savedAt: Date.now(),
+      payload,
+    })
+  }
+
+  function applyDetailPayload(payload: AnalysisCalendarDetailPayload, selection: AnalysisCalendarDetailSelection) {
+    detailState.scope = (payload.scope || selection.scope) as AnalysisCalendarType
+    detailState.date = String(payload.date || selection.date)
+    detailState.title = payload.title || ''
+    detailState.items = payload.items || []
+    detailState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
+    detailState.totalRate = payload.total_rate == null ? null : toNumber(payload.total_rate)
   }
 
   function persistAnalysisCache() {
@@ -410,6 +446,10 @@ export const useAnalysisStore = defineStore('analysis', () => {
         // 静态刷新失败时，分析页自己的接口仍然继续兜底加载
       }
 
+      if (mode === 'force') {
+        detailCache.clear()
+      }
+
       if (includeAnalysis) {
         await Promise.all([loadOverview()])
         await Promise.all([loadCalendar(), loadRank()])
@@ -470,8 +510,16 @@ export const useAnalysisStore = defineStore('analysis', () => {
   async function loadCalendarDetail(selection: AnalysisCalendarDetailSelection) {
     const requestId = ++detailRequestId
     selectedCalendarDetail.value = selection
-    detailLoading.value = true
     detailError.value = ''
+
+    const cachedPayload = getCachedDetailPayload(selection)
+    if (cachedPayload) {
+      applyDetailPayload(cachedPayload, selection)
+      detailLoading.value = false
+      return
+    }
+
+    detailLoading.value = true
 
     const params = new URLSearchParams({
       scope: selection.scope,
@@ -486,23 +534,37 @@ export const useAnalysisStore = defineStore('analysis', () => {
         `/api/analysis/calendar/asset_breakdown?${params.toString()}`
       )
       if (requestId !== detailRequestId) return
-      detailState.scope = (payload.scope || selection.scope) as AnalysisCalendarType
-      detailState.date = String(payload.date || selection.date)
-      detailState.title = payload.title || ''
-      detailState.items = payload.items || []
-      detailState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
-      detailState.totalRate = payload.total_rate == null ? null : toNumber(payload.total_rate)
+      writeDetailCache(selection, payload)
+      applyDetailPayload(payload, selection)
     } catch (error) {
       if (requestId !== detailRequestId) return
       const apiError = error as ApiError
       detailError.value = apiError?.message || '明细加载失败'
-      detailState.items = []
-      detailState.totalPnl = null
-      detailState.totalRate = null
     } finally {
       if (requestId === detailRequestId) {
         detailLoading.value = false
       }
+    }
+  }
+
+  async function prefetchCalendarDetail(selection: AnalysisCalendarDetailSelection) {
+    if (getCachedDetailPayload(selection)) return
+
+    const params = new URLSearchParams({
+      scope: selection.scope,
+      date: selection.date,
+    })
+    if (ledgerScopeStore.currentLedgerId != null) {
+      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+    }
+
+    try {
+      const payload = await api.get<AnalysisCalendarDetailPayload>(
+        `/api/analysis/calendar/asset_breakdown?${params.toString()}`
+      )
+      writeDetailCache(selection, payload)
+    } catch {
+      // 预取失败不影响当前交互
     }
   }
 
@@ -546,6 +608,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     loadCalendar,
     loadRank,
     loadCalendarDetail,
+    prefetchCalendarDetail,
     clearCalendarDetail,
     reload,
     onPickYear,

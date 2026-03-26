@@ -1,3 +1,23 @@
+## 2026-03-26-03
+
+### 这版一句话
+优化了分析页日历明细的交互流畅度，并修正管理后台邀请码“复制成功”提示位置，避免提示飘到下一列。
+
+### 主要变化
+- **Web 日历明细补缓存 + 相邻预取**：更新 [web/src/stores/analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts) 和 [web/src/pages/app/AppAnalysisPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAnalysisPage.vue)，点击某个格子后会缓存明细并预取前后相邻格子，再次切换日期明显更快；重复点同一格会直接收起明细卡。
+- **明细加载态不再整卡清空**：明细已有内容时改为保留列表并显示“正在更新明细…”，减少频繁切换日期时的空白闪烁。
+- **Flutter 汇总胶囊尺寸下调**：更新 [flutter/lib/pages/analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)，将日历下方“本月/本年/累计盈亏”外层胶囊收窄，和上方大卡片层级更清晰。
+- **邀请码复制提示贴紧邀请码**：更新 [web/src/pages/admin/AdminInvitesPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/admin/AdminInvitesPage.vue)，把“复制成功”从绝对定位改为紧跟邀请码的内联提示，避免跑到创建时间列附近。
+
+### 影响范围
+- Web 分析页收益日历明细交互
+- Flutter 分析页日历汇总条样式
+- Web 管理后台邀请码管理页
+
+### 验收重点
+- Web 分析页连续点击相邻日期时，明细应明显更快，重复点击同一格应收起明细。
+- 管理后台邀请码页点击复制后，“复制成功”应紧贴邀请码显示，不应漂移到右侧时间列。
+
 ## 2026-03-26-02
 
 ### 这版一句话

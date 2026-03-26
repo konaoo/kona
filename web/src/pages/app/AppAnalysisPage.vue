@@ -107,10 +107,12 @@
             </div>
           </div>
 
-          <div v-if="detailLoading" class="calendar-detail-empty">正在加载明细…</div>
-          <div v-else-if="detailError" class="calendar-detail-error">{{ detailError }}</div>
-          <div v-else-if="detailState.items.length === 0" class="calendar-detail-empty">当天没有可展示的资产明细</div>
+          <div v-if="detailError && detailState.items.length === 0" class="calendar-detail-error">{{ detailError }}</div>
+          <div v-else-if="detailState.items.length === 0" class="calendar-detail-empty">
+            {{ detailLoading ? '正在加载明细…' : '当天没有可展示的资产明细' }}
+          </div>
           <div v-else class="calendar-detail-list">
+            <div v-if="detailLoading" class="calendar-detail-inline-loading">正在更新明细…</div>
             <div v-for="item in detailState.items" :key="item.code" class="calendar-detail-row">
               <div class="calendar-detail-asset">
                 <div class="calendar-detail-name">{{ item.name || item.code }}</div>
@@ -189,6 +191,7 @@ import { useKonaStore } from '../../stores/composables'
 import { useRealtimeTodayStore } from '../../stores/realtimeToday'
 import {
   useAnalysisStore,
+  type AnalysisCalendarDetailSelection,
   type AnalysisCalendarType,
   type AnalysisRankItem,
 } from '../../stores/analysis'
@@ -407,11 +410,31 @@ function onCalendarCellClick(cell: { key: number; pnl: number | null }) {
   if (cell.pnl === null) return
   const date = buildCalendarDetailDate(cell.key)
   if (!date) return
-  void analysisStore.loadCalendarDetail({
+  if (isCalendarCellSelected(cell.key)) {
+    analysisStore.clearCalendarDetail()
+    return
+  }
+  const selection = {
     scope: calendarType.value,
     key: cell.key,
     date,
-  })
+  } as AnalysisCalendarDetailSelection
+  void analysisStore.loadCalendarDetail(selection)
+  const validKeys = calendarGridView.value.filter(item => item.pnl !== null).map(item => item.key)
+  const currentIndex = validKeys.indexOf(cell.key)
+  if (currentIndex < 0) return
+  const prefetchKeys = [validKeys[currentIndex - 1], validKeys[currentIndex + 1]].filter(
+    (value): value is number => typeof value === 'number'
+  )
+  for (const key of prefetchKeys) {
+    const adjacentDate = buildCalendarDetailDate(key)
+    if (!adjacentDate) continue
+    void analysisStore.prefetchCalendarDetail({
+      scope: calendarType.value,
+      key,
+      date: adjacentDate,
+    })
+  }
 }
 
 function onCalendarTypeChange(nextType: AnalysisCalendarType) {
@@ -935,6 +958,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.calendar-detail-inline-loading {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 .calendar-detail-row {
   display: flex;

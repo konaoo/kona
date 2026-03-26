@@ -381,13 +381,11 @@ onMounted(() => {
 .code-text { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #000; transition: all 0.2s; }
 .code-text.clickable { cursor: pointer; }
 .code-text.clickable:hover { background: #000; color: #fff; }
-.code-wrapper { display: flex; align-items: center; gap: 10px; position: relative; }
+.code-wrapper { display: inline-flex; align-items: center; gap: 6px; }
 .copy-hint { 
-  position: absolute; 
-  left: 100%; 
-  top: 50%; 
-  transform: translateY(-50%); 
-  margin-left: 10px; 
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
   white-space: nowrap; 
   font-size: 12px; 
   color: #10b981; 
@@ -395,8 +393,8 @@ onMounted(() => {
   animation: fadeIn 0.2s ease-out; 
 }
 @keyframes fadeIn { 
-  from { opacity: 0; transform: translateY(-50%) translateX(-5px); } 
-  to { opacity: 1; transform: translateY(-50%) translateX(0); } 
+  from { opacity: 0; transform: translateX(-4px); } 
+  to { opacity: 1; transform: translateX(0); } 
 }
 .status-tag { padding: 4px 12px; background: #e6f9ee; color: #10b981; border-radius: 99px; font-size: 12px; font-weight: 700; }
 

@@ -136,6 +136,7 @@ class _AnalysisPageState extends State<AnalysisPage>
   int _calendarRetryCount = 0;
   Timer? _calendarRetryTimer;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
+  final Map<String, Map<String, dynamic>> _calendarDetailCache = {};
   int? _selectedDayYear;
   int? _selectedDayMonth;
   int? _selectedMonthYear;
@@ -146,6 +147,7 @@ class _AnalysisPageState extends State<AnalysisPage>
   Map<String, dynamic> _calendarDetailData = {};
   bool _calendarDetailLoading = false;
   String? _calendarDetailError;
+  int _calendarDetailRequestId = 0;
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
@@ -235,6 +237,7 @@ class _AnalysisPageState extends State<AnalysisPage>
   void _triggerSilentRefresh() {
     if (!mounted || !_canAutoRefresh) return;
     _calendarCache.clear();
+    _calendarDetailCache.clear();
     unawaited(context.read<AppState>().refreshRealtimeToday());
     unawaited(_loadData(force: true, showLoadingUi: false));
     unawaited(_loadCalendar(force: true, showLoadingUi: false));
@@ -689,6 +692,66 @@ class _AnalysisPageState extends State<AnalysisPage>
     _calendarDetailData = {};
     _calendarDetailLoading = false;
     _calendarDetailError = null;
+    _calendarDetailRequestId += 1;
+  }
+
+  String _calendarDetailCacheKey({
+    required String scope,
+    required String date,
+    int? ledgerId,
+  }) {
+    final ledgerKey = ledgerId == null ? 'all' : ledgerId.toString();
+    return '$ledgerKey:$scope:$date';
+  }
+
+  Map<String, dynamic>? _getCachedCalendarDetail(String cacheKey) {
+    final cached = _calendarDetailCache[cacheKey];
+    if (cached == null) return null;
+    final savedAt = cached['_cached_at'];
+    if (savedAt is int) {
+      final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+      if (age > _cacheTtlMs) return null;
+    }
+    return cached;
+  }
+
+  void _storeCalendarDetailCache(String cacheKey, Map<String, dynamic> payload) {
+    _calendarDetailCache[cacheKey] = {
+      ...payload,
+      '_cached_at': DateTime.now().millisecondsSinceEpoch,
+    };
+  }
+
+  List<int> _calendarPrefetchNeighborKeys(int currentKey) {
+    final items = _calendarData['items'] as List<dynamic>? ?? [];
+    final validKeys = <int>[];
+    for (final item in items) {
+      final label = item['label'] ?? '';
+      final pnl = (item['pnl'] as num?)?.toDouble();
+      final key = _parseLabelKey(label.toString());
+      if (key != null && pnl != null) {
+        validKeys.add(key);
+      }
+    }
+    final effectiveDate = _realtimeTodayEffectiveDate(context.read<AppState>());
+    final realtimeDayPnl =
+        (_realtimeTodayTotals(context.read<AppState>())['day_pnl'] as num?)
+            ?.toDouble();
+    if (_calendarTimeType == 'day' &&
+        effectiveDate != null &&
+        realtimeDayPnl != null &&
+        effectiveDate.year == _selectedDayYear &&
+        effectiveDate.month == _selectedDayMonth &&
+        !validKeys.contains(effectiveDate.day)) {
+      validKeys.add(effectiveDate.day);
+      validKeys.sort();
+    }
+    final currentIndex = validKeys.indexOf(currentKey);
+    if (currentIndex < 0) return const [];
+    final result = <int>[];
+    if (currentIndex > 0) result.add(validKeys[currentIndex - 1]);
+    if (currentIndex + 1 < validKeys.length) result.add(validKeys[currentIndex + 1]);
+    return result;
   }
 
   String? _calendarDetailDateForKey(int key) {
@@ -711,37 +774,75 @@ class _AnalysisPageState extends State<AnalysisPage>
         (_selectedCalendarDetail?['key'] == key);
   }
 
-  Future<void> _loadCalendarDetail(int key) async {
+  Future<void> _loadCalendarDetail(int key, {bool background = false}) async {
     final date = _calendarDetailDateForKey(key);
     if (date == null) return;
-    setState(() {
-      _selectedCalendarDetail = {
-        'scope': _calendarTimeType,
-        'key': key,
-        'date': date,
-      };
-      _calendarDetailLoading = true;
-      _calendarDetailError = null;
-    });
+    if (!background &&
+        _selectedCalendarDetail?['scope'] == _calendarTimeType &&
+        _selectedCalendarDetail?['key'] == key &&
+        _selectedCalendarDetail?['date'] == date) {
+      setState(_clearCalendarDetail);
+      return;
+    }
+    final ledgerId = context.read<AppState>().currentLedgerId;
+    final selection = {
+      'scope': _calendarTimeType,
+      'key': key,
+      'date': date,
+    };
+    final cacheKey = _calendarDetailCacheKey(
+      scope: _calendarTimeType,
+      date: date,
+      ledgerId: ledgerId,
+    );
+    final cached = _getCachedCalendarDetail(cacheKey);
+    final requestId = background ? _calendarDetailRequestId : ++_calendarDetailRequestId;
+
+    if (cached != null) {
+      if (!background && mounted) {
+        setState(() {
+          _selectedCalendarDetail = selection;
+          _calendarDetailData = Map<String, dynamic>.from(cached);
+          _calendarDetailLoading = false;
+          _calendarDetailError = null;
+        });
+      }
+      return;
+    }
+
+    if (!background) {
+      setState(() {
+        _selectedCalendarDetail = selection;
+        _calendarDetailLoading = true;
+        _calendarDetailError = null;
+      });
+    }
 
     try {
-      final ledgerId = context.read<AppState>().currentLedgerId;
       final data = await _api.getAnalysisCalendarAssetBreakdown(
         scope: _calendarTimeType,
         date: date,
         ledgerId: ledgerId,
       );
-      if (!mounted) return;
-      setState(() {
-        _calendarDetailData = data;
-        _calendarDetailLoading = false;
-      });
+      _storeCalendarDetailCache(cacheKey, data);
+      if (!background) {
+        if (!mounted || requestId != _calendarDetailRequestId) return;
+        setState(() {
+          _calendarDetailData = data;
+          _calendarDetailLoading = false;
+        });
+        for (final neighborKey in _calendarPrefetchNeighborKeys(key)) {
+          unawaited(_loadCalendarDetail(neighborKey, background: true));
+        }
+      }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _calendarDetailLoading = false;
-        _calendarDetailError = '明细加载失败';
-      });
+      if (!background) {
+        if (!mounted || requestId != _calendarDetailRequestId) return;
+        setState(() {
+          _calendarDetailLoading = false;
+          _calendarDetailError = '明细加载失败';
+        });
+      }
     }
   }
 
@@ -758,6 +859,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     }
     try {
       _calendarCache.clear();
+      _calendarDetailCache.clear();
       await Future.wait<void>([
         _loadData(force: true, showLoadingUi: false),
         _loadCalendar(force: true, showLoadingUi: false),
@@ -833,7 +935,6 @@ class _AnalysisPageState extends State<AnalysisPage>
               ? Icons.trending_up_rounded
               : Icons.trending_down_rounded)
         : Icons.remove_rounded;
-
     String title;
     switch (_currentPeriod) {
       case 'day':
@@ -1389,53 +1490,74 @@ class _AnalysisPageState extends State<AnalysisPage>
         : (pnlRaw >= 0 ? AppTheme.danger : AppTheme.success);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                pnlLabel,
-                style: _S.calSumLabel.copyWith(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
-                ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.isLight
+                ? const Color(0x14111F3A)
+                : Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppTheme.isLight
+                ? const [Color(0x08111F3A), Color(0x04111F3A)]
+                : [Colors.white.withValues(alpha: 0.055), Colors.white.withValues(alpha: 0.02)],
+          ),
+        ),
+        child: Row(
+          children: [
+            Text(
+              pnlLabel,
+              style: _S.calSumLabel.copyWith(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 2),
-              Text(
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
                 pnlValue,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: _S.calSumVal.copyWith(
                   color: pnlColor,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '盈亏率',
-                style: _S.calSumLabel.copyWith(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppTheme.isLight
+                    ? const Color(0x0F111F3A)
+                    : Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppTheme.isLight
+                      ? const Color(0x14111F3A)
+                      : Colors.white.withValues(alpha: 0.08),
+                  width: 1,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
+              child: Text(
                 pnlRate,
-                style: _S.calSumVal.copyWith(
+                style: _S.calSumLabel.copyWith(
                   color: pnlColor,
-                  fontSize: 16,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1452,7 +1574,6 @@ class _AnalysisPageState extends State<AnalysisPage>
         .toList();
     final totalPnl = (_calendarDetailData['total_pnl'] as num?)?.toDouble();
     final totalRate = (_calendarDetailData['total_rate'] as num?)?.toDouble();
-    final title = (_calendarDetailData['title'] ?? '').toString();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1472,119 +1593,195 @@ class _AnalysisPageState extends State<AnalysisPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title.isEmpty ? '收益明细' : title,
+                      '个股盈亏',
                       style: _S.label.copyWith(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '逐资产盈亏明细',
-                      style: _S.label.copyWith(
-                        fontSize: 11,
-                        color: AppTheme.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
               if (totalPnl != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      _formatDetailPnl(totalPnl, appState),
-                      style: _S.rankVal.copyWith(
-                        color: totalPnl >= 0 ? AppTheme.danger : AppTheme.success,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatDetailRate(totalRate, appState),
-                      style: _S.rankPct.copyWith(
-                        color: totalPnl >= 0 ? AppTheme.danger : AppTheme.success,
-                      ),
-                    ),
-                  ],
+                Builder(
+                  builder: (_) {
+                    final totalColor = totalPnl >= 0
+                        ? AppTheme.danger
+                        : AppTheme.success;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          _formatDetailPnl(totalPnl, appState),
+                          style: _S.rankVal.copyWith(
+                            color: totalColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: totalColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            _formatDetailRate(totalRate, appState),
+                            style: _S.rankPct.copyWith(
+                              color: totalColor.withValues(alpha: 0.88),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (_calendarDetailLoading)
-            Text(
-              '正在加载明细…',
-              style: _S.label.copyWith(color: AppTheme.textSecondary),
-            )
-          else if (_calendarDetailError != null)
+          const SizedBox(height: 10),
+          if (_calendarDetailError != null && items.isEmpty)
             Text(
               _calendarDetailError!,
               style: _S.label.copyWith(color: AppTheme.danger),
             )
           else if (items.isEmpty)
             Text(
-              '当天没有可展示的资产明细',
+              _calendarDetailLoading ? '正在加载明细…' : '当天没有可展示的资产明细',
               style: _S.label.copyWith(color: AppTheme.textSecondary),
             )
           else
             Column(
-              children: items.map((item) {
-                final pnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
-                final pnlRate = (item['pnl_rate'] as num?)?.toDouble();
-                final curr = (item['curr'] ?? 'CNY').toString();
-                final market = _detailMarketLabel(item['market']);
-                return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+              children: [
+                if (_calendarDetailLoading)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '正在更新明细…',
+                        style: _S.label.copyWith(
+                          fontSize: 10.5,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                Container(
+                  padding: const EdgeInsets.only(top: 2, bottom: 8),
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(
-                        color: AppTheme.border.withValues(alpha: 0.8),
-                        width: 0.8,
+                      bottom: BorderSide(
+                        color: AppTheme.border.withValues(alpha: 0.35),
+                        width: 0.6,
                       ),
                     ),
                   ),
                   child: Row(
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              (item['name'] ?? item['code'] ?? '').toString(),
-                              style: _S.rankName.copyWith(fontSize: 13),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${_formatDisplayCode((item['code'] ?? '').toString())} · $market · $curr',
-                              style: _S.rankCode.copyWith(color: AppTheme.textSecondary),
-                            ),
-                          ],
+                        child: Text(
+                          '股票名称',
+                          style: _S.label.copyWith(
+                            fontSize: 10,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _formatDetailPnl(pnl, appState),
-                            style: _S.rankVal.copyWith(
-                              fontSize: 14,
-                              color: pnl >= 0 ? AppTheme.danger : AppTheme.success,
-                            ),
+                      SizedBox(
+                        width: 88,
+                        child: Text(
+                          '盈亏金额',
+                          textAlign: TextAlign.right,
+                          style: _S.label.copyWith(
+                            fontSize: 10,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _formatDetailRate(pnlRate, appState),
-                            style: _S.rankPct.copyWith(
-                              color: pnl >= 0 ? AppTheme.danger : AppTheme.success,
-                            ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 60,
+                        child: Text(
+                          '收益率',
+                          textAlign: TextAlign.right,
+                          style: _S.label.copyWith(
+                            fontSize: 10,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
-                );
-              }).toList(),
+                ),
+                ...items.map((item) {
+                  final pnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
+                  final pnlRate = (item['pnl_rate'] as num?)?.toDouble();
+                  final name = (item['name'] ?? item['code'] ?? '').toString();
+                  final pnlColor =
+                      pnl >= 0 ? AppTheme.danger : AppTheme.success;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: AppTheme.border.withValues(alpha: 0.28),
+                          width: 0.6,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _S.rankName.copyWith(
+                              fontSize: 11.5,
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 88,
+                          child: Text(
+                            _formatDetailPnl(pnl, appState),
+                            textAlign: TextAlign.right,
+                            style: _S.rankVal.copyWith(
+                              fontSize: 11.5,
+                              color: pnlColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            _formatDetailRate(pnlRate, appState),
+                            textAlign: TextAlign.right,
+                            style: _S.rankPct.copyWith(
+                              color: pnlColor,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
             ),
         ],
       ),
@@ -1859,14 +2056,6 @@ class _AnalysisPageState extends State<AnalysisPage>
     if (code.startsWith('f_')) return code.substring(2);
     if (code.startsWith('ft_')) return code.substring(3);
     return code.toUpperCase();
-  }
-
-  String _detailMarketLabel(dynamic market) {
-    final normalized = (market ?? '').toString().trim().toLowerCase();
-    if (normalized == 'hk') return '港股';
-    if (normalized == 'us') return '美股';
-    if (normalized == 'fund') return '基金';
-    return 'A股';
   }
 
   int? _parseLabelKey(String label) {
