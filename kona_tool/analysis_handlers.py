@@ -140,6 +140,33 @@ def create_analysis_payload_handlers(
             return result, 400
         return result
 
+    def build_analysis_asset_breakdown_payload():
+        scope = request.args.get('scope', 'day')
+        if scope not in ('day', 'month', 'year'):
+            return {"error": "Invalid scope", "code": "INVALID_CALENDAR_DETAIL"}, 400
+
+        raw_date = str(request.args.get('date') or '').strip()
+        if not raw_date:
+            return {"error": "Missing date", "code": "INVALID_CALENDAR_DETAIL"}, 400
+
+        user_id = g.user_id
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
+
+        result = analysis_read_service.build_asset_breakdown_payload(
+            scope=scope,
+            date=raw_date,
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        if isinstance(result, tuple):
+            return result
+        if result.get('code') == 'INVALID_CALENDAR_DETAIL':
+            return result, 400
+        return result
+
     def build_analysis_rank_payload():
         """
         盈亏排行
@@ -178,6 +205,7 @@ def create_analysis_payload_handlers(
         'overview': build_analysis_overview_payload,
         'calendar': build_analysis_calendar_payload,
         'market_breakdown': build_analysis_market_breakdown_payload,
+        'asset_breakdown': build_analysis_asset_breakdown_payload,
         'rank': build_analysis_rank_payload,
         'realtime_today': build_realtime_today_payload,
     }

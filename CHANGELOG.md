@@ -1,3 +1,41 @@
+## 2026-03-26-01
+
+### 这版一句话
+修正了分析页“当日”实时收益的展示口径：盘前不再拿前一交易日收益冒充今天，只有当前这场交易已经开始的市场才会进入“当日”。
+
+### 主要变化
+- **后端拆分“历史归属日”和“当日展示口径”**：更新 [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py)，保留原有历史收益归属逻辑，同时新增专门给分析页“当日”使用的展示口径。A 股、港股、基金在盘前全部显示 `0`；美股则在开盘后持续归到它开盘的那一天，不会因为北京时间跨 0 点就跳到第二天。
+- **实时 today 接口改为优先吃展示字段**：更新 [kona_tool/core/realtime_today_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/realtime_today_service.py)，避免 `0.0` 被旧代码当成假值回退到历史 `day_pnl`，确保分析页顶部和收益日历都读取同一套“当前交易日”展示结果。
+- **补齐回归测试**：更新 [kona_tool/tests/test_api_baseline.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_api_baseline.py)、[kona_tool/tests/test_read_services.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_read_services.py) 和 [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)，覆盖盘前归零、实时服务优先展示字段、以及开市后才显示当日实时值三类关键场景。
+
+### 影响范围
+- 后端实时收益展示口径
+- Web / Flutter 分析页顶部“当日”和收益日历当天格子
+
+### 验收重点
+- 北京时间盘前，如果 A 股、港股、美股、基金都还没开始当前这场交易，“当日”应显示 `0`，收益日历今天这一格也应是 `0`。
+- 美股开盘后，如果仍处于同一场美股交易，即使北京时间已经过了 0 点，“当日”也应继续显示这场美股收益，并归到它开盘那一天。
+
+## 2026-03-25-06
+
+### 这版一句话
+分析页收益日历现在可以直接点格子，下方会展开该日、该月或该年的逐资产盈亏明细，Web 和 Flutter 口径统一走后端同一条接口。
+
+### 主要变化
+- **后端新增收益日历资产下钻接口**：新增 `/api/analysis/calendar/asset_breakdown`，支持 `day / month / year` 三种周期，返回逐资产的 `pnl / pnl_rate / market / curr`，并保证当前有效收益日和日历今天那一格使用同一套实时口径。
+- **Web 分析页支持点格子看明细**：更新 [web/src/stores/analysis.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/analysis.ts) 和 [web/src/pages/app/AppAnalysisPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAnalysisPage.vue)，新增选中格子状态、明细加载状态和下方详情卡；切换日/月/年、切换年月、切换账本时会自动清空旧明细。
+- **Flutter 分析页同步补齐下钻明细**：更新 [flutter/lib/pages/analysis_page.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/pages/analysis_page.dart)、[flutter/lib/services/api_service.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/services/api_service.dart) 和 [flutter/lib/config/api_config.dart](/Users/kona/Desktop/kaka/kona_repo/flutter/lib/config/api_config.dart)，移动端也可直接点日历格子查看逐资产明细，交互和 Web 保持一致。
+- **补后端回归测试**：更新 [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)，覆盖历史日、当前实时日、月、年、已卖光资产、账本隔离和空数据七类场景。
+
+### 影响范围
+- Web 端分析页收益日历
+- Flutter 端分析页收益日历
+- 后端分析接口读侧
+
+### 验收重点
+- 点日历里任何一个有效格子，下方都应出现对应周期的逐资产明细，且明细金额合计要和被点击的格子一致。
+- 切换日/月/年、切换年月、切换账本后，旧明细不应残留；重新点击新格子后才加载新明细。
+
 ## 2026-03-25-05
 
 ### 这版一句话

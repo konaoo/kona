@@ -227,7 +227,10 @@ class AnalysisApiTests(unittest.TestCase):
         })
         self.assertEqual(add_resp.status_code, 200)
 
-        with patch.object(app_module, 'batch_get_prices', return_value={'sh600001': (12.0, 11.0, 0.0, 0.0)}):
+        with patch.object(app_module, 'batch_get_prices', return_value={'sh600001': (12.0, 11.0, 0.0, 0.0)}), patch(
+            'core.snapshot.get_market_statuses',
+            return_value={'a': {'open': True, 'trading_day': True, 'reason': 'open_session'}},
+        ), patch('core.snapshot.is_trading_day', create=True, return_value=True):
             resp = self.client.get('/api/realtime/today')
 
         self.assertEqual(resp.status_code, 200)
@@ -681,6 +684,270 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         payload = resp.get_json() or {}
         self.assertEqual(payload.get('code'), 'INVALID_LEDGER_ID')
+
+    def test_analysis_asset_breakdown_day_matches_historical_calendar_cell(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('sh600000', '浦发银行', 100, 10, 'CNY', 0, 'a', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, curr, market, effective_date, user_id)
+            VALUES ('sh600000', '浦发银行', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-03', 1200, 1000, 0, 0, 0, 200, 100, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            return_value=[
+                {'date': '2026-03-02', 'value': 11.0},
+                {'date': '2026-03-03', 'value': 12.0},
+            ],
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-03')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertEqual(payload.get('title'), '2026年03月03日明细')
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 100.0)
+        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 100.0)
+        self.assertEqual(items[0].get('code'), 'sh600000')
+
+    def test_analysis_asset_breakdown_day_matches_realtime_effective_day(self):
+        today = datetime.now().date()
+        today_str = today.strftime('%Y-%m-%d')
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('sh600001', '邯郸钢铁', 100, 10, 'CNY', 0, 'a', '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        def fake_batch_get_prices(codes):
+            return {'sh600001': (12.0, 11.0, 1.0, 9.09)}
+
+        with patch.object(app_module, 'batch_get_prices', side_effect=fake_batch_get_prices), patch.object(
+            app_module,
+            'get_forex_rates',
+            return_value={'CNY': 1.0},
+        ), patch(
+            'core.snapshot.get_market_statuses',
+            return_value={'a': {'open': True, 'trading_day': True, 'reason': 'open_session'}},
+        ), patch(
+            'core.snapshot.is_trading_day',
+            create=True,
+            return_value=True,
+        ), patch(
+            'core.analysis_asset_breakdown_service._resolve_snapshot_exchange_effective_date',
+            return_value=today_str,
+        ):
+            resp = self.client.get(f'/api/analysis/calendar/asset_breakdown?scope=day&date={today_str}')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 100.0)
+        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 100.0)
+        self.assertAlmostEqual(float(payload.get('total_rate') or 0), 9.09, places=2)
+
+    def test_analysis_asset_breakdown_month_matches_month_cell(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('sh600002', '齐鲁石化', 100, 10, 'CNY', 0, 'a', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, curr, market, effective_date, user_id)
+            VALUES ('sh600002', '齐鲁石化', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES
+            ('2026-03-02', 1100, 1000, 0, 0, 0, 100, 100, ''),
+            ('2026-03-03', 1200, 1000, 0, 0, 0, 200, 100, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            return_value=[
+                {'date': '2026-03-02', 'value': 11.0},
+                {'date': '2026-03-03', 'value': 12.0},
+            ],
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=month&date=2026-03-01')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 200.0)
+        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 200.0)
+
+    def test_analysis_asset_breakdown_year_matches_year_cell(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('sh600003', '黄河股份', 100, 10, 'CNY', 0, 'a', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, curr, market, effective_date, user_id)
+            VALUES ('sh600003', '黄河股份', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES
+            ('2026-03-02', 1100, 1000, 0, 0, 0, 100, 100, ''),
+            ('2026-03-03', 1200, 1000, 0, 0, 0, 200, 100, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            return_value=[
+                {'date': '2026-03-02', 'value': 11.0},
+                {'date': '2026-03-03', 'value': 12.0},
+            ],
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=year&date=2026-01-01')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 200.0)
+        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 200.0)
+
+    def test_analysis_asset_breakdown_day_keeps_sold_out_asset(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, curr, market, effective_date, user_id)
+            VALUES
+            ('sh600004', '卖光资产', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', ''),
+            ('sh600004', '卖光资产', '减仓', 13, 100, 1300, 100, '2026-03-04 10:00:00', 'CNY', 'a', '2026-03-04', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-04', 0, 0, 0, 0, 0, 100, 100, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            return_value=[
+                {'date': '2026-03-02', 'value': 11.0},
+                {'date': '2026-03-03', 'value': 12.0},
+                {'date': '2026-03-04', 'value': 12.0},
+            ],
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-04')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertEqual(items[0].get('code'), 'sh600004')
+        self.assertAlmostEqual(float(items[0].get('pnl') or 0), 100.0)
+
+    def test_analysis_asset_breakdown_ledger_id_isolated(self):
+        default_ledger_id = app_module.db.get_default_ledger_id('')
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO investment_ledgers (user_id, name, is_default, sort_order, created_at)
+            VALUES ('', '第二账本', 0, 1, '2026-03-01 09:00:00')
+            """
+        )
+        second_ledger_id = int(cursor.lastrowid)
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id, ledger_id)
+            VALUES
+            ('sh600005', '账本一资产', 100, 10, 'CNY', 0, 'a', '', ?),
+            ('sh600006', '账本二资产', 100, 10, 'CNY', 0, 'a', '', ?)
+            """,
+            (default_ledger_id, second_ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions (code, name, type, price, qty, amount, pnl, time, curr, market, effective_date, user_id, ledger_id)
+            VALUES
+            ('sh600005', '账本一资产', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', '', ?),
+            ('sh600006', '账本二资产', '加仓', 10, 100, 1000, 0, '2026-03-02 10:00:00', 'CNY', 'a', '2026-03-02', '', ?)
+            """,
+            (default_ledger_id, second_ledger_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (date, user_id, ledger_id, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, source, holdings_count)
+            VALUES
+            ('2026-03-03', '', ?, 1088, 1000, 88, 8.8, 88, 'recalculated', 1),
+            ('2026-03-03', '', ?, 1033, 1000, 33, 3.3, 33, 'recalculated', 1)
+            """,
+            (default_ledger_id, second_ledger_id),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            side_effect=lambda code, limit, market: [
+                {'date': '2026-03-02', 'value': 10.0},
+                {'date': '2026-03-03', 'value': 10.88 if code == 'sh600005' else 10.33},
+            ],
+        ):
+            resp = self.client.get(
+                f'/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-03&ledger_id={default_ledger_id}'
+            )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 88.0)
+        self.assertEqual(items[0].get('code'), 'sh600005')
+
+    def test_analysis_asset_breakdown_empty_data_returns_empty_items(self):
+        resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-09')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('items'), [])
+        self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 0.0)
 
 
 if __name__ == '__main__':

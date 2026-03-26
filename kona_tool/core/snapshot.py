@@ -9,7 +9,6 @@ from typing import Any, Dict, Iterable
 from zoneinfo import ZoneInfo
 
 from .day_pnl_attribution import (
-    resolve_exchange_effective_date,
     resolve_fund_nav_effective_date,
 )
 from .db import db
@@ -149,6 +148,57 @@ def _resolve_snapshot_exchange_effective_date(
 
     previous_day = get_previous_trading_day(market, local_date)
     return previous_day.strftime("%Y-%m-%d") if previous_day is not None else None
+
+
+def _resolve_display_exchange_effective_date(
+    *,
+    market: str,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+) -> str | None:
+    """给“当日展示”选归属日。
+
+    规则：
+    - 开盘中：显示本地交易日
+    - 盘前：显示 0，不沿用前一交易日
+    - 当天交易已结束但仍属本地交易日：继续显示这一天
+    - 非交易日：显示 0
+    """
+    local_date = _market_local_date(market, now_utc)
+    status = market_statuses.get(str(market or "").lower()) or {}
+    if not bool(status.get("trading_day")):
+        return None
+    if bool(status.get("open")):
+        return local_date.strftime("%Y-%m-%d")
+    if _is_preopen_off_hours_market(market, now_utc, market_statuses):
+        return None
+    return local_date.strftime("%Y-%m-%d")
+
+
+def _resolve_display_fund_effective_date(
+    *,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+    nav_effective_date: str | None,
+) -> str | None:
+    """给场外基金的“当日展示”选归属日。
+
+    只展示“今天已经拿到并归属到今天”的净值变化：
+    - 盘前不展示
+    - 不是今天的净值，不拿来冒充今天
+    """
+    effective_date = str(nav_effective_date or "").strip()[:10]
+    if not effective_date:
+        return None
+    local_today = _market_local_date("fund", now_utc).strftime("%Y-%m-%d")
+    if effective_date != local_today:
+        return None
+    if _is_preopen_off_hours_market("fund", now_utc, market_statuses):
+        return None
+    status = market_statuses.get("fund") or {}
+    if bool(status.get("trading_day")):
+        return local_today
+    return None
 
 
 def _rate_to_cny(curr: Any, rates: Dict[str, Any]) -> float:
@@ -541,6 +591,8 @@ def _calculate_portfolio_stats_direct(
     total_pnl = 0.0
     day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]] = {}
     day_pnl_bases_by_date: Dict[str, float] = {}
+    display_day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]] = {}
+    display_day_pnl_bases_by_date: Dict[str, float] = {}
     now_utc = now_utc or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
         now_utc = now_utc.replace(tzinfo=timezone.utc)
@@ -566,12 +618,6 @@ def _calculate_portfolio_stats_direct(
         code: get_fund_latest_nav_date(code)
         for code in otc_fund_codes
     } if otc_fund_codes else {}
-    active_effective_candidates = {
-        _market_local_date(market, now_utc).strftime("%Y-%m-%d")
-        for market, trading_day in market_trading_days.items()
-        if bool(trading_day)
-    }
-
     for asset in portfolio:
         code = asset['code']
         qty = float(asset['qty'])
@@ -608,7 +654,6 @@ def _calculate_portfolio_stats_direct(
         market = market_from_asset(asset)
         if market not in DEFAULT_MARKETS:
             market = "a"
-        market_trading_day = bool(market_trading_days.get(market))
         # 场外基金（f_/ft_ 开头且非场内 ETF）白天净值尚未更新，
         # 价格源返回的是昨日净值，算出来是昨天的涨跌而非今天的，必须跳过
         nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
@@ -617,6 +662,11 @@ def _calculate_portfolio_stats_direct(
 
         if nav_update_pending:
             effective_date = resolve_fund_nav_effective_date(latest_nav_dates.get(code))
+            display_effective_date = _resolve_display_fund_effective_date(
+                now_utc=now_utc,
+                market_statuses=market_statuses,
+                nav_effective_date=effective_date,
+            )
             effective_qty = (
                     db.get_position_qty_as_of_effective_date(
                         code,
@@ -640,13 +690,30 @@ def _calculate_portfolio_stats_direct(
                     effective_date,
                     yclose_ref * effective_qty * rate,
                 )
+                if display_effective_date == effective_date:
+                    _add_market_breakdown(
+                        display_day_pnl_breakdowns_by_date,
+                        display_effective_date,
+                        market,
+                        item_day_pnl,
+                    )
+                    _add_day_pnl_base(
+                        display_day_pnl_bases_by_date,
+                        display_effective_date,
+                        yclose_ref * effective_qty * rate,
+                    )
         else:
-            effective_date = resolve_exchange_effective_date(
+            effective_date = _resolve_snapshot_exchange_effective_date(
                 market=market,
                 now_utc=now_utc,
                 current_price=cur_price,
                 yclose=yclose_ref,
-                market_trading_day=market_trading_day,
+                market_statuses=market_statuses,
+            )
+            display_effective_date = _resolve_display_exchange_effective_date(
+                market=market,
+                now_utc=now_utc,
+                market_statuses=market_statuses,
             )
             if effective_date:
                 buy_info = (today_buys_by_effective_date.get(effective_date) or {}).get(code)
@@ -674,6 +741,18 @@ def _calculate_portfolio_stats_direct(
                     
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
                 _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
+                if display_effective_date == effective_date:
+                    _add_market_breakdown(
+                        display_day_pnl_breakdowns_by_date,
+                        display_effective_date,
+                        market,
+                        item_day_pnl,
+                    )
+                    _add_day_pnl_base(
+                        display_day_pnl_bases_by_date,
+                        display_effective_date,
+                        item_day_base,
+                    )
 
         # 累加
         invest_mv += item_mv
@@ -691,10 +770,14 @@ def _calculate_portfolio_stats_direct(
     
     # 6. 汇总
     total_asset = total_cash + invest_mv + total_other - total_liability
-    active_effective_date = max(active_effective_candidates) if active_effective_candidates else snapshot_date
-    realtime_day_pnl_by_market = _round_market_breakdown(day_pnl_breakdowns_by_date.get(active_effective_date))
+    display_effective_candidates = sorted(
+        date_str for date_str, market_map in display_day_pnl_breakdowns_by_date.items()
+        if abs(sum(float(v or 0.0) for v in (market_map or {}).values())) > 1e-9
+    )
+    active_effective_date = display_effective_candidates[-1] if display_effective_candidates else snapshot_date
+    realtime_day_pnl_by_market = _round_market_breakdown(display_day_pnl_breakdowns_by_date.get(active_effective_date))
     realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
-    realtime_day_pnl_base = round(float(day_pnl_bases_by_date.get(active_effective_date) or 0.0), 2)
+    realtime_day_pnl_base = round(float(display_day_pnl_bases_by_date.get(active_effective_date) or 0.0), 2)
     snapshot_day_pnl_by_market = _round_market_breakdown(day_pnl_breakdowns_by_date.get(snapshot_date))
     snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
     snapshot_day_pnl_base = round(float(day_pnl_bases_by_date.get(snapshot_date) or 0.0), 2)
@@ -719,6 +802,10 @@ def _calculate_portfolio_stats_direct(
         'day_pnl_base': realtime_day_pnl_base,
         'day_pnl_effective_date': active_effective_date,
         'day_pnl_by_market': realtime_day_pnl_by_market,
+        'display_day_pnl': realtime_day_pnl,
+        'display_day_pnl_base': realtime_day_pnl_base,
+        'display_day_pnl_effective_date': active_effective_date,
+        'display_day_pnl_by_market': realtime_day_pnl_by_market,
         'snapshot_day_pnl': snapshot_day_pnl,
         'snapshot_day_pnl_base': snapshot_day_pnl_base,
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
@@ -805,6 +892,10 @@ def calculate_portfolio_stats(
         'day_pnl_base': realtime_day_pnl_base,
         'day_pnl_effective_date': effective_date,
         'day_pnl_by_market': realtime_day_pnl_by_market,
+        'display_day_pnl': realtime_day_pnl,
+        'display_day_pnl_base': realtime_day_pnl_base,
+        'display_day_pnl_effective_date': effective_date,
+        'display_day_pnl_by_market': realtime_day_pnl_by_market,
         'snapshot_day_pnl': snapshot_day_pnl,
         'snapshot_day_pnl_base': snapshot_day_pnl_base,
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,

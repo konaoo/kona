@@ -5,6 +5,7 @@ import time as _time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeoutError
 from typing import Any, Callable, Dict
 
+from .analysis_asset_breakdown_service import AnalysisAssetBreakdownService
 from .request_trace import trace_request_stage
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,13 @@ class AnalysisReadService:
         self.convert_amount = convert_amount
         self.all_markets_closed_getter = all_markets_closed_getter
         self.stats_timeout = stats_timeout
+        self.asset_breakdown_service = AnalysisAssetBreakdownService(
+            db=db,
+            price_batch_getter=price_batch_getter,
+            realtime_today_service=self.realtime_today_service,
+            rates_getter=rates_getter,
+            convert_amount=convert_amount,
+        )
 
     def _get_day_overview(self, user_id: str | None, ledger_id: int | None = None) -> Dict[str, Any]:
         """获取当日盈亏。
@@ -269,3 +277,19 @@ class AnalysisReadService:
             key=lambda t: t[0],
         )]
         return {"gain": gain_list, "loss": loss_list}
+
+    def build_asset_breakdown_payload(
+        self,
+        *,
+        scope: str,
+        date: str,
+        user_id: str | None,
+        ledger_id: int | None = None,
+    ):
+        with trace_request_stage("analysis.asset_breakdown", scope=scope):
+            return self.asset_breakdown_service.build_payload(
+                scope=scope,
+                raw_date=date,
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )

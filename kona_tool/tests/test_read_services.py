@@ -14,6 +14,7 @@ if str(KONA_TOOL) not in sys.path:
 from core.analysis_read_service import AnalysisReadService  # noqa: E402
 from core.history_read_service import HistoryReadService  # noqa: E402
 from core.portfolio_read_service import PortfolioReadService  # noqa: E402
+from core.realtime_today_service import RealtimeTodayService  # noqa: E402
 from core.request_trace import get_request_stages  # noqa: E402
 
 
@@ -164,6 +165,32 @@ class ReadServicesTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["pnl"], 99.0)
         # 底部汇总不变，仍是快照值
         self.assertEqual(result["total_pnl"], 20.0)
+
+    def test_realtime_today_service_prefers_display_day_fields(self):
+        service = RealtimeTodayService(
+            stats_getter=lambda user_id=None, ledger_id=None: {
+                "total_cost": 1000.0,
+                "total_pnl": 88.0,
+                "day_pnl": 99.0,
+                "day_pnl_base": 500.0,
+                "day_pnl_effective_date": "2026-03-25",
+                "day_pnl_by_market": {"a": 99.0},
+                "display_day_pnl": 0.0,
+                "display_day_pnl_base": 0.0,
+                "display_day_pnl_effective_date": "2026-03-26",
+                "display_day_pnl_by_market": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0},
+            }
+        )
+
+        payload = service.build_payload(user_id="u_1")
+
+        self.assertEqual(payload["effective_date"], "2026-03-26")
+        self.assertAlmostEqual(float((payload["totals"] or {}).get("day_pnl") or 0.0), 0.0)
+        self.assertAlmostEqual(float((payload["totals"] or {}).get("day_pnl_base") or 0.0), 0.0)
+        self.assertAlmostEqual(
+            float((((payload["breakdown_by_market"] or {}).get("a") or {}).get("day_pnl") or 0.0)),
+            0.0,
+        )
 
     def test_analysis_overview_day_uses_stats_getter(self):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""

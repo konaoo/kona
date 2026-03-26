@@ -2,7 +2,7 @@
  * Analysis Store - 统一管理分析页的数据加载、缓存和周期选择
  */
 
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { api, type ApiError } from '@/shared/http'
 import { toNumber } from '@/shared/format'
@@ -54,6 +54,30 @@ export type AnalysisRankItem = {
   market?: string
   curr?: string
   ledger_name?: string
+}
+
+export type AnalysisCalendarDetailItem = {
+  code: string
+  name?: string
+  market?: string
+  curr?: string
+  pnl?: number
+  pnl_rate?: number | null
+}
+
+export type AnalysisCalendarDetailSelection = {
+  scope: AnalysisCalendarType
+  key: number
+  date: string
+}
+
+type AnalysisCalendarDetailPayload = {
+  scope?: AnalysisCalendarType
+  date?: string
+  title?: string
+  total_pnl?: number
+  total_rate?: number | null
+  items?: AnalysisCalendarDetailItem[]
 }
 
 type AnalysisCachePayload = {
@@ -109,6 +133,7 @@ function lastOrNull(values: number[]): number | null {
 export const useAnalysisStore = defineStore('analysis', () => {
   const authStore = useAuthStore()
   const refreshCoordinatorStore = useRefreshCoordinatorStore()
+  const ledgerScopeStore = useLedgerScopeStore()
 
   const overview = reactive<Record<AnalysisPeriodKey, AnalysisOverviewItem>>({
     day: {},
@@ -120,6 +145,15 @@ export const useAnalysisStore = defineStore('analysis', () => {
   const calendarState = reactive({
     title: '',
     items: [] as AnalysisCalendarItem[],
+    totalPnl: null as number | null,
+    totalRate: null as number | null,
+  })
+
+  const detailState = reactive({
+    scope: 'day' as AnalysisCalendarType,
+    date: '',
+    title: '',
+    items: [] as AnalysisCalendarDetailItem[],
     totalPnl: null as number | null,
     totalRate: null as number | null,
   })
@@ -137,6 +171,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
   const selectableDayYears = ref<number[]>([])
   const selectableDayMonthsByYear = ref<Record<string, number[]>>({})
   const selectableMonthYears = ref<number[]>([])
+  const selectedCalendarDetail = ref<AnalysisCalendarDetailSelection | null>(null)
+  const detailLoading = ref(false)
+  const detailError = ref('')
 
   const pickerYears = computed(() => {
     if (calendarType.value === 'day') return selectableDayYears.value
@@ -200,6 +237,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
 
   let reloadInflight: Promise<void> | null = null
   let calendarRequestId = 0
+  let detailRequestId = 0
 
   function cacheUserId(): string {
     return String(authStore.user?.id || 'guest')
@@ -305,7 +343,6 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadOverview() {
-    const ledgerScopeStore = useLedgerScopeStore()
     const params = new URLSearchParams({ period: 'all' })
     if (ledgerScopeStore.currentLedgerId != null) {
       params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
@@ -317,8 +354,6 @@ export const useAnalysisStore = defineStore('analysis', () => {
   async function loadCalendar(recoverOnInvalid = true) {
     const requestId = ++calendarRequestId
     const params = new URLSearchParams({ type: calendarType.value })
-    const ledgerScopeStore = useLedgerScopeStore()
-
     if (calendarType.value === 'day') {
       ensureDaySelection()
       if (selectedDayYear.value && selectedDayMonth.value) {
@@ -353,7 +388,6 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadRank() {
-    const ledgerScopeStore = useLedgerScopeStore()
     const params = new URLSearchParams({ type: 'all', market: 'all' })
     if (ledgerScopeStore.currentLedgerId != null) {
       params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
@@ -397,15 +431,18 @@ export const useAnalysisStore = defineStore('analysis', () => {
       if (months.length && (!selectedDayMonth.value || !months.includes(selectedDayMonth.value))) {
         selectedDayMonth.value = months[months.length - 1] ?? null
       }
+      clearCalendarDetail()
       void loadCalendar().then(() => persistAnalysisCache())
     } else if (calendarType.value === 'month') {
       selectedMonthYear.value = year
+      clearCalendarDetail()
       void loadCalendar().then(() => persistAnalysisCache())
     }
   }
 
   function onPickMonth(month: number) {
     selectedDayMonth.value = month
+    clearCalendarDetail()
     void loadCalendar().then(() => persistAnalysisCache())
   }
 
@@ -413,7 +450,60 @@ export const useAnalysisStore = defineStore('analysis', () => {
     calendarType.value = nextType
     if (nextType === 'day') ensureDaySelection()
     else if (nextType === 'month') ensureMonthSelection()
+    clearCalendarDetail()
     void loadCalendar().then(() => persistAnalysisCache())
+  }
+
+  function clearCalendarDetail() {
+    detailRequestId += 1
+    selectedCalendarDetail.value = null
+    detailLoading.value = false
+    detailError.value = ''
+    detailState.scope = 'day'
+    detailState.date = ''
+    detailState.title = ''
+    detailState.items = []
+    detailState.totalPnl = null
+    detailState.totalRate = null
+  }
+
+  async function loadCalendarDetail(selection: AnalysisCalendarDetailSelection) {
+    const requestId = ++detailRequestId
+    selectedCalendarDetail.value = selection
+    detailLoading.value = true
+    detailError.value = ''
+
+    const params = new URLSearchParams({
+      scope: selection.scope,
+      date: selection.date,
+    })
+    if (ledgerScopeStore.currentLedgerId != null) {
+      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
+    }
+
+    try {
+      const payload = await api.get<AnalysisCalendarDetailPayload>(
+        `/api/analysis/calendar/asset_breakdown?${params.toString()}`
+      )
+      if (requestId !== detailRequestId) return
+      detailState.scope = (payload.scope || selection.scope) as AnalysisCalendarType
+      detailState.date = String(payload.date || selection.date)
+      detailState.title = payload.title || ''
+      detailState.items = payload.items || []
+      detailState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
+      detailState.totalRate = payload.total_rate == null ? null : toNumber(payload.total_rate)
+    } catch (error) {
+      if (requestId !== detailRequestId) return
+      const apiError = error as ApiError
+      detailError.value = apiError?.message || '明细加载失败'
+      detailState.items = []
+      detailState.totalPnl = null
+      detailState.totalRate = null
+    } finally {
+      if (requestId === detailRequestId) {
+        detailLoading.value = false
+      }
+    }
   }
 
   function initialize() {
@@ -421,9 +511,17 @@ export const useAnalysisStore = defineStore('analysis', () => {
     void reload('light', true)
   }
 
+  watch(
+    () => ledgerScopeStore.currentLedgerId,
+    () => {
+      clearCalendarDetail()
+    }
+  )
+
   return {
     overview,
     calendarState,
+    detailState,
     rank,
     calendarType,
     rankType,
@@ -433,6 +531,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
     selectableDayYears,
     selectableDayMonthsByYear,
     selectableMonthYears,
+    selectedCalendarDetail,
+    detailLoading,
+    detailError,
     pickerYears,
     pickerSelectedYear,
     pickerMonths,
@@ -444,6 +545,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
     loadOverview,
     loadCalendar,
     loadRank,
+    loadCalendarDetail,
+    clearCalendarDetail,
     reload,
     onPickYear,
     onPickMonth,

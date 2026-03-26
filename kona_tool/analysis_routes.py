@@ -19,6 +19,7 @@ def create_analysis_blueprint(
     analysis_overview_payload_getter,
     analysis_calendar_payload_getter,
     analysis_market_breakdown_payload_getter,
+    analysis_asset_breakdown_payload_getter,
     analysis_rank_payload_getter,
     realtime_today_payload_getter,
 ):
@@ -41,6 +42,12 @@ def create_analysis_blueprint(
     def analysis_calendar_market_breakdown():
         """收益日历按市场拆分。"""
         return _jsonify_result(analysis_market_breakdown_payload_getter())
+
+    @bp.route("/api/analysis/calendar/asset_breakdown")
+    @optional_auth
+    def analysis_calendar_asset_breakdown():
+        """收益日历按资产下钻。"""
+        return _jsonify_result(analysis_asset_breakdown_payload_getter())
 
     @bp.route("/api/analysis/rank")
     @optional_auth

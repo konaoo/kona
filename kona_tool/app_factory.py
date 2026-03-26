@@ -370,6 +370,7 @@ def create_app_components(
             analysis_overview_payload_getter=analysis_payload_handlers["overview"],
             analysis_calendar_payload_getter=analysis_payload_handlers["calendar"],
             analysis_market_breakdown_payload_getter=analysis_payload_handlers["market_breakdown"],
+            analysis_asset_breakdown_payload_getter=analysis_payload_handlers["asset_breakdown"],
             analysis_rank_payload_getter=analysis_payload_handlers["rank"],
             realtime_today_payload_getter=analysis_payload_handlers["realtime_today"],
         )

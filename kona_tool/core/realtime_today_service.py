@@ -26,12 +26,23 @@ class RealtimeTodayService:
         generated_at = datetime.now(timezone.utc).isoformat()
         total_cost = float(stats.get("total_cost") or 0.0)
         total_pnl = float(stats.get("total_pnl") or 0.0)
-        day_pnl = float(stats.get("day_pnl") or 0.0)
-        day_pnl_base = float(stats.get("day_pnl_base") or 0.0)
+        display_day_pnl = stats.get("display_day_pnl")
+        display_day_pnl_base = stats.get("display_day_pnl_base")
+        display_breakdown = stats.get("display_day_pnl_by_market")
+        display_effective_date = stats.get("display_day_pnl_effective_date")
+        day_pnl = float(display_day_pnl if display_day_pnl is not None else (stats.get("day_pnl") or 0.0))
+        day_pnl_base = float(
+            display_day_pnl_base if display_day_pnl_base is not None else (stats.get("day_pnl_base") or 0.0)
+        )
         total_pnl_rate = round(total_pnl / total_cost * 100, 2) if total_cost > 0 else 0.0
         day_pnl_rate = round(day_pnl / day_pnl_base * 100, 2) if day_pnl_base > 0 else 0.0
-        effective_date = str(stats.get("day_pnl_effective_date") or stats.get("snapshot_date") or "")
-        breakdown = stats.get("day_pnl_by_market") or {}
+        effective_date = str(
+            display_effective_date
+            or stats.get("day_pnl_effective_date")
+            or stats.get("snapshot_date")
+            or ""
+        )
+        breakdown = display_breakdown if display_breakdown is not None else (stats.get("day_pnl_by_market") or {})
 
         return {
             "effective_date": effective_date,

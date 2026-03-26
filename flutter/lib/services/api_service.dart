@@ -1414,6 +1414,21 @@ class ApiService {
     return await _get(endpoint) ?? {};
   }
 
+  Future<Map<String, dynamic>> getAnalysisCalendarAssetBreakdown({
+    required String scope,
+    required String date,
+    int? ledgerId,
+  }) async {
+    final query = <String, String>{
+      'scope': scope,
+      'date': date,
+      if (ledgerId != null) 'ledger_id': '$ledgerId',
+    };
+    final endpoint =
+        '${ApiConfig.analysisCalendarAssetBreakdown}?${Uri(queryParameters: query).query}';
+    return await _get(endpoint) ?? {};
+  }
+
   /// 获取盈亏排行
   Future<Map<String, dynamic>> getAnalysisRank({
     String rankType = 'all',

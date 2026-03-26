@@ -142,6 +142,10 @@ class _AnalysisPageState extends State<AnalysisPage>
   List<int> _selectableDayYears = const [];
   Map<int, List<int>> _selectableMonthsByYear = const {};
   List<int> _selectableMonthYears = const [];
+  Map<String, dynamic>? _selectedCalendarDetail;
+  Map<String, dynamic> _calendarDetailData = {};
+  bool _calendarDetailLoading = false;
+  String? _calendarDetailError;
 
   // 盈亏排行相关
   String _rankType = 'profit'; // 'profit' 或 'loss'
@@ -249,6 +253,7 @@ class _AnalysisPageState extends State<AnalysisPage>
       _overviewRetryCount = 0;
       _calendarData = {};
       _calendarRetryCount = 0;
+      _clearCalendarDetail();
       _rankData = {};
       _rankLoading = true;
       _rankRetryCount = 0;
@@ -645,7 +650,10 @@ class _AnalysisPageState extends State<AnalysisPage>
 
   void _onCalendarTypeChanged(String nextType) {
     if (_calendarTimeType == nextType) return;
-    setState(() => _calendarTimeType = nextType);
+    setState(() {
+      _calendarTimeType = nextType;
+      _clearCalendarDetail();
+    });
     _loadCalendar();
   }
 
@@ -673,6 +681,67 @@ class _AnalysisPageState extends State<AnalysisPage>
     setState(() => _currentPeriod = period);
     if (period != 'day') {
       _loadData(force: true);
+    }
+  }
+
+  void _clearCalendarDetail() {
+    _selectedCalendarDetail = null;
+    _calendarDetailData = {};
+    _calendarDetailLoading = false;
+    _calendarDetailError = null;
+  }
+
+  String? _calendarDetailDateForKey(int key) {
+    if (_calendarTimeType == 'day') {
+      if (_selectedDayYear == null || _selectedDayMonth == null) return null;
+      final month = _selectedDayMonth!.toString().padLeft(2, '0');
+      final day = key.toString().padLeft(2, '0');
+      return '${_selectedDayYear!}-$month-$day';
+    }
+    if (_calendarTimeType == 'month') {
+      if (_selectedMonthYear == null) return null;
+      final month = key.toString().padLeft(2, '0');
+      return '${_selectedMonthYear!}-$month-01';
+    }
+    return '$key-01-01';
+  }
+
+  bool _isCalendarCellSelected(int key) {
+    return (_selectedCalendarDetail?['scope'] == _calendarTimeType) &&
+        (_selectedCalendarDetail?['key'] == key);
+  }
+
+  Future<void> _loadCalendarDetail(int key) async {
+    final date = _calendarDetailDateForKey(key);
+    if (date == null) return;
+    setState(() {
+      _selectedCalendarDetail = {
+        'scope': _calendarTimeType,
+        'key': key,
+        'date': date,
+      };
+      _calendarDetailLoading = true;
+      _calendarDetailError = null;
+    });
+
+    try {
+      final ledgerId = context.read<AppState>().currentLedgerId;
+      final data = await _api.getAnalysisCalendarAssetBreakdown(
+        scope: _calendarTimeType,
+        date: date,
+        ledgerId: ledgerId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _calendarDetailData = data;
+        _calendarDetailLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _calendarDetailLoading = false;
+        _calendarDetailError = '明细加载失败';
+      });
     }
   }
 
@@ -968,6 +1037,10 @@ class _AnalysisPageState extends State<AnalysisPage>
           _buildCalendarHeaderControls(),
           const SizedBox(height: 12),
           _buildCalendarGrid(calendarGrid, appState),
+          if (_selectedCalendarDetail != null) ...[
+            const SizedBox(height: 12),
+            _buildCalendarDetailCard(appState),
+          ],
         ],
       ),
     );
@@ -1163,10 +1236,12 @@ class _AnalysisPageState extends State<AnalysisPage>
                                 setState(() {
                                   _selectedDayYear = tempYear;
                                   _selectedDayMonth = tempMonth;
+                                  _clearCalendarDetail();
                                 });
                               } else {
                                 setState(() {
                                   _selectedMonthYear = tempYear;
+                                  _clearCalendarDetail();
                                 });
                               }
                               _hideDatePicker();
@@ -1216,22 +1291,22 @@ class _AnalysisPageState extends State<AnalysisPage>
       itemBuilder: (context, index) {
         final item = calendarGrid[index];
         final pnl = item['pnl'] as double?;
-        final effectiveDate = _realtimeTodayEffectiveDate(appState);
-        final isSelected = _calendarTimeType == 'day' && effectiveDate != null
-            ? item['day'] == effectiveDate.day &&
-                  (_selectedDayYear == null ||
-                      _selectedDayYear == effectiveDate.year) &&
-                  (_selectedDayMonth == null ||
-                      _selectedDayMonth == effectiveDate.month)
-            : false;
+        final isSelected = _isCalendarCellSelected(item['day'] as int);
 
-        return _buildCalendarItem(item['date'], pnl, isSelected, appState);
+        return _buildCalendarItem(
+          item['date'],
+          item['day'] as int,
+          pnl,
+          isSelected,
+          appState,
+        );
       },
     );
   }
 
   Widget _buildCalendarItem(
     String label,
+    int key,
     double? pnl,
     bool isSelected,
     AppState appState,
@@ -1241,49 +1316,56 @@ class _AnalysisPageState extends State<AnalysisPage>
         ? AppTheme.textMuted
         : (pnl >= 0 ? AppTheme.danger : AppTheme.success);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isSelected
-            ? AppTheme.accent.withValues(alpha: 0.12)
-            : Colors.white.withValues(alpha: 0.02),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasData ? () => unawaited(_loadCalendarDetail(key)) : null,
         borderRadius: BorderRadius.circular(8),
-        border: isSelected
-            ? Border.all(
-                color: AppTheme.accent.withValues(alpha: 0.4),
-                width: 1,
-              )
-            : null,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            height: 14,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                style: _S.calDate.copyWith(
-                  fontSize: label.contains('-') ? 11 : 12,
-                  color: isSelected
-                      ? (AppTheme.isLight ? Colors.black : Colors.white)
-                      : AppTheme.textPrimary,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.accent.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.02),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.accent.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.06),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                height: 14,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    style: _S.calDate.copyWith(
+                      fontSize: label.contains('-') ? 11 : 12,
+                      color: isSelected
+                          ? (AppTheme.isLight ? Colors.black : Colors.white)
+                          : AppTheme.textPrimary,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 1),
-          SizedBox(
-            height: 12,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                hasData ? _formatCalendarPnl(pnl, appState) : '--',
-                style: _S.calPnl.copyWith(color: color),
+              const SizedBox(height: 1),
+              SizedBox(
+                height: 12,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    hasData ? _formatCalendarPnl(pnl, appState) : '--',
+                    style: _S.calPnl.copyWith(color: color),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1353,6 +1435,157 @@ class _AnalysisPageState extends State<AnalysisPage>
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarDetailCard(AppState appState) {
+    final selected = _selectedCalendarDetail;
+    if (selected == null) {
+      return const SizedBox.shrink();
+    }
+    final items = (_calendarDetailData['items'] as List<dynamic>? ?? [])
+        .map((item) => item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item as Map))
+        .toList();
+    final totalPnl = (_calendarDetailData['total_pnl'] as num?)?.toDouble();
+    final totalRate = (_calendarDetailData['total_rate'] as num?)?.toDouble();
+    final title = (_calendarDetailData['title'] ?? '').toString();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.isLight ? AppTheme.surface3 : const Color(0xFF171A22),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.isEmpty ? '收益明细' : title,
+                      style: _S.label.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '逐资产盈亏明细',
+                      style: _S.label.copyWith(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (totalPnl != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatDetailPnl(totalPnl, appState),
+                      style: _S.rankVal.copyWith(
+                        color: totalPnl >= 0 ? AppTheme.danger : AppTheme.success,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDetailRate(totalRate, appState),
+                      style: _S.rankPct.copyWith(
+                        color: totalPnl >= 0 ? AppTheme.danger : AppTheme.success,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_calendarDetailLoading)
+            Text(
+              '正在加载明细…',
+              style: _S.label.copyWith(color: AppTheme.textSecondary),
+            )
+          else if (_calendarDetailError != null)
+            Text(
+              _calendarDetailError!,
+              style: _S.label.copyWith(color: AppTheme.danger),
+            )
+          else if (items.isEmpty)
+            Text(
+              '当天没有可展示的资产明细',
+              style: _S.label.copyWith(color: AppTheme.textSecondary),
+            )
+          else
+            Column(
+              children: items.map((item) {
+                final pnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
+                final pnlRate = (item['pnl_rate'] as num?)?.toDouble();
+                final curr = (item['curr'] ?? 'CNY').toString();
+                final market = _detailMarketLabel(item['market']);
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: AppTheme.border.withValues(alpha: 0.8),
+                        width: 0.8,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (item['name'] ?? item['code'] ?? '').toString(),
+                              style: _S.rankName.copyWith(fontSize: 13),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_formatDisplayCode((item['code'] ?? '').toString())} · $market · $curr',
+                              style: _S.rankCode.copyWith(color: AppTheme.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _formatDetailPnl(pnl, appState),
+                            style: _S.rankVal.copyWith(
+                              fontSize: 14,
+                              color: pnl >= 0 ? AppTheme.danger : AppTheme.success,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDetailRate(pnlRate, appState),
+                            style: _S.rankPct.copyWith(
+                              color: pnl >= 0 ? AppTheme.danger : AppTheme.success,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
         ],
       ),
     );
@@ -1628,6 +1861,14 @@ class _AnalysisPageState extends State<AnalysisPage>
     return code.toUpperCase();
   }
 
+  String _detailMarketLabel(dynamic market) {
+    final normalized = (market ?? '').toString().trim().toLowerCase();
+    if (normalized == 'hk') return '港股';
+    if (normalized == 'us') return '美股';
+    if (normalized == 'fund') return '基金';
+    return 'A股';
+  }
+
   int? _parseLabelKey(String label) {
     if (_calendarTimeType == 'day') {
       if (label.contains('-')) {
@@ -1672,6 +1913,20 @@ class _AnalysisPageState extends State<AnalysisPage>
       return '${rate > 0 ? '+' : ''}${rate.toStringAsFixed(2)}%';
     }
     return '--%';
+  }
+
+  String _formatDetailPnl(double? pnl, AppState appState) {
+    if (appState.amountHidden) return '****';
+    if (pnl == null) return '--';
+    final sign = pnl >= 0 ? '+' : '-';
+    return '$sign¥ ${pnl.abs().round()}';
+  }
+
+  String _formatDetailRate(double? pnlRate, AppState appState) {
+    if (appState.amountHidden) return '--%';
+    if (pnlRate == null) return '--';
+    final sign = pnlRate >= 0 ? '+' : '';
+    return '$sign${pnlRate.toStringAsFixed(2)}%';
   }
 
   Widget _rankBadge(int rank) {

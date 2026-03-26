@@ -52,6 +52,8 @@ class ApiConfig {
   static const String liabilities = '/api/liabilities';
   static const String analysisOverview = '/api/analysis/overview';
   static const String analysisCalendar = '/api/analysis/calendar';
+  static const String analysisCalendarAssetBreakdown =
+      '/api/analysis/calendar/asset_breakdown';
   static const String analysisRank = '/api/analysis/rank';
   static const String realtimeToday = '/api/realtime/today';
   static const String news = '/api/news/latest';

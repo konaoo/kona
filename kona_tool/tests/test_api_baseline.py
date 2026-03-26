@@ -476,7 +476,8 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('total_liability') or 0.0), 35.0, places=2)
         self.assertAlmostEqual(float(stats.get('total_asset') or 0.0), 123.0, places=2)
 
-    def test_calculate_stats_keeps_day_pnl_on_trading_day_even_off_hours(self):
+    def test_calculate_stats_returns_zero_day_pnl_before_market_open(self):
+        fixed_now = datetime(2026, 3, 26, 1, 0, tzinfo=timezone.utc)
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600000',
             'name': '浦发银行',
@@ -489,14 +490,15 @@ class ApiBaselineTests(unittest.TestCase):
             with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
                 with patch(
                     'core.snapshot.get_market_statuses',
-                    return_value={'a': {'open': False, 'reason': 'off_hours'}},
+                    return_value={'a': {'open': False, 'trading_day': True, 'reason': 'off_hours'}},
                 ):
                     with patch('core.snapshot.is_trading_day', create=True, return_value=True):
                         with patch('core.snapshot.is_markets_closed_on_date', create=True, return_value=False):
                             with patch.object(app_module.db, 'get_today_realized_pnl', return_value=0.0):
-                                stats = app_module.calculate_portfolio_stats(None)
+                                stats = app_module.calculate_portfolio_stats(None, now_utc=fixed_now)
 
-        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 2.0, places=2)
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
+        self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-26')
 
     def test_calculate_stats_zero_day_pnl_on_non_trading_day(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -535,10 +537,10 @@ class ApiBaselineTests(unittest.TestCase):
                 with patch(
                     'core.snapshot.get_market_statuses',
                     return_value={
-                        'a': {'open': False, 'reason': 'holiday_or_weekend'},
-                        'hk': {'open': False, 'reason': 'holiday_or_weekend'},
-                        'us': {'open': True, 'reason': 'open_session'},
-                        'fund': {'open': False, 'reason': 'holiday_or_weekend'},
+                        'a': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                        'hk': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                        'us': {'open': True, 'trading_day': True, 'reason': 'open_session'},
+                        'fund': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
                     },
                 ):
                     with patch('core.snapshot.is_trading_day', create=True, side_effect=lambda market, date: market == 'us'):
