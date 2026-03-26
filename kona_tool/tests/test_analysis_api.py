@@ -884,6 +884,40 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(items[0].get('code'), 'sh600004')
         self.assertAlmostEqual(float(items[0].get('pnl') or 0), 100.0)
 
+    def test_analysis_asset_breakdown_historical_day_does_not_fallback_to_cost_when_yclose_missing(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('gb_boxx', 'ALPHA ARCHITECT 1-3 MONTH BOX E', 284, 115.275, 'USD', 0, 'us', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-03', 1000, 1000, 0, 0, 0, 0, 0, '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch.object(app_module, 'get_forex_rates', return_value={'USD': 7.2, 'CNY': 1.0}), patch(
+            'core.analysis_asset_breakdown_service._fetch_stock_history_points',
+            return_value=[
+                {'date': '2026-03-03', 'value': 116.06},
+            ],
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-03')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        target = next((item for item in items if item.get('code') == 'gb_boxx'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target.get('pnl') or 0), 0.0)
+
     def test_analysis_asset_breakdown_ledger_id_isolated(self):
         default_ledger_id = app_module.db.get_default_ledger_id('')
         conn = app_module.db.get_connection()

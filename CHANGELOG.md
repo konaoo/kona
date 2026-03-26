@@ -1,3 +1,23 @@
+## 2026-03-26-02
+
+### 这版一句话
+修正了分析页收益日历下钻里两类容易误导的历史明细：`ft_LU1116320737` 不再因为拿不到历史净值而天天显示 `0`，`gb_boxx` 这类美股也不再在缺昨收时把累计盈亏误画成单日盈亏。
+
+### 主要变化
+- **海外基金历史净值补 Fidelity 备源**：更新 [kona_tool/core/fund.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/fund.py)，为 `LU1116320737` 这类 `ft_` 海外基金接入 Fidelity 香港的 `HistoricalNav.json` 历史净值接口；原来的 `overseas.1234567` 拿不到历史表时，会自动回退到 Fidelity，不再把历史日明细算成 `0`。
+- **美股历史价太稀时回退到 Stooq**：沿用并补强 [kona_tool/core/trend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/trend.py) 的历史价回退链路，像 `gb_boxx` 这类线上 Yahoo 被封、腾讯又只给一个点的美股，会优先回退到 `stooq`，补齐 `3/24`、`3/25` 这类历史收盘价。
+- **历史日明细缺昨收时不再回退成本价**：更新 [kona_tool/core/analysis_asset_breakdown_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_asset_breakdown_service.py)，把“成本价兜底昨收”限制在实时口径里；历史日如果缺前一收盘价，宁可算 `0`，也不再把累计盈亏误画成某一天的日盈亏。
+- **补齐回归测试**：更新 [kona_tool/tests/test_fund_source_priority.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_fund_source_priority.py)、[kona_tool/tests/test_asset_trend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_asset_trend.py)、[kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)，覆盖 Fidelity 历史净值、Stooq 回退和“历史日禁止成本价冒充昨收”三类场景。
+
+### 影响范围
+- 后端分析页收益日历下钻明细
+- `ft_` 海外基金历史净值读取
+- 美股历史价格回退链路
+
+### 验收重点
+- `kona` 的 `2026-03-23` / `2026-03-24` / `2026-03-25` 明细里，`ft_LU1116320737` 不应再固定显示 `0`
+- `gb_boxx` 的 `2026-03-25` 不应再出现把成本价差当成单日盈亏的值
+
 ## 2026-03-26-01
 
 ### 这版一句话

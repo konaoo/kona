@@ -13,6 +13,11 @@ from .utils import monitored_http_get, retry_on_failure, safe_float
 logger = logging.getLogger(__name__)
 
 
+_FIDELITY_HISTORY_SHARE_CLASS_IDS = {
+    "LU1116320737": "GBESU/G",
+}
+
+
 def _normalize_nav_date(value: Any) -> Optional[str]:
     text = str(value or "").strip()
     if not text:
@@ -40,6 +45,59 @@ def _is_plausible_fund_yclose(curr: float, yclose: float) -> bool:
     ratio = yclose / curr
     # 场外基金单日涨跌通常很小；放宽到 20% 作为脏数据保护，避免把累计净值当昨收。
     return 0.8 <= ratio <= 1.2
+
+
+def _looks_like_isin(code: str) -> bool:
+    return bool(re.fullmatch(r"[A-Z]{2}[A-Z0-9]{10}", str(code or "").strip().upper()))
+
+
+def get_fidelity_history_points(clean_code: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    从 Fidelity 香港基金详情页接口读取历史净值。
+
+    目前先只覆盖已经确认能稳定映射的 share class。
+    """
+    isin = str(clean_code or "").strip().upper()
+    share_class_id = _FIDELITY_HISTORY_SHARE_CLASS_IDS.get(isin)
+    if not share_class_id:
+        return []
+
+    try:
+        r = monitored_http_get(
+            "fidelity_fund_history",
+            "https://www.fidelity.com.hk/api/ce/fdh/HistoricalNav.json",
+            params={
+                "id": share_class_id,
+                "countries": "hk",
+                "country": "hk",
+                "languages": "zh,en",
+                "language": "zh",
+                "channels": "ce.private-investor",
+                "channel": "ce.private-investor",
+            },
+            headers={
+                "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Referer": f"https://www.fidelity.com.hk/zh/funds/factsheet/{share_class_id}",
+                "Accept": "application/json, text/plain, */*",
+            },
+            timeout=config.API_TIMEOUT,
+        )
+        if r.status_code != 200:
+            return []
+
+        payload = r.json() or {}
+        items = payload.get("items") or []
+        points: List[Dict[str, Any]] = []
+        for item in reversed(items):
+            date = _normalize_nav_date((item or {}).get("date"))
+            value = safe_float((item or {}).get("nav"))
+            if not date or value <= 0:
+                continue
+            points.append({"date": date, "value": value})
+        return points[-max(2, int(limit)) :] if points else []
+    except Exception as e:
+        logger.warning(f"Fidelity fund history API error for {clean_code}: {e}")
+        return []
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -390,7 +448,7 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
             re.S,
         )
         if not rows:
-            return []
+            return get_fidelity_history_points(clean_code, limit) if _looks_like_isin(clean_code) else []
 
         points: List[Dict[str, Any]] = []
         for date, nav in rows:
@@ -403,7 +461,7 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
         return points[-max(2, int(limit)) :]
     except Exception as e:
         logger.warning(f"Overseas fund history parser error for {clean_code}: {e}")
-        return []
+        return get_fidelity_history_points(clean_code, limit) if _looks_like_isin(clean_code) else []
 
 
 # ── 基金净值日期缓存 ──────────────────────────────────────────

@@ -18,6 +18,7 @@ class _JsonResp:
     def __init__(self, data, status_code=200):
         self._data = data
         self.status_code = status_code
+        self.text = data if isinstance(data, str) else ""
 
     def json(self):
         return self._data
@@ -30,6 +31,27 @@ class _TextResp:
 
 
 class TestFundSourcePriority(unittest.TestCase):
+    def test_fidelity_history_parser_reads_historical_nav_rows(self):
+        from core.fund import get_fidelity_history_points
+
+        payload = {
+            "items": [
+                {"date": "2026-03-25", "nav": "9.22", "changePercent": "0.66"},
+                {"date": "2026-03-24", "nav": "9.16", "changePercent": "-0.76"},
+                {"date": "2026-03-23", "nav": "9.23", "changePercent": "0.65"},
+            ]
+        }
+        with patch("core.fund.monitored_http_get", return_value=_JsonResp(payload)):
+            points = get_fidelity_history_points("LU1116320737", limit=2)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-24", "value": 9.16},
+                {"date": "2026-03-25", "value": 9.22},
+            ],
+        )
+
     def test_otc_fund_prefers_f10_confirmed_nav(self):
         with patch("core.fund.get_fund_eastmoney_f10", return_value=(1.5904, 1.5225, 0.0679, 4.46)) as f10_mock, patch(
             "core.fund.get_fund_tencent_jj",
@@ -183,6 +205,29 @@ class TestFundSourcePriority(unittest.TestCase):
             [
                 {"date": "2026-03-04", "value": 17.85},
                 {"date": "2026-03-05", "value": 17.96},
+            ],
+        )
+
+    def test_overseas_history_falls_back_to_fidelity_for_isin(self):
+        fidelity_payload = {
+            "items": [
+                {"date": "2026-03-25", "nav": "9.22"},
+                {"date": "2026-03-24", "nav": "9.16"},
+                {"date": "2026-03-23", "nav": "9.23"},
+            ]
+        }
+        with patch(
+            "core.fund.monitored_http_get",
+            side_effect=[_TextResp("<html><body>empty</body></html>"), _JsonResp(fidelity_payload)],
+        ):
+            points = get_fund_overseas_history_points("LU1116320737", limit=3)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-23", "value": 9.23},
+                {"date": "2026-03-24", "value": 9.16},
+                {"date": "2026-03-25", "value": 9.22},
             ],
         )
 

@@ -286,6 +286,7 @@ class AnalysisAssetBreakdownService:
                         sell_amount=_safe_float(sell_info.get("amount")),
                         cost_fallback=_safe_float(meta.get("price")),
                         rate_to_cny=rate_to_cny,
+                        allow_cost_fallback=True,
                     )
                     has_exposure = has_exposure or item_base > 0
 
@@ -395,6 +396,7 @@ class AnalysisAssetBreakdownService:
                     sell_amount=_safe_float(sell_info.get("amount")),
                     cost_fallback=_safe_float(meta.get("price")),
                     rate_to_cny=rate_to_cny,
+                    allow_cost_fallback=False,
                 )
                 has_exposure = has_exposure or item_base > 0
 
@@ -560,11 +562,14 @@ class AnalysisAssetBreakdownService:
         sell_amount: float,
         cost_fallback: float,
         rate_to_cny: float,
+        allow_cost_fallback: bool = True,
     ) -> tuple[float, float]:
         if current_price <= 0:
             return 0.0, 0.0
 
-        yclose_ref = yclose if yclose > 0 else (cost_fallback if cost_fallback > 0 else 0.0)
+        yclose_ref = yclose if yclose > 0 else 0.0
+        if yclose_ref <= 0 and allow_cost_fallback and cost_fallback > 0:
+            yclose_ref = cost_fallback
         if buy_qty > 0 and yclose_ref <= 0 and buy_amount > 0:
             yclose_ref = buy_amount / buy_qty
         if yclose_ref <= 0:

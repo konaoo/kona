@@ -12,8 +12,10 @@ if str(KONA_TOOL) not in sys.path:
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 from core.trend import (
+    _fetch_fund_history_points,
     _resolve_tencent_symbol,
     _fetch_stock_history_points,
+    _fetch_stooq_us_history_points,
     _fetch_yahoo_us_history_points,
 )
 
@@ -22,6 +24,7 @@ class _JsonResp:
     def __init__(self, data, status_code=200):
         self._data = data
         self.status_code = status_code
+        self.text = data if isinstance(data, str) else ""
 
     def json(self):
         return self._data
@@ -92,6 +95,9 @@ class AssetTrendTests(unittest.TestCase):
         )
 
         with patch("core.trend._fetch_yahoo_us_history_points", return_value=[]), patch(
+            "core.trend._fetch_stooq_us_history_points",
+            return_value=[],
+        ), patch(
             "core.trend.monitored_http_get",
             side_effect=[eastmoney_sparse, tencent_payload],
         ):
@@ -165,6 +171,71 @@ class AssetTrendTests(unittest.TestCase):
                 {"date": "2026-03-06", "value": 115.89},
             ],
         )
+
+    def test_us_trend_falls_back_to_stooq_when_yahoo_and_tencent_unavailable(self):
+        eastmoney_sparse = _JsonResp(
+            {
+                "data": {
+                    "klines": [
+                        "2026-03-25,0,116.06,0,0,0,0,0",
+                    ]
+                }
+            }
+        )
+        stooq_csv = """Date,Open,High,Low,Close,Volume
+2026-03-21,115.98,115.99,115.97,115.98,1000
+2026-03-24,116.00,116.01,115.99,116.00,2000
+2026-03-25,116.06,116.06,116.05,116.06,3000
+"""
+
+        with patch("core.trend._fetch_yahoo_us_history_points", return_value=[]), patch(
+            "core.trend._fetch_tencent_stock_history_points",
+            return_value=[{"date": "2026-03-25", "value": 116.06}],
+        ), patch(
+            "core.trend.monitored_http_get",
+            side_effect=[eastmoney_sparse, _JsonResp(stooq_csv)],
+        ):
+            points = _fetch_stock_history_points("gb_boxx", 20, "us")
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-21", "value": 115.98},
+                {"date": "2026-03-24", "value": 116.0},
+                {"date": "2026-03-25", "value": 116.06},
+            ],
+        )
+
+    def test_fetch_stooq_us_history_points_supports_boxx(self):
+        stooq_csv = """Date,Open,High,Low,Close,Volume
+2026-03-23,115.99,116.00,115.97,115.98,1000
+2026-03-24,116.00,116.01,115.99,116.00,2000
+2026-03-25,116.06,116.06,116.05,116.06,3000
+"""
+
+        with patch("core.trend.monitored_http_get", return_value=_JsonResp(stooq_csv)):
+            points = _fetch_stooq_us_history_points("gb_boxx", 20)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-23", "value": 115.98},
+                {"date": "2026-03-24", "value": 116.0},
+                {"date": "2026-03-25", "value": 116.06},
+            ],
+        )
+
+    def test_fetch_fund_history_points_supports_ft_overseas_code(self):
+        overseas_points = [
+            {"date": "2026-03-23", "value": 9.23},
+            {"date": "2026-03-24", "value": 9.16},
+        ]
+
+        with patch("core.trend.get_fund_overseas_history_points", return_value=overseas_points) as mocked:
+            points = _fetch_fund_history_points("ft_LU1116320737", 20)
+
+        mocked.assert_called_once_with("LU1116320737", 20)
+        self.assertEqual(points, overseas_points)
 
 
 if __name__ == "__main__":

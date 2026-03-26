@@ -222,6 +222,49 @@ def _fetch_yahoo_us_history_points(code: str, limit: int) -> List[Dict[str, Any]
         return []
 
 
+def _fetch_stooq_us_history_points(code: str, limit: int) -> List[Dict[str, Any]]:
+    symbol = _resolve_yahoo_us_symbol(code)
+    if not symbol:
+        return []
+
+    try:
+        response = monitored_http_get(
+            "stooq_us_history",
+            "https://stooq.com/q/d/l/",
+            params={
+                "s": f"{symbol.lower()}.us",
+                "i": "d",
+            },
+            headers={
+                "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Referer": "https://stooq.com/",
+            },
+            timeout=config.API_TIMEOUT,
+        )
+        if response.status_code != 200:
+            return []
+
+        text = str(response.text or "").strip()
+        if not text or text.lower().startswith("no data"):
+            return []
+
+        points: List[Dict[str, Any]] = []
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) < 5:
+                continue
+            date = str(parts[0] or "").strip()
+            close = safe_float(parts[4])
+            if not date or close <= 0:
+                continue
+            points.append({"date": date, "value": close})
+        return points[-limit:] if points else []
+    except Exception as exc:
+        logger.debug("stooq us trend fetch failed code=%s symbol=%s error=%s", code, symbol, exc)
+        return []
+
+
 def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") -> List[Dict[str, Any]]:
     headers = {
         "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
@@ -264,6 +307,9 @@ def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") ->
                     yahoo_points = _fetch_yahoo_us_history_points(code, limit)
                     if len(yahoo_points) >= 2:
                         return yahoo_points
+                    stooq_points = _fetch_stooq_us_history_points(code, limit)
+                    if len(stooq_points) >= 2:
+                        return stooq_points
                     logger.debug(
                         "eastmoney us trend points too sparse, fallback to tencent: code=%s secid=%s points=%s",
                         code,
@@ -278,11 +324,22 @@ def _fetch_stock_history_points(code: str, limit: int, market_hint: str = "") ->
         yahoo_points = _fetch_yahoo_us_history_points(code, limit)
         if len(yahoo_points) >= 2:
             return yahoo_points
+        stooq_points = _fetch_stooq_us_history_points(code, limit)
+        if len(stooq_points) >= 2:
+            return stooq_points
     return _fetch_tencent_stock_history_points(code, limit, market_hint)
 
 
 def _fetch_fund_history_points(code: str, limit: int) -> List[Dict[str, Any]]:
-    normalized = _normalize_code(code).lower()
+    raw = _normalize_code(code).strip()
+    normalized = raw.lower()
+    if normalized.startswith("ft_"):
+        overseas_code = raw[3:].strip()
+        if not overseas_code:
+            return []
+        overseas_points = get_fund_overseas_history_points(overseas_code, limit)
+        return overseas_points[-limit:] if overseas_points else []
+
     if not normalized.startswith("f_"):
         return []
 
