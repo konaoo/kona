@@ -1,3 +1,23 @@
+## 2026-03-26-04
+
+### 这版一句话
+Web 端投资持仓的编辑链路改成了和 App 更接近的详情页模式，同时把买入、卖出、调整弹窗收干净，去掉重复交互和多余说明块。
+
+### 主要变化
+- **投资持仓改为点进详情页再编辑**：更新 [web/src/pages/app/AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)、[web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue) 和 [web/src/pages/app/AppAssetDetailPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAssetDetailPage.vue)，Web 端点击持仓后不再直接弹旧编辑层，而是进入资产详情页，在详情页里统一做 `加仓 / 减仓 / 修正` 和交易记录查看。
+- **基金净值展示跟 App 对齐**：首页和投资页里的场外基金不再显示“待净值更新”，而是直接显示最新净值，并补上净值日期；对应更新 [web/src/pages/app/AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue) 和 [web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)。
+- **交易记录区补表头并支持本地联调假数据**：资产详情页的交易记录补了表头，时间字段兼容 `time / date / created_at` 三种返回口径，方便本地看得清；对应更新 [web/src/pages/app/AppAssetDetailPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAssetDetailPage.vue)。
+- **交易弹窗去掉重复层**：更新 [web/src/components/business/InvestTradeModal.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/components/business/InvestTradeModal.vue)，买入/卖出/调整三种编辑态里删掉重复的资产摘要卡和二次动作切换；调整模式改成小胶囊直接切 `成本价 / 数量 / 分红 / 手续费`，输入区重新排成更清楚的上下结构。
+
+### 影响范围
+- Web 端首页、投资页、资产详情页
+- Web 端买入 / 卖出 / 调整弹窗
+
+### 验收重点
+- 点击任一持仓后，应进入资产详情页，而不是再弹旧的编辑层。
+- 场外基金卡片应直接显示最新净值和净值日期，不再出现“待净值更新”。
+- 调整弹窗里不应再出现重复摘要卡、重复动作切换，调整类型应直接用小胶囊选择。
+
 ## 2026-03-26-03
 
 ### 这版一句话

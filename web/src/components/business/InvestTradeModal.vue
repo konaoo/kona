@@ -77,7 +77,6 @@ async function loadAccounts() {
   }
 }
 const isAcctDropdownOpen = ref(false)
-const isAdjustTypeDropdownOpen = ref(false)
 const isCreateSheetOpen = ref(false)
 const createAcctType = ref('cash')
 const createCurr = ref('CNY')
@@ -97,8 +96,6 @@ const selectCurrInfo = computed(() => currencies.find(c => c.code === createCurr
 const currentHoldingQty = computed(() => toNumber(selectedStock.value?.holdingQty))
 const currentRawCostPrice = computed(() => toNumber(selectedStock.value?.rawCostPrice ?? selectedStock.value?.price))
 const currentAdjustment = computed(() => toNumber(selectedStock.value?.adjustment))
-const currentMarketPrice = computed(() => toNumber(selectedStock.value?.price ?? selectedStock.value?.rawCostPrice))
-const currentCurrency = computed(() => String(selectedStock.value?.curr || selectedStock.value?.currency || 'CNY').toUpperCase())
 const isFundAdjustTarget = computed(() => {
   const marketType = String(selectedStock.value?.market_type || '').toLowerCase()
   const assetType = String(selectedStock.value?.asset_type || '').toLowerCase()
@@ -109,11 +106,6 @@ const currentDisplayCostPrice = computed(() => computeDisplayCostPrice(
   currentHoldingQty.value,
   currentAdjustment.value,
 ))
-const holdingSummaryText = computed(() => {
-  const qty = currentHoldingQty.value
-  const digits = isFundAdjustTarget.value ? 4 : 0
-  return `${formatQuoteValue(qty, digits)}${isFundAdjustTarget.value ? '份' : '股'}`
-})
 const adjustValueStep = computed(() => {
   if (adjustType.value === 'quantity') return isFundAdjustTarget.value ? '0.0001' : '0.01'
   if (adjustType.value === 'costPrice') return (selectedStock.value?.digits || 2) >= 4 ? '0.0001' : '0.01'
@@ -132,12 +124,6 @@ const sheetTitle = computed(() => {
   if (actionMode.value === 'adjust') return '调整'
   return '买入'
 })
-const actionTabs = [
-  { value: 'buy', label: '买入' },
-  { value: 'sell', label: '卖出' },
-  { value: 'adjust', label: '调整' },
-] as const
-
 function setConfirmButtonIdle() {
   if (!isEditMode.value) {
     confirmBtnText.value = '确认添加'
@@ -356,19 +342,6 @@ function resolveAdjustPayload():
   return { error: '不支持的调整类型' }
 }
 
-const adjustPreview = computed(() => {
-  if (!selectedStock.value) return null
-  const payload = resolveAdjustPayload()
-  if ('error' in payload) return null
-  const nextMarketPrice = currentMarketPrice.value > 0 ? currentMarketPrice.value : payload.price
-  return {
-    qty: payload.qty,
-    costPrice: computeDisplayCostPrice(payload.price, payload.qty, payload.adjustment),
-    adjustment: payload.adjustment,
-    totalPnl: (nextMarketPrice - payload.price) * payload.qty + payload.adjustment,
-  }
-})
-
 function close() {
   if (isAnimating.value) return
   internalShow.value = false
@@ -487,11 +460,6 @@ function formatQuoteValue(value: number | null, digits = 2): string {
   })
 }
 
-function formatCurrencyLabel(currency: string): string {
-  if (currency === 'HKD') return 'HK$'
-  return currency
-}
-
 function formatSignedMove(value: number | null, digits = 2): string {
   if (value === null || !Number.isFinite(value)) return '--'
   const sign = value >= 0 ? '+' : ''
@@ -544,14 +512,12 @@ const clearSelection = () => {
 }
 
 const toggleAcct = () => { isAcctDropdownOpen.value = !isAcctDropdownOpen.value }
-const toggleAdjustType = () => { isAdjustTypeDropdownOpen.value = !isAdjustTypeDropdownOpen.value }
 const selectAccount = (acct: any) => {
   selectedAccount.value = acct
   isAcctDropdownOpen.value = false
 }
 const selectAdjustType = (type: AdjustType) => {
   adjustType.value = type
-  isAdjustTypeDropdownOpen.value = false
 }
 const toggleCurr = () => { isCurrDropdownOpen.value = !isCurrDropdownOpen.value }
 
@@ -742,14 +708,12 @@ async function handleConfirm() {
 
 const closeSearchDropdown = () => { isDropdownOpen.value = false }
 const closeAcctDropdown = () => { isAcctDropdownOpen.value = false }
-const closeAdjustTypeDropdown = () => { isAdjustTypeDropdownOpen.value = false }
 const closeCurrDropdown = () => { isCurrDropdownOpen.value = false }
 
 const handleDocClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.search-wrap')) closeSearchDropdown()
   if (!target.closest('.acct-wrap')) closeAcctDropdown()
-  if (!target.closest('.adjust-type-wrap')) closeAdjustTypeDropdown()
   if (!target.closest('.curr-wrap')) closeCurrDropdown()
 }
 
@@ -779,19 +743,6 @@ onUnmounted(() => {
         </div>
 
         <div class="sheet-body">
-          <div v-if="isEditMode" class="action-tabs">
-            <button
-              v-for="tab in actionTabs"
-              :key="tab.value"
-              type="button"
-              class="action-tab"
-              :class="{ active: actionMode === tab.value }"
-              @click="actionMode = tab.value"
-            >
-              {{ tab.label }}
-            </button>
-          </div>
-
           <div class="field-row">
             <div class="search-wrap">
               <div v-if="!selectedStock && !isEditMode" id="searchInputArea">
@@ -812,33 +763,7 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Selected Pill -->
-              <div v-if="selectedStock" class="selected-pill show">
-                <template v-if="isEditMode">
-                  <div class="sp-summary summary-edit">
-                    <div class="sp-summary-copy">
-                      <div class="sp-summary-name">{{ selectedStock.name }}</div>
-                      <div class="sp-summary-holding">{{ holdingSummaryText }}</div>
-                    </div>
-                    <div class="sp-summary-metrics">
-                      <div class="sp-panel compact">
-                        <span class="sp-panel-label">持仓成本</span>
-                        <span class="sp-panel-value">
-                          <span class="sp-panel-currency">{{ formatCurrencyLabel(currentCurrency) }}</span>
-                          <span class="sp-panel-amount">{{ formatQuoteValue(currentRawCostPrice, selectedStock?.digits || 2) }}</span>
-                        </span>
-                      </div>
-                      <div class="sp-panel compact">
-                        <span class="sp-panel-label">调整额</span>
-                        <span class="sp-panel-value">
-                          <span class="sp-panel-currency">{{ formatCurrencyLabel(currentCurrency) }}</span>
-                          <span class="sp-panel-amount">{{ formatSignedMove(currentAdjustment, 2) }}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
+              <div v-if="selectedStock && !isEditMode" class="selected-pill show">
                   <span 
                     class="sp-tag di-tag" 
                     :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
@@ -857,7 +782,6 @@ onUnmounted(() => {
                       </template>
                     </span>
                   </div>
-                </template>
                 <button v-if="!isEditMode" class="sp-x" @click="clearSelection">
                   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
                 </button>
@@ -953,8 +877,10 @@ onUnmounted(() => {
                   <input type="number" class="num-input" v-model="qty" placeholder="0" min="0" step="1" @input="syncAmount" />
                 </div>
               </div>
-              <div class="num-field">
-                <div class="num-label">总计</div>
+            </div>
+            <div class="inputs-row amount-row">
+              <div class="num-field num-field-amount">
+                <div class="num-label">金额</div>
                 <div class="num-wrap">
                   <input type="number" class="num-input" v-model="amount" placeholder="0.00" min="0" step="0.01" @input="syncQty" />
                 </div>
@@ -963,53 +889,24 @@ onUnmounted(() => {
           </div>
 
           <div v-else class="inputs-section">
+            <div class="adjust-type-pills">
+              <button
+                v-for="option in adjustTypeOptions"
+                :key="option.value"
+                type="button"
+                class="adjust-type-pill"
+                :class="{ active: adjustType === option.value }"
+                @click="selectAdjustType(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
             <div class="inputs-row adjust-row">
-              <div class="num-field">
-                <div class="num-label">调整类型</div>
-                <div class="adjust-type-wrap">
-                  <div class="acct-trigger" :class="{ open: isAdjustTypeDropdownOpen }" @click="toggleAdjustType">
-                    <div class="acct-trigger-left">
-                      <span class="acct-trigger-name">{{ adjustTypeOptions.find(option => option.value === adjustType)?.label || '请选择调整类型' }}</span>
-                    </div>
-                    <svg class="acct-arrow" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg>
-                  </div>
-                  <div class="acct-dropdown adjust-type-dropdown" :class="{ open: isAdjustTypeDropdownOpen }">
-                    <div
-                      v-for="option in adjustTypeOptions"
-                      :key="option.value"
-                      class="acct-item"
-                      :class="{ selected: adjustType === option.value }"
-                      @click.stop="selectAdjustType(option.value)"
-                    >
-                      <div class="acct-item-left">
-                        <div class="acct-info">
-                          <div class="acct-item-name">{{ option.label }}</div>
-                        </div>
-                      </div>
-                      <svg class="acct-check" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l4 4 6-7"/></svg>
-                    </div>
-                  </div>
-                </div>
-              </div>
               <div class="num-field">
                 <div class="num-label">{{ adjustInputLabel }}</div>
                 <div class="num-wrap">
                   <input type="number" class="num-input" v-model="adjustValue" placeholder="0.00" :step="adjustValueStep" />
                 </div>
-              </div>
-            </div>
-            <div v-if="adjustPreview" class="adjust-preview">
-              <div class="adjust-preview-item">
-                <span class="adjust-preview-label">调整后数量</span>
-                <span class="adjust-preview-value">{{ formatQuoteValue(adjustPreview.qty, isFundAdjustTarget ? 4 : 2) }}</span>
-              </div>
-              <div class="adjust-preview-item">
-                <span class="adjust-preview-label">调整后成本价</span>
-                <span class="adjust-preview-value">{{ formatQuoteValue(adjustPreview.costPrice, selectedStock?.digits || 2) }}</span>
-              </div>
-              <div class="adjust-preview-item">
-                <span class="adjust-preview-label">调整后累计收益</span>
-                <span class="adjust-preview-value" :class="moveTone(adjustPreview.totalPnl)">{{ formatSignedMove(adjustPreview.totalPnl, 2) }}</span>
               </div>
             </div>
           </div>
@@ -1218,27 +1115,26 @@ onUnmounted(() => {
 .curr-item-flag { font-size: 16px; line-height: 1; }
 .curr-trigger-code { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); }
 .curr-trigger-name { font-size: 12px; color: var(--sub); }
-.divider { height: 1px; background: var(--surface-divider); margin: 2px 0; }
-.inputs-section { display: flex; flex-direction: column; gap: 6px; }
-.inputs-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.num-field { display: flex; flex-direction: column; gap: 5px; }
+.divider { height: 1px; background: var(--surface-divider); margin: 8px 0 12px; }
+.inputs-section { display: flex; flex-direction: column; gap: 14px; }
+.inputs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.inputs-row.amount-row { grid-template-columns: 1fr; }
+.inputs-row.adjust-row { grid-template-columns: 1fr; }
+.adjust-type-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; margin-bottom: 2px; }
+.adjust-type-pill { height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-muted, #1a1d25); color: var(--sub); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.18s; }
+.adjust-type-pill:hover { color: var(--text); border-color: var(--border-b); }
+.adjust-type-pill.active { background: linear-gradient(135deg, rgba(91,141,239,0.16), rgba(74,123,224,0.08)); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); box-shadow: 0 6px 16px rgba(91,141,239,0.12); }
+.num-field { display: flex; flex-direction: column; gap: 8px; }
+.num-field-amount { max-width: 100%; }
 .num-label { font-size: 11px; color: var(--sub); }
 .num-wrap { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
 .num-wrap:focus-within { border-color: rgba(99,149,235,0.6); box-shadow: 0 0 0 3px rgba(99,149,235,0.08); }
 .num-wrap.readonly { background: var(--surface-faint); }
 .num-input { flex: 1; min-width: 0; width: 100%; background: transparent; border: none; outline: none; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 500; padding: 10px 10px; }
 .num-input::placeholder { color: var(--sub); font-size: 13px; font-family: 'DM Sans', sans-serif; font-weight: 400; }
-.adjust-type-dropdown { z-index: 260; }
-.adjust-preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-.adjust-preview-item { background: var(--panel-muted, #1a1d25); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-.adjust-preview-label { font-size: 11px; color: var(--sub); }
-.adjust-preview-value { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
-.adjust-preview-value.up { color: var(--red, #f05a55); }
-.adjust-preview-value.down { color: var(--green, #3ecf82); }
-.adjust-preview-value.flat { color: var(--sub); }
 .error-msg, .field-err { font-size: 10px; color: var(--red, #f05a55); display: none; padding-left: 1px; }
 .error-msg.show, .field-err.show { display: block; }
-.sheet-actions { display: flex; gap: 8px; padding: 12px 20px 20px; }
+.sheet-actions { display: flex; gap: 10px; padding: 18px 20px 20px; }
 .btn { flex: 1; padding: 12px; border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.18s; }
 .btn-cancel { background: var(--panel-muted, #1a1d25); color: var(--sub); border: 1px solid var(--border); }
 .btn-cancel:hover { color: var(--text); border-color: var(--border-b); background: var(--surface-soft); }
@@ -1285,10 +1181,12 @@ onUnmounted(() => {
   .holding-strip {
     grid-template-columns: repeat(3, 1fr);
   }
-  /* Same for input rows, keep them side by side instead of vertically stacking */
-  .inputs-row,
-  .inputs-row.adjust-row {
-    grid-template-columns: repeat(3, 1fr);
+  .inputs-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .inputs-row.adjust-row,
+  .inputs-row.amount-row {
+    grid-template-columns: 1fr;
   }
   .dropdown-item {
     align-items: flex-start;

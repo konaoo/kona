@@ -131,6 +131,10 @@ function lastOrNull(values: number[]): number | null {
   return values.length ? (values[values.length - 1] ?? null) : null
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export const useAnalysisStore = defineStore('analysis', () => {
   const authStore = useAuthStore()
   const refreshCoordinatorStore = useRefreshCoordinatorStore()
@@ -281,6 +285,26 @@ export const useAnalysisStore = defineStore('analysis', () => {
     detailState.items = payload.items || []
     detailState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
     detailState.totalRate = payload.total_rate == null ? null : toNumber(payload.total_rate)
+  }
+
+  async function requestCalendarDetailPayload(
+    params: URLSearchParams,
+    retryCount = 1
+  ): Promise<AnalysisCalendarDetailPayload> {
+    try {
+      return await api.get<AnalysisCalendarDetailPayload>(
+        `/api/analysis/calendar/asset_breakdown?${params.toString()}`
+      )
+    } catch (error) {
+      const apiError = error as ApiError
+      const status = Number(apiError?.status || 0)
+      const retryable = status === 502 || status === 503 || status === 504
+      if (retryable && retryCount > 0) {
+        await wait(350)
+        return requestCalendarDetailPayload(params, retryCount - 1)
+      }
+      throw error
+    }
   }
 
   function persistAnalysisCache() {
@@ -530,16 +554,13 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
 
     try {
-      const payload = await api.get<AnalysisCalendarDetailPayload>(
-        `/api/analysis/calendar/asset_breakdown?${params.toString()}`
-      )
+      const payload = await requestCalendarDetailPayload(params)
       if (requestId !== detailRequestId) return
       writeDetailCache(selection, payload)
       applyDetailPayload(payload, selection)
     } catch (error) {
       if (requestId !== detailRequestId) return
-      const apiError = error as ApiError
-      detailError.value = apiError?.message || '明细加载失败'
+      detailError.value = '明细加载失败'
     } finally {
       if (requestId === detailRequestId) {
         detailLoading.value = false
@@ -559,9 +580,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
 
     try {
-      const payload = await api.get<AnalysisCalendarDetailPayload>(
-        `/api/analysis/calendar/asset_breakdown?${params.toString()}`
-      )
+      const payload = await requestCalendarDetailPayload(params, 0)
       writeDetailCache(selection, payload)
     } catch {
       // 预取失败不影响当前交互

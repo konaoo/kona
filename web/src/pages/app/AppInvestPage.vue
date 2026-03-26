@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePrivacyMode } from '@/shared/privacyMode'
 import { toNumber } from '@/shared/format'
 import { api } from '@/shared/http'
@@ -22,6 +23,7 @@ import AppShell from '@/layouts/AppShell.vue'
 const store = useKonaStore()
 const marketStore = useMarketStore()
 const realtimeTodayStore = useRealtimeTodayStore()
+const router = useRouter()
 const { maskValue } = usePrivacyMode()
 function masked(text: string): string { return maskValue(text) }
 
@@ -196,15 +198,57 @@ const filteredRows = computed(() => {
 })
 
 function quoteLabel(row: any): string {
-  if (row?.navUpdatePending) return '待净值更新'
+  if (isFundAsset(row)) {
+    const value = toNumber(row?.price)
+    return value > 0 ? `${getCurrencySymbol(row?.curr)}${formatAssetPrice(value)}` : '--'
+  }
   if (row?.quotePending) return '更新中'
   const value = toNumber(row?.price)
-  return value > 0 ? `${getCurrencySymbol(row?.curr)}${value}` : '--'
+  return value > 0 ? `${getCurrencySymbol(row?.curr)}${formatAssetPrice(value)}` : '--'
 }
 
 function dayPnlRateLabel(row: any): string {
-  if (row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
+  const latestNavDate = readLatestNavDate(row)
+  const shouldHoldFundDayPnl = isFundAsset(row) && latestNavDate != null && !isDateToday(latestNavDate)
+  if (shouldHoldFundDayPnl || row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
   return formatPct(toNumber(row?.dayPnlRate))
+}
+
+function isFundAsset(row: any): boolean {
+  const market = String(row?.category || row?.market || '').toLowerCase()
+  if (market === 'fund') return true
+  const code = String(row?.code || '').toLowerCase()
+  return code.startsWith('f_') || code.startsWith('ft_')
+}
+
+function readLatestNavDate(row: any): string | null {
+  const raw = String(row?.latest_nav_date ?? row?.latestNavDate ?? '').trim()
+  return raw || null
+}
+
+function formatLatestNavDateText(value: string | null): string | null {
+  const text = String(value || '').trim()
+  if (!text) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text)
+  if (!match) return text
+  return `${match[2]}-${match[3]}`
+}
+
+function isDateToday(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim())
+  if (!match) return false
+  const y = Number(match[1])
+  const m = Number(match[2])
+  const d = Number(match[3])
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false
+  const now = new Date()
+  return now.getFullYear() === y && now.getMonth() + 1 === m && now.getDate() === d
+}
+
+function quoteMetaLabel(row: any): string {
+  if (!isFundAsset(row)) return ''
+  const latestNavDateText = formatLatestNavDateText(readLatestNavDate(row))
+  return latestNavDateText ? `最新净值 ${latestNavDateText}` : '最新净值'
 }
 
 // Utility
@@ -331,18 +375,17 @@ onBeforeUnmount(() => {
 // Modal states
 const showTradeModal = ref(false)
 const tradeModalAsset = ref<any>(null)
-const tradeModalMode = ref<'add' | 'buy' | 'sell' | 'adjust'>('add')
 
 function openAddTradeModal() {
   tradeModalAsset.value = null
-  tradeModalMode.value = 'add'
   showTradeModal.value = true
 }
 
-function openEditTradeModal(row: any, mode: 'buy' | 'sell' | 'adjust' = 'buy') {
-  tradeModalAsset.value = row
-  tradeModalMode.value = mode
-  showTradeModal.value = true
+async function openAssetDetail(row: any) {
+  const code = String(row?.code || '').trim()
+  if (!code) return
+  await router.push(`/app/asset/${encodeURIComponent(code)}`)
+  await refreshInvestReadState()
 }
 
 const handleTradeSuccess = async () => {
@@ -552,7 +595,7 @@ const handleTradeSuccess = async () => {
               <div
                 v-for="(row, idx) in filteredRows"
                 :key="row?.code || `card-${idx}`"
-                @click="row?.code && openEditTradeModal(row)"
+                @click="row?.code && openAssetDetail(row)"
                 class="hcard"
               >
                 <!-- Top Accent Bar -->
@@ -599,6 +642,7 @@ const handleTradeSuccess = async () => {
                 <div class="h-price-row">
                   <div class="h-price-main">
                     <span class="h-price-val">{{ quoteLabel(row) }}</span>
+                    <span v-if="quoteMetaLabel(row)" class="h-price-meta">{{ quoteMetaLabel(row) }}</span>
                   </div>
                   <div
                     class="h-price-tag badge"
@@ -735,7 +779,7 @@ const handleTradeSuccess = async () => {
               <div
                 v-for="(row, idx) in filteredRows"
                 :key="row?.code || `row-${idx}`"
-                @click="row?.code && openEditTradeModal(row)"
+                @click="row?.code && openAssetDetail(row)"
                 class="hrow"
               >
                 <div
@@ -813,6 +857,7 @@ const handleTradeSuccess = async () => {
                     >
                       {{ quoteLabel(row) }}
                     </div>
+                    <div v-if="quoteMetaLabel(row)" class="h-price-cell-meta">{{ quoteMetaLabel(row) }}</div>
                   </div>
                   <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
                     <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">
@@ -933,7 +978,7 @@ const handleTradeSuccess = async () => {
     <InvestTradeModal
       v-model:show="showTradeModal"
       :asset="tradeModalAsset"
-      :mode="tradeModalMode"
+      mode="add"
       @success="handleTradeSuccess"
     />
   </AppShell>
@@ -1562,7 +1607,8 @@ const handleTradeSuccess = async () => {
 }
 .h-price-main {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
   color: var(--text);
 }
@@ -1588,6 +1634,17 @@ const handleTradeSuccess = async () => {
 .h-price-tag.dn {
   color: var(--green);
   background: rgba(62, 207, 130, 0.12);
+}
+.h-price-meta {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.h-price-cell-meta {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
 }
 
 .h-mv-right {

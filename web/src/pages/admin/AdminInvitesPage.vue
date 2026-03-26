@@ -53,7 +53,10 @@
                       @click="copyToClipboard(item.code)"
                       title="点击复制"
                     >{{ item.code }}</code>
-                    <span v-if="copiedCode === item.code" class="copy-hint">复制成功</span>
+                    <span
+                      class="copy-hint"
+                      :class="{ visible: copiedCode === item.code }"
+                    >复制成功</span>
                   </div>
                 </td>
                 <td>{{ formatDateOnly(item.created_at) }}</td>
@@ -72,7 +75,10 @@
                       @click="copyToClipboard(item.code)"
                       title="点击复制"
                     >{{ item.code }}</code>
-                    <span v-if="copiedCode === item.code" class="copy-hint">复制成功</span>
+                    <span
+                      class="copy-hint"
+                      :class="{ visible: copiedCode === item.code }"
+                    >复制成功</span>
                   </div>
                 </td>
                 <td><strong>{{ item.used_by_username || '-' }}</strong></td>
@@ -381,7 +387,12 @@ onMounted(() => {
 .code-text { font-family: 'Courier New', Courier, monospace; background: #f4f4f4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #000; transition: all 0.2s; }
 .code-text.clickable { cursor: pointer; }
 .code-text.clickable:hover { background: #000; color: #fff; }
-.code-wrapper { display: inline-flex; align-items: center; gap: 6px; }
+.code-wrapper {
+  display: inline-grid;
+  grid-template-columns: auto 56px;
+  align-items: center;
+  column-gap: 8px;
+}
 .copy-hint { 
   display: inline-flex;
   align-items: center;
@@ -390,11 +401,14 @@ onMounted(() => {
   font-size: 12px; 
   color: #10b981; 
   font-weight: 700; 
-  animation: fadeIn 0.2s ease-out; 
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
 }
-@keyframes fadeIn { 
-  from { opacity: 0; transform: translateX(-4px); } 
-  to { opacity: 1; transform: translateX(0); } 
+.copy-hint.visible {
+  opacity: 1;
+  transform: translateX(0);
 }
 .status-tag { padding: 4px 12px; background: #e6f9ee; color: #10b981; border-radius: 99px; font-size: 12px; font-weight: 700; }
 

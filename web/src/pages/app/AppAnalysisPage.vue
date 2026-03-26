@@ -97,10 +97,7 @@
 
         <div v-if="selectedCalendarDetail" class="calendar-detail-card">
           <div class="calendar-detail-header">
-            <div>
-              <div class="calendar-detail-title">{{ detailState.title || '收益明细' }}</div>
-              <div class="calendar-detail-subtitle">逐资产盈亏明细</div>
-            </div>
+            <div class="calendar-detail-title">个股盈亏</div>
             <div v-if="detailState.totalPnl !== null" class="calendar-detail-totals" :class="valueClass(detailState.totalPnl)">
               <div class="calendar-detail-total-pnl">{{ masked(formatCny(detailState.totalPnl)) }}</div>
               <div class="calendar-detail-total-rate">{{ formatPct(detailState.totalRate) }}</div>
@@ -113,14 +110,14 @@
           </div>
           <div v-else class="calendar-detail-list">
             <div v-if="detailLoading" class="calendar-detail-inline-loading">正在更新明细…</div>
+            <div class="calendar-detail-table-head">
+              <span class="calendar-detail-col-name">股票名称</span>
+              <span class="calendar-detail-col-pnl">盈亏金额</span>
+              <span class="calendar-detail-col-rate">收益率</span>
+            </div>
             <div v-for="item in detailState.items" :key="item.code" class="calendar-detail-row">
               <div class="calendar-detail-asset">
-                <div class="calendar-detail-name">{{ item.name || item.code }}</div>
-                <div class="calendar-detail-meta">
-                  <span>{{ formatDisplayCode(item.code) }}</span>
-                  <span>{{ detailMarketLabel(item.market) }}</span>
-                  <span>{{ item.curr || 'CNY' }}</span>
-                </div>
+                <div class="calendar-detail-name">{{ item.name || formatDisplayCode(item.code) }}</div>
               </div>
               <div class="calendar-detail-values" :class="valueClass(toNum(item.pnl))">
                 <div class="calendar-detail-pnl">{{ masked(formatCny(toNum(item.pnl))) }}</div>
@@ -382,14 +379,6 @@ function rankPnlValue(item: AnalysisRankItem): number {
   return toNum(item.pnl)
 }
 
-function detailMarketLabel(market: unknown): string {
-  const value = String(market || '').trim().toLowerCase()
-  if (value === 'hk') return '港股'
-  if (value === 'us') return '美股'
-  if (value === 'fund') return '基金'
-  return 'A股'
-}
-
 function buildCalendarDetailDate(key: number): string | null {
   if (calendarType.value === 'day') {
     if (!selectedDayYear.value || !selectedDayMonth.value) return null
@@ -406,7 +395,7 @@ function isCalendarCellSelected(key: number): boolean {
   return selectedCalendarDetail.value?.scope === calendarType.value && selectedCalendarDetail.value?.key === key
 }
 
-function onCalendarCellClick(cell: { key: number; pnl: number | null }) {
+async function onCalendarCellClick(cell: { key: number; pnl: number | null }) {
   if (cell.pnl === null) return
   const date = buildCalendarDetailDate(cell.key)
   if (!date) return
@@ -419,7 +408,8 @@ function onCalendarCellClick(cell: { key: number; pnl: number | null }) {
     key: cell.key,
     date,
   } as AnalysisCalendarDetailSelection
-  void analysisStore.loadCalendarDetail(selection)
+  await analysisStore.loadCalendarDetail(selection)
+  if (detailError.value) return
   const validKeys = calendarGridView.value.filter(item => item.pnl !== null).map(item => item.key)
   const currentIndex = validKeys.indexOf(cell.key)
   if (currentIndex < 0) return
@@ -861,13 +851,13 @@ onBeforeUnmount(() => {
 .cal-cell.up {
   background: linear-gradient(180deg, rgba(var(--up-rgb, 239, 68, 68), 0.14), rgba(var(--up-rgb, 239, 68, 68), 0.09));
   border-color: rgba(var(--up-rgb, 239, 68, 68), 0.16);
-  color: var(--up-color);
+  color: var(--color-up);
 }
 
 .cal-cell.down {
   background: linear-gradient(180deg, rgba(var(--down-rgb, 34, 197, 94), 0.14), rgba(var(--down-rgb, 34, 197, 94), 0.09));
   border-color: rgba(var(--down-rgb, 34, 197, 94), 0.16);
-  color: var(--down-color);
+  color: var(--color-down);
 }
 
 .cal-cell.flat {
@@ -928,31 +918,60 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 14px;
+  align-items: center;
+  margin-bottom: 10px;
 }
 .calendar-detail-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
 }
-.calendar-detail-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
 .calendar-detail-totals {
-  text-align: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: 'JetBrains Mono', monospace;
 }
 .calendar-detail-total-pnl {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
 }
 .calendar-detail-total-rate {
-  margin-top: 4px;
-  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10px;
   font-weight: 700;
+}
+[data-theme="light"] .calendar-detail-total-rate {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+.calendar-detail-table-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+[data-theme="light"] .calendar-detail-table-head {
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+.calendar-detail-col-name {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-detail-col-pnl {
+  width: 96px;
+  text-align: right;
+}
+.calendar-detail-col-rate {
+  width: 64px;
+  text-align: right;
 }
 .calendar-detail-list {
   display: flex;
@@ -967,45 +986,45 @@ onBeforeUnmount(() => {
 .calendar-detail-row {
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
-  padding: 12px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 [data-theme="light"] .calendar-detail-row {
-  border-top-color: rgba(15, 23, 42, 0.06);
+  border-bottom-color: rgba(15, 23, 42, 0.06);
 }
 .calendar-detail-row:first-child {
-  border-top: 0;
-  padding-top: 0;
+  padding-top: 10px;
 }
 .calendar-detail-asset {
+  flex: 1;
   min-width: 0;
 }
 .calendar-detail-name {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-}
-.calendar-detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .calendar-detail-values {
-  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: 'JetBrains Mono', monospace;
 }
 .calendar-detail-pnl {
-  font-size: 15px;
+  width: 96px;
+  text-align: right;
+  font-size: 13px;
   font-weight: 700;
 }
 .calendar-detail-rate {
-  margin-top: 4px;
-  font-size: 12px;
+  width: 64px;
+  text-align: right;
+  font-size: 11px;
   font-weight: 700;
 }
 .calendar-detail-empty,
@@ -1015,7 +1034,7 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
 }
 .calendar-detail-error {
-  color: var(--up-color);
+  color: var(--color-up);
 }
 
 /* Rank Card */
@@ -1154,8 +1173,8 @@ onBeforeUnmount(() => {
 }
 
 /* Common status */
-.up { color: var(--up-color); }
-.down { color: var(--down-color); }
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
 .flat { color: var(--text-secondary); }
 .muted { opacity: 0.6; }
 
