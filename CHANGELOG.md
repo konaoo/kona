@@ -1,3 +1,24 @@
+## 2026-03-27-03
+
+### 这版一句话
+完成了卢森堡基金（LU）及全球资产的价格接口标准化，统一返回包含“净值日期”的 5 元组格式，并修复了 CI 挂掉的遗留断言问题。
+
+### 主要变化
+- **后端：价格接口 5 元组标准化**：更新了 `get_fund_price` 及所有子源函数（天天、东财、腾讯、FT、BlackRock 等），统一返回 `(price, yclose, amt, pct, nav_date)`。
+- **后端：资产类型识别修复**：修正了 `infer_asset_type` 对 `f_` 前缀的过度匹配问题，确保 `f_NUGT` 等美股标杆资产被正确识别为 US 股票而非基金。
+- **后端：数据源优先级调整**：在 `get_stock_price` 中将 BlackRock（官方源）权重提升至 Financial Times（聚合源）之前，确保 LU 基金数据的权威性。
+- **基础设施：API 响应升级**：`quote_handlers.py` 现在会从 5 元组中提取 `nav_date` 并通过 JSON 响应下发，支持前端显示。
+- **测试：全量 CI 适配与断言修复**：修复了 10+ 个测试文件中的解包错误（IndexError/ValueError）以及 Mock 调用次数断言错误，确保 395 个测试用例全量通过。
+
+### 影响范围
+- 后端：价格抓取核心 (`fund.py`, `stock.py`)、API 处理层 (`quote_handlers.py`)、资产识别 (`asset_type.py`)
+- 测试：全量后端单元测试
+
+### 验收重点
+- `pytest kona_tool/tests` 应返回全量通过（395 passed）。
+- 卢森堡基金（如 LU0582531332）的 API 响应中应包含 `nav_date` 字段。
+- `f_NUGT` 资产应被识别为 `us` 市场。
+
 ## 2026-03-27-02
 
 ### 这版一句话
