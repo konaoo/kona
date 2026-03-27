@@ -610,6 +610,60 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(default_target.get('pnl') or 0.0), 15.0, places=2)
         self.assertAlmostEqual(float(second_target.get('pnl') or 0.0), -8.0, places=2)
 
+    def test_analysis_rank_excludes_closed_position_even_if_realized_pnl_exists(self):
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'hk00883',
+                    'name': '中国海洋石油',
+                    'qty': 100.0,
+                    'price': 21.044,
+                    'curr': 'HKD',
+                    'asset_type': 'hk',
+                    'adjustment': 0.0,
+                },
+                user_id='',
+            )
+        )
+        self.assertTrue(
+            app_module.db.sell_asset(
+                code='hk00883',
+                price=28.28,
+                qty=100.0,
+                user_id='',
+            )
+        )
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'sh600016',
+                    'name': '当前持仓',
+                    'qty': 100.0,
+                    'price': 10.0,
+                    'curr': 'CNY',
+                    'asset_type': 'a',
+                    'adjustment': 0.0,
+                },
+                user_id='',
+            )
+        )
+
+        with patch.object(
+            app_module,
+            'batch_get_prices',
+            return_value={
+                'hk00883': (28.28, 28.28, 0.0, 0.0),
+                'sh600016': (11.0, 11.0, 0.0, 0.0),
+            },
+        ):
+            rank_resp = self.client.get('/api/analysis/rank?type=all')
+
+        self.assertEqual(rank_resp.status_code, 200)
+        payload = rank_resp.get_json() or {}
+        items = (payload.get('gain') or []) + (payload.get('loss') or [])
+        self.assertIsNone(next((item for item in items if item.get('code') == 'hk00883'), None))
+        self.assertIsNotNone(next((item for item in items if item.get('code') == 'sh600016'), None))
+
     def test_analysis_calendar_backfills_single_ledger_history_from_global_snapshots(self):
         ledger_id = app_module.db.get_default_ledger_id('')
 

@@ -930,7 +930,7 @@ class AnalysisDatabaseMixin:
                     f"""
                     SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
                     FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
-                    WHERE {user_condition}{ledger_condition}
+                    WHERE {user_condition}{ledger_condition} AND p.qty > 0
                     """,
                     user_param + ledger_param,
                 )
@@ -939,7 +939,7 @@ class AnalysisDatabaseMixin:
                     f"""
                     SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
                     FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
-                    WHERE (p.code LIKE 'sh%' OR p.code LIKE 'sz%' OR p.code LIKE 'bj%') AND {user_condition}{ledger_condition}
+                    WHERE (p.code LIKE 'sh%' OR p.code LIKE 'sz%' OR p.code LIKE 'bj%') AND {user_condition}{ledger_condition} AND p.qty > 0
                     """,
                     user_param + ledger_param,
                 )
@@ -948,7 +948,7 @@ class AnalysisDatabaseMixin:
                     f"""
                     SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
                     FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
-                    WHERE p.code LIKE 'gb_%' AND {user_condition}{ledger_condition}
+                    WHERE p.code LIKE 'gb_%' AND {user_condition}{ledger_condition} AND p.qty > 0
                     """,
                     user_param + ledger_param,
                 )
@@ -957,7 +957,7 @@ class AnalysisDatabaseMixin:
                     f"""
                     SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
                     FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
-                    WHERE p.code LIKE 'hk%' AND {user_condition}{ledger_condition}
+                    WHERE p.code LIKE 'hk%' AND {user_condition}{ledger_condition} AND p.qty > 0
                     """,
                     user_param + ledger_param,
                 )
@@ -966,7 +966,7 @@ class AnalysisDatabaseMixin:
                     f"""
                     SELECT p.code, p.name, p.qty, p.price, p.curr, p.adjustment, l.name as ledger_name 
                     FROM portfolio p LEFT JOIN investment_ledgers l ON p.ledger_id = l.id
-                    WHERE (p.code LIKE 'f_%' OR p.code LIKE 'ft_%') AND {user_condition}{ledger_condition}
+                    WHERE (p.code LIKE 'f_%' OR p.code LIKE 'ft_%') AND {user_condition}{ledger_condition} AND p.qty > 0
                     """,
                     user_param + ledger_param,
                 )

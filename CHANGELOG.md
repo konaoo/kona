@@ -4469,3 +4469,21 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 ### 验收重点
 - 浅色模式下退出登录，登录页应整体是浅色风格，不应再残留深色卡片或深色弹窗
 - 浅色模式下切换“登录 / 注册”时，不应再闪灰色阴影
+
+## 2026-03-27-04
+
+### 这版一句话
+
+把盈亏排行榜的口径补上线上：已经卖光的资产不再继续出现在当前盈利榜、亏损榜里。
+
+### 主要变化
+- [kona_tool/core/db_analysis.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_analysis.py)：盈亏排行榜查询统一补上 `p.qty > 0` 过滤，清仓资产即使历史上赚过钱，也不再混进当前榜单。
+- [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py)：补了回归测试，保证像 `中国海洋石油` 这种已经清仓的资产不会再次回到当前排行榜。
+
+### 影响范围
+- 分析页盈利榜、亏损榜
+- Web / App 共用的排行榜接口
+
+### 验收重点
+- 已卖光资产不应再出现在当前盈利榜、亏损榜
+- 仍持有的资产排行顺序不应被这次过滤改乱
