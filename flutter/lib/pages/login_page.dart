@@ -16,105 +16,215 @@ import '../providers/app_state.dart';
 // 登录页专用色板（仅本文件使用）
 // ───────────────────────────────────────────
 class _C {
-  static const bg = Color(0xFF0C0D11);
-  static const card = Color(0xFF13151C);
-  static const card2 = Color(0xFF181B23);
+  final bool isLight;
+  final Color bg;
+  final Color card;
+  final Color card2;
+  final Color border;
+  final Color borderIdle;
+  final Color borderFocus;
+  final Color borderErr;
+  final Color text;
+  final Color textSub;
+  final Color textDim;
+  final Color textSoft;
+  final Color up;
+  final Color down;
+  final Color blue;
+  final Color blue2;
+  final Color gold;
+  final Color tabShellBg;
+  final Color tabShellBorder;
+  final Color tabActiveBg;
+  final Color topHighlight;
+  final Color glowBlue;
+  final Color glowRed;
+  final Color cardShadow;
+  final Color dialogBackdrop;
 
-  static const border = Color(0x0FFFFFFF);
-  static const borderFocus = Color(0x805B8DEF);
-  static const borderErr = Color(0x8DF05A55);
+  const _C({
+    required this.isLight,
+    required this.bg,
+    required this.card,
+    required this.card2,
+    required this.border,
+    required this.borderIdle,
+    required this.borderFocus,
+    required this.borderErr,
+    required this.text,
+    required this.textSub,
+    required this.textDim,
+    required this.textSoft,
+    required this.up,
+    required this.down,
+    required this.blue,
+    required this.blue2,
+    required this.gold,
+    required this.tabShellBg,
+    required this.tabShellBorder,
+    required this.tabActiveBg,
+    required this.topHighlight,
+    required this.glowBlue,
+    required this.glowRed,
+    required this.cardShadow,
+    required this.dialogBackdrop,
+  });
 
-  static const text = Color(0xFFE8EAF0);
-  static const textSub = Color(0xFF8B909F);
-  static const textDim = Color(0xFF4E5464);
+  static const dark = _C(
+    isLight: false,
+    bg: Color(0xFF0C0D11),
+    card: Color(0xFF13151C),
+    card2: Color(0xFF181B23),
+    border: Color(0x0FFFFFFF),
+    borderIdle: Color(0x1FFFFFFF),
+    borderFocus: Color(0x805B8DEF),
+    borderErr: Color(0x8DF05A55),
+    text: Color(0xFFE8EAF0),
+    textSub: Color(0xFF8B909F),
+    textDim: Color(0xFF4E5464),
+    textSoft: Color(0x66FFFFFF),
+    up: Color(0xFFF05A55),
+    down: Color(0xFF2ECC8A),
+    blue: Color(0xFF5B8DEF),
+    blue2: Color(0xFF4A7BE0),
+    gold: Color(0xFFD4AF64),
+    tabShellBg: Color(0x59000000),
+    tabShellBorder: Color(0x14FFFFFF),
+    tabActiveBg: Color(0x1AFFFFFF),
+    topHighlight: Color(0x14FFFFFF),
+    glowBlue: Color(0x125B8DEF),
+    glowRed: Color(0x0DF05A55),
+    cardShadow: Color(0x66000000),
+    dialogBackdrop: Color(0xB3000000),
+  );
 
-  static const up = Color(0xFFF05A55);
-  static const down = Color(0xFF2ECC8A);
-  static const blue = Color(0xFF5B8DEF);
-  static const blue2 = Color(0xFF4A7BE0);
-  static const gold = Color(0xFFD4AF64);
+  static const light = _C(
+    isLight: true,
+    bg: Color(0xFFF2F5FB),
+    card: Color(0xFFFFFFFF),
+    card2: Color(0xFFF6F8FD),
+    border: Color(0x1F22304A),
+    borderIdle: Color(0x1A33415E),
+    borderFocus: Color(0x804B86F0),
+    borderErr: Color(0x80E45656),
+    text: Color(0xFF1D2738),
+    textSub: Color(0xFF5D6B83),
+    textDim: Color(0xFF94A0B5),
+    textSoft: Color(0x99586784),
+    up: Color(0xFFE45656),
+    down: Color(0xFF16A34A),
+    blue: Color(0xFF4B86F0),
+    blue2: Color(0xFF6A9CF7),
+    gold: Color(0xFFB8942D),
+    tabShellBg: Color(0xFFF0F4FC),
+    tabShellBorder: Color(0x1F22304A),
+    tabActiveBg: Color(0xFFDEE8FB),
+    topHighlight: Color(0x3DFFFFFF),
+    glowBlue: Color(0x184B86F0),
+    glowRed: Color(0x12E45656),
+    cardShadow: Color(0x1A22304A),
+    dialogBackdrop: Color(0x66161B28),
+  );
 }
 
 // ───────────────────────────────────────────
 // 缓存 TextStyle（避免 GoogleFonts 每次 build 重复解析）
 // ───────────────────────────────────────────
 class _S {
-  _S._();
-  // DM Sans
-  static final brandName = GoogleFonts.dmSans(
-    fontSize: 22,
-    fontWeight: FontWeight.w700,
-    color: _C.text,
-    letterSpacing: -0.3,
-  );
-  static final brandSub = GoogleFonts.dmSans(
-    fontSize: 11,
-    color: _C.textDim,
-    letterSpacing: 1.1,
-  );
-  static final tabActive = GoogleFonts.dmSans(
-    fontSize: 13,
-    fontWeight: FontWeight.w600,
-    color: _C.text,
-  );
-  static final tabInactive = GoogleFonts.dmSans(
-    fontSize: 13,
-    fontWeight: FontWeight.w500,
-    color: Colors.white.withValues(alpha: 0.4),
-  );
-  static final fieldLabel = GoogleFonts.dmSans(
-    fontSize: 11,
-    fontWeight: FontWeight.w500,
-    color: _C.textSub,
-    letterSpacing: 0.3,
-  );
-  static final fieldError = GoogleFonts.dmSans(fontSize: 10, color: _C.up);
-  static final rememberTxt = GoogleFonts.dmSans(
-    fontSize: 12,
-    color: _C.textDim,
-  );
-  static final btn = GoogleFonts.dmSans(
-    fontSize: 15,
-    fontWeight: FontWeight.w600,
-    color: Colors.white,
-  );
-  static final strengthLabel = GoogleFonts.dmSans(
-    fontSize: 10,
-    color: _C.textDim,
-  );
-  static final badgeTxt = GoogleFonts.dmSans(
-    fontSize: 11,
-    color: _C.gold,
-    height: 1.5,
-  );
-  static final legalBase = GoogleFonts.dmSans(
-    fontSize: 11,
-    color: _C.textDim,
-    height: 1.6,
-  );
-  static final inputText = GoogleFonts.dmSans(fontSize: 14, color: _C.text);
-  static final inputHint = GoogleFonts.dmSans(fontSize: 13, color: _C.textDim);
-  static final snackTxt = GoogleFonts.dmSans(color: Colors.white);
-  static final dialogDesc = GoogleFonts.dmSans(
-    fontSize: 12,
-    color: _C.textDim,
-    height: 1.6,
-  );
-  static final saveBtn = GoogleFonts.dmSans(
-    fontSize: 13,
-    fontWeight: FontWeight.w500,
-    color: _C.textSub,
-  );
-  // JetBrains Mono
-  static final monoInput = GoogleFonts.jetBrainsMono(
-    fontSize: 14,
-    color: _C.text,
-  );
-  static final monoUpper = GoogleFonts.jetBrainsMono(
-    fontSize: 15,
-    color: _C.text,
-    letterSpacing: 1.5,
-  );
+  late final TextStyle brandName;
+  late final TextStyle brandSub;
+  late final TextStyle tabActive;
+  late final TextStyle tabInactive;
+  late final TextStyle fieldLabel;
+  late final TextStyle fieldError;
+  late final TextStyle rememberTxt;
+  late final TextStyle btn;
+  late final TextStyle strengthLabel;
+  late final TextStyle badgeTxt;
+  late final TextStyle legalBase;
+  late final TextStyle inputText;
+  late final TextStyle inputHint;
+  late final TextStyle snackTxt;
+  late final TextStyle dialogDesc;
+  late final TextStyle saveBtn;
+  late final TextStyle monoInput;
+  late final TextStyle monoUpper;
+
+  _S(_C c) {
+    brandName = GoogleFonts.dmSans(
+      fontSize: 22,
+      fontWeight: FontWeight.w700,
+      color: c.text,
+      letterSpacing: -0.3,
+    );
+    brandSub = GoogleFonts.dmSans(
+      fontSize: 11,
+      color: c.textDim,
+      letterSpacing: 1.1,
+    );
+    tabActive = GoogleFonts.dmSans(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: c.text,
+    );
+    tabInactive = GoogleFonts.dmSans(
+      fontSize: 13,
+      fontWeight: FontWeight.w500,
+      color: c.textSoft,
+    );
+    fieldLabel = GoogleFonts.dmSans(
+      fontSize: 11,
+      fontWeight: FontWeight.w500,
+      color: c.textSub,
+      letterSpacing: 0.3,
+    );
+    fieldError = GoogleFonts.dmSans(fontSize: 10, color: c.up);
+    rememberTxt = GoogleFonts.dmSans(
+      fontSize: 12,
+      color: c.textDim,
+    );
+    btn = GoogleFonts.dmSans(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: Colors.white,
+    );
+    strengthLabel = GoogleFonts.dmSans(
+      fontSize: 10,
+      color: c.textDim,
+    );
+    badgeTxt = GoogleFonts.dmSans(
+      fontSize: 11,
+      color: c.gold,
+      height: 1.5,
+    );
+    legalBase = GoogleFonts.dmSans(
+      fontSize: 11,
+      color: c.textDim,
+      height: 1.6,
+    );
+    inputText = GoogleFonts.dmSans(fontSize: 14, color: c.text);
+    inputHint = GoogleFonts.dmSans(fontSize: 13, color: c.textDim);
+    snackTxt = GoogleFonts.dmSans(color: Colors.white);
+    dialogDesc = GoogleFonts.dmSans(
+      fontSize: 12,
+      color: c.textDim,
+      height: 1.6,
+    );
+    saveBtn = GoogleFonts.dmSans(
+      fontSize: 13,
+      fontWeight: FontWeight.w500,
+      color: c.textSub,
+    );
+    monoInput = GoogleFonts.jetBrainsMono(
+      fontSize: 14,
+      color: c.text,
+    );
+    monoUpper = GoogleFonts.jetBrainsMono(
+      fontSize: 15,
+      color: c.text,
+      letterSpacing: 1.5,
+    );
+  }
 }
 
 // ───────────────────────────────────────────
@@ -207,6 +317,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   late final Animation<Offset> _cardSlide;
   late final Animation<double> _footerFade;
   late final Animation<Offset> _footerSlide;
+
+  _C get _colors => Theme.of(context).brightness == Brightness.light ? _C.light : _C.dark;
+  _S get _styles => _S(_colors);
 
   @override
   void initState() {
@@ -484,10 +597,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   void _showInviteCodeDialog() {
+    final p = _colors;
     showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.7),
+      barrierColor: p.dialogBackdrop,
       builder: (ctx) => _InviteCodeDialog(),
     );
   }
@@ -497,6 +611,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // ───────────────────────────────────────────
 
   Widget _buildBrandArea() {
+    final s = _styles;
     return Column(
       key: const Key('login_brand_area'),
       children: [
@@ -523,19 +638,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           child: CustomPaint(painter: _LogoMPainter()),
         ),
         const SizedBox(height: 14),
-        Text('咔咔记账', style: _S.brandName),
+        Text('咔咔记账', style: s.brandName),
         const SizedBox(height: 4),
-        Text('一站式管理全市场资产', style: _S.brandSub),
+        Text('一站式管理全市场资产', style: s.brandSub),
       ],
     );
   }
 
   Widget _buildTabSwitcher() {
+    final p = _colors;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.35),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: p.tabShellBg,
+        border: Border.all(color: p.tabShellBorder),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -561,31 +677,34 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     required bool isActive,
     required VoidCallback onTap,
   }) {
+    final p = _colors;
+    final s = _styles;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+        child: Container(
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: isActive
-                ? Colors.white.withValues(alpha: 0.10)
-                : Colors.transparent,
+            color: isActive ? p.tabActiveBg : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            border: p.isLight && isActive
+                ? Border.all(color: p.border.withValues(alpha: 0.6))
+                : null,
             boxShadow: isActive
                 ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
+                    if (!p.isLight)
+                      BoxShadow(
+                        color: p.cardShadow.withValues(alpha: 0.7),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
                   ]
                 : [],
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: isActive ? _S.tabActive : _S.tabInactive,
+            style: isActive ? s.tabActive : s.tabInactive,
           ),
         ),
       ),
@@ -598,6 +717,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     String? errorKey,
     bool showDot = false,
   }) {
+    final p = _colors;
+    final s = _styles;
     final err = errorKey != null ? _errors[errorKey] : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -608,14 +729,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               Container(
                 width: 4,
                 height: 4,
-                decoration: const BoxDecoration(
-                  color: _C.blue,
+                decoration: BoxDecoration(
+                  color: p.blue,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 4),
             ],
-            Text(label, style: _S.fieldLabel),
+            Text(label, style: s.fieldLabel),
           ],
         ),
         const SizedBox(height: 6),
@@ -623,7 +744,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         if (err != null)
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Text(err, style: _S.fieldError),
+            child: Text(err, style: s.fieldError),
           ),
       ],
     );
@@ -669,6 +790,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildRememberForgotRow() {
+    final p = _colors;
+    final s = _styles;
     if (!_rememberLoaded) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -685,9 +808,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   width: 16,
                   height: 16,
                   decoration: BoxDecoration(
-                    color: _rememberEnabled ? _C.blue : _C.card2,
+                    color: _rememberEnabled ? p.blue : p.card2,
                     border: Border.all(
-                      color: _rememberEnabled ? _C.blue : _C.border,
+                      color: _rememberEnabled ? p.blue : p.border,
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -696,7 +819,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       : null,
                 ),
                 const SizedBox(width: 7),
-                Text('记住用户名', style: _S.rememberTxt),
+                Text('记住用户名', style: s.rememberTxt),
               ],
             ),
           ),
@@ -705,14 +828,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('功能开发中', style: _S.snackTxt),
+                  content: Text('功能开发中', style: s.snackTxt),
                   duration: const Duration(seconds: 2),
-                  backgroundColor: _C.card2,
+                  backgroundColor: p.card2,
                   behavior: SnackBarBehavior.floating,
                 ),
               );
             },
-            child: Text('忘记密码？', style: _S.rememberTxt),
+            child: Text('忘记密码？', style: s.rememberTxt),
           ),
         ],
       ),
@@ -725,6 +848,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     required String btnState,
     required VoidCallback onPressed,
   }) {
+    final p = _colors;
+    final s = _styles;
     final isLoading = btnState == 'loading';
     final isSuccess = btnState == 'success';
 
@@ -740,12 +865,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             end: Alignment.bottomRight,
             colors: isSuccess
                 ? [const Color(0xFF2ECC8A), const Color(0xFF25B377)]
-                : [_C.blue, _C.blue2],
+                : [p.blue, p.blue2],
           ),
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: (isSuccess ? const Color(0xFF2ECC8A) : _C.blue).withValues(
+              color: (isSuccess ? const Color(0xFF2ECC8A) : p.blue).withValues(
                 alpha: 0.35,
               ),
               blurRadius: 16,
@@ -763,25 +888,27 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     strokeWidth: 2,
                   ),
                 )
-              : Text(isSuccess ? successLabel : label, style: _S.btn),
+              : Text(isSuccess ? successLabel : label, style: s.btn),
         ),
       ),
     );
   }
 
   Widget _buildPasswordStrength() {
+    final p = _colors;
+    final s = _styles;
     if (_pwScore == 0) return const SizedBox.shrink();
 
     Color barColor;
     String label;
     if (_pwScore >= 3) {
-      barColor = _C.down;
+      barColor = p.down;
       label = '强度：强';
     } else if (_pwScore >= 2) {
       barColor = const Color(0xFFE09030);
       label = '强度：中';
     } else {
-      barColor = _C.up;
+      barColor = p.up;
       label = '强度：弱';
     }
 
@@ -797,7 +924,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   height: 3,
                   margin: EdgeInsets.only(right: i < 2 ? 3 : 0),
                   decoration: BoxDecoration(
-                    color: i < _pwScore ? barColor : _C.border,
+                    color: i < _pwScore ? barColor : p.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -805,18 +932,20 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             }),
           ),
           const SizedBox(height: 3),
-          Text(label, style: _S.strengthLabel),
+          Text(label, style: s.strengthLabel),
         ],
       ),
     );
   }
 
   Widget _buildInviteBadge() {
+    final p = _colors;
+    final s = _styles;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
       decoration: BoxDecoration(
-        color: _C.gold.withValues(alpha: 0.07),
-        border: Border.all(color: _C.gold.withValues(alpha: 0.2)),
+        color: p.gold.withValues(alpha: p.isLight ? 0.10 : 0.07),
+        border: Border.all(color: p.gold.withValues(alpha: p.isLight ? 0.28 : 0.2)),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -826,16 +955,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: _S.badgeTxt,
+                style: s.badgeTxt,
                 children: [
                   const TextSpan(text: '当前注册仅限受邀用户，'),
                   TextSpan(
                     text: '获取邀请码',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: p.isLight ? p.text : Colors.white,
                       decoration: TextDecoration.underline,
-                      decorationColor: Colors.white.withValues(alpha: 0.5),
+                      decorationColor: (p.isLight ? p.text : Colors.white).withValues(alpha: 0.35),
                     ),
                     recognizer: TapGestureRecognizer()
                       ..onTap = _showInviteCodeDialog,
@@ -1008,20 +1137,22 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildLegalFooter() {
+    final p = _colors;
+    final s = _styles;
     return Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: RichText(
         textAlign: TextAlign.center,
         text: TextSpan(
-          style: _S.legalBase,
+          style: s.legalBase,
           children: [
             const TextSpan(text: '登录或注册即代表您同意 '),
             TextSpan(
               text: '用户协议',
               style: TextStyle(
-                color: _C.textSub,
+                color: p.textSub,
                 decoration: TextDecoration.underline,
-                decorationColor: _C.textSub.withValues(alpha: 0.25),
+                decorationColor: p.textSub.withValues(alpha: 0.25),
               ),
               recognizer: TapGestureRecognizer()..onTap = () {},
             ),
@@ -1029,9 +1160,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             TextSpan(
               text: '隐私政策',
               style: TextStyle(
-                color: _C.textSub,
+                color: p.textSub,
                 decoration: TextDecoration.underline,
-                decorationColor: _C.textSub.withValues(alpha: 0.25),
+                decorationColor: p.textSub.withValues(alpha: 0.25),
               ),
               recognizer: TapGestureRecognizer()..onTap = () {},
             ),
@@ -1043,17 +1174,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final p = _colors;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
+        statusBarIconBrightness: p.isLight ? Brightness.dark : Brightness.light,
+        statusBarBrightness: p.isLight ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: p.isLight ? Brightness.dark : Brightness.light,
         systemNavigationBarDividerColor: Colors.transparent,
       ),
       child: Scaffold(
-        backgroundColor: _C.bg,
+        backgroundColor: p.bg,
         body: Stack(
           children: [
             // 背景光晕 - 左上蓝
@@ -1068,7 +1200,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        _C.blue.withValues(alpha: 0.07),
+                        p.glowBlue,
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.65],
@@ -1089,7 +1221,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        _C.up.withValues(alpha: 0.05),
+                        p.glowRed,
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.65],
@@ -1129,16 +1261,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                 children: [
                                   Container(
                                     decoration: BoxDecoration(
-                                      color: _C.card,
+                                      color: p.card,
                                       borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(color: _C.border),
+                                      border: Border.all(color: p.border),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.4,
-                                          ),
-                                          blurRadius: 60,
-                                          offset: const Offset(0, 24),
+                                          color: p.cardShadow,
+                                          blurRadius: p.isLight ? 36 : 60,
+                                          offset: p.isLight ? const Offset(0, 18) : const Offset(0, 24),
                                         ),
                                       ],
                                     ),
@@ -1194,9 +1324,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                         gradient: LinearGradient(
                                           colors: [
                                             Colors.transparent,
-                                            Colors.white.withValues(
-                                              alpha: 0.08,
-                                            ),
+                                            p.topHighlight,
                                             Colors.transparent,
                                           ],
                                         ),
@@ -1272,6 +1400,9 @@ class _InputWrap extends StatefulWidget {
 class _InputWrapState extends State<_InputWrap> {
   bool _focused = false;
 
+  _C get _colors => Theme.of(context).brightness == Brightness.light ? _C.light : _C.dark;
+  _S get _styles => _S(_colors);
+
   @override
   void initState() {
     super.initState();
@@ -1290,25 +1421,27 @@ class _InputWrapState extends State<_InputWrap> {
 
   @override
   Widget build(BuildContext context) {
+    final p = _colors;
+    final s = _styles;
     final isObscuredText = widget.obscure && widget.isObscured;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: _C.card2,
+        color: p.card2,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: widget.hasError
-              ? _C.borderErr
+              ? p.borderErr
               : _focused
-              ? _C.borderFocus
-              : Colors.white.withValues(alpha: 0.12),
+              ? p.borderFocus
+              : p.borderIdle,
           width: 1,
         ),
         boxShadow: widget.hasError
             ? [
                 BoxShadow(
-                  color: _C.up.withValues(alpha: 0.07),
+                  color: p.up.withValues(alpha: p.isLight ? 0.10 : 0.07),
                   blurRadius: 0,
                   spreadRadius: 3,
                 ),
@@ -1316,7 +1449,7 @@ class _InputWrapState extends State<_InputWrap> {
             : _focused
             ? [
                 BoxShadow(
-                  color: _C.blue.withValues(alpha: 0.08),
+                  color: p.blue.withValues(alpha: p.isLight ? 0.12 : 0.08),
                   blurRadius: 0,
                   spreadRadius: 3,
                 ),
@@ -1330,7 +1463,7 @@ class _InputWrapState extends State<_InputWrap> {
             child: Icon(
               widget.icon,
               size: 15,
-              color: _focused ? _C.blue : _C.textDim,
+              color: _focused ? p.blue : p.textDim,
             ),
           ),
           Expanded(
@@ -1357,8 +1490,8 @@ class _InputWrapState extends State<_InputWrap> {
                 widget.onChanged?.call(v);
               },
               style: widget.isMono
-                  ? (widget.forceUppercase ? _S.monoUpper : _S.monoInput)
-                  : _S.inputText,
+                  ? (widget.forceUppercase ? s.monoUpper : s.monoInput)
+                  : s.inputText,
               decoration: InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -1370,7 +1503,7 @@ class _InputWrapState extends State<_InputWrap> {
                 fillColor: Colors.transparent,
                 hoverColor: Colors.transparent,
                 hintText: widget.placeholder,
-                hintStyle: _S.inputHint,
+                hintStyle: s.inputHint,
                 contentPadding: const EdgeInsets.symmetric(vertical: 13),
                 isDense: true,
                 counterText: '',
@@ -1387,7 +1520,7 @@ class _InputWrapState extends State<_InputWrap> {
                       ? Icons.visibility_off_outlined
                       : Icons.visibility_outlined,
                   size: 15,
-                  color: widget.isObscured ? _C.textDim : _C.blue,
+                  color: widget.isObscured ? p.textDim : p.blue,
                 ),
               ),
             ),
@@ -1451,22 +1584,26 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
           await tempDir.delete(recursive: true);
         } catch (_) {}
         if (!mounted) return;
+        final p = Theme.of(context).brightness == Brightness.light ? _C.light : _C.dark;
+        final s = _S(p);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已保存到相册', style: _S.snackTxt),
+            content: Text('已保存到相册', style: s.snackTxt),
             duration: const Duration(seconds: 2),
-            backgroundColor: _C.down,
+            backgroundColor: p.down,
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
+      final p = Theme.of(context).brightness == Brightness.light ? _C.light : _C.dark;
+      final s = _S(p);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('保存失败', style: _S.snackTxt),
+          content: Text('保存失败', style: s.snackTxt),
           duration: const Duration(seconds: 2),
-          backgroundColor: _C.up,
+          backgroundColor: p.up,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1477,20 +1614,22 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final p = Theme.of(context).brightness == Brightness.light ? _C.light : _C.dark;
+    final s = _S(p);
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
         width: 320,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: _C.card,
+          color: p.card,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _C.border),
+          border: Border.all(color: p.border),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.6),
-              blurRadius: 64,
-              offset: const Offset(0, 24),
+              color: p.cardShadow,
+              blurRadius: p.isLight ? 36 : 64,
+              offset: p.isLight ? const Offset(0, 18) : const Offset(0, 24),
             ),
           ],
         ),
@@ -1504,7 +1643,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
               style: GoogleFonts.dmSans(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: _C.text,
+                color: p.text,
               ),
             ),
             const SizedBox(height: 16),
@@ -1514,7 +1653,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
               child: Text(
                 _text,
                 textAlign: TextAlign.start,
-                style: _S.dialogDesc,
+                style: s.dialogDesc,
               ),
             ),
             const SizedBox(height: 16),
@@ -1529,7 +1668,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
               child: _loading
                   ? const Center(
                       child: CircularProgressIndicator(
-                        color: _C.blue,
+                        color: Color(0xFF5B8DEF),
                         strokeWidth: 2,
                       ),
                     )
@@ -1553,29 +1692,29 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
-                  color: _C.card2,
-                  border: Border.all(color: _C.border),
+                  color: p.card2,
+                  border: Border.all(color: p.border),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(
-                              color: _C.textSub,
+                              color: p.textSub,
                               strokeWidth: 1.5,
                             ),
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.download_outlined,
                             size: 14,
-                            color: _C.textSub,
+                            color: p.textSub,
                           ),
                     const SizedBox(width: 6),
-                    Text(_saving ? '保存中...' : '保存图片', style: _S.saveBtn),
+                    Text(_saving ? '保存中...' : '保存图片', style: s.saveBtn),
                   ],
                 ),
               ),
