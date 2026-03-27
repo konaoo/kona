@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 import config
 from .utils import safe_float, retry_on_failure, get_first_valid_price, monitored_http_get
 from .fund import is_isin_format, normalize_nav_date
+from .localization import translate_fund_name
 
 logger = logging.getLogger(__name__)
 _warn_throttle_lock = threading.Lock()
@@ -431,7 +432,8 @@ def get_ft_metadata(isin: str) -> Dict[str, str]:
             name_tag = soup.find('h1', class_='mod-tearsheet-overview__header__name') or \
                        soup.find('h1', class_='mod-tearsheet-add-to-watchlist__title') or \
                        soup.find('h1', class_='mod-tearsheet-overview__header__title')
-            name = str(name_tag.text or "").strip() if name_tag else f"ISIN: {isin.upper()}"
+            raw_name = str(name_tag.text or "").strip() if name_tag else f"ISIN: {isin.upper()}"
+            name = translate_fund_name(raw_name)
             
             # 2. 抓取币种
             currency = "USD"  # 默认
