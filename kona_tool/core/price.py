@@ -11,8 +11,8 @@ from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
 import config
-from .stock import get_stock_price
-from .fund import get_fund_price
+from .stock import get_stock_price, get_ft_metadata
+from .fund import get_fund_price, is_isin_format
 from .source_health import source_health
 from .utils import monitored_http_get
 from .utils import safe_float
@@ -42,13 +42,13 @@ class PriceCache:
         Args:
             ttl: 缓存过期时间（秒）
         """
-        self.cache: Dict[str, Tuple[Tuple[float, float, float, float], float]] = {}
+        self.cache: Dict[str, Tuple[Tuple[float, float, float, float, Optional[str]], float]] = {}
         self.ttl = ttl
         self.stale_ttl = max(stale_ttl, ttl)
         self.max_size = max(0, int(max_size or 0))
         self.evictions = 0
     
-    def get(self, code: str, ttl_override: Optional[int] = None) -> Optional[Tuple[float, float, float, float]]:
+    def get(self, code: str, ttl_override: Optional[int] = None) -> Optional[Tuple[float, float, float, float, Optional[str]]]:
         """
         从缓存获取价格
         
@@ -70,7 +70,7 @@ class PriceCache:
                 logger.debug(f"Cache expired for {code}")
         return None
 
-    def get_stale(self, code: str) -> Optional[Tuple[float, float, float, float]]:
+    def get_stale(self, code: str) -> Optional[Tuple[float, float, float, float, Optional[str]]]:
         """
         获取过期但仍可回退使用的缓存值（stale-while-revalidate）。
         """
@@ -83,7 +83,7 @@ class PriceCache:
         del self.cache[code]
         return None
     
-    def set(self, code: str, price_data: Tuple[float, float, float, float]):
+    def set(self, code: str, price_data: Tuple[float, float, float, float, Optional[str]]):
         """
         设置缓存
         
@@ -267,7 +267,7 @@ def _map_fund_code_to_exchange_if_tradable(code: str) -> str:
     return str(code or "")
 
 
-def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, float]:
+def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, float, Optional[str]]:
     """
     统一的价格获取接口（自动判断类型并缓存）
     
@@ -298,7 +298,7 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
         if stale_fallback:
             _mark_metric("stale_hits")
             return stale_fallback
-        return (0.0, 0.0, 0.0, 0.0)
+        return (0.0, 0.0, 0.0, 0.0, None)
 
     _mark_metric("network_fetch")
 
@@ -331,10 +331,10 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
         logger.info(f"Price fallback to stale cache for {code}")
         return stale_fallback
 
-    return (0.0, 0.0, 0.0, 0.0)
+    return (0.0, 0.0, 0.0, 0.0, None)
 
 
-def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[float, float, float, float]]:
+def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[float, float, float, float, Optional[str]]]:
     """
     批量获取价格（并发获取）
     
@@ -375,7 +375,7 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
                     results[code] = future.result()
                 except Exception as e:
                     logger.warning(f"Failed to get price for {code}: {e}")
-                    results[code] = (0.0, 0.0, 0.0, 0.0)
+                    results[code] = (0.0, 0.0, 0.0, 0.0, None)
 
     return results
 
@@ -383,7 +383,7 @@ def batch_get_prices(codes: list, use_cache: bool = True) -> Dict[str, Tuple[flo
 def batch_get_prices_fast(
     codes: list,
     timeout_seconds: Optional[float] = None,
-) -> Dict[str, Tuple[float, float, float, float]]:
+) -> Dict[str, Tuple[float, float, float, float, Optional[str]]]:
     """
     快速批量报价：
     - 优先返回 fresh cache
@@ -399,8 +399,8 @@ def batch_get_prices_fast(
     )
     max_workers = min(_FAST_BATCH_MAX_WORKERS, max(1, len(normalized_codes)))
 
-    results: Dict[str, Tuple[float, float, float, float]] = {}
-    stale_map: Dict[str, Tuple[float, float, float, float]] = {}
+    results: Dict[str, Tuple[float, float, float, float, Optional[str]]] = {}
+    stale_map: Dict[str, Tuple[float, float, float, float, Optional[str]]] = {}
     missing_codes: List[str] = []
 
     for code in normalized_codes:
@@ -448,7 +448,7 @@ def batch_get_prices_fast(
                     _mark_metric("stale_hits")
                     results[code] = stale_map[code]
                 else:
-                    results[code] = (0.0, 0.0, 0.0, 0.0)
+                    results[code] = (0.0, 0.0, 0.0, 0.0, None)
 
             pending = {
                 future
@@ -480,7 +480,7 @@ def batch_get_prices_fast(
                     _mark_metric("stale_hits")
                     results[code] = stale_map[code]
                 else:
-                    results[code] = (0.0, 0.0, 0.0, 0.0)
+                    results[code] = (0.0, 0.0, 0.0, 0.0, None)
             else:
                 if _requires_extended_fast_wait(code):
                     try:
@@ -495,7 +495,7 @@ def batch_get_prices_fast(
                     _mark_metric("stale_hits")
                     results[code] = stale_map[code]
                 else:
-                    results[code] = (0.0, 0.0, 0.0, 0.0)
+                    results[code] = (0.0, 0.0, 0.0, 0.0, None)
                 future.cancel()
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -827,6 +827,22 @@ def search_stocks(query: str) -> list:
     pending = set(futures.keys())
     timed_out_sources = []
     alias_name_hints: Dict[str, str] = {}
+    
+    # 额外补充：如果查询项本身符合 ISIN 格式，直接在开头作为高优候选结果
+    if is_isin_format(query):
+        code_upper = query.strip().upper()
+        if code_upper not in seen_codes:
+            # 立即尝试获取元数据（同步获取或在并行池中获取）
+            meta = get_ft_metadata(code_upper)
+            results.append({
+                'code': code_upper,
+                'name': meta.get('name', f"ISIN: {code_upper}"),
+                'type_name': '基金',
+                'currency': meta.get('currency', 'USD'),
+                'price': meta.get('price', 0.0),
+                'chg_pct': meta.get('chg_pct', 0.0)
+            })
+            seen_codes.add(code_upper)
 
     try:
         while pending:
@@ -942,9 +958,10 @@ def search_stocks(query: str) -> list:
                 item['price'] = price
             if yclose > 0:
                 item['yclose'] = yclose
-            if price > 0 or yclose > 0 or change != 0.0:
+            # 只有当抓取到非零值时才更新，防止覆盖 search_stocks 初始获取的 ISIN 元数据
+            if change != 0.0:
                 item['change'] = change
-            if price > 0 or yclose > 0 or change_pct != 0.0:
+            if change_pct != 0.0:
                 item['change_pct'] = change_pct
 
     def _final_sort_key(item):
@@ -1048,6 +1065,8 @@ def _asset_type_from_type_name(type_name: str, code: str = "") -> str:
         return "hk"
     if lower_code.startswith(("sh", "sz", "bj")):
         return "a"
+    if is_isin_format(lower_code):
+        return "fund"
 
     normalized = str(type_name or "").strip()
     if normalized == "港股":

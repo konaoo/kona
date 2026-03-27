@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 
 import config
 from .utils import safe_float, retry_on_failure, get_first_valid_price, monitored_http_get
+from .fund import is_isin_format, normalize_nav_date
 
 logger = logging.getLogger(__name__)
 _warn_throttle_lock = threading.Lock()
@@ -67,7 +68,7 @@ def _parse_locale_decimal(value: Any) -> float:
     return safe_float(text)
 
 
-def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float]:
+def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     东财 A/HK 行情（本地市场回退链路）。
     """
@@ -82,7 +83,7 @@ def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float]:
         if digits:
             secid = f"116.{digits.zfill(5)}"
     if not secid:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, None
 
     try:
         url = (
@@ -105,11 +106,11 @@ def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float]:
                 yclose = curr
             amt = curr - yclose
             chg = (amt / yclose * 100) if yclose > 0 else 0.0
-            return curr, yclose, amt, chg
+            return curr, yclose, amt, chg, None
     except Exception as exc:
         logger.debug(f"Eastmoney CN/HK API error for {code}: {exc}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 def _normalize_us_symbol(code: str) -> str:
@@ -285,7 +286,7 @@ def get_us_extended_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_nasdaq_price() -> Tuple[float, float, float, float]:
+def get_nasdaq_price() -> Tuple[float, float, float, float, Optional[str]]:
     """
     获取纳斯达克指数价格
     
@@ -307,8 +308,7 @@ def get_nasdaq_price() -> Tuple[float, float, float, float]:
                 if yclose <= 0 and len(data) > 2:
                     yclose = curr - safe_float(data[2])
                 
-                if curr > 0:
-                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
                     
     except Exception as e:
         logger.warning(f"Sina NASDAQ API error: {e}")
@@ -326,24 +326,19 @@ def get_nasdaq_price() -> Tuple[float, float, float, float]:
                 if curr <= 0:
                     curr = yclose
                 if curr > 0 and yclose > 0:
-                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
                     
     except Exception as e:
         logger.warning(f"Tencent NASDAQ API error: {e}")
     
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_ft_fund_price(isin: str) -> Tuple[float, float, float, float]:
+def get_ft_fund_price(isin: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
-    从Financial Times获取基金价格
-    
-    Args:
-        isin: 基金ISIN代码
-        
-    Returns:
-        (当前价格, 昨收, 涨跌额, 涨跌幅%)
+    从 Financial Times 获取基金/资产行情。
+    支持自动处理 ISIN -> 基金/ETF 的页面重定向。
     """
     try:
         url = config.API_ENDPOINTS["ft_fund"].format(isin=isin.upper())
@@ -352,25 +347,154 @@ def get_ft_fund_price(isin: str) -> Tuple[float, float, float, float]:
         r = monitored_http_get("ft_fund", url, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
+            
+            # 1. 抓取现价
+            # 优先尝试 tearsheet 详情页通用样式
             price_tag = soup.find('span', class_='mod-tearsheet-overview__quote__value') or \
                         soup.find('span', class_='mod-ui-data-list__value')
             
             if price_tag:
                 curr = safe_float(price_tag.text)
                 if curr > 0:
+                    # 2. 抓取涨跌
+                    chg_pct = 0.0
+                    
+                    # 尝试 tearsheet 样式
                     chg_tag = soup.find('span', class_='mod-tearsheet-overview__quote__chg')
-                    chg = safe_float(chg_tag.text) if chg_tag else 0.0
-                    yclose = curr / (1 + chg/100) if (1 + chg/100) != 0 else curr
-                    return curr, yclose, curr - yclose, chg
+                    if chg_tag:
+                        # 格式可能是 " -0.083 / -1.01% "
+                        chg_text = str(chg_tag.text or "").strip()
+                        if '/' in chg_text:
+                            pct_part = chg_text.split('/')[-1].replace('%', '').strip()
+                            chg_pct = safe_float(pct_part)
+                        else:
+                            chg_pct = safe_float(chg_text.replace('%', ''))
+                    else:
+                        # 尝试 data-list 样式 (常见于重定向后的新布局)
+                        # 寻找 Today's Change 标签附近的数值
+                        labels = soup.find_all('span', class_='mod-ui-data-list__label')
+                        for label in labels:
+                            if "Today's Change" in label.text:
+                                value_tag = label.find_next_sibling('span', class_='mod-ui-data-list__value')
+                                if value_tag:
+                                    chg_text = str(value_tag.text or "").strip()
+                                    if '/' in chg_text:
+                                        pct_part = chg_text.split('/')[-1].replace('%', '').strip()
+                                        chg_pct = safe_float(pct_part)
+                                    else:
+                                        chg_pct = safe_float(chg_text.replace('%', ''))
+                                break
+                    
+                    # 3. 抓取日期 (NAV as of)
+                    price_date = None
+                    # 尝试多种可能的标签和类名
+                    date_tag = soup.find('span', class_='mod-ui-data-delay__date') or \
+                                soup.find('span', class_='mod-tearsheet-overview__quote__date') or \
+                                soup.find('div', class_='mod-ui-data-delay')
+                    
+                    if date_tag:
+                        price_date = str(date_tag.text or "").strip()
+                        # 清理前缀如 "as of " 或 "Data delayed at least 15 minutes, as of "
+                        if "as of " in price_date:
+                            price_date = price_date.split("as of ")[-1].strip()
+                        if price_date.endswith('.'):
+                            price_date = price_date[:-1]
+                    
+                    if not price_date:
+                        # 备选：正则匹配常见日期格式 如 "Mar 26 2026"
+                        date_match = re.search(r'as of ([A-Z][a-z]{2}\s+\d{1,2}\s+\d{4})', r.text)
+                        if date_match:
+                            price_date = date_match.group(1)
+                    
+                    yclose = curr / (1 + chg_pct / 100) if abs(1 + chg_pct / 100) > 1e-9 else curr
+                    return curr, yclose, curr - yclose, chg_pct, normalize_nav_date(price_date)
                     
     except Exception as e:
-        _log_warn_throttled("ft_fund_api", f"FT fund API error: {e}")
+        _log_warn_throttled("ft_fund_api", f"FT fund API error for {isin}: {e}")
     
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
+
+
+def get_ft_metadata(isin: str) -> Dict[str, str]:
+    """
+    通过 ISIN 获取基金/资产的元数据（名称、币种）。
+    """
+    try:
+        url = config.API_ENDPOINTS["ft_fund"].format(isin=isin.upper())
+        headers = config.API_HEADERS["ft"]
+        
+        r = monitored_http_get("ft_metadata", url, headers=headers, timeout=config.API_TIMEOUT)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            
+            # 1. 抓取名称
+            name_tag = soup.find('h1', class_='mod-tearsheet-overview__header__name') or \
+                       soup.find('h1', class_='mod-tearsheet-add-to-watchlist__title') or \
+                       soup.find('h1', class_='mod-tearsheet-overview__header__title')
+            name = str(name_tag.text or "").strip() if name_tag else f"ISIN: {isin.upper()}"
+            
+            # 2. 抓取币种
+            currency = "USD"  # 默认
+            curr_tag = soup.find('span', class_='mod-tearsheet-overview__header__price-currency')
+            if curr_tag:
+                currency = str(curr_tag.text or "").strip().replace('Price (', '').replace(')', '').upper()
+            else:
+                # 从 Data List 标签中尝试解析，如 "Price (HKD)"
+                labels = soup.find_all('span', class_='mod-ui-data-list__label')
+                for label in labels:
+                    if "Price (" in label.text:
+                        match = re.search(r'Price \(([A-Z]+)\)', label.text)
+                        if match:
+                            currency = match.group(1).upper()
+                            break
+            
+            # 3. 抓取价格与涨跌
+            price = 0.0
+            chg_pct = 0.0
+            
+            price_tag = soup.find('span', class_='mod-tearsheet-overview__quote__value') or \
+                        soup.find('span', class_='mod-ui-data-list__value')
+            if price_tag:
+                price = safe_float(price_tag.text)
+                
+            chg_tag = soup.find('span', class_='mod-tearsheet-overview__quote__chg')
+            if chg_tag:
+                chg_text = str(chg_tag.text or "").strip()
+                if '/' in chg_text:
+                    pct_part = chg_text.split('/')[-1].replace('%', '').strip()
+                    chg_pct = safe_float(pct_part)
+                else:
+                    chg_pct = safe_float(chg_text.replace('%', ''))
+            else:
+                # 备选路径：从 mod-ui-data-list__label 查找
+                labels = soup.find_all('span', class_='mod-ui-data-list__label')
+                for label in labels:
+                    if "Today's Change" in label.text:
+                        value_tag = label.find_next_sibling('span', class_='mod-ui-data-list__value')
+                        if value_tag:
+                            chg_text = str(value_tag.text or "").strip()
+                            if '/' in chg_text:
+                                pct_part = chg_text.split('/')[-1].replace('%', '').strip()
+                                chg_pct = safe_float(pct_part)
+                            else:
+                                chg_pct = safe_float(chg_text.replace('%', ''))
+                        break
+            
+            return {
+                "name": name,
+                "currency": currency,
+                "isin": isin.upper(),
+                "price": price,
+                "chg_pct": chg_pct
+            }
+    except Exception as e:
+        logger.debug(f"FT metadata fetch error for {isin}: {e}")
+    
+    return {}
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_us_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     获取美股价格
     
@@ -382,7 +506,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
     """
     symbols = _us_symbol_candidates(code)
     if not symbols:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, None
 
     # 对 BRK.B 这类带点号/横杠的美股，优先走更宽松的 Nasdaq，
     # 避免先被新浪/东财这些符号兼容差的链路拖慢或拿空。
@@ -391,8 +515,8 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
             for assetclass in ["stocks", "etf"]:
                 quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
                 if quote:
-                    curr, yclose, amt, pct = quote
-                    return curr, yclose, amt, pct
+                    curr, yclose, amt, pct, quote_date = quote
+                    return curr, yclose, amt, pct, quote_date
 
     for symbol in symbols:
         try:
@@ -410,7 +534,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                 if curr > 0:
                     if yclose <= 0:
                         yclose = curr
-                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
 
         except Exception as e:
             _log_warn_throttled("sina_us_stock", f"Sina US stock API error: {e}")
@@ -433,7 +557,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
                     if curr <= 0:
                         curr = yclose
                     if curr > 0:
-                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
 
         except Exception as e:
             _log_warn_throttled("eastmoney_us_stock", f"Eastmoney US stock API error: {e}")
@@ -444,8 +568,8 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
             for assetclass in ["stocks", "etf"]:
                 quote = _get_nasdaq_quote(symbol, assetclass)
                 if quote:
-                    curr, yclose, amt, pct = quote
-                    return curr, yclose, amt, pct
+                    curr, yclose, amt, pct, quote_date = quote
+                    return curr, yclose, amt, pct, quote_date
     except Exception as e:
         _log_warn_throttled("nasdaq_quote", f"Nasdaq quote API error: {e}")
 
@@ -455,21 +579,21 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float]:
             for assetclass in ["stocks", "etf"]:
                 quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
                 if quote:
-                    curr, yclose, amt, pct = quote
-                    return curr, yclose, amt, pct
+                    curr, yclose, amt, pct, quote_date = quote
+                    return curr, yclose, amt, pct, quote_date
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float]:
+def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     通过 Boursorama 搜索页按 ISIN 解析海外基金净值。
     """
     try:
         query = str(isin or "").strip().upper()
         if not query:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         url = f"https://www.boursorama.com/recherche/?query={query}"
         headers = dict(config.HEADERS)
@@ -477,20 +601,20 @@ def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float]:
 
         r = monitored_http_get("boursorama_fund", url, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code != 200:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         final_url = str(getattr(r, "url", "") or "")
         if "/bourse/opcvm/cours/" not in final_url:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         text = str(r.text or "")
         price_match = re.search(r'data-ist-last>\s*([^<]+)\s*<', text, re.I)
         if not price_match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         curr = _parse_locale_decimal(price_match.group(1))
         if curr <= 0:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         variation_match = re.search(r'data-ist-variation>\s*([^<]+)\s*<', text, re.I)
         chg = _parse_locale_decimal(variation_match.group(1)) if variation_match else 0.0
@@ -503,15 +627,15 @@ def get_boursorama_fund_price(isin: str) -> Tuple[float, float, float, float]:
 
         amt = curr - yclose
         chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
-        return curr, yclose, amt, chg_pct
+        return curr, yclose, amt, chg_pct, None
     except Exception as e:
         _log_warn_throttled("boursorama_fund_api", f"Boursorama fund API error: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float]:
+def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     通过 MarketScreener 搜索页按 ISIN 解析海外基金净值。
 
@@ -521,7 +645,7 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
     try:
         query = str(isin or "").strip().upper()
         if not query:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         url = f"https://www.marketscreener.com/search/?q={query}"
         headers = {
@@ -538,12 +662,12 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
             timeout=config.API_TIMEOUT,
         )
         if r.status_code != 200:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         text = str(r.text or "")
         link_match = re.search(r'(/quote/fund/[^"\']+)', text, re.I)
         if not link_match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         detail_url = f"https://www.marketscreener.com{link_match.group(1)}"
         detail = monitored_http_get(
@@ -553,7 +677,7 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
             timeout=config.API_TIMEOUT,
         )
         if detail.status_code != 200:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         detail_text = str(detail.text or "")
         identifier_pattern = re.compile(
@@ -562,7 +686,7 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
         )
         match = identifier_pattern.search(detail_text)
         if not match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         window_start = max(0, match.start() - 600)
         window_end = min(len(detail_text), match.end() + 1200)
@@ -571,7 +695,7 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
         price_match = re.search(r'"price"\s*:\s*"([^"]+)"', window, re.I)
         curr = safe_float(price_match.group(1)) if price_match else 0.0
         if curr <= 0:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         prev_match = re.search(
             r'"(?:previousClose|previous_close|yclose)"\s*:\s*"([^"]+)"',
@@ -584,18 +708,18 @@ def get_marketscreener_fund_price(isin: str) -> Tuple[float, float, float, float
 
         amt = curr - yclose
         chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
-        return curr, yclose, amt, chg_pct
+        return curr, yclose, amt, chg_pct, None
     except Exception as e:
         _log_warn_throttled(
             "marketscreener_fund_api",
             f"MarketScreener fund API error: {e}",
         )
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float]:
+def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     解析贝莱德官方产品页的基金净值。
 
@@ -609,7 +733,7 @@ def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float]:
         query = str(isin or "").strip().upper()
         url = pages.get(query)
         if not url:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         headers = {
             "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
@@ -620,21 +744,22 @@ def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float]:
 
         r = requests.get(url, headers=headers, timeout=max(5, int(config.API_TIMEOUT)))
         if r.status_code != 200:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         text = str(r.text or "")
         amount_match = re.search(
-            r'<span class="header-nav-label navAmount">\s*净值截至[^<]*</span>\s*'
+            r'<span class="header-nav-label navAmount">\s*(净值截至\s*[^<]*)</span>\s*'
             r'<span class="header-nav-data">\s*([^<]*?)\s*([0-9]+(?:\.[0-9]+)?)\s*</span>',
             text,
             re.I | re.S,
         )
         if not amount_match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
-        curr = safe_float(amount_match.group(2))
+        raw_date = amount_match.group(1)
+        curr = safe_float(amount_match.group(3))
         if curr <= 0:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         change_match = re.search(
             r'<li class="navAmountChange[^"]*"[^>]*>.*?'
@@ -650,11 +775,15 @@ def get_blackrock_fund_price(isin: str) -> Tuple[float, float, float, float]:
             yclose = curr
             amt = 0.0
             chg_pct = 0.0
-        return curr, yclose, amt, chg_pct
+        
+        # 规格化日期
+        price_date = normalize_nav_date(raw_date)
+        return curr, yclose, amt, chg_pct, price_date
+
     except Exception as e:
         _log_warn_throttled("blackrock_fund_api", f"BlackRock fund API error: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 def get_us_asset_type(code: str) -> Optional[str]:
@@ -677,7 +806,7 @@ def get_us_asset_type(code: str) -> Optional[str]:
     return None
 
 
-def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float]]:
+def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float, Optional[str]]]:
     url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass={assetclass}"
     headers = config.API_HEADERS.get("default", config.HEADERS)
     r = monitored_http_get("nasdaq_quote", url, headers=headers, timeout=config.API_TIMEOUT)
@@ -701,10 +830,10 @@ def _get_nasdaq_quote(symbol: str, assetclass: str) -> Optional[Tuple[float, flo
     amt = curr - yclose
     if pct == 0 and yclose > 0:
         pct = amt / yclose * 100
-    return curr, yclose, amt, pct
+    return curr, yclose, amt, pct, None
 
 
-def _get_nasdaq_quote_relaxed(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float]]:
+def _get_nasdaq_quote_relaxed(symbol: str, assetclass: str) -> Optional[Tuple[float, float, float, float, Optional[str]]]:
     url = f"https://api.nasdaq.com/api/quote/{symbol}/info?assetclass={assetclass}"
     headers = config.API_HEADERS.get("default", config.HEADERS)
     for _ in range(2):
@@ -730,14 +859,14 @@ def _get_nasdaq_quote_relaxed(symbol: str, assetclass: str) -> Optional[Tuple[fl
             amt = curr - yclose
             if pct == 0 and yclose > 0:
                 pct = amt / yclose * 100
-            return curr, yclose, amt, pct
+            return curr, yclose, amt, pct, None
         except Exception:
             continue
     return None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_hstech_price() -> Tuple[float, float, float, float]:
+def get_hstech_price() -> Tuple[float, float, float, float, Optional[str]]:
     """
     获取恒生科技指数价格
     
@@ -753,15 +882,15 @@ def get_hstech_price() -> Tuple[float, float, float, float]:
             
             if curr <= 0:
                 curr = yclose
-            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
             
     except Exception as e:
         logger.warning(f"HSTECH API error: {e}")
     
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
-def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_sina_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     通过新浪接口获取股票价格（通用接口）
     
@@ -812,36 +941,36 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float]:
     except Exception as e:
         logger.warning(f"Sina stock API error for {code}: {e}")
     
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
-def get_tencent_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_tencent_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     s = _normalize_quote_code(code)
     if 'gb_' in s:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, None
     try:
         url = config.API_ENDPOINTS["tencent_stock"].format(code=s)
         r = monitored_http_get("tencent_stock", url, timeout=config.API_TIMEOUT)
         if 'v_' + s + '=' not in r.text:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
         data = r.text.split('=\"')[1].split(';')[0].split('~')
         if 's_' in s and len(data) > 5:
             curr = safe_float(data[3])
             change = safe_float(data[4])
             if curr > 0:
                 yclose = curr - change
-                return curr, yclose, change, (change / yclose * 100) if yclose > 0 else 0.0
+                return curr, yclose, change, (change / yclose * 100) if yclose > 0 else 0.0, None
         if ('hk' in s or 'sh' in s or 'sz' in s) and len(data) > 4:
             curr = safe_float(data[3])
             yclose = safe_float(data[4])
             if curr > 0:
-                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
+                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None if yclose > 0 else 0.0, None
     except Exception as e:
         logger.debug(f"Tencent API error for {code}: {e}")
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
-def get_sina_direct_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_sina_direct_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     s = _normalize_quote_code(code)
     if 'gb_' in s:
         return get_us_stock_price(s)
@@ -849,10 +978,10 @@ def get_sina_direct_stock_price(code: str) -> Tuple[float, float, float, float]:
         url = config.API_ENDPOINTS["sina_stock"].format(code=s)
         r = monitored_http_get("sina_stock", url, headers=_sina_headers(), timeout=config.API_TIMEOUT)
         if '="' not in r.text:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
         match = re.search(r'="(.+)"', r.text)
         if not match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
         data = match.group(1).split(',')
         curr, yclose = 0.0, 0.0
         if 's_' in s:
@@ -866,13 +995,13 @@ def get_sina_direct_stock_price(code: str) -> Tuple[float, float, float, float]:
             curr = safe_float(data[3])
             yclose = safe_float(data[2])
         if curr > 0 and yclose > 0:
-            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100
+            return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
     except Exception as e:
         logger.debug(f"Sina API error for {code}: {e}")
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
-def get_eastmoney_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_eastmoney_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     s = _normalize_quote_code(code)
     if s.startswith(('sh', 'sz', 'hk')):
         return _get_eastmoney_cn_hk_price(s)
@@ -894,52 +1023,50 @@ def get_eastmoney_stock_price(code: str) -> Tuple[float, float, float, float]:
                     if curr <= 0:
                         curr = yclose
                     if curr > 0:
-                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100 if yclose > 0 else 0.0
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None if yclose > 0 else 0.0, None
         except Exception as e:
             logger.debug(f"Eastmoney API error for {code}: {e}")
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
-def get_stock_price(code: str) -> Tuple[float, float, float, float]:
+def get_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     获取股票价格（根据代码类型自动选择接口）
-    
-    Args:
-        code: 证券代码
-        
-    Returns:
-        (当前价格, 昨收, 涨跌额, 涨跌幅%)
     """
     logger.debug(f"Fetching stock price for {code}")
     
-    # 特殊处理
+    # 1. 特殊指数处理
     if 'ixic' in code.lower():
         return get_nasdaq_price()
     
     if code == 'rt_hkHSTECH' or 'HSTECH' in code:
         return get_hstech_price()
     
-    # FT基金
-    if code.startswith('ft_'):
-        isin = code.replace('ft_', '')
-        curr, yclose, amt, chg = get_blackrock_fund_price(isin)
+    # 2. 自动识别 ISIN 格式 (如 LU..., IE...)
+    if is_isin_format(code) or str(code or "").startswith(('ft_', 'gb_')):
+        isin = str(code or "").replace('ft_', '').replace('gb_', '').strip().upper()
+        if is_isin_format(isin):
+            # A) 优先 Financial Times
+            curr, yclose, amt, chg, price_date = get_ft_fund_price(isin)
+            if curr > 0:
+                return curr, yclose, amt, chg, price_date
+        # B) 次选 BlackRock (官方页)
+        curr, yclose, amt, chg, price_date = get_blackrock_fund_price(isin)
         if curr > 0:
-            return curr, yclose, amt, chg
-        curr, yclose, amt, chg = get_marketscreener_fund_price(isin)
+            return curr, yclose, amt, chg, price_date
+        # C) 其他备选
+        curr, yclose, amt, chg, price_date = get_marketscreener_fund_price(isin)
         if curr > 0:
-            return curr, yclose, amt, chg
-        curr, yclose, amt, chg = get_boursorama_fund_price(isin)
-        if curr > 0:
-            return curr, yclose, amt, chg
-        return get_ft_fund_price(isin)
+            return curr, yclose, amt, chg, price_date
+        return get_boursorama_fund_price(isin)
     
-    # 美股
+    # 3. 美股 (gb_ 前缀)
     if code.startswith('gb_'):
         return get_us_stock_price(code)
 
-    # 可能是美股代码（纯字母/点），优先走美股逻辑
+    # 4. 可能是美股代码（纯字母/点），优先走美股逻辑
     if re.fullmatch(r'[A-Za-z\\.]+', code or ''):
         return get_us_stock_price(code)
     
-    # 通用接口
+    # 5. 通用接口 (A股/港股/Sina/Tencent)
     return get_sina_stock_price(code)

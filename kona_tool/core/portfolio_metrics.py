@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Iterable, List, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from .market_calendar import market_from_asset
 from .price import is_exchange_fund_code
@@ -55,7 +55,7 @@ def _compute_day_pnl_metrics(
 
 def build_portfolio_items_with_metrics(
     items: List[Dict],
-    quotes: Dict[str, Tuple[float, float, float, float]],
+    quotes: Dict[str, Tuple[float, float, float, float, Optional[str]]],
     rates: Dict[str, float],
     market_statuses: Dict[str, Dict[str, float]],
     convert_amount: Callable[[float, str, str, Dict[str, float]], float],
@@ -82,17 +82,18 @@ def build_portfolio_items_with_metrics(
         market_trading_day = bool(status.get("trading_day"))
         market_status_reason = str(status.get("reason") or "")
 
-        quote = quotes.get(code) or (0.0, 0.0, 0.0, 0.0)
+        quote = quotes.get(code) or (0.0, 0.0, 0.0, 0.0, None)
         quote_price = _to_float(quote[0])
         quote_yclose = _to_float(quote[1])
         quote_change = _to_float(quote[2])
         quote_change_pct = _to_float(quote[3])
+        quote_date = str(quote[4] or "").strip() or None
 
         quoted_current_price = _first_positive([quote_price, quote_yclose])
         current_price = _first_positive([quoted_current_price, raw_cost_price])
 
         nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund
-        latest_nav_date = str((latest_nav_dates or {}).get(code) or "").strip() or None
+        latest_nav_date = str((latest_nav_dates or {}).get(code) or "").strip() or quote_date or None
         quote_ready = quote_price > 0
         quote_pending = (not nav_update_pending) and (not quote_ready)
 

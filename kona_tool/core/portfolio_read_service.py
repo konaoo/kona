@@ -18,7 +18,7 @@ class PortfolioReadService:
         self,
         *,
         db: Any,
-        batch_get_prices_getter: Callable[[List[str]], Dict[str, Tuple[float, float, float, float]]],
+        batch_get_prices_getter: Callable[[List[str]], Dict[str, Tuple[float, float, float, float, Optional[str]]]],
         rates_getter: Callable[[], Dict[str, float]],
         convert_amount: Callable[[float, str, str, Dict[str, float]], float],
         fund_latest_nav_date_getter: Callable[[str], str | None],

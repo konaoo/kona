@@ -99,11 +99,13 @@ const marketCards = computed(() => buildMarketSummaries(rows.value || []))
 
 // Distribution Donut Chart
 const distributionData = computed(() => {
-  const total = investTotal.value.marketValue || 1
-  return marketCards.value
+  const activeSectors = marketCards.value.filter(m => m.mv > 0)
+  const localTotal = activeSectors.reduce((sum, m) => sum + m.mv, 0) || 1
+  
+  return activeSectors
     .map(m => ({
       name: m.name,
-      percent: (m.mv / total) * 100,
+      percent: (m.mv / localTotal) * 100,
       value: m.mv,
       color:
         m.name === '美股'
@@ -114,7 +116,6 @@ const distributionData = computed(() => {
               ? '#3ECF82'
               : '#F2C94C'
     }))
-    .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value)
 })
 
@@ -187,7 +188,7 @@ const filteredRows = computed(() => {
       curr: String(row.curr || 'CNY'),
       market: String(row.market || ''),
       category: String(row.category || row.market || ''),
-      unit: String(row.unit || (row.market === 'fund' ? '份' : '股')),
+      unit: String(row.unit || (isFundAsset(row) ? '份' : '股')),
       quoteReady: Boolean(row.quoteReady),
       quotePending: Boolean(row.quotePending),
       navUpdatePending: Boolean(row.navUpdatePending),
@@ -217,8 +218,17 @@ function dayPnlRateLabel(row: any): string {
 function isFundAsset(row: any): boolean {
   const market = String(row?.category || row?.market || '').toLowerCase()
   if (market === 'fund') return true
+  const assetType = String(row?.asset_type || '').toLowerCase()
+  if (assetType === 'fund') return true
   const code = String(row?.code || '').toLowerCase()
   return code.startsWith('f_') || code.startsWith('ft_')
+}
+
+function isStaleFund(row: any): boolean {
+  if (!isFundAsset(row)) return false
+  const latestNavDate = readLatestNavDate(row)
+  if (!latestNavDate) return true
+  return !isDateToday(latestNavDate)
 }
 
 function readLatestNavDate(row: any): string | null {
@@ -247,8 +257,8 @@ function isDateToday(value: string): boolean {
 
 function quoteMetaLabel(row: any): string {
   if (!isFundAsset(row)) return ''
-  const latestNavDateText = formatLatestNavDateText(readLatestNavDate(row))
-  return latestNavDateText ? `最新净值 ${latestNavDateText}` : '最新净值'
+  const dateText = formatLatestNavDateText(readLatestNavDate(row))
+  return dateText ? `最新净值 (${dateText})` : '最新净值'
 }
 
 // Utility
@@ -405,7 +415,7 @@ const handleTradeSuccess = async () => {
             <div class="main-val">{{ masked(formatCurrency(investTotal.mv)) }}</div>
             <div class="stats-row">
               <div class="stat-item">
-                <span class="sl">今日盈亏</span>
+                <span class="sl">当日盈亏</span>
                 <div class="sv-group" :class="valueClass(investTotal.dayPnl)">
                   <span class="sv-amt">{{ masked(formatCurrency(investTotal.dayPnl, true, true)) }}</span>
                   <span class="sv-pct">{{ formatPct(investTotal.dayRate) }}</span>
@@ -443,7 +453,18 @@ const handleTradeSuccess = async () => {
                     stroke-width="12"
                   />
                   <g v-for="(slice, i) in slices" :key="i">
+                    <circle
+                      v-if="slice.percent >= 99.99"
+                      cx="50"
+                      cy="50"
+                      r="35"
+                      fill="transparent"
+                      :stroke="slice.color"
+                      stroke-width="12"
+                      class="donut-slice"
+                    />
                     <path
+                      v-else
                       :d="describeArc(50, 50, 35, slice.start * 3.6, slice.end * 3.6)"
                       :stroke="slice.color"
                       stroke-width="12"
@@ -483,7 +504,7 @@ const handleTradeSuccess = async () => {
             </div>
             <div class="m-stats">
               <div class="ms-item">
-                <div class="ms-lbl">今日盈亏</div>
+                <div class="ms-lbl">当日盈亏</div>
                 <div class="ms-val-group" :class="valueClass(m.dayPnl)">
                   <div class="ms-amt">{{ masked(formatCurrency(m.dayPnl, true, true)) }}</div>
                   <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
@@ -618,7 +639,7 @@ const handleTradeSuccess = async () => {
                   </div>
                   <div class="h-info-group">
                     <div class="h-name-row">
-                      {{ row.name }}
+                      {{ row.name.length > 20 ? row.name.slice(0, 19) + '...' : row.name }}
                     </div>
                     <div class="h-meta-row">
                       <span class="tag" :class="[row.category || row.market]">{{
@@ -679,17 +700,17 @@ const handleTradeSuccess = async () => {
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
                     <div>
                       <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">
-                        今日盈亏
+                        当日盈亏
                       </div>
                       <div
-                        :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']"
+                        :class="[isStaleFund(row) ? 'text-muted' : (toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn')]"
                         style="
                           font-family: 'JetBrains Mono', monospace;
                           font-size: 12.5px;
                           font-weight: 600;
                         "
                       >
-                        {{ masked(formatCurrency(row.dayPnl, true)) }}
+                        {{ isStaleFund(row) ? '--' : masked(formatCurrency(row.dayPnl, true)) }}
                       </div>
                     </div>
                     <div>
@@ -1313,23 +1334,26 @@ const handleTradeSuccess = async () => {
 /* Holdings 1:1 Styles */
 .card-view-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
 }
 .hcard {
   position: relative;
-  background: var(--s2);
+  background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background 0.18s,
+    transform 0.18s,
+    box-shadow 0.18s;
   overflow: hidden;
 }
 .hcard:hover {
-  background: var(--surface-soft);
+  background: rgba(255, 255, 255, 0.05);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   border-color: var(--border-b);
 }
 .hcard-accent-top {
@@ -1400,8 +1424,9 @@ const handleTradeSuccess = async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   display: flex;
-  align-items: baseline;
-  gap: 2px;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 /* 字数较多时自动缩小字号的微调 */
 .h-qty span {

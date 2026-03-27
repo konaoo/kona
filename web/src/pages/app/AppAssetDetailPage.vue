@@ -6,7 +6,7 @@ import { toNumber } from '@/shared/format'
 import { useKonaStore } from '@/stores/composables'
 import AppShell from '@/layouts/AppShell.vue'
 import AssetLogo from '@/components/base/AssetLogo.vue'
-import { InvestTradeModal } from '@/components'
+import { InvestTradeModal, Modal } from '@/components'
 
 type TradeMode = 'buy' | 'sell' | 'adjust'
 
@@ -20,6 +20,7 @@ const pageError = ref('')
 const txList = ref<Record<string, any>[]>([])
 
 const showTradeModal = ref(false)
+const showDeleteModal = ref(false)
 const tradeMode = ref<TradeMode>('buy')
 
 const code = computed(() => {
@@ -42,10 +43,10 @@ const row = computed(() => {
 })
 
 const marketLabel = computed(() => {
+  if (isFundAsset(row.value)) return '基金'
   const market = String(row.value?.category || row.value?.market || '').toLowerCase()
   if (market === 'hk') return '港股'
   if (market === 'us') return '美股'
-  if (market === 'fund') return '基金'
   return 'A股'
 })
 
@@ -56,6 +57,24 @@ function isFundAsset(item: any): boolean {
   if (assetType === 'fund') return true
   const codeText = String(item?.code || '').toLowerCase()
   return codeText.startsWith('f_') || codeText.startsWith('ft_')
+}
+
+function isStaleFund(item: any): boolean {
+  if (!isFundAsset(item)) return false
+  const latestNavDate = readLatestNavDate(item)
+  if (!latestNavDate) return true
+  return !isDateToday(latestNavDate)
+}
+
+function isDateToday(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim())
+  if (!match) return false
+  const y = Number(match[1])
+  const m = Number(match[2])
+  const d = Number(match[3])
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false
+  const now = new Date()
+  return now.getFullYear() === y && now.getMonth() + 1 === m && now.getDate() === d
 }
 
 function readLatestNavDate(item: any): string | null {
@@ -166,6 +185,13 @@ function tradePriceLabel(item: Record<string, any>): string {
   return price.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 }
 
+function truncateAssetName(name: string): string {
+  if (!name) return ''
+  const limit = 20
+  if (name.length <= limit) return name
+  return name.slice(0, limit) + '...'
+}
+
 async function loadTransactions() {
   txLoading.value = true
   try {
@@ -202,6 +228,33 @@ async function refreshDetail() {
   }
 }
 
+async function handleDeleteHolding() {
+  showDeleteModal.value = true
+}
+
+async function confirmDeleteAction() {
+  if (!row.value) return
+
+  loading.value = true
+  showDeleteModal.value = false
+  try {
+    const assetCode = row.value.code
+    const ledgerId = row.value.ledger_id
+    await api.post('/api/portfolio/delete', {
+      code: assetCode,
+      ledger_id: ledgerId,
+    })
+    // 刷新全局状态并返回
+    await store.refreshAll()
+    router.replace('/app/invest')
+  } catch (error) {
+    console.error('Failed to delete holding', error)
+    alert('删除失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
+}
+
 function openTrade(mode: TradeMode) {
   if (!row.value) return
   tradeMode.value = mode
@@ -227,7 +280,7 @@ onMounted(() => {
     <div class="asset-detail-page">
       <div class="detail-header-row">
         <button class="back-btn" type="button" @click="router.back()">返回</button>
-        <button class="refresh-btn" type="button" @click="refreshDetail">刷新</button>
+        <button class="delete-btn" type="button" :disabled="loading" @click="handleDeleteHolding">删除</button>
       </div>
 
       <div v-if="pageError" class="detail-error">{{ pageError }}</div>
@@ -250,15 +303,21 @@ onMounted(() => {
                 />
               </div>
               <div class="asset-title-wrap">
-                <div class="asset-name">{{ row.name || formatDisplayCode(row.code) }}</div>
+                <div class="asset-name">
+                  {{ truncateAssetName(row.name || formatDisplayCode(row.code)) }}
+                </div>
                 <div class="asset-meta">
                   <span class="asset-tag">{{ marketLabel }}</span>
                   <span>{{ formatDisplayCode(row.code) }}</span>
-                  <span>{{ Number(row.qty || 0).toLocaleString('zh-CN') }}{{ row.unit || (isFundAsset(row) ? '份' : '股') }}</span>
                 </div>
               </div>
             </div>
-            <div class="asset-mv">{{ formatMoney(row.mv ?? row.value, row.curr) }}</div>
+            <div class="asset-right-info">
+              <div class="asset-mv">{{ formatMoney(row.mv ?? row.value, row.curr) }}</div>
+              <div class="asset-qty-right">
+                {{ Number(row.qty || 0).toLocaleString('zh-CN') }}{{ row.unit || (isFundAsset(row) ? '份' : '股') }}
+              </div>
+            </div>
           </div>
 
           <div class="metric-grid">
@@ -266,7 +325,7 @@ onMounted(() => {
               <div class="metric-label">{{ isFundAsset(row) ? '最新净值' : '最新价格' }}</div>
               <div class="metric-value">{{ formatPrice(row) }}</div>
               <div v-if="isFundAsset(row)" class="metric-sub">
-                {{ formatLatestNavDateText(readLatestNavDate(row)) ? `净值日期 ${formatLatestNavDateText(readLatestNavDate(row))}` : '净值日期 --' }}
+                {{ formatLatestNavDateText(readLatestNavDate(row)) ? `最新净值 (${formatLatestNavDateText(readLatestNavDate(row))})` : '最新净值' }}
               </div>
             </div>
 
@@ -276,9 +335,9 @@ onMounted(() => {
             </div>
 
             <div class="metric-item">
-              <div class="metric-label">今日盈亏</div>
-              <div class="metric-value" :class="valueClass(row.dayPnl)">{{ formatSignedMoney(row.dayPnl, row.curr) }}</div>
-              <div class="metric-sub" :class="valueClass(row.dayPnlRate)">{{ formatPct(row.dayPnlRate) }}</div>
+              <div class="metric-label">当日盈亏</div>
+              <div class="metric-value" :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnl)">{{ isStaleFund(row) ? '--' : formatSignedMoney(row.dayPnl, row.curr) }}</div>
+              <div class="metric-sub" :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnlRate)">{{ isStaleFund(row) ? '--' : formatPct(row.dayPnlRate) }}</div>
             </div>
 
             <div class="metric-item">
@@ -325,6 +384,25 @@ onMounted(() => {
         :mode="tradeMode"
         @success="onTradeSuccess"
       />
+
+      <!-- 自定义风格的删除确认弹窗 -->
+      <Modal
+        v-model:show="showDeleteModal"
+        title="确认删除持仓"
+        :width="400"
+      >
+        <div class="delete-confirm-content">
+          <div class="confirm-icon">⚠️</div>
+          <p>确定要彻底删除 <strong>{{ row?.name || formatDisplayCode(row?.code) }}</strong> 的全部持仓和历史记录吗？</p>
+          <span class="confirm-hint">此操作将同时删除相关的交易流水，且不可撤销。</span>
+        </div>
+        <template #footer>
+          <div class="delete-modal-footer">
+            <button class="modal-btn cancel" @click="showDeleteModal = false">取消</button>
+            <button class="modal-btn delete" @click="confirmDeleteAction">确认删除</button>
+          </div>
+        </template>
+      </Modal>
     </div>
   </AppShell>
 </template>
@@ -346,7 +424,7 @@ onMounted(() => {
 }
 
 .back-btn,
-.refresh-btn {
+.delete-btn {
   height: 36px;
   padding: 0 14px;
   border-radius: 12px;
@@ -360,15 +438,21 @@ onMounted(() => {
 }
 
 .back-btn:hover,
-.refresh-btn:hover {
+.delete-btn:hover {
   border-color: var(--border-b);
   transform: translateY(-1px);
 }
 
-.refresh-btn {
-  background: rgba(91, 141, 239, 0.12);
-  border-color: rgba(91, 141, 239, 0.32);
-  color: var(--blue);
+.delete-btn {
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(244, 63, 94, 0.32);
+  color: #f43f5e;
+}
+
+.delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .detail-card,
@@ -389,9 +473,10 @@ onMounted(() => {
 
 .asset-main {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
+  flex: 1;
 }
 
 .asset-logo-wrap {
@@ -417,13 +502,26 @@ onMounted(() => {
 }
 
 .asset-meta {
-  margin-top: 8px;
+  margin-top: 6px;
   display: flex;
   gap: 10px;
   align-items: center;
   color: var(--sub);
   font-size: 13px;
-  flex-wrap: wrap;
+}
+
+.asset-right-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 4px;
+}
+
+.asset-qty-right {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sub);
 }
 
 .asset-tag {
@@ -605,6 +703,76 @@ onMounted(() => {
 
 .flat {
   color: var(--sub);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   DELETE MODAL CUSTOM STYLES
+   ─────────────────────────────────────────────────────────────── */
+
+.delete-confirm-content {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.confirm-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+}
+
+.delete-confirm-content p {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.confirm-hint {
+  font-size: 13px;
+  color: var(--muted);
+  display: block;
+}
+
+.delete-modal-footer {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.modal-btn.cancel {
+  background: var(--surface-soft);
+  color: var(--sub);
+  border: 1px solid var(--border);
+}
+
+.modal-btn.cancel:hover {
+  background: var(--surface-divider);
+  color: var(--text);
+}
+
+.modal-btn.delete {
+  background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
+}
+
+.modal-btn.delete:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.modal-btn.delete:active {
+  transform: translateY(0);
 }
 
 @media (max-width: 768px) {

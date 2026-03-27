@@ -1,3 +1,28 @@
+## 2026-03-27-02
+
+### 这版一句话
+标准化卢森堡及境外基金（LU）净值日期显示逻辑，统一 Web 投资页卡片尺寸，并优化持仓资产分布与搜索 UI 的细节表现。
+
+### 主要变化
+- **后端：贝莱德基金日期标准化与价格提取**：更新 [kona_tool/core/stock.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/stock.py)，为卢森堡系列场外基金补全“净值截至日期”解析逻辑；[kona_tool/core/fund.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/fund.py) 同步支持 `YYYY年M月D日` 中文日期格式的正则解析。
+- **前端：场外基金保守显示策略**：在 [web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)、[AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue) 和 [AppAssetDetailPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAssetDetailPage.vue) 中联动：若基金未抓取到有效净值日期，自动将当日盈亏置灰（显示 `--`），防止时效性误导。
+- **前端：投资页样式对齐与图表修复**：
+    - 将投资分析页持仓卡片布局（`min-width: 280px`、`gap: 10px`）及视觉材质同步至首页规格。
+    - 修正资产分布占比分母，并彻底解决 SVG Donut 图在占比 100% 时的渲染崩溃问题。
+- **前端：搜索与弹窗 UI 细节优化**：
+    - 更新 [web/src/components/business/InvestTradeModal.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/components/business/InvestTradeModal.vue)，对搜索结果中的资产名称进行字数限制并增加提示，修正搜索结果列表的对齐方式。
+- **后端：行情抓取鲁棒性提升**：更新 [kona_tool/core/price.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/price.py)，优化了汇率缓存及行情合并逻辑，增强了外部源异常时的稳定性。
+
+### 影响范围
+- Web：首页、投资页、资产详情页、交易弹窗
+- 后端：基金价格抓取管道与日期系统
+- Flutter：首页及分析页收益显示逻辑对齐
+
+### 验收重点
+- 卢森堡基金（如 LU0582531332）应正确带出净值日期，无日期资产的当日盈亏应恒为 `--`。
+- 只有一种资产时，投资页占比图呈现为完整的圆形。
+- 投资页卡片尺寸、间距、材质感官与首页完全一致。
+
 ## 2026-03-27-01
 
 ### 这版一句话

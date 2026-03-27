@@ -476,7 +476,7 @@ const filteredRows = computed(() => {
       ...row,
       qty,
       amount: qty,
-      unit: String(row?.unit || (row?.market === 'fund' ? '份' : '股')),
+      unit: String(row?.unit || (isFundAsset(row) ? '份' : '股')),
       costPrice: displayCostPrice, // 首页展示摊薄后成本
       price: currentPrice || 0,
       dayPnlRate: Number(row?.dayPnlRateAggregate ?? row?.dayPnlRate ?? 0),
@@ -524,8 +524,17 @@ function dayPnlRateLabel(row: any): string {
 function isFundAsset(row: any): boolean {
   const market = String(row?.category || row?.market || '').toLowerCase()
   if (market === 'fund') return true
+  const assetType = String(row?.asset_type || '').toLowerCase()
+  if (assetType === 'fund') return true
   const code = String(row?.code || '').toLowerCase()
   return code.startsWith('f_') || code.startsWith('ft_')
+}
+
+function isStaleFund(row: any): boolean {
+  if (!isFundAsset(row)) return false
+  const latestNavDate = readLatestNavDate(row)
+  if (!latestNavDate) return true
+  return !isDateToday(latestNavDate)
 }
 
 function readLatestNavDate(row: any): string | null {
@@ -554,8 +563,8 @@ function isDateToday(value: string): boolean {
 
 function quoteMetaLabel(row: any): string {
   if (!isFundAsset(row)) return ''
-  const latestNavDateText = formatLatestNavDateText(readLatestNavDate(row))
-  return latestNavDateText ? `最新净值 ${latestNavDateText}` : '最新净值'
+  const dateText = formatLatestNavDateText(readLatestNavDate(row))
+  return dateText ? `最新净值 (${dateText})` : '最新净值'
 }
 
 function valueClass(value: number | undefined): 'up' | 'dn' | 'neutral' {
@@ -1387,17 +1396,17 @@ onBeforeUnmount(() => {
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
                 <div>
                   <div style="font-size: 10px; color: var(--muted); margin-bottom: 2px">
-                    今日盈亏
+                    当日盈亏
                   </div>
                   <div
-                    :class="[toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn']"
+                    :class="[isStaleFund(row) ? 'text-muted' : (toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn')]"
                     style="
                       font-family: 'JetBrains Mono', monospace;
                       font-size: 12.5px;
                       font-weight: 600;
                     "
                   >
-                    {{ masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
+                    {{ isStaleFund(row) ? '--' : masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
                   </div>
                 </div>
                 <div>
@@ -1581,22 +1590,22 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
-                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">今日盈亏</div>
+                <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">当日盈亏</div>
                 <div
                   style="
                     font-family: 'JetBrains Mono', monospace;
                     font-size: 12.5px;
                     font-weight: 600;
                   "
-                  :class="valueClass(toNumber(row?.dayPnl))"
+                  :class="isStaleFund(row) ? 'text-muted' : valueClass(toNumber(row?.dayPnl))"
                 >
-                  {{ masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}
+                  {{ isStaleFund(row) ? '--' : masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}
                 </div>
                 <div
                   style="font-size: 11px; margin-top: 1px"
-                  :class="valueClass(toNumber(row?.dayPnlRate))"
+                  :class="isStaleFund(row) ? 'text-muted' : valueClass(toNumber(row?.dayPnlRate))"
                 >
-                  {{ dayPnlRateLabel(row) }}
+                  {{ isStaleFund(row) ? '--' : dayPnlRateLabel(row) }}
                 </div>
               </div>
               <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">

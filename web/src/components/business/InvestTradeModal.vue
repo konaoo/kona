@@ -772,7 +772,9 @@ onUnmounted(() => {
                   </span>
                   <span class="sp-code">{{ formatDisplayCode(selectedStock.code) }}</span>
                   <span class="sp-sep"></span>
-                  <span class="sp-name">{{ selectedStock.name }}</span>
+                  <span class="sp-name" :title="selectedStock.name">
+                    {{ selectedStock.name.length > 20 ? selectedStock.name.slice(0, 19) + '...' : selectedStock.name }}
+                  </span>
                   <div class="sp-quote">
                     <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
                     <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
@@ -802,7 +804,7 @@ onUnmounted(() => {
                   >
                     <div class="di-left">
                       <div class="di-main">
-                        <div class="di-name">{{ s.name }}</div>
+                        <div class="di-name" :title="s.name">{{ s.name.length > 20 ? s.name.slice(0, 19) + '...' : s.name }}</div>
                         <div class="di-meta">
                           <span class="di-tag" :style="{ color: getMarketMeta(inferSearchMarket(s)).color, background: getMarketMeta(inferSearchMarket(s)).bg }">{{ searchMarketLabel(s) }}</span>
                           <span class="di-code">{{ formatDisplayCode(s.code) }}</span>

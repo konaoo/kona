@@ -4,6 +4,10 @@
 """
 import re
 import logging
+try:
+    from core.fund import is_isin_format
+except ImportError:
+    from fund import is_isin_format
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +41,8 @@ def infer_asset_type(code: str, name: str = '') -> str:
         return 'a'
     lower = c.lower()
 
-    # FT 基金（ISIN）一律基金
-    if lower.startswith('ft_'):
+    # f_ / ISIN 格式一律归类为基金
+    if lower.startswith(('ft_', 'f_')) or is_isin_format(c) or is_isin_format(c.replace('gb_', '')):
         return 'fund'
 
     # f_ 仅允许纯数字场外基金代码；字母型 f_ 视为误标，按美股处理

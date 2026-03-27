@@ -87,6 +87,12 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
         if not curr:
             curr = 'HKD'
     
+    # ISIN 格式 (12位，前两位字母，后10位字母或数字)
+    elif len(code) == 12 and re.fullmatch(r'[A-Z]{2}[A-Z0-9]{10}', code.upper()):
+        if not curr:
+            # 默认 USD，后续会通过爬虫真正校准
+            curr = 'USD'
+
     # 美股（纯字母 / 带点号 / 带横杠）
     elif (
         re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', code)

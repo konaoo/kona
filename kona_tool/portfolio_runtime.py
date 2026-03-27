@@ -109,7 +109,9 @@ class PortfolioRuntime:
         lower = code.lower()
         if lower.startswith("f_"):
             suffix = code[2:].strip()
-            if suffix and not suffix.isdigit() and re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]*", suffix):
+            # 只有当 suffix 是非 ISIN 的纯字母代码时，才视为美股代码的误标
+            from core.fund import is_isin_format
+            if suffix and not suffix.isdigit() and re.fullmatch(r"[A-Za-z][A-Za-z0-9.\-]*", suffix) and not is_isin_format(suffix):
                 code = f"gb_{suffix.lower()}"
                 curr = "USD"
                 lower = code.lower()

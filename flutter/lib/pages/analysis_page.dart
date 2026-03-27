@@ -651,6 +651,34 @@ class _AnalysisPageState extends State<AnalysisPage>
     }
   }
 
+  double? _currentMonthTodayCellPnlOverride(AppState appState) {
+    if (_calendarTimeType != 'day') return null;
+    final now = DateTime.now();
+    final dayYear = _selectedDayYear ?? now.year;
+    final dayMonth = _selectedDayMonth ?? now.month;
+    if (dayYear != now.year || dayMonth != now.month) {
+      return null;
+    }
+
+    final realtimeToday = _asMap(appState.realtimeToday);
+    if (realtimeToday.isEmpty) {
+      return null;
+    }
+
+    final totals = _realtimeTodayTotals(appState);
+    final realtimeDayPnl = (totals['day_pnl'] as num?)?.toDouble() ?? 0.0;
+    final effectiveDate = _realtimeTodayEffectiveDate(appState);
+    if (effectiveDate == null) {
+      return 0.0;
+    }
+
+    final isTodayEffective =
+        effectiveDate.year == now.year &&
+        effectiveDate.month == now.month &&
+        effectiveDate.day == now.day;
+    return isTodayEffective ? realtimeDayPnl : 0.0;
+  }
+
   void _onCalendarTypeChanged(String nextType) {
     if (_calendarTimeType == nextType) return;
     setState(() {
@@ -1100,17 +1128,14 @@ class _AnalysisPageState extends State<AnalysisPage>
         gridItem['pnl'] = pnlMap[key];
       }
     }
-    final effectiveDate = _realtimeTodayEffectiveDate(appState);
-    final realtimeDayPnl =
-        (_realtimeTodayTotals(appState)['day_pnl'] as num?)?.toDouble();
+    final todayCellPnlOverride = _currentMonthTodayCellPnlOverride(appState);
     if (_calendarTimeType == 'day' &&
-        effectiveDate != null &&
-        realtimeDayPnl != null &&
-        effectiveDate.year == dayYear &&
-        effectiveDate.month == dayMonth) {
+        dayYear == now.year &&
+        dayMonth == now.month &&
+        todayCellPnlOverride != null) {
       for (final gridItem in calendarGrid) {
-        if (gridItem['day'] == effectiveDate.day) {
-          gridItem['pnl'] = realtimeDayPnl;
+        if (gridItem['day'] == now.day) {
+          gridItem['pnl'] = todayCellPnlOverride;
           break;
         }
       }

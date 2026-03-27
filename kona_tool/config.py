@@ -209,8 +209,8 @@ API_ENDPOINTS = {
     "eastmoney_fund_f10": "https://fundf10.eastmoney.com/F10DataApi/F10DataApi",
     "eastmoney_fund_mobile": "https://fund.eastmoney.com/data/F10DataApi_Type.aspx",
     "tiantian_fund": "https://fundgz.1234567.com.cn/js/{code}.js",
-    "markets_ft_index": "https://markets.ft.com/data/tearsheet/summary?sisin={isin}:USD",
-    "ft_fund": "https://markets.ft.com/data/equities/tearsheet/summary?s={isin}:USD"
+    "markets_ft_index": "https://markets.ft.com/data/tearsheet/summary?s={isin}",
+    "ft_fund": "https://markets.ft.com/data/equities/tearsheet/summary?s={isin}"
 }
 
 # 日志配置

@@ -18,15 +18,63 @@ _FIDELITY_HISTORY_SHARE_CLASS_IDS = {
 }
 
 
-def _normalize_nav_date(value: Any) -> Optional[str]:
+def normalize_nav_date(value: Any) -> Optional[str]:
+    """
+    标准化日期格式为 YYYY-MM-DD。
+    支持：
+    - 2026-03-26
+    - 2026/03/26
+    - Mar 26 2026
+    - 26 Mar 2026
+    """
     text = str(value or "").strip()
     if not text:
         return None
-    text = text.replace("/", "-")
-    match = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-    if match:
-        return match.group(1)
+    
+    # 1. 尝试直接匹配 YYYY-MM-DD
+    text_cleaned = text.replace("/", "-")
+    iso_match = re.search(r"(\d{4}-\d{2}-\d{2})", text_cleaned)
+    if iso_match:
+        return iso_match.group(1)
+    
+    # 2. 尝试匹配带英文月份的格式，如 "Mar 26 2026" 或 "26 Mar 2026"
+    months_map = {
+        "jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05", "jun": "06",
+        "jul": "07", "aug": "08", "sep": "09", "oct": "10", "nov": "11", "dec": "12"
+    }
+    
+    # 查找月份
+    found_month = None
+    for m_name, m_val in months_map.items():
+        if m_name in text.lower():
+            found_month = m_val
+            break
+            
+    # 3. 尝试匹配中文格式，如 "2026年3月26日"
+    cn_match = re.search(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日", text)
+    if cn_match:
+        y, m, d = cn_match.groups()
+        return f"{y}-{int(m):02d}-{int(d):02d}"
+
+    if found_month:
+        # 寻找日期和年份
+        nums = re.findall(r"\d+", text)
+        if len(nums) >= 2:
+            # 简单假设较大的数字是年份 (>= 1900)，较小的是日期
+            year = None
+            day = None
+            for num in nums:
+                n = int(num)
+                if n >= 1900:
+                    year = num
+                elif 1 <= n <= 31:
+                    day = f"{n:02d}"
+            
+            if year and day:
+                return f"{year}-{found_month}-{day}"
+
     return None
+
 
 
 def _derive_yclose_from_price_and_change(curr: float, chg_pct: float) -> float:
@@ -47,7 +95,7 @@ def _is_plausible_fund_yclose(curr: float, yclose: float) -> bool:
     return 0.8 <= ratio <= 1.2
 
 
-def _looks_like_isin(code: str) -> bool:
+def is_isin_format(code: str) -> bool:
     return bool(re.fullmatch(r"[A-Z]{2}[A-Z0-9]{10}", str(code or "").strip().upper()))
 
 
@@ -89,7 +137,7 @@ def get_fidelity_history_points(clean_code: str, limit: int = 20) -> List[Dict[s
         items = payload.get("items") or []
         points: List[Dict[str, Any]] = []
         for item in reversed(items):
-            date = _normalize_nav_date((item or {}).get("date"))
+            date = normalize_nav_date((item or {}).get("date"))
             value = safe_float((item or {}).get("nav"))
             if not date or value <= 0:
                 continue
@@ -167,7 +215,7 @@ def get_fund_tiantian_latest_nav_date(fund_code: str) -> Optional[str]:
         import json
 
         data = json.loads(match.group(1))
-        return _normalize_nav_date(data.get("jzrq") or data.get("gztime"))
+        return normalize_nav_date(data.get("jzrq") or data.get("gztime"))
     except Exception as e:
         logger.warning(f"Tiantian fund latest nav date API error for {fund_code}: {e}")
         return None
@@ -229,7 +277,7 @@ def get_fund_eastmoney_f10_latest_nav_date(clean_code: str) -> Optional[str]:
         lsjz = data.get("Data", {}).get("LSJZList", [])
         if not lsjz:
             return None
-        return _normalize_nav_date(lsjz[0].get("FSRQ"))
+        return normalize_nav_date(lsjz[0].get("FSRQ"))
     except Exception as e:
         logger.warning(f"Eastmoney F10 latest nav date API error for {clean_code}: {e}")
         return None
@@ -351,7 +399,7 @@ def get_fund_eastmoney_mobile_latest_nav_date(clean_code: str) -> Optional[str]:
         if not datas:
             return None
         row = datas[0]
-        return _normalize_nav_date(
+        return normalize_nav_date(
             row.get("FSRQ") or row.get("JZRQ") or row.get("PDATE") or row.get("GZRQ")
         )
     except Exception as e:
@@ -448,7 +496,7 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
             re.S,
         )
         if not rows:
-            return get_fidelity_history_points(clean_code, limit) if _looks_like_isin(clean_code) else []
+            return get_fidelity_history_points(clean_code, limit) if is_isin_format(clean_code) else []
 
         points: List[Dict[str, Any]] = []
         for date, nav in rows:
@@ -461,7 +509,7 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
         return points[-max(2, int(limit)) :]
     except Exception as e:
         logger.warning(f"Overseas fund history parser error for {clean_code}: {e}")
-        return get_fidelity_history_points(clean_code, limit) if _looks_like_isin(clean_code) else []
+        return get_fidelity_history_points(clean_code, limit) if is_isin_format(clean_code) else []
 
 
 # ── 基金净值日期缓存 ──────────────────────────────────────────
@@ -507,7 +555,7 @@ def _fetch_fund_latest_nav_date_uncached(code_str: str) -> Optional[str]:
     if clean_code.startswith("968"):
         points = get_fund_overseas_history_points(clean_code, limit=1)
         if points:
-            return _normalize_nav_date(points[-1].get("date"))
+            return normalize_nav_date(points[-1].get("date"))
 
     if code_str.startswith("f_"):
         nav_date = get_fund_tiantian_latest_nav_date(code_str)

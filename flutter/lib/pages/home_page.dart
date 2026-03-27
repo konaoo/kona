@@ -559,7 +559,7 @@ class HomePageState extends State<HomePage> {
                       ),
                     ),
                     Text(
-                      '总资产趋势 >>',
+                      '资产总趋势 >',
                       style: _S.heroMetaText.copyWith(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.w600,
