@@ -834,13 +834,28 @@ def search_stocks(query: str) -> list:
         if code_upper not in seen_codes:
             # 立即尝试获取元数据（同步获取或在并行池中获取）
             meta = get_ft_metadata(code_upper)
+            
+            price = meta.get('price', 0.0)
+            chg_pct = meta.get('chg_pct', 0.0)
+            
+            # 兼容性兜底：如果元数据抓取失败（FT 经常被封 IP），
+            # 尝试通过标准价格获取链路（BlackRock -> FT -> MarketScreener）补全价格预览。
+            if price <= 0:
+                try:
+                    p, yc, amt, pct, d = get_stock_price(code_upper)
+                    if p > 0:
+                        price = p
+                        chg_pct = pct
+                except Exception as exc:
+                    logger.debug(f"Search fallback price fetch failed for {code_upper}: {exc}")
+
             results.append({
                 'code': code_upper,
                 'name': meta.get('name', f"ISIN: {code_upper}"),
                 'type_name': '基金',
                 'currency': meta.get('currency', 'USD'),
-                'price': meta.get('price', 0.0),
-                'chg_pct': meta.get('chg_pct', 0.0)
+                'price': price,
+                'chg_pct': chg_pct
             })
             seen_codes.add(code_upper)
 
