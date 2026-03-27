@@ -549,9 +549,10 @@ class ApiBaselineTests(unittest.TestCase):
                             now_utc=datetime(2026, 3, 21, 2, 0, tzinfo=timezone.utc),
                         )
 
-        self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-20')
-        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 14.0, places=2)
-        self.assertAlmostEqual(float(stats.get('day_pnl_base') or 0.0), 70.0, places=2)
+        # today 展示应认当前自然日，没有当日有效收益时不能把上一交易日顶上来
+        self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-21')
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
+        self.assertAlmostEqual(float(stats.get('day_pnl_base') or 0.0), 0.0, places=2)
         self.assertAlmostEqual(
             float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-20', {}).get('us') or 0.0),
             14.0,

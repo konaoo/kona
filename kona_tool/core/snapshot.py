@@ -770,14 +770,12 @@ def _calculate_portfolio_stats_direct(
     
     # 6. 汇总
     total_asset = total_cash + invest_mv + total_other - total_liability
-    display_effective_candidates = sorted(
-        date_str for date_str, market_map in display_day_pnl_breakdowns_by_date.items()
-        if abs(sum(float(v or 0.0) for v in (market_map or {}).values())) > 1e-9
-    )
-    active_effective_date = display_effective_candidates[-1] if display_effective_candidates else snapshot_date
-    realtime_day_pnl_by_market = _round_market_breakdown(display_day_pnl_breakdowns_by_date.get(active_effective_date))
+    # today 展示只能认“当前自然日”这一天。
+    # 盘前或今日尚无有效收益时直接显示 0，不允许再把上一有效收益日顶到今天。
+    active_effective_date = snapshot_date
+    realtime_day_pnl_by_market = _round_market_breakdown(display_day_pnl_breakdowns_by_date.get(snapshot_date))
     realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
-    realtime_day_pnl_base = round(float(display_day_pnl_bases_by_date.get(active_effective_date) or 0.0), 2)
+    realtime_day_pnl_base = round(float(display_day_pnl_bases_by_date.get(snapshot_date) or 0.0), 2)
     snapshot_day_pnl_by_market = _round_market_breakdown(day_pnl_breakdowns_by_date.get(snapshot_date))
     snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
     snapshot_day_pnl_base = round(float(day_pnl_bases_by_date.get(snapshot_date) or 0.0), 2)
@@ -859,12 +857,7 @@ def calculate_portfolio_stats(
     aggregated_breakdowns = _sum_market_breakdowns_by_date(ledger_stats_list)
     aggregated_bases = _sum_day_pnl_bases_by_date(ledger_stats_list)
     snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
-    effective_dates = [
-        str(stats.get("day_pnl_effective_date") or "").strip()
-        for stats in ledger_stats_list
-        if str(stats.get("day_pnl_effective_date") or "").strip()
-    ]
-    effective_date = max(effective_dates) if effective_dates else snapshot_date
+    effective_date = snapshot_date
 
     total_invest = round(sum(float(stats.get("total_invest") or 0.0) for stats in ledger_stats_list), 2)
     total_cost = round(sum(float(stats.get("total_cost") or 0.0) for stats in ledger_stats_list), 2)
@@ -873,9 +866,9 @@ def calculate_portfolio_stats(
     total_other = sum(_asset_amount_to_cny(a, get_forex_rates()) for a in db.get_other_assets(user_id=user_id))
     total_liability = sum(_asset_amount_to_cny(a, get_forex_rates(), use_abs=True) for a in db.get_liabilities(user_id=user_id))
     total_asset = round(total_cash + total_invest + total_other - total_liability, 2)
-    realtime_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(effective_date))
+    realtime_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(snapshot_date))
     realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
-    realtime_day_pnl_base = round(float(aggregated_bases.get(effective_date) or 0.0), 2)
+    realtime_day_pnl_base = round(float(aggregated_bases.get(snapshot_date) or 0.0), 2)
     snapshot_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(snapshot_date))
     snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
     snapshot_day_pnl_base = round(float(aggregated_bases.get(snapshot_date) or 0.0), 2)
