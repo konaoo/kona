@@ -495,6 +495,96 @@ def get_ft_metadata(isin: str) -> Dict[str, str]:
     return {}
 
 
+def _is_meaningful_isin_name(name: str, isin: str) -> bool:
+    text = str(name or "").strip()
+    if not text:
+        return False
+    upper = text.upper()
+    if upper.startswith("ISIN:"):
+        return False
+    if upper == str(isin or "").strip().upper():
+        return False
+    return True
+
+
+def get_boursorama_fund_metadata(isin: str) -> Dict[str, str]:
+    """
+    通过 Boursorama 搜索页按 ISIN 获取基金元数据（名称、币种）。
+    """
+    try:
+        query = str(isin or "").strip().upper()
+        if not query:
+            return {}
+
+        url = f"https://www.boursorama.com/recherche/?query={query}"
+        headers = dict(config.HEADERS)
+        headers.setdefault("Referer", "https://www.boursorama.com/")
+
+        r = monitored_http_get("boursorama_fund", url, headers=headers, timeout=config.API_TIMEOUT)
+        if r.status_code != 200:
+            return {}
+
+        final_url = str(getattr(r, "url", "") or "")
+        if "/bourse/opcvm/cours/" not in final_url:
+            return {}
+
+        text = str(r.text or "")
+        title_match = re.search(r"<title>(.*?)</title>", text, re.I | re.S)
+        if not title_match:
+            return {}
+
+        title = re.sub(r"\s+", " ", str(title_match.group(1) or "").strip())
+        parts = [p.strip() for p in title.split(" - ")]
+        if len(parts) < 3:
+            return {}
+
+        raw_name = parts[0]
+        currency = parts[1].upper() if re.fullmatch(r"[A-Za-z]{3}", parts[1]) else "USD"
+        isin_in_title = parts[2].upper()
+        if isin_in_title != query:
+            return {}
+
+        if not _is_meaningful_isin_name(raw_name, query):
+            return {}
+
+        return {
+            "name": translate_fund_name(raw_name),
+            "currency": currency,
+            "isin": query,
+        }
+    except Exception as e:
+        logger.debug(f"Boursorama metadata fetch error for {isin}: {e}")
+
+    return {}
+
+
+def get_isin_metadata(isin: str) -> Dict[str, Any]:
+    """
+    获取 ISIN 基金元数据（名称、币种、可选价格预览）。
+
+    优先 FT；若 FT 名称缺失/无效，则回退 Boursorama 元数据补全名称。
+    """
+    query = str(isin or "").strip().upper()
+    if not is_isin_format(query):
+        return {}
+
+    meta = dict(get_ft_metadata(query) or {})
+    name = str(meta.get("name") or "").strip()
+    if _is_meaningful_isin_name(name, query):
+        return meta
+
+    fallback = get_boursorama_fund_metadata(query)
+    if not fallback:
+        return meta
+
+    if not _is_meaningful_isin_name(name, query):
+        meta["name"] = fallback.get("name", name)
+    if not str(meta.get("currency") or "").strip():
+        meta["currency"] = fallback.get("currency", "USD")
+    meta["isin"] = query
+    return meta
+
+
 @retry_on_failure(max_retries=2, delay=0.5)
 def get_us_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """

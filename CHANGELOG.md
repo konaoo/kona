@@ -4564,3 +4564,24 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 ### 验收重点
 - 已卖光资产不应再出现在当前盈利榜、亏损榜
 - 仍持有的资产排行顺序不应被这次过滤改乱
+
+## 2026-03-27-05
+
+### 这版一句话
+
+修掉 ISIN 搜索时只显示 `LU...` 代码的问题，LU 基金在“添加资产”里现在会优先显示可读名称。
+
+### 主要变化
+- [kona_tool/core/stock.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/stock.py)：新增 `get_isin_metadata`，把 ISIN 元数据统一成 `FT -> Boursorama` 兜底；当 FT 名称无效（如 `ISIN: LU...`）时，自动补名称与币种。
+- [kona_tool/core/price.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/price.py)：ISIN 搜索入口从直接调用 `get_ft_metadata` 改为 `get_isin_metadata`，避免搜索结果名称退化成代码。
+- [kona_tool/core/localization.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/localization.py)：补了 `BlackRock Global Funds/BGF/Hedged` 等规则，并修正 `Fund/Funds`、`Inc/Acc/Dis` 的替换边界，减少中文化过程中的脏替换。
+- [kona_tool/tests/test_stock_source_order.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_stock_source_order.py) / [kona_tool/tests/test_search_timeout.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_search_timeout.py)：新增 ISIN 元数据兜底和搜索名称回归用例。
+
+### 影响范围
+- Web / App 的“添加资产”搜索（ISIN / LU 基金）
+- 后端 ISIN 元数据获取与中文化显示
+
+### 验收重点
+- 搜索 `LU0788108826`、`LU1116320901` 等 ISIN 时，名称不应再是 `ISIN: LU...`
+- 搜索结果应同时保留价格与币种
+- `python3 -m pytest -q kona_tool/tests/test_stock_source_order.py kona_tool/tests/test_search_timeout.py kona_tool/tests/test_localization_local.py` 通过

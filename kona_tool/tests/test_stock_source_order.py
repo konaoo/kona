@@ -11,7 +11,14 @@ if str(KONA_TOOL) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
-from core.stock import get_boursorama_fund_price, get_sina_stock_price, get_stock_price, get_us_stock_price
+from core.stock import (
+    get_boursorama_fund_metadata,
+    get_boursorama_fund_price,
+    get_isin_metadata,
+    get_sina_stock_price,
+    get_stock_price,
+    get_us_stock_price,
+)
 
 
 class _Resp:
@@ -189,6 +196,39 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertAlmostEqual(chg, 0.29, places=2)
         self.assertAlmostEqual(yclose, curr / 1.0029, places=4)
         self.assertAlmostEqual(amt, curr - yclose, places=4)
+
+    def test_boursorama_metadata_parser_reads_name_and_currency(self):
+        html = """
+        <html><head>
+          <title>BGF World Gold A2 HKD Hedged - HKD - LU0788108826 - Cours OPCVM - Boursorama</title>
+        </head><body></body></html>
+        """
+        with patch(
+            "core.stock.monitored_http_get",
+            return_value=_Resp(
+                text=html,
+                status_code=200,
+                url="https://www.boursorama.com/bourse/opcvm/cours/0P0000WCIJ/",
+            ),
+        ):
+            meta = get_boursorama_fund_metadata("LU0788108826")
+
+        self.assertEqual(meta.get("currency"), "HKD")
+        self.assertEqual(meta.get("isin"), "LU0788108826")
+        self.assertIn("世界黄金", str(meta.get("name") or ""))
+
+    def test_isin_metadata_fallbacks_to_boursorama_when_ft_name_missing(self):
+        with patch(
+            "core.stock.get_ft_metadata",
+            return_value={"name": "ISIN: LU0788108826", "currency": "USD"},
+        ), patch(
+            "core.stock.get_boursorama_fund_metadata",
+            return_value={"name": "贝莱德世界黄金A2港币对冲", "currency": "HKD", "isin": "LU0788108826"},
+        ):
+            meta = get_isin_metadata("LU0788108826")
+
+        self.assertEqual(meta.get("name"), "贝莱德世界黄金A2港币对冲")
+        self.assertEqual(meta.get("currency"), "USD")
 
     def test_ft_fund_prefers_blackrock_before_boursorama_and_ft(self):
         with patch(

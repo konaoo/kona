@@ -11,7 +11,7 @@ from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
 import config
-from .stock import get_stock_price, get_ft_metadata
+from .stock import get_stock_price, get_isin_metadata
 from .fund import get_fund_price, is_isin_format
 from .source_health import source_health
 from .utils import monitored_http_get
@@ -833,7 +833,7 @@ def search_stocks(query: str) -> list:
         code_upper = query.strip().upper()
         if code_upper not in seen_codes:
             # 立即尝试获取元数据（同步获取或在并行池中获取）
-            meta = get_ft_metadata(code_upper)
+            meta = get_isin_metadata(code_upper)
             
             price = meta.get('price', 0.0)
             chg_pct = meta.get('chg_pct', 0.0)

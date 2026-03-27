@@ -224,6 +224,38 @@ class SearchTimeoutTests(unittest.TestCase):
         self.assertEqual(target.get("change"), 17.0)
         self.assertEqual(target.get("change_pct"), 3.39)
 
+    def test_search_isin_uses_resolved_metadata_name(self):
+        def fake_search_sina(query, type_code):
+            return []
+
+        def fake_search_fund(query):
+            return []
+
+        with mock.patch.object(price_module, "_search_sina", side_effect=fake_search_sina), mock.patch.object(
+            price_module, "_search_fund", side_effect=fake_search_fund
+        ), mock.patch.object(
+            price_module,
+            "get_isin_metadata",
+            return_value={
+                "name": "贝莱德世界黄金A2港币对冲",
+                "currency": "HKD",
+                "price": 17.99,
+                "chg_pct": 5.33,
+            },
+        ), mock.patch.object(
+            price_module,
+            "batch_get_prices_fast",
+            return_value={"LU0788108826": (17.99, 17.08, 0.91, 5.33)},
+        ):
+            results = price_module.search_stocks("LU0788108826")
+
+        self.assertTrue(results)
+        target = results[0]
+        self.assertEqual(target.get("name"), "贝莱德世界黄金A2港币对冲")
+        self.assertFalse(str(target.get("name") or "").startswith("ISIN:"))
+        self.assertEqual(target.get("currency"), "HKD")
+        self.assertEqual(target.get("price"), 17.99)
+
 
 if __name__ == "__main__":
     unittest.main()

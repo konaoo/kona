@@ -8,9 +8,11 @@ from typing import Dict, List, Tuple
 # 常用基金品牌词典 (Fund House)
 # 优先级从高到低排列
 FUND_HOUSES: Dict[str, str] = {
+    r"BlackRock\s+Global\s+Funds": "贝莱德",
     r"Allianz": "安联",
     r"BlackRock": "贝莱德",
     r"Blackrock": "贝莱德",
+    r"\bBGF\b": "贝莱德",
     r"J\.?P\.?\s?Morgan": "摩根大通",
     r"JPM": "摩根",
     r"Fidelity": "富达",
@@ -69,14 +71,15 @@ SHARE_CLASSES: Dict[str, str] = {
     r"Class AT": "AT类",
     r"Class A": "A类",
     r"Class C": "C类",
-    r"Dis": "派息",
-    r"Acc": "累积",
-    r"Inc": "收益型",
+    r"\bDis\b": "派息",
+    r"\bAcc\b": "累积",
+    r"\bInc\b": "收益型",
     r"USD": "美元",
     r"HKD": "港币",
     r"CNH": "离岸人民币",
     r"EUR": "欧元",
     r"H2": "对冲",
+    r"Hedged": "对冲",
     r"Stable": "稳定",
     r"Monthly": "月收",
 }
@@ -109,7 +112,8 @@ def translate_fund_name(name: str) -> str:
         translated = re.sub(pattern, cn, translated, flags=re.IGNORECASE)
         
     # 4. 特殊清理 (如 "Fund" 后缀)
-    translated = re.sub(r"Fund", "基金", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bFunds\b", "基金", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bFund\b", "基金", translated, flags=re.IGNORECASE)
     
     # 移除多余空格和特殊符号
     translated = re.sub(r" - ", " ", translated)
