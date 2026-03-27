@@ -31,7 +31,7 @@ class TestFundQuoteMode(unittest.TestCase):
         }
         text = f"jsonpgz({json.dumps(payload)});"
         with patch("core.fund.monitored_http_get", return_value=_Resp(text)):
-            price, yclose, amt, chg = get_fund_tiantian_price("f_017811")
+            price, yclose, amt, chg, nav_date = get_fund_tiantian_price("f_017811")
 
         self.assertAlmostEqual(price, 1.8915, places=4)
         self.assertGreater(yclose, 0.0)

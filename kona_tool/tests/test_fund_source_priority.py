@@ -53,14 +53,14 @@ class TestFundSourcePriority(unittest.TestCase):
         )
 
     def test_otc_fund_prefers_f10_confirmed_nav(self):
-        with patch("core.fund.get_fund_eastmoney_f10", return_value=(1.5904, 1.5225, 0.0679, 4.46)) as f10_mock, patch(
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(1.5904, 1.5225, 0.0679, 4.46, None)) as f10_mock, patch(
             "core.fund.get_fund_tencent_jj",
-            return_value=(1.5225, 1.6000, -0.0775, -4.84),
+            return_value=(1.5225, 1.6000, -0.0775, -4.84, None),
         ) as tencent_mock, patch(
             "core.fund.get_fund_tiantian_price",
-            return_value=(1.2345, 1.2300, 0.0045, 0.36),
+            return_value=(1.2345, 1.2300, 0.0045, 0.36, None),
         ) as tiantian_mock:
-            price, yclose, amt, chg = get_fund_price("f_025209")
+            price, yclose, amt, chg, nav_date = get_fund_price("f_025209")
 
         self.assertAlmostEqual(price, 1.5904, places=4)
         self.assertAlmostEqual(yclose, 1.5225, places=4)
@@ -71,14 +71,14 @@ class TestFundSourcePriority(unittest.TestCase):
         tiantian_mock.assert_not_called()
 
     def test_otc_fund_fallbacks_to_tiantian_when_f10_missing(self):
-        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0, None)) as f10_mock, patch(
             "core.fund.get_fund_tencent_jj",
-            return_value=(0.0, 0.0, 0.0, 0.0),
+            return_value=(0.0, 0.0, 0.0, 0.0, None),
         ) as tencent_mock, patch(
             "core.fund.get_fund_tiantian_price",
-            return_value=(1.2345, 1.2300, 0.0045, 0.36),
+            return_value=(1.2345, 1.2300, 0.0045, 0.36, None),
         ) as tiantian_mock:
-            price, yclose, amt, chg = get_fund_price("f_110017")
+            price, yclose, amt, chg, nav_date = get_fund_price("f_110017")
 
         self.assertAlmostEqual(price, 1.2345, places=4)
         self.assertAlmostEqual(yclose, 1.2300, places=4)
@@ -89,14 +89,14 @@ class TestFundSourcePriority(unittest.TestCase):
         f10_mock.assert_called_once()
 
     def test_otc_fund_fallbacks_to_tencent_when_f10_and_tiantian_zero(self):
-        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0, None)) as f10_mock, patch(
             "core.fund.get_fund_tiantian_price",
-            return_value=(0.0, 0.0, 0.0, 0.0),
+            return_value=(0.0, 0.0, 0.0, 0.0, None),
         ) as tiantian_mock, patch(
             "core.fund.get_fund_tencent_jj",
-            return_value=(1.2345, 1.2300, 0.0045, 0.36),
+            return_value=(1.2345, 1.2300, 0.0045, 0.36, None),
         ) as tencent_mock:
-            price, yclose, amt, chg = get_fund_price("f_110017")
+            price, yclose, amt, chg, nav_date = get_fund_price("f_110017")
 
         self.assertAlmostEqual(price, 1.2345, places=4)
         self.assertAlmostEqual(yclose, 1.2300, places=4)
@@ -107,20 +107,20 @@ class TestFundSourcePriority(unittest.TestCase):
         tencent_mock.assert_called_once()
 
     def test_968_overseas_fund_prefers_overseas_html_before_tencent(self):
-        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0, None)) as f10_mock, patch(
             "core.fund.get_fund_tiantian_price",
-            return_value=(0.0, 0.0, 0.0, 0.0),
+            return_value=(0.0, 0.0, 0.0, 0.0, None),
         ) as tiantian_mock, patch(
             "core.fund.get_fund_eastmoney_mobile",
-            return_value=(0.0, 0.0, 0.0, 0.0),
+            return_value=(0.0, 0.0, 0.0, 0.0, None),
         ) as mobile_mock, patch(
             "core.fund.get_fund_overseas_html",
-            return_value=(10.46, 10.44, 0.02, 0.19),
+            return_value=(10.46, 10.44, 0.02, 0.19, None),
         ) as overseas_mock, patch(
             "core.fund.get_fund_tencent_jj",
-            return_value=(10.44, 10.49, -0.05, -0.48),
+            return_value=(10.44, 10.49, -0.05, -0.48, None),
         ) as tencent_mock:
-            price, yclose, amt, chg = get_fund_price("f_968163")
+            price, yclose, amt, chg, nav_date = get_fund_price("f_968163")
 
         self.assertAlmostEqual(price, 10.46, places=2)
         self.assertAlmostEqual(yclose, 10.44, places=2)
@@ -133,14 +133,14 @@ class TestFundSourcePriority(unittest.TestCase):
         tencent_mock.assert_not_called()
 
     def test_968_overseas_fund_prefers_overseas_html_before_tiantian(self):
-        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0)) as f10_mock, patch(
+        with patch("core.fund.get_fund_eastmoney_f10", return_value=(0.0, 0.0, 0.0, 0.0, None)) as f10_mock, patch(
             "core.fund.get_fund_overseas_html",
-            return_value=(17.96, 17.85, 0.11, 0.62),
+            return_value=(17.96, 17.85, 0.11, 0.62, None),
         ) as overseas_mock, patch(
             "core.fund.get_fund_tiantian_price",
-            return_value=(17.85, 17.85, 0.0, 0.0),
+            return_value=(17.85, 17.85, 0.0, 0.0, None),
         ) as tiantian_mock:
-            price, yclose, amt, chg = get_fund_price("f_968048")
+            price, yclose, amt, chg, nav_date = get_fund_price("f_968048")
 
         self.assertAlmostEqual(price, 17.96, places=2)
         self.assertAlmostEqual(yclose, 17.85, places=2)
@@ -162,7 +162,7 @@ class TestFundSourcePriority(unittest.TestCase):
             }
         }
         with patch("core.fund.monitored_http_get", return_value=_JsonResp(payload)):
-            price, yclose, amt, chg = get_fund_eastmoney_f10("025209")
+            price, yclose, amt, chg, nav_date = get_fund_eastmoney_f10("025209")
 
         self.assertAlmostEqual(price, 1.5904, places=4)
         self.assertAlmostEqual(yclose, 1.5225, places=4)
@@ -236,7 +236,7 @@ class TestFundSourcePriority(unittest.TestCase):
 
         text = 'v_jj025209="025209~永赢先锋半导体智选混合发起C~0.0000~0.0000~~1.5904~1.5904~4.4598~2026-03-04~";'
         with patch("core.fund.monitored_http_get", return_value=_TextResp(text)):
-            price, yclose, amt, chg = get_fund_tencent_jj("025209")
+            price, yclose, amt, chg, nav_date = get_fund_tencent_jj("025209")
 
         self.assertAlmostEqual(price, 1.5904, places=4)
         self.assertAlmostEqual(yclose, 1.5225, places=4)
@@ -248,7 +248,7 @@ class TestFundSourcePriority(unittest.TestCase):
 
         text = 'v_jj110017="110017~易方达增强回报债券A~0.0000~0.0000~~1.3970~2.6780~0.0000~2026-03-05~";'
         with patch("core.fund.monitored_http_get", return_value=_TextResp(text)):
-            price, yclose, amt, chg = get_fund_tencent_jj("110017")
+            price, yclose, amt, chg, nav_date = get_fund_tencent_jj("110017")
 
         self.assertAlmostEqual(price, 1.3970, places=4)
         self.assertAlmostEqual(yclose, 1.3970, places=4)

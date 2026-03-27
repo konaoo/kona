@@ -41,17 +41,16 @@ def infer_asset_type(code: str, name: str = '') -> str:
         return 'a'
     lower = c.lower()
 
-    # f_ / ISIN 格式一律归类为基金
-    if lower.startswith(('ft_', 'f_')) or is_isin_format(c) or is_isin_format(c.replace('gb_', '')):
-        return 'fund'
-
-    # f_ 仅允许纯数字场外基金代码；字母型 f_ 视为误标，按美股处理
+    # f_ / ft_ / ISIN 格式初步识别
     if lower.startswith('f_'):
         suffix = c[2:].strip()
-        if re.fullmatch(r'\d+', suffix):
+        if suffix.isdigit():
             return 'fund'
         if re.fullmatch(r'[A-Za-z][A-Za-z0-9.\-]*', suffix):
             return 'us'
+        return 'fund'
+
+    if lower.startswith('ft_') or is_isin_format(c) or is_isin_format(c.replace('gb_', '')):
         return 'fund'
 
     # A 股（含场内基金/ETF）前缀

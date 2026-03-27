@@ -73,7 +73,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_portfolio_read_service_records_db_and_assembly_stages(self):
         service = PortfolioReadService(
             db=self.db,
-            batch_get_prices_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09)},
+            batch_get_prices_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09, None)},
             rates_getter=lambda: {"USD": 7.2, "CNY": 1.0},
             convert_amount=lambda amount, from_curr, to_curr, rates: rates.get(from_curr, 1.0) if to_curr == "CNY" else amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -120,7 +120,7 @@ class ReadServicesTests(unittest.TestCase):
     def test_analysis_rank_service_records_rank_stages(self):
         service = AnalysisReadService(
             db=self.db,
-            price_batch_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09)},
+            price_batch_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09, None)},
         )
 
         with self.app.test_request_context("/api/analysis/rank?market=all"):
@@ -357,8 +357,8 @@ class ReadServicesTests(unittest.TestCase):
             # sh600000: yclose=9.5, pnl=100*(9.5-9)=50 CNY
             # 换算后 AAPL(70) > sh600000(50)，AAPL 应排第一
             price_batch_getter=lambda codes: {
-                "AAPL": (0, 11.0, 0, 0),
-                "sh600000": (0, 9.5, 0, 0),
+                "AAPL": (0, 11.0, 0, 0, None),
+                "sh600000": (0, 9.5, 0, 0, None),
             },
             rates_getter=lambda: {"USD": 7.0, "CNY": 1.0},
             convert_amount=lambda amount, from_curr, to_curr, rates: amount * rates.get(from_curr, 1.0)
@@ -385,8 +385,8 @@ class ReadServicesTests(unittest.TestCase):
         service = AnalysisReadService(
             db=db,
             price_batch_getter=lambda codes: {
-                "AAPL": (0, 11.0, 0, 0),
-                "sh600000": (0, 9.5, 0, 0),
+                "AAPL": (0, 11.0, 0, 0, None),
+                "sh600000": (0, 9.5, 0, 0, None),
             },
         )
 
@@ -477,7 +477,7 @@ class ReadServicesTests(unittest.TestCase):
         }
         service = PortfolioReadService(
             db=db,
-            batch_get_prices_getter=lambda codes: {"sh600001": (12.0, 11.0, 1.0, 0.1)},
+            batch_get_prices_getter=lambda codes: {"sh600001": (12.0, 11.0, 1.0, 0.1, None)},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -503,7 +503,7 @@ class ReadServicesTests(unittest.TestCase):
         ]
         service = PortfolioReadService(
             db=db,
-            batch_get_prices_getter=lambda codes: {"sh600002": (12.0, 11.0, 1.0, 0.1)},
+            batch_get_prices_getter=lambda codes: {"sh600002": (12.0, 11.0, 1.0, 0.1, None)},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -533,7 +533,7 @@ class ReadServicesTests(unittest.TestCase):
         ]
         service = PortfolioReadService(
             db=db,
-            batch_get_prices_getter=lambda codes: {"f_110017": (1.25, 1.24, 0.01, 0.8)},
+            batch_get_prices_getter=lambda codes: {"f_110017": (1.25, 1.24, 0.01, 0.8, None)},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: "2026-03-19" if code == "f_110017" else None,

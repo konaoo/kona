@@ -129,7 +129,7 @@ class TestStockSourceOrder(unittest.TestCase):
 
         with patch("core.stock.monitored_http_get", side_effect=fake_get), patch(
             "core.stock._get_nasdaq_quote",
-            side_effect=lambda symbol, assetclass: (262.0, 263.0, -1.0, -0.38) if assetclass == "stocks" else None,
+            side_effect=lambda symbol, assetclass: (262.0, 263.0, -1.0, -0.38, None) if assetclass == "stocks" else None,
         ) as nasdaq_mock:
             curr, yclose, *_ = get_us_stock_price("gb_aapl")
 
@@ -156,7 +156,7 @@ class TestStockSourceOrder(unittest.TestCase):
             return_value=None,
         ) as nasdaq_mock, patch(
             "core.stock._get_nasdaq_quote_relaxed",
-            side_effect=lambda symbol, assetclass: (493.57, 494.14, -0.57, -0.12)
+            side_effect=lambda symbol, assetclass: (493.57, 494.14, -0.57, -0.12, None)
             if symbol == "BRK.B" and assetclass == "stocks"
             else None,
         ) as relaxed_mock:
@@ -183,7 +183,7 @@ class TestStockSourceOrder(unittest.TestCase):
                 url="https://www.boursorama.com/bourse/opcvm/cours/0P00014FO3/",
             ),
         ):
-            curr, yclose, amt, chg = get_boursorama_fund_price("LU1116320737")
+            curr, yclose, amt, chg, nav_date = get_boursorama_fund_price("LU1116320737")
 
         self.assertAlmostEqual(curr, 9.38, places=2)
         self.assertAlmostEqual(chg, 0.29, places=2)
@@ -193,16 +193,16 @@ class TestStockSourceOrder(unittest.TestCase):
     def test_ft_fund_prefers_blackrock_before_boursorama_and_ft(self):
         with patch(
             "core.stock.get_blackrock_fund_price",
-            return_value=(9.41, 9.38, 0.03, 0.32),
+            return_value=(9.41, 9.38, 0.03, 0.32, None),
         ) as blackrock_mock, patch(
             "core.stock.get_marketscreener_fund_price",
             return_value=(0.0, 0.0, 0.0, 0.0),
         ) as marketscreener_mock, patch(
             "core.stock.get_boursorama_fund_price",
-            return_value=(9.38, 9.3529, 0.0271, 0.29),
+            return_value=(9.38, 9.3529, 0.0271, 0.29, None),
         ) as boursorama_mock, patch(
             "core.stock.get_ft_fund_price",
-            return_value=(0.0, 0.0, 0.0, 0.0),
+            return_value=(0.0, 0.0, 0.0, 0.0, None),
         ) as ft_mock:
             curr, yclose, *_ = get_stock_price("ft_LU1116320737")
 

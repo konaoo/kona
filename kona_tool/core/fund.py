@@ -149,7 +149,7 @@ def get_fidelity_history_points(clean_code: str, limit: int = 20) -> List[Dict[s
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float]:
+def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     从天天基金获取场外基金净值
 
@@ -192,12 +192,12 @@ def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float]
                 amt = current_price - yclose
                 chg = (amt / yclose * 100) if yclose > 0 else 0.0
 
-                return current_price, yclose, amt, chg
+                return current_price, yclose, amt, chg, None
 
     except Exception as e:
         logger.warning(f"Tiantian fund API error for {fund_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -222,7 +222,7 @@ def get_fund_tiantian_latest_nav_date(fund_code: str) -> Optional[str]:
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float]:
+def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     从东方财富F10接口获取基金净值（适合场外基金）
 
@@ -253,12 +253,12 @@ def get_fund_eastmoney_f10(clean_code: str) -> Tuple[float, float, float, float]
                     chg_api = safe_float(lsjz[0].get("JZZZL", ""))
                     chg = chg_api if chg_api != 0 else (amt / yclose * 100 if yclose > 0 else 0)
 
-                    return curr, yclose, amt, chg
+                    return curr, yclose, amt, chg, None
 
     except Exception as e:
         logger.warning(f"Eastmoney F10 API error for {clean_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -284,7 +284,7 @@ def get_fund_eastmoney_f10_latest_nav_date(clean_code: str) -> Optional[str]:
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float]:
+def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     从腾讯基金接口获取场外基金净值（备源）
 
@@ -315,7 +315,7 @@ def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float]:
         chg = safe_float(fields[7]) if len(fields) > 7 else 0.0
 
         if curr <= 0:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         yclose = 0.0
         if abs(chg) > 1e-9:
@@ -327,15 +327,16 @@ def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float]:
 
         amt = curr - yclose
         chg_pct = (amt / yclose * 100) if yclose > 0 else 0.0
-        return curr, yclose, amt, chg_pct
+        nav_date = str(fields[8] or "").strip() if len(fields) > 8 else None
+        return curr, yclose, amt, chg_pct, nav_date
     except Exception as e:
         logger.warning(f"Tencent fund API error for {clean_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_fund_eastmoney_mobile(clean_code: str) -> Tuple[float, float, float, float]:
+def get_fund_eastmoney_mobile(clean_code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     从东方财富手机端接口获取基金净值（适合互认基金）
 
@@ -369,12 +370,12 @@ def get_fund_eastmoney_mobile(clean_code: str) -> Tuple[float, float, float, flo
                     amt = curr - yclose
                     chg = (amt / yclose * 100) if yclose > 0 else 0
 
-                    return curr, yclose, amt, chg
+                    return curr, yclose, amt, chg, str(datas[0].get("FSRQ") or "").strip() or None
 
     except Exception as e:
         logger.warning(f"Eastmoney Mobile API error for {clean_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -408,7 +409,7 @@ def get_fund_eastmoney_mobile_latest_nav_date(clean_code: str) -> Optional[str]:
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
-def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float]:
+def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     从海外基金网页获取基金净值（适合968xxx等海外基金）
 
@@ -464,12 +465,24 @@ def get_fund_overseas_html(clean_code: str) -> Tuple[float, float, float, float]
                                 yclose = curr - amt
                                 break
 
-                        return curr, yclose, amt, chg
+                        nav_date = None
+                        date_patterns = [
+                            r"(\d{4}-\d{2}-\d{2})",
+                            r"(\d{4}年\d{1,2}月\d{1,2}日)",
+                            r"净值日期[^>]*>(\d{4}-\d{2}-\d{2})",
+                        ]
+                        for dp in date_patterns:
+                            dm = re.search(dp, html)
+                            if dm:
+                                nav_date = dm.group(1)
+                                break
+
+                        return curr, yclose, amt, chg, nav_date
 
     except Exception as e:
         logger.warning(f"Overseas HTML error for {clean_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -569,7 +582,7 @@ def _fetch_fund_latest_nav_date_uncached(code_str: str) -> Optional[str]:
     return None
 
 
-def get_fund_price(code: str) -> Tuple[float, float, float, float]:
+def get_fund_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     获取基金价格（多数据源自动切换）
 
@@ -588,31 +601,31 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float]:
     logger.debug(f"Fetching fund price for {code}")
 
     # 1. 确认净值优先：东财 F10
-    price, yclose, amt, chg = get_fund_eastmoney_f10(clean_code)
+    price, yclose, amt, chg, nav_date = get_fund_eastmoney_f10(clean_code)
     if price > 0:
-        return price, yclose, amt, chg
+        return price, yclose, amt, chg, nav_date
 
     # 2. 968xxx 海外基金优先走海外基金网页；天天/腾讯对这类基金经常滞后。
     if clean_code.startswith("968"):
-        price, yclose, amt, chg = get_fund_overseas_html(clean_code)
+        price, yclose, amt, chg, nav_date = get_fund_overseas_html(clean_code)
         if price > 0:
-            return price, yclose, amt, chg
+            return price, yclose, amt, chg, nav_date
 
     # 3. 兜底：天天基金（dwjz优先，gsz兜底）
     if code_str.startswith("f_"):
-        price, yclose, amt, chg = get_fund_tiantian_price(code_str)
+        price, yclose, amt, chg, nav_date = get_fund_tiantian_price(code_str)
         if price > 0:
-            return price, yclose, amt, chg
+            return price, yclose, amt, chg, nav_date
 
     # 4. 兜底：东财手机端（适合互认基金）
-    price, yclose, amt, chg = get_fund_eastmoney_mobile(clean_code)
+    price, yclose, amt, chg, nav_date = get_fund_eastmoney_mobile(clean_code)
     if price > 0:
-        return price, yclose, amt, chg
+        return price, yclose, amt, chg, nav_date
 
     # 5. 最后兜底：腾讯 jj，仅补现价，不再信任其累计净值字段为昨收。
-    price, yclose, amt, chg = get_fund_tencent_jj(clean_code)
+    price, yclose, amt, chg, nav_date = get_fund_tencent_jj(clean_code)
     if price > 0:
-        return price, yclose, amt, chg
+        return price, yclose, amt, chg, nav_date
 
     logger.warning(f"Failed to get price for fund {code}")
-    return 0.0, 0.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0, 0.0, None, None

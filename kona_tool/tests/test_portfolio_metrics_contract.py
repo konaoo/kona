@@ -109,7 +109,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
 
         with patch(
             "app.batch_get_prices",
-            return_value={"sh600000": (12.0, 11.0, 1.0, 0.1)},
+            return_value={"sh600000": (12.0, 11.0, 1.0, 0.1, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
@@ -149,7 +149,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
 
         with patch(
             "app.batch_get_prices",
-            return_value={"sh600000": (12.0, 11.0, 1.0, 0.1)},
+            return_value={"sh600000": (12.0, 11.0, 1.0, 0.1, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
@@ -190,7 +190,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
 
         with patch(
             "app.batch_get_prices",
-            return_value={"f_511360": (1.02, 1.0, 0.02, 2.0)},
+            return_value={"f_511360": (1.02, 1.0, 0.02, 2.0, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={
@@ -222,7 +222,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
 
         with patch(
             "app.batch_get_prices",
-            return_value={"sh600001": (12.0, 11.0, 1.0, 0.1)},
+            return_value={"sh600001": (12.0, 11.0, 1.0, 0.1, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
@@ -250,7 +250,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
 
         with patch(
             "app.batch_get_prices",
-            return_value={"sh600009": (12.0, 11.0, 1.0, 0.1)},
+            return_value={"sh600009": (12.0, 11.0, 1.0, 0.1, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={"a": {"open": False, "trading_day": False, "reason": "test"}},
@@ -286,7 +286,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
             return_value={"f_159687": {"qty": 1000.0, "amount": 1550.0}},
         ), patch(
             "app.batch_get_prices",
-            return_value={"f_159687": (1.602, 1.607, -0.005, -0.3111387678904725)},
+            return_value={"f_159687": (1.602, 1.607, -0.005, -0.3111387678904725, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={
@@ -321,7 +321,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
             return_value={"f_520870": {"qty": 500.0, "amount": 940.0}},
         ), patch(
             "app.batch_get_prices",
-            return_value={"f_520870": (1.166, 1.165, 0.001, 0.08583690987123517)},
+            return_value={"f_520870": (1.166, 1.165, 0.001, 0.08583690987123517, None)},
         ), patch(
             "app.get_market_statuses",
             return_value={

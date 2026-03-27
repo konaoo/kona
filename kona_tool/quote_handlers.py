@@ -14,8 +14,8 @@ from core.request_trace import trace_request_stage
 
 def create_quote_payload_handlers(
     *,
-    get_price_getter: Callable[..., tuple[Any, Any, Any, Any]],
-    batch_get_prices_fast_getter: Callable[..., Dict[str, tuple[Any, Any, Any, Any]]],
+    get_price_getter: Callable[..., tuple[Any, Any, Any, Any, Optional[str]]],
+    batch_get_prices_fast_getter: Callable[..., Dict[str, tuple[Any, Any, Any, Any, Optional[str]]]],
     rates_getter: Callable[[], Dict[str, Any]],
     search_getter: Callable[[str], Any],
     us_extended_quotes_getter: Callable[[list[str]], Dict[str, Any]],
@@ -27,12 +27,13 @@ def create_quote_payload_handlers(
             return {"error": "Missing code"}, 400
 
         with trace_request_stage("quote.price", code=code):
-            price, yclose, amt, chg = get_price_getter(code)
+            price, yclose, amt, chg, nav_date = get_price_getter(code)
         return {
             "price": price,
             "yclose": yclose,
             "amt": amt,
             "chg": chg,
+            "nav_date": nav_date,
         }
 
     def build_prices_batch_payload():
@@ -54,12 +55,13 @@ def create_quote_payload_handlers(
             results = batch_get_prices_fast_getter(codes, timeout_seconds=timeout_seconds)
 
         formatted_results = {}
-        for code, (price, yclose, amt, chg) in results.items():
+        for code, (price, yclose, amt, chg, nav_date) in results.items():
             formatted_results[code] = {
                 "price": price,
                 "yclose": yclose,
                 "amt": amt,
                 "chg": chg,
+                "nav_date": nav_date,
             }
 
         ft_retry_codes = []
@@ -75,7 +77,7 @@ def create_quote_payload_handlers(
         with trace_request_stage("quote.batch.ft_retry", code_count=len(ft_retry_codes)):
             for code in ft_retry_codes:
                 try:
-                    price, yclose, amt, chg = get_price_getter(code, use_cache=False)
+                    price, yclose, amt, chg, nav_date = get_price_getter(code, use_cache=False)
                 except Exception:
                     continue
                 if float(price or 0.0) <= 0:
@@ -85,6 +87,7 @@ def create_quote_payload_handlers(
                     "yclose": yclose,
                     "amt": amt,
                     "chg": chg,
+                    "nav_date": nav_date,
                 }
 
         us_codes = []

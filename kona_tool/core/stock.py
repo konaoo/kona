@@ -964,7 +964,7 @@ def get_tencent_stock_price(code: str) -> Tuple[float, float, float, float, Opti
             curr = safe_float(data[3])
             yclose = safe_float(data[4])
             if curr > 0:
-                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None if yclose > 0 else 0.0, None
+                return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
     except Exception as e:
         logger.debug(f"Tencent API error for {code}: {e}")
     return 0.0, 0.0, 0.0, 0.0, None
@@ -1023,7 +1023,7 @@ def get_eastmoney_stock_price(code: str) -> Tuple[float, float, float, float, Op
                     if curr <= 0:
                         curr = yclose
                     if curr > 0:
-                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None if yclose > 0 else 0.0, None
+                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
         except Exception as e:
             logger.debug(f"Eastmoney API error for {code}: {e}")
     return 0.0, 0.0, 0.0, 0.0, None
@@ -1046,14 +1046,15 @@ def get_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str
     if is_isin_format(code) or str(code or "").startswith(('ft_', 'gb_')):
         isin = str(code or "").replace('ft_', '').replace('gb_', '').strip().upper()
         if is_isin_format(isin):
-            # A) 优先 Financial Times
+            # A) 优先 BlackRock (官方页) - 既然用户要求高保真，官方源权重应最高
+            curr, yclose, amt, chg, price_date = get_blackrock_fund_price(isin)
+            if curr > 0:
+                return curr, yclose, amt, chg, price_date
+            
+            # B) 次选 Financial Times
             curr, yclose, amt, chg, price_date = get_ft_fund_price(isin)
             if curr > 0:
                 return curr, yclose, amt, chg, price_date
-        # B) 次选 BlackRock (官方页)
-        curr, yclose, amt, chg, price_date = get_blackrock_fund_price(isin)
-        if curr > 0:
-            return curr, yclose, amt, chg, price_date
         # C) 其他备选
         curr, yclose, amt, chg, price_date = get_marketscreener_fund_price(isin)
         if curr > 0:

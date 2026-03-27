@@ -74,7 +74,7 @@ class TestMarketCodeNormalization(unittest.TestCase):
             raise AssertionError(f"unexpected source={source}, url={url}")
 
         with patch("core.stock.monitored_http_get", side_effect=_fake_http_get):
-            price, yclose, amt, chg = get_sina_stock_price("00700")
+            price, yclose, amt, chg, nav_date = get_sina_stock_price("00700")
 
         self.assertEqual(price, 533.0)
         self.assertEqual(yclose, 532.0)
@@ -92,7 +92,7 @@ class TestMarketCodeNormalization(unittest.TestCase):
             raise AssertionError(f"unexpected source={source}, url={url}")
 
         with patch("core.stock.monitored_http_get", side_effect=_fake_http_get):
-            price, yclose, amt, chg = get_sina_stock_price("00700.HK")
+            price, yclose, amt, chg, nav_date = get_sina_stock_price("00700.HK")
 
         self.assertEqual(price, 533.0)
         self.assertEqual(yclose, 532.0)
