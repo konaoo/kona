@@ -1027,7 +1027,7 @@ class _NewsPageState extends State<NewsPage> {
                 child: Text(
                   '市场快讯',
                   style: TextStyle(
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.textPrimary,
                     height: 1.15,
@@ -1098,57 +1098,42 @@ class _NewsPageState extends State<NewsPage> {
   }
 
   Widget _buildCategoryTabs() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+      ),
       child: Row(
         children: _categories.entries.map((entry) {
           final isActive = _selectedCategory == entry.key;
-          return Padding(
-            padding: const EdgeInsets.only(right: 7),
+          return Expanded(
             child: GestureDetector(
               onTap: () {
                 if (_selectedCategory == entry.key) return;
                 setState(() => _selectedCategory = entry.key);
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                height: 30,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
+                duration: const Duration(milliseconds: 180),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.only(top: 2, bottom: 10),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: isActive
-                        ? AppTheme.accent.withValues(alpha: 0.48)
-                        : Colors.transparent,
-                  ),
-                  gradient: isActive
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF5B8DEF), Color(0xFF4A7BE0)],
-                        )
-                      : null,
-                  color: isActive ? null : Colors.transparent,
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF4A7BE0,
-                            ).withValues(alpha: 0.24),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    entry.value,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isActive ? Colors.white : AppTheme.textSecondary,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isActive ? AppTheme.accent : Colors.transparent,
+                      width: 2,
                     ),
+                  ),
+                ),
+                child: Text(
+                  entry.value,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                    color: isActive ? AppTheme.textPrimary : AppTheme.textMuted,
                   ),
                 ),
               ),

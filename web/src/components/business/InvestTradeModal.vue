@@ -764,25 +764,27 @@ onUnmounted(() => {
               </div>
 
               <div v-if="selectedStock && !isEditMode" class="selected-pill show">
-                  <span 
-                    class="sp-tag di-tag" 
-                    :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
-                  >
-                    {{ searchMarketLabel(selectedStock) }}
-                  </span>
-                  <span class="sp-code">{{ formatDisplayCode(selectedStock.code) }}</span>
-                  <span class="sp-sep"></span>
-                  <span class="sp-name" :title="selectedStock.name">
-                    {{ selectedStock.name.length > 20 ? selectedStock.name.slice(0, 19) + '...' : selectedStock.name }}
-                  </span>
-                  <div class="sp-quote">
-                    <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
-                    <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
-                      {{ formatSignedMove(searchChangeAmount(selectedStock), searchDigits(selectedStock)) }}
-                      <template v-if="searchChangePct(selectedStock) !== null">
-                        &nbsp;{{ formatSignedMove(searchChangePct(selectedStock), 2) }}%
-                      </template>
-                    </span>
+                  <div class="sp-main">
+                    <div class="sp-row">
+                      <span class="sp-name" :title="selectedStock.name">
+                        {{ selectedStock.name.length > 20 ? selectedStock.name.slice(0, 19) + '...' : selectedStock.name }}
+                      </span>
+                      <span class="sp-price">{{ formatQuoteValue(searchPrice(selectedStock), searchDigits(selectedStock)) }}</span>
+                    </div>
+                    <div class="sp-row sp-row-sub">
+                      <div class="sp-meta-line">
+                        <span 
+                          class="sp-tag di-tag" 
+                          :style="{ color: getMarketMeta(inferSearchMarket(selectedStock)).color, background: getMarketMeta(inferSearchMarket(selectedStock)).bg }"
+                        >
+                          {{ searchMarketLabel(selectedStock) }}
+                        </span>
+                        <span class="sp-meta-code">{{ formatDisplayCode(selectedStock.code) }}</span>
+                      </div>
+                      <span class="sp-move" :class="moveTone(searchChangePct(selectedStock))">
+                        {{ searchChangePct(selectedStock) === null ? '--' : `${formatSignedMove(searchChangePct(selectedStock), 2)}%` }}
+                      </span>
+                    </div>
                   </div>
                 <button v-if="!isEditMode" class="sp-x" @click="clearSelection">
                   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
@@ -1081,11 +1083,13 @@ onUnmounted(() => {
 .sp-panel-currency { flex-shrink: 0; font-size: 13px; font-weight: 700; }
 .sp-panel-amount { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(11px, 1.35vw, 13px); font-weight: 700; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-.sp-code { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--gold, #d4af64); flex-shrink: 0; }
-.sp-sep { width: 1px; height: 10px; background: rgba(212,175,100,0.25); flex-shrink: 0; }
-.sp-name { font-size: 11px; color: var(--sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sp-quote { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 1 96px; min-width: 0; max-width: 96px; overflow: hidden; }
-.sp-price { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); flex-shrink: 0; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-main { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.sp-row.sp-row-sub { gap: 8px; }
+.sp-name { font-size: 13px; font-weight: 600; color: var(--text); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-meta-line { display: flex; align-items: center; gap: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.sp-meta-code { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--sub); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-price { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); flex-shrink: 0; text-align: right; white-space: nowrap; }
 .sp-move { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-move.up { color: var(--red, #f05a55); }
 .sp-move.down { color: var(--green, #3ecf82); }

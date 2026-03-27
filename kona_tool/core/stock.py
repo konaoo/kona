@@ -665,14 +665,14 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float, Optional[
     except Exception as e:
         _log_warn_throttled("nasdaq_quote", f"Nasdaq quote API error: {e}")
 
-    # 对 BRK.B 这类带点号/横杠的美股，再给一次更宽松的纳斯达克兜底。
-    if any(('.' in symbol or '-' in symbol) for symbol in symbols):
-        for symbol in symbols:
-            for assetclass in ["stocks", "etf"]:
-                quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
-                if quote:
-                    curr, yclose, amt, pct, quote_date = quote
-                    return curr, yclose, amt, pct, quote_date
+    # 统一再给一次更宽松的 Nasdaq 兜底。
+    # 线上经常出现 nasdaq_quote 熔断/超时（1.2s），但宽松模式仍可拿到 BOXX 等美股 ETF。
+    for symbol in symbols:
+        for assetclass in ["stocks", "etf"]:
+            quote = _get_nasdaq_quote_relaxed(symbol, assetclass)
+            if quote:
+                curr, yclose, amt, pct, quote_date = quote
+                return curr, yclose, amt, pct, quote_date
 
     return 0.0, 0.0, 0.0, 0.0, None
 
@@ -1134,9 +1134,10 @@ def get_stock_price(code: str) -> Tuple[float, float, float, float, Optional[str
     if code == 'rt_hkHSTECH' or 'HSTECH' in code:
         return get_hstech_price()
     
-    # 2. 自动识别 ISIN 格式 (如 LU..., IE...)
-    if is_isin_format(code) or str(code or "").startswith(('ft_', 'gb_')):
-        isin = str(code or "").replace('ft_', '').replace('gb_', '').strip().upper()
+    # 2. 自动识别 ISIN 格式 (如 LU..., IE...) / ft_ 前缀
+    # 注意：gb_ 是美股代码前缀，不能进入基金(ISIN)链路，否则会误走基金源导致取价失败。
+    if is_isin_format(code) or str(code or "").startswith('ft_'):
+        isin = str(code or "").replace('ft_', '').strip().upper()
         if is_isin_format(isin):
             # A) 优先 BlackRock (官方页) - 既然用户要求高保真，官方源权重应最高
             curr, yclose, amt, chg, price_date = get_blackrock_fund_price(isin)

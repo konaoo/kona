@@ -49,7 +49,7 @@ class _S {
     fontWeight: FontWeight.w600,
   );
   static final calPnl = GoogleFonts.jetBrainsMono(
-    fontSize: 10.5,
+    fontSize: 12,
     fontWeight: FontWeight.w700,
   );
   static final calSumLabel = GoogleFonts.dmSans(
@@ -915,9 +915,9 @@ class _AnalysisPageState extends State<AnalysisPage>
             children: [
               const SizedBox(height: 12),
               _buildOverviewCard(appState),
-              _buildSectionDivider(),
+              _buildSectionDivider(vertical: 6),
               _buildCalendarSection(appState),
-              _buildSectionDivider(),
+              _buildSectionDivider(vertical: 8),
               _buildCalendarSummary(appState),
               _buildSectionDivider(),
               _buildRankSection(appState),
@@ -1227,8 +1227,8 @@ class _AnalysisPageState extends State<AnalysisPage>
         key: const Key('calendar-period-button'),
         onTap: _calendarPeriodPickerEnabled ? _toggleDatePicker : null,
         child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppTheme.isLight
@@ -1243,17 +1243,17 @@ class _AnalysisPageState extends State<AnalysisPage>
               Text(
                 _calendarPeriodButtonText(),
                 style: _S.label.copyWith(
-                  fontSize: 13,
+                  fontSize: 12,
                   color: _calendarPeriodPickerEnabled
                       ? AppTheme.textPrimary
                       : AppTheme.textMuted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
-                size: 16,
+                size: 14,
                 color: _calendarPeriodPickerEnabled
                     ? AppTheme.textSecondary
                     : AppTheme.textMuted,
@@ -1480,7 +1480,7 @@ class _AnalysisPageState extends State<AnalysisPage>
               ),
               const SizedBox(height: 1),
               SizedBox(
-                height: 12,
+                height: 13,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
@@ -1517,7 +1517,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
@@ -1552,14 +1552,14 @@ class _AnalysisPageState extends State<AnalysisPage>
                 overflow: TextOverflow.ellipsis,
                 style: _S.calSumVal.copyWith(
                   color: pnlColor,
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ),
             const SizedBox(width: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: AppTheme.isLight
                     ? const Color(0x0F111F3A)
@@ -2060,9 +2060,9 @@ class _AnalysisPageState extends State<AnalysisPage>
     );
   }
 
-  Widget _buildSectionDivider() {
+  Widget _buildSectionDivider({double vertical = 16}) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 16),
+      margin: EdgeInsets.symmetric(vertical: vertical),
       height: 1,
       decoration: BoxDecoration(
         gradient: LinearGradient(

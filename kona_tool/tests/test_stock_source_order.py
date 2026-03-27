@@ -175,6 +175,52 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertEqual(nasdaq_mock.call_count, 0)
         self.assertGreaterEqual(relaxed_mock.call_count, 1)
 
+    def test_us_stock_plain_symbol_fallbacks_to_relaxed_nasdaq_after_regular_fail(self):
+        calls = []
+
+        def fake_get(source, *args, **kwargs):
+            calls.append(source)
+            if source == "sina_us_stock":
+                return _Resp(text='var hq_str_gb_boxx="";', status_code=200)
+            if source == "eastmoney_us_stock":
+                return _Resp(status_code=200, json_data={"data": None})
+            raise AssertionError(f"unexpected source={source}")
+
+        with patch("core.stock.monitored_http_get", side_effect=fake_get), patch(
+            "core.stock._get_nasdaq_quote",
+            return_value=None,
+        ) as nasdaq_mock, patch(
+            "core.stock._get_nasdaq_quote_relaxed",
+            side_effect=lambda symbol, assetclass: (116.09, 116.10, -0.01, -0.01, None)
+            if symbol == "BOXX" and assetclass == "etf"
+            else None,
+        ) as relaxed_mock:
+            curr, yclose, *_ = get_us_stock_price("gb_boxx")
+
+        self.assertAlmostEqual(curr, 116.09, places=2)
+        self.assertAlmostEqual(yclose, 116.10, places=2)
+        self.assertIn("sina_us_stock", calls)
+        self.assertGreaterEqual(calls.count("eastmoney_us_stock"), 1)
+        self.assertGreaterEqual(nasdaq_mock.call_count, 1)
+        self.assertGreaterEqual(relaxed_mock.call_count, 1)
+
+    def test_get_stock_price_gb_prefix_must_route_to_us_not_isin_fund_chain(self):
+        with patch(
+            "core.stock.get_us_stock_price",
+            return_value=(252.0, 250.0, 2.0, 0.8, None),
+        ) as us_mock, patch(
+            "core.stock.get_marketscreener_fund_price",
+            side_effect=AssertionError("gb_ code must not hit fund source"),
+        ), patch(
+            "core.stock.get_boursorama_fund_price",
+            side_effect=AssertionError("gb_ code must not hit fund source"),
+        ):
+            curr, yclose, *_ = get_stock_price("gb_aapl")
+
+        self.assertAlmostEqual(curr, 252.0, places=2)
+        self.assertAlmostEqual(yclose, 250.0, places=2)
+        us_mock.assert_called_once_with("gb_aapl")
+
     def test_boursorama_fund_parser_reads_price_and_variation(self):
         html = """
         <html><body>

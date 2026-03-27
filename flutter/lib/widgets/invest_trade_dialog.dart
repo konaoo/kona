@@ -2023,10 +2023,18 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final price = _searchResultPrice(item, appState);
     final changeAmt = _searchResultChangeAmount(item, appState);
     final changePct = _searchResultChangePct(item, appState);
-    final quoteColor = (changePct ?? changeAmt ?? 0) >= 0
-        ? _tokens.green
-        : _tokens.red;
+    final hasMove = changePct != null || changeAmt != null;
+    final quoteColor = !hasMove
+        ? _tokens.textMuted
+        : ((changePct ?? changeAmt ?? 0) >= 0 ? _tokens.green : _tokens.red);
     final symbol = _searchResultCurrencySymbol(item);
+    final priceText = price == null
+        ? '--'
+        : '$symbol${_formatInputNumber(price, decimals: isFund ? 4 : 2)}';
+    final pctText = changePct == null
+        ? '--'
+        : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%';
+    final codeText = code == '--' ? '' : code;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -2039,62 +2047,59 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       ),
       child: Row(
         children: [
-          _buildMarketTag(typeName),
-          const SizedBox(width: 8),
-          Text(code, style: _mono(size: 12, color: _tokens.text)),
-          const SizedBox(width: 6),
-          Container(width: 1, height: 12, color: _tokens.border),
-          const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _dm(
-                size: 12,
-                weight: FontWeight.w500,
-                color: _tokens.text,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _dm(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: _tokens.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(priceText, style: _mono(size: 12, color: _tokens.text)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _buildMarketTag(typeName),
+                          Expanded(
+                            child: Text(
+                              codeText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _mono(size: 11, color: _tokens.textMuted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      pctText,
+                      style: _mono(
+                        size: 10,
+                        color: quoteColor,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                price == null
-                    ? '--'
-                    : '$symbol${_formatInputNumber(price, decimals: isFund ? 4 : 2)}',
-                style: _mono(size: 12, color: _tokens.text),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    changeAmt == null
-                        ? '--'
-                        : '${changeAmt >= 0 ? '+' : ''}${_formatInputNumber(changeAmt, decimals: isFund ? 4 : 2)}',
-                    style: _mono(
-                      size: 10,
-                      color: quoteColor,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    changePct == null
-                        ? '--'
-                        : '${changePct >= 0 ? '+' : ''}${_formatInputNumber(changePct, decimals: 2)}%',
-                    style: _dm(
-                      size: 10,
-                      weight: FontWeight.w600,
-                      color: quoteColor,
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ),
           const SizedBox(width: 8),
           InkWell(

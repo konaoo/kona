@@ -212,9 +212,8 @@ class InvestPageState extends State<InvestPage> {
 
   double _bottomContentPadding(BuildContext context) {
     final safeBottom = MediaQuery.of(context).padding.bottom;
-    const navBarHeight = 60.0;
-    const fabRegion = 76.0;
-    return navBarHeight + safeBottom + fabRegion;
+    const fabRegion = 10.0;
+    return safeBottom + fabRegion;
   }
 
   // ─── Format helpers ──────────────────────────────
