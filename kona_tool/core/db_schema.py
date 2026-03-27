@@ -301,6 +301,26 @@ class DatabaseSchemaManager:
         )
         cursor.execute(
             '''
+            CREATE TABLE IF NOT EXISTS daily_snapshot_asset_breakdowns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                user_id TEXT NOT NULL DEFAULT '',
+                code TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                market TEXT NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                day_pnl REAL NOT NULL,
+                day_base REAL NOT NULL DEFAULT 0.0,
+                snapshot_date TEXT,
+                source TEXT NOT NULL DEFAULT 'exact',
+                confidence REAL NOT NULL DEFAULT 1.0,
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                UNIQUE(date, user_id, code)
+            )
+        '''
+        )
+        cursor.execute(
+            '''
             CREATE TABLE IF NOT EXISTS asset_adjustments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 asset_type TEXT NOT NULL,
@@ -414,6 +434,28 @@ class DatabaseSchemaManager:
             )
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ledger_daily_snapshot_asset_breakdowns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                ledger_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                market TEXT NOT NULL,
+                curr TEXT NOT NULL DEFAULT 'CNY',
+                day_pnl REAL NOT NULL,
+                day_base REAL NOT NULL DEFAULT 0.0,
+                snapshot_date TEXT,
+                source TEXT NOT NULL DEFAULT 'exact',
+                confidence REAL NOT NULL DEFAULT 1.0,
+                updated_at TIMESTAMP DEFAULT (datetime('now','localtime')),
+                UNIQUE(user_id, ledger_id, date, code),
+                FOREIGN KEY (ledger_id) REFERENCES investment_ledgers(id)
+            )
+            """
+        )
 
     def _ensure_legacy_columns(self, cursor: Any) -> None:
         def _ensure_column(table: str, column: str, col_def: str) -> None:
@@ -456,6 +498,19 @@ class DatabaseSchemaManager:
             "updated_at",
             "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
         )
+        _ensure_column("daily_snapshot_asset_breakdowns", "user_id", "user_id TEXT DEFAULT ''")
+        _ensure_column("daily_snapshot_asset_breakdowns", "name", "name TEXT NOT NULL DEFAULT ''")
+        _ensure_column("daily_snapshot_asset_breakdowns", "market", "market TEXT NOT NULL DEFAULT 'a'")
+        _ensure_column("daily_snapshot_asset_breakdowns", "curr", "curr TEXT NOT NULL DEFAULT 'CNY'")
+        _ensure_column("daily_snapshot_asset_breakdowns", "day_base", "day_base REAL NOT NULL DEFAULT 0.0")
+        _ensure_column("daily_snapshot_asset_breakdowns", "snapshot_date", "snapshot_date TEXT")
+        _ensure_column("daily_snapshot_asset_breakdowns", "source", "source TEXT NOT NULL DEFAULT 'exact'")
+        _ensure_column("daily_snapshot_asset_breakdowns", "confidence", "confidence REAL NOT NULL DEFAULT 1.0")
+        _ensure_column(
+            "daily_snapshot_asset_breakdowns",
+            "updated_at",
+            "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
+        )
         _ensure_column("ledger_daily_snapshots", "snapshot_date", "snapshot_date TEXT")
         _ensure_column("ledger_daily_snapshots", "source", "source TEXT NOT NULL DEFAULT 'recalculated'")
         _ensure_column(
@@ -480,6 +535,18 @@ class DatabaseSchemaManager:
         )
         _ensure_column(
             "ledger_daily_snapshot_market_breakdowns",
+            "updated_at",
+            "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
+        )
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "name", "name TEXT NOT NULL DEFAULT ''")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "market", "market TEXT NOT NULL DEFAULT 'a'")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "curr", "curr TEXT NOT NULL DEFAULT 'CNY'")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "day_base", "day_base REAL NOT NULL DEFAULT 0.0")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "snapshot_date", "snapshot_date TEXT")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "source", "source TEXT NOT NULL DEFAULT 'exact'")
+        _ensure_column("ledger_daily_snapshot_asset_breakdowns", "confidence", "confidence REAL NOT NULL DEFAULT 1.0")
+        _ensure_column(
+            "ledger_daily_snapshot_asset_breakdowns",
             "updated_at",
             "updated_at TIMESTAMP DEFAULT (datetime('now','localtime'))",
         )
@@ -553,6 +620,12 @@ class DatabaseSchemaManager:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_market_breakdowns_date ON daily_snapshot_market_breakdowns(date)")
         cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_asset_breakdowns_user_date ON daily_snapshot_asset_breakdowns(user_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_asset_breakdowns_code_date ON daily_snapshot_asset_breakdowns(code, date)"
+        )
+        cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_market_breakdowns_snapshot_date ON daily_snapshot_market_breakdowns(snapshot_date)"
         )
         cursor.execute(
@@ -594,6 +667,14 @@ class DatabaseSchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_ledger_market_breakdowns_user_ledger_date"
             " ON ledger_daily_snapshot_market_breakdowns(user_id, ledger_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_asset_breakdowns_user_ledger_date"
+            " ON ledger_daily_snapshot_asset_breakdowns(user_id, ledger_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ledger_asset_breakdowns_code_date"
+            " ON ledger_daily_snapshot_asset_breakdowns(code, date)"
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_ledger_market_breakdowns_snapshot_date"

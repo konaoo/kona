@@ -17,6 +17,7 @@ class _FakeDb:
     def __init__(self):
         self.saved_stats = []
         self.saved_breakdowns = []
+        self.saved_asset_breakdowns = []
         self.partial_breakdowns = []
         self.synced_dates = []
         self.synced_ledger_dates = []
@@ -30,6 +31,10 @@ class _FakeDb:
 
     def save_daily_snapshot_market_breakdown(self, **kwargs):
         self.saved_breakdowns.append(kwargs)
+        return True
+
+    def save_daily_snapshot_asset_breakdowns(self, **kwargs):
+        self.saved_asset_breakdowns.append(kwargs)
         return True
 
     def save_daily_snapshot_market_breakdown_partial(self, **kwargs):

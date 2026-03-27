@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Iterable, List
 
 from .day_pnl_attribution import resolve_fund_nav_effective_date
 from .fund import get_fund_latest_nav_date
+from .market_calendar import get_previous_trading_day
 from .market_calendar import get_market_statuses, market_from_asset
 from .price import is_exchange_fund_code
 from .snapshot import _market_trading_day_now, _resolve_snapshot_exchange_effective_date
@@ -16,7 +17,11 @@ from .trend import _fetch_fund_history_points, _fetch_stock_history_points
 
 logger = logging.getLogger(__name__)
 
+_HISTORY_YCLOSE_MAX_GAP_DAYS = 20
+
 DEFAULT_MARKETS = ("a", "hk", "us", "fund")
+UNALLOCATED_DETAIL_CODE = "__unallocated__"
+UNALLOCATED_DETAIL_NAME = "未归因收益"
 
 
 def _round_amount(value: Any) -> float:
@@ -43,6 +48,21 @@ def _parse_iso_date(value: str) -> date | None:
         return None
 
 
+def _history_gap_is_reasonable(
+    *,
+    market: str,
+    current_date: date,
+    previous_date: date,
+    max_gap_days: int = _HISTORY_YCLOSE_MAX_GAP_DAYS,
+) -> bool:
+    if previous_date >= current_date:
+        return False
+    previous_trading_day = get_previous_trading_day(market, current_date)
+    if previous_trading_day is not None and previous_date == previous_trading_day:
+        return True
+    return (current_date - previous_date).days <= max_gap_days
+
+
 def _format_scope_title(scope: str, target: date) -> str:
     if scope == "day":
         return f"{target.year}年{target.month:02d}月{target.day:02d}日明细"
@@ -55,6 +75,7 @@ def _sort_detail_items(items: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(
         items,
         key=lambda item: (
+            1 if str(item.get("code") or "") == UNALLOCATED_DETAIL_CODE else 0,
             -abs(float(item.get("pnl") or 0.0)),
             str(item.get("name") or item.get("code") or ""),
             str(item.get("code") or ""),
@@ -149,19 +170,39 @@ class AnalysisAssetBreakdownService:
         )
         if not snapshot_rows:
             return {"total_pnl": 0.0, "total_rate": 0.0, "items": []}
-
-        context = self._build_period_context(
-            start_date,
-            end_date,
+        persisted_by_date = self.db.get_daily_snapshot_asset_breakdown_rows_by_period(
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
             user_id=user_id,
             ledger_id=ledger_id,
         )
+
+        needs_history_fallback = any(not persisted_by_date.get(str(row.get("date") or "")) for row in snapshot_rows)
+        context = (
+            self._build_period_context(
+                start_date,
+                end_date,
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
+            if needs_history_fallback
+            else None
+        )
         aggregated: Dict[str, Dict[str, Any]] = {}
         for row in snapshot_rows:
-            one_day = self._build_historical_day_items(
-                _parse_iso_date(str(row.get("date") or "")),
-                context=context,
+            row_date = str(row.get("date") or "")
+            persisted_items = self._build_persisted_day_items(
+                persisted_by_date.get(row_date) or [],
             )
+            if persisted_items:
+                one_day = persisted_items
+            elif context is not None:
+                one_day = self._build_historical_day_items(
+                    _parse_iso_date(row_date),
+                    context=context,
+                )
+            else:
+                one_day = []
             for item in one_day:
                 bucket = aggregated.setdefault(
                     str(item["code"]),
@@ -208,6 +249,22 @@ class AnalysisAssetBreakdownService:
     ) -> Dict[str, Any] | None:
         if self.realtime_today_service is None:
             return None
+
+        target_key = target.strftime("%Y-%m-%d")
+        realtime_asset_breakdowns = realtime_payload.get("asset_day_breakdowns_by_date")
+        if isinstance(realtime_asset_breakdowns, dict) and target_key in realtime_asset_breakdowns:
+            totals = realtime_payload.get("totals") or {}
+            items = self._build_realtime_items_from_payload(
+                realtime_asset_breakdowns.get(target_key) or [],
+            )
+            return {
+                "total_pnl": _round_amount(totals.get("day_pnl")),
+                "total_rate": _round_amount(totals.get("day_pnl_rate")),
+                "items": self._finalize_items(
+                    items,
+                    expected_total=_round_amount(totals.get("day_pnl")),
+                ),
+            }
 
         now_utc = datetime.now(timezone.utc)
         rates = self._get_rates()
@@ -309,6 +366,32 @@ class AnalysisAssetBreakdownService:
             "items": items,
         }
 
+    def _build_realtime_items_from_payload(
+        self,
+        rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for row in rows or []:
+            code = str(row.get("code") or "").strip()
+            if not code:
+                continue
+            pnl = _round_amount(row.get("day_pnl"))
+            base = _safe_float(row.get("day_base"))
+            if abs(pnl) < 1e-9 and base <= 0:
+                continue
+            items.append(
+                {
+                    "code": code,
+                    "name": str(row.get("name") or code),
+                    "market": str(row.get("market") or "a"),
+                    "curr": str(row.get("curr") or "CNY").upper(),
+                    "pnl": pnl,
+                    "base": base,
+                    "has_exposure": True,
+                }
+            )
+        return items
+
     def _build_historical_day_payload(
         self,
         target: date,
@@ -316,13 +399,23 @@ class AnalysisAssetBreakdownService:
         user_id: str | None,
         ledger_id: int | None,
     ) -> Dict[str, Any]:
-        context = self._build_period_context(
-            target,
-            target,
-            user_id=user_id,
-            ledger_id=ledger_id,
+        persisted_items = self._build_persisted_day_items(
+            self.db.get_daily_snapshot_asset_breakdown_rows(
+                date_str=target.strftime("%Y-%m-%d"),
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
         )
-        items = self._build_historical_day_items(target, context=context)
+        if persisted_items:
+            items = persisted_items
+        else:
+            context = self._build_period_context(
+                target,
+                target,
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
+            items = self._build_historical_day_items(target, context=context)
         snapshot_rows = self._fetch_snapshot_rows(
             target,
             target,
@@ -415,6 +508,30 @@ class AnalysisAssetBreakdownService:
                 }
             )
         return result
+
+    def _build_persisted_day_items(
+        self,
+        rows: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for row in rows or []:
+            code = str(row.get("code") or "").strip()
+            if not code:
+                continue
+            pnl = _round_amount(row.get("day_pnl"))
+            base = _safe_float(row.get("day_base"))
+            items.append(
+                {
+                    "code": code,
+                    "name": str(row.get("name") or code),
+                    "market": str(row.get("market") or "a"),
+                    "curr": str(row.get("curr") or "CNY").upper(),
+                    "pnl": pnl,
+                    "base": base,
+                    "has_exposure": True,
+                }
+            )
+        return items
 
     def _build_period_context(
         self,
@@ -546,7 +663,19 @@ class AnalysisAssetBreakdownService:
         exact_match = dates[idx] == target_date
         if exact_match:
             if idx > 0:
-                return current_price, float(values[idx - 1] or 0.0)
+                current_dt = _parse_iso_date(dates[idx])
+                previous_dt = _parse_iso_date(dates[idx - 1])
+                if (
+                    current_dt is not None
+                    and previous_dt is not None
+                    and _history_gap_is_reasonable(
+                        market=market,
+                        current_date=current_dt,
+                        previous_date=previous_dt,
+                    )
+                ):
+                    return current_price, float(values[idx - 1] or 0.0)
+                return current_price, 0.0
             return current_price, 0.0
         return current_price, current_price
 
@@ -620,7 +749,20 @@ class AnalysisAssetBreakdownService:
             )
 
         residual = _round_amount(expected_total - sum(float(item.get("pnl") or 0.0) for item in finalized))
-        if finalized and abs(residual) <= 0.05:
+        if abs(residual) > 0.05:
+            finalized.append(
+                {
+                    "code": UNALLOCATED_DETAIL_CODE,
+                    "name": UNALLOCATED_DETAIL_NAME,
+                    "market": "unallocated",
+                    "curr": "CNY",
+                    "pnl": residual,
+                    "pnl_rate": None,
+                    "base": 0.0,
+                    "has_exposure": True,
+                }
+            )
+        elif finalized and abs(residual) > 0:
             finalized[0]["pnl"] = _round_amount(float(finalized[0]["pnl"] or 0.0) + residual)
             base = float(finalized[0].get("base") or 0.0)
             finalized[0]["pnl_rate"] = round(float(finalized[0]["pnl"] or 0.0) / base * 100, 2) if base > 0 else None

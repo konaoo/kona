@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 MARKET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
+ASSET_BREAKDOWN_MARKETS = ("a", "hk", "us", "fund", "unallocated")
 
 
 class SnapshotDatabaseMixin:
@@ -93,6 +94,106 @@ class SnapshotDatabaseMixin:
                 "meta_json": row["meta_json"],
             }
         return rows
+
+    def get_daily_snapshot_asset_breakdown_rows(
+        self,
+        *,
+        date_str: str,
+        user_id: str = None,
+        ledger_id: int | None = None,
+    ) -> List[Dict[str, Any]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            if ledger_id is None:
+                cursor.execute(
+                    """
+                    SELECT code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence
+                    FROM daily_snapshot_asset_breakdowns
+                    WHERE date = ? AND user_id = ?
+                    ORDER BY code ASC
+                    """,
+                    (str(date_str or ""), uid),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence
+                    FROM ledger_daily_snapshot_asset_breakdowns
+                    WHERE date = ? AND user_id = ? AND ledger_id = ?
+                    ORDER BY code ASC
+                    """,
+                    (str(date_str or ""), uid, int(ledger_id)),
+                )
+            return [
+                {
+                    "code": str(row["code"] or ""),
+                    "name": str(row["name"] or row["code"] or ""),
+                    "market": str(row["market"] or "a").strip().lower(),
+                    "curr": str(row["curr"] or "CNY").strip().upper(),
+                    "day_pnl": round(float((row["day_pnl"] if row["day_pnl"] is not None else 0.0) or 0.0), 2),
+                    "day_base": round(float((row["day_base"] if row["day_base"] is not None else 0.0) or 0.0), 2),
+                    "snapshot_date": str(row["snapshot_date"] or "").strip(),
+                    "source": str(row["source"] or "").strip(),
+                    "confidence": float((row["confidence"] if row["confidence"] is not None else 1.0) or 1.0),
+                }
+                for row in cursor.fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def get_daily_snapshot_asset_breakdown_rows_by_period(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        user_id: str = None,
+        ledger_id: int | None = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            if ledger_id is None:
+                cursor.execute(
+                    """
+                    SELECT date, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence
+                    FROM daily_snapshot_asset_breakdowns
+                    WHERE user_id = ? AND date >= ? AND date <= ?
+                    ORDER BY date ASC, code ASC
+                    """,
+                    (uid, str(start_date or ""), str(end_date or "")),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT date, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence
+                    FROM ledger_daily_snapshot_asset_breakdowns
+                    WHERE user_id = ? AND ledger_id = ? AND date >= ? AND date <= ?
+                    ORDER BY date ASC, code ASC
+                    """,
+                    (uid, int(ledger_id), str(start_date or ""), str(end_date or "")),
+                )
+            result: Dict[str, List[Dict[str, Any]]] = {}
+            for row in cursor.fetchall():
+                date_key = str(row["date"] or "").strip()
+                result.setdefault(date_key, []).append(
+                    {
+                        "code": str(row["code"] or ""),
+                        "name": str(row["name"] or row["code"] or ""),
+                        "market": str(row["market"] or "a").strip().lower(),
+                        "curr": str(row["curr"] or "CNY").strip().upper(),
+                        "day_pnl": round(float((row["day_pnl"] if row["day_pnl"] is not None else 0.0) or 0.0), 2),
+                        "day_base": round(float((row["day_base"] if row["day_base"] is not None else 0.0) or 0.0), 2),
+                        "snapshot_date": str(row["snapshot_date"] or "").strip(),
+                        "source": str(row["source"] or "").strip(),
+                        "confidence": float((row["confidence"] if row["confidence"] is not None else 1.0) or 1.0),
+                    }
+                )
+            return result
+        finally:
+            conn.close()
 
     def _upsert_market_breakdown_row(
         self,
@@ -619,6 +720,124 @@ class SnapshotDatabaseMixin:
             return True
         except Exception as exc:
             logger.error("Failed to save market breakdown date=%s user_id=%s: %s", date_str, uid, exc)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def save_daily_snapshot_asset_breakdowns(
+        self,
+        *,
+        date_str: str,
+        items: List[Dict[str, Any]],
+        user_id: str = None,
+        snapshot_date: str | None = None,
+        source: str = "exact",
+        confidence: float = 1.0,
+        replace_existing: bool = True,
+        ledger_id: int | None = None,
+    ) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        table = "ledger_daily_snapshot_asset_breakdowns" if ledger_id is not None else "daily_snapshot_asset_breakdowns"
+        try:
+            if replace_existing:
+                if ledger_id is None:
+                    cursor.execute(
+                        f"DELETE FROM {table} WHERE date = ? AND user_id = ?",
+                        (str(date_str or ""), uid),
+                    )
+                else:
+                    cursor.execute(
+                        f"DELETE FROM {table} WHERE date = ? AND user_id = ? AND ledger_id = ?",
+                        (str(date_str or ""), uid, int(ledger_id)),
+                    )
+
+            for item in items or []:
+                code = str(item.get("code") or "").strip()
+                if not code:
+                    continue
+                name = str(item.get("name") or code)
+                market = str(item.get("market") or "a").strip().lower()
+                if market not in ASSET_BREAKDOWN_MARKETS:
+                    market = "a"
+                curr = str(item.get("curr") or "CNY").strip().upper()
+                day_pnl = round(float(item.get("day_pnl") or item.get("pnl") or 0.0), 2)
+                day_base = round(float(item.get("day_base") or item.get("base") or 0.0), 2)
+                if ledger_id is None:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {table}
+                        (date, user_id, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                        ON CONFLICT(date, user_id, code) DO UPDATE SET
+                            name = excluded.name,
+                            market = excluded.market,
+                            curr = excluded.curr,
+                            day_pnl = excluded.day_pnl,
+                            day_base = excluded.day_base,
+                            snapshot_date = excluded.snapshot_date,
+                            source = excluded.source,
+                            confidence = excluded.confidence,
+                            updated_at = datetime('now','localtime')
+                        """,
+                        (
+                            str(date_str or ""),
+                            uid,
+                            code,
+                            name,
+                            market,
+                            curr,
+                            day_pnl,
+                            day_base,
+                            str(snapshot_date or date_str or ""),
+                            str(source or "exact"),
+                            float(confidence),
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO {table}
+                        (user_id, ledger_id, date, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                        ON CONFLICT(user_id, ledger_id, date, code) DO UPDATE SET
+                            name = excluded.name,
+                            market = excluded.market,
+                            curr = excluded.curr,
+                            day_pnl = excluded.day_pnl,
+                            day_base = excluded.day_base,
+                            snapshot_date = excluded.snapshot_date,
+                            source = excluded.source,
+                            confidence = excluded.confidence,
+                            updated_at = datetime('now','localtime')
+                        """,
+                        (
+                            uid,
+                            int(ledger_id),
+                            str(date_str or ""),
+                            code,
+                            name,
+                            market,
+                            curr,
+                            day_pnl,
+                            day_base,
+                            str(snapshot_date or date_str or ""),
+                            str(source or "exact"),
+                            float(confidence),
+                        ),
+                    )
+            conn.commit()
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to save asset breakdown date=%s user_id=%s ledger_id=%s: %s",
+                date_str,
+                uid,
+                ledger_id,
+                exc,
+            )
             conn.rollback()
             return False
         finally:

@@ -112,6 +112,56 @@ class AssetTrendTests(unittest.TestCase):
             ],
         )
 
+    def test_us_tencent_history_enriches_latest_day_with_prev_close_when_only_old_anchor_exists(self):
+        eastmoney_sparse = _JsonResp(
+            {
+                "data": {
+                    "klines": [
+                        "2011-06-02,0,525.79,0,0,0,0,0",
+                        "2026-03-26,0,280.74,0,0,0,0,0",
+                    ]
+                }
+            }
+        )
+        tencent_payload = _JsonResp(
+            {
+                "data": {
+                    "usGOOG": {
+                        "day": [
+                            ["2011-06-02", "525.79", "525.79", "530.22", "522.50", "1"],
+                            ["2026-03-26", "286.19", "280.74", "286.52", "279.05", "1"],
+                        ],
+                        "qt": {
+                            "usGOOG": [
+                                "delay",
+                                "谷歌-C",
+                                "GOOG.OQ",
+                                "280.74",
+                                "289.59",
+                            ]
+                        },
+                    }
+                }
+            }
+        )
+
+        with patch("core.trend._fetch_yahoo_us_history_points", return_value=[]), patch(
+            "core.trend._fetch_stooq_us_history_points",
+            return_value=[],
+        ), patch(
+            "core.trend.monitored_http_get",
+            side_effect=[eastmoney_sparse, tencent_payload],
+        ):
+            points = _fetch_stock_history_points("gb_goog", 20, "us")
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-25", "value": 289.59},
+                {"date": "2026-03-26", "value": 280.74},
+            ],
+        )
+
     def test_plain_exchange_fund_digits_with_fund_hint_can_fetch_trend_points(self):
         eastmoney_empty = _JsonResp({"data": {"klines": []}})
         tencent_payload = _JsonResp(

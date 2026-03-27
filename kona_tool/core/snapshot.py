@@ -5,7 +5,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List
 from zoneinfo import ZoneInfo
 
 from .day_pnl_attribution import (
@@ -246,6 +246,57 @@ def _add_day_pnl_base(
     day_pnl_bases_by_date[effective_date] = float(day_pnl_bases_by_date.get(effective_date, 0.0) or 0.0) + float(amount or 0.0)
 
 
+def _add_asset_day_breakdown(
+    asset_day_breakdowns_by_date: Dict[str, Dict[str, Dict[str, Any]]],
+    *,
+    effective_date: str | None,
+    code: str,
+    name: str,
+    market: str,
+    curr: str,
+    day_pnl: float,
+    day_base: float,
+) -> None:
+    if not effective_date or not code:
+        return
+    bucket = asset_day_breakdowns_by_date.setdefault(str(effective_date), {})
+    item = bucket.setdefault(
+        str(code),
+        {
+            "code": str(code),
+            "name": str(name or code),
+            "market": str(market or "a"),
+            "curr": str(curr or "CNY").upper(),
+            "day_pnl": 0.0,
+            "day_base": 0.0,
+        },
+    )
+    item["day_pnl"] = float(item.get("day_pnl") or 0.0) + float(day_pnl or 0.0)
+    item["day_base"] = float(item.get("day_base") or 0.0) + float(day_base or 0.0)
+
+
+def _normalize_asset_breakdowns_by_date(
+    asset_day_breakdowns_by_date: Dict[str, Dict[str, Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    normalized: Dict[str, List[Dict[str, Any]]] = {}
+    for date_str, code_map in (asset_day_breakdowns_by_date or {}).items():
+        items: List[Dict[str, Any]] = []
+        for code in sorted((code_map or {}).keys()):
+            raw = code_map[code] or {}
+            items.append(
+                {
+                    "code": str(raw.get("code") or code),
+                    "name": str(raw.get("name") or code),
+                    "market": str(raw.get("market") or "a"),
+                    "curr": str(raw.get("curr") or "CNY").upper(),
+                    "day_pnl": round(float(raw.get("day_pnl") or 0.0), 2),
+                    "day_base": round(float(raw.get("day_base") or 0.0), 2),
+                }
+            )
+        normalized[str(date_str)] = items
+    return normalized
+
+
 def _round_market_breakdown(data: Dict[str, float] | None) -> Dict[str, float]:
     normalized = _empty_market_breakdown()
     for market in DEFAULT_MARKETS:
@@ -305,6 +356,7 @@ def _persist_late_effective_date_settlements(
     """把晚到收益按 market 级别局部结算到对应 effective_date。"""
     snapshot_date = str(stats.get("snapshot_date") or "").strip()
     day_pnl_breakdowns_by_date = stats.get("day_pnl_breakdowns_by_date") or {}
+    asset_day_breakdowns_by_date = stats.get("asset_day_breakdowns_by_date") or {}
     if not snapshot_date or not day_pnl_breakdowns_by_date:
         return set()
 
@@ -338,6 +390,11 @@ def _persist_late_effective_date_settlements(
         value = round(float(market_map.get(market, 0.0) or 0.0), 2)
         if abs(value) < 0.005:
             continue
+        asset_items = [
+            item
+            for item in (asset_day_breakdowns_by_date.get(effective_date) or [])
+            if str(item.get("market") or "").strip().lower() == market
+        ]
 
         if ledger_id is None:
             ok = db_obj.save_daily_snapshot_market_breakdown_partial(
@@ -367,6 +424,35 @@ def _persist_late_effective_date_settlements(
                 market,
             )
             continue
+        if ledger_id is None:
+            asset_ok = db_obj.save_daily_snapshot_asset_breakdowns(
+                date_str=effective_date,
+                items=asset_items,
+                user_id=user_id,
+                snapshot_date=snapshot_date,
+                source="exact",
+                confidence=1.0,
+                replace_existing=False,
+            )
+        else:
+            asset_ok = db_obj.save_daily_snapshot_asset_breakdowns(
+                date_str=effective_date,
+                items=asset_items,
+                user_id=str(user_id or ""),
+                ledger_id=int(ledger_id),
+                snapshot_date=snapshot_date,
+                source="exact",
+                confidence=1.0,
+                replace_existing=False,
+            )
+        if not asset_ok:
+            logger_obj.warning(
+                "Late settlement asset breakdown save failed: user=%s ledger_id=%s date=%s market=%s",
+                user_id,
+                ledger_id,
+                effective_date,
+                market,
+            )
         handled_dates.add(effective_date)
 
     for effective_date in sorted(handled_dates):
@@ -420,12 +506,24 @@ def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: s
     )
     if not breakdown_ok:
         logger_obj.warning("Market breakdown save failed: user=%s date=%s", user_id, snapshot_date)
+    asset_breakdown_ok = db_obj.save_daily_snapshot_asset_breakdowns(
+        date_str=snapshot_date,
+        items=(stats.get("asset_day_breakdowns_by_date") or {}).get(snapshot_date, []),
+        user_id=user_id,
+        snapshot_date=snapshot_date,
+        source="exact",
+        confidence=1.0,
+        replace_existing=True,
+    )
+    if not asset_breakdown_ok:
+        logger_obj.warning("Asset breakdown save failed: user=%s date=%s", user_id, snapshot_date)
 
     persist_stats = {
         **stats,
         "snapshot_day_pnl": snapshot_payload["day_pnl"],
         "snapshot_day_pnl_by_market": snapshot_market_map,
         "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
+        "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
     }
     _persist_late_effective_date_settlements(db_obj, logger_obj, persist_stats, user_id)
     return True
@@ -493,12 +591,30 @@ def _persist_ledger_snapshot_stats(
             ledger_id,
             snapshot_date,
         )
+    asset_breakdown_ok = db_obj.save_daily_snapshot_asset_breakdowns(
+        date_str=snapshot_date,
+        items=(stats.get("asset_day_breakdowns_by_date") or {}).get(snapshot_date, []),
+        user_id=str(user_id or ""),
+        ledger_id=int(ledger_id),
+        snapshot_date=snapshot_date,
+        source="exact",
+        confidence=1.0,
+        replace_existing=True,
+    )
+    if not asset_breakdown_ok:
+        logger_obj.warning(
+            "Ledger asset breakdown save failed: user=%s ledger_id=%s date=%s",
+            user_id,
+            ledger_id,
+            snapshot_date,
+        )
 
     persist_stats = {
         **stats,
         "snapshot_day_pnl": snapshot_day_pnl,
         "snapshot_day_pnl_by_market": snapshot_market_map,
         "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
+        "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
     }
     handled_dates = _persist_late_effective_date_settlements(
         db_obj,
@@ -535,6 +651,31 @@ def _sum_day_pnl_bases_by_date(stats_list: Iterable[Dict[str, Any]]) -> Dict[str
                 2,
             )
     return combined
+
+
+def _sum_asset_breakdowns_by_date(stats_list: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    combined: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for stats in stats_list:
+        for date_str, items in (stats.get("asset_day_breakdowns_by_date") or {}).items():
+            day_bucket = combined.setdefault(str(date_str), {})
+            for raw in items or []:
+                code = str((raw or {}).get("code") or "").strip()
+                if not code:
+                    continue
+                item = day_bucket.setdefault(
+                    code,
+                    {
+                        "code": code,
+                        "name": str((raw or {}).get("name") or code),
+                        "market": str((raw or {}).get("market") or "a"),
+                        "curr": str((raw or {}).get("curr") or "CNY").upper(),
+                        "day_pnl": 0.0,
+                        "day_base": 0.0,
+                    },
+                )
+                item["day_pnl"] = float(item.get("day_pnl") or 0.0) + float((raw or {}).get("day_pnl") or 0.0)
+                item["day_base"] = float(item.get("day_base") or 0.0) + float((raw or {}).get("day_base") or 0.0)
+    return _normalize_asset_breakdowns_by_date(combined)
 
 
 def _list_user_ledgers(user_id: str | None) -> list[Dict[str, Any]]:
@@ -591,6 +732,7 @@ def _calculate_portfolio_stats_direct(
     total_pnl = 0.0
     day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]] = {}
     day_pnl_bases_by_date: Dict[str, float] = {}
+    asset_day_breakdowns_by_date: Dict[str, Dict[str, Dict[str, Any]]] = {}
     display_day_pnl_breakdowns_by_date: Dict[str, Dict[str, float]] = {}
     display_day_pnl_bases_by_date: Dict[str, float] = {}
     now_utc = now_utc or datetime.now(timezone.utc)
@@ -684,11 +826,22 @@ def _calculate_portfolio_stats_direct(
                 and abs(cur_price - yclose_ref) / yclose_ref >= 1e-9
             ):
                 item_day_pnl = (cur_price - yclose_ref) * effective_qty * rate
+                item_day_base = yclose_ref * effective_qty * rate
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
                 _add_day_pnl_base(
                     day_pnl_bases_by_date,
                     effective_date,
-                    yclose_ref * effective_qty * rate,
+                    item_day_base,
+                )
+                _add_asset_day_breakdown(
+                    asset_day_breakdowns_by_date,
+                    effective_date=effective_date,
+                    code=code,
+                    name=str(asset.get("name") or code),
+                    market=market,
+                    curr=curr,
+                    day_pnl=item_day_pnl,
+                    day_base=item_day_base,
                 )
                 if display_effective_date == effective_date:
                     _add_market_breakdown(
@@ -738,9 +891,19 @@ def _calculate_portfolio_stats_direct(
                 else:
                     item_day_pnl = ((cur_price - yclose_ref) * qty + (sold_amount - yclose_ref * sold_qty)) * rate
                     item_day_base = yclose_ref * (qty + sold_qty) * rate
-                    
+                
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
                 _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
+                _add_asset_day_breakdown(
+                    asset_day_breakdowns_by_date,
+                    effective_date=effective_date,
+                    code=code,
+                    name=str(asset.get("name") or code),
+                    market=market,
+                    curr=curr,
+                    day_pnl=item_day_pnl,
+                    day_base=item_day_base,
+                )
                 if display_effective_date == effective_date:
                     _add_market_breakdown(
                         display_day_pnl_breakdowns_by_date,
@@ -809,6 +972,7 @@ def _calculate_portfolio_stats_direct(
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
         'day_pnl_breakdowns_by_date': rounded_breakdowns_by_date,
         'day_pnl_bases_by_date': rounded_bases_by_date,
+        'asset_day_breakdowns_by_date': _normalize_asset_breakdowns_by_date(asset_day_breakdowns_by_date),
         'snapshot_date': snapshot_date,
         'now_utc': now_utc,
         'holdings_count': len(portfolio),
@@ -856,6 +1020,7 @@ def calculate_portfolio_stats(
     ]
     aggregated_breakdowns = _sum_market_breakdowns_by_date(ledger_stats_list)
     aggregated_bases = _sum_day_pnl_bases_by_date(ledger_stats_list)
+    aggregated_asset_breakdowns = _sum_asset_breakdowns_by_date(ledger_stats_list)
     snapshot_date = now_utc.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
     effective_date = snapshot_date
 
@@ -894,6 +1059,7 @@ def calculate_portfolio_stats(
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
         'day_pnl_breakdowns_by_date': aggregated_breakdowns,
         'day_pnl_bases_by_date': aggregated_bases,
+        'asset_day_breakdowns_by_date': aggregated_asset_breakdowns,
         'snapshot_date': snapshot_date,
         'now_utc': now_utc,
         'holdings_count': sum(int(stats.get("holdings_count") or 0) for stats in ledger_stats_list),

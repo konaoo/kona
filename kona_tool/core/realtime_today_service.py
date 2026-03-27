@@ -81,5 +81,6 @@ class RealtimeTodayService:
                     "day_pnl_base": 0.0,
                 },
             },
+            "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
             "generated_at": generated_at,
         }

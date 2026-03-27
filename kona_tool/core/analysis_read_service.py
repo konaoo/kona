@@ -41,6 +41,7 @@ class _StatsGetterRealtimeTodayAdapter:
                 "day_pnl_base": round(day_pnl_base, 2),
                 "day_pnl_rate": round(day_pnl / day_pnl_base * 100, 2) if day_pnl_base > 0 else 0.0,
             },
+            "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
         }
 
 

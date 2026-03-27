@@ -4430,3 +4430,23 @@ Flutter 投资口径的汇总计算收口到服务层，页面与 AppState 统�
 - 新增持仓时，即使请求里带 `adjustment`，也不应再写入 legacy adjustment
 - 普通更新接口不应再允许 `field=adjustment`
 - 历史导入脚本仍可在显式声明下保留老字段写入
+
+## 2026-03-27-02
+
+### 这版一句话
+
+把收益日历下钻明细和历史快照彻底收成同一套口径，修掉 `kona` 在 3 月 24 日到 3 月 27 日这几天“格子值和个股盈亏对不上”的问题。
+
+### 主要变化
+- [kona_tool/core/snapshot.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/snapshot.py) / [kona_tool/core/db_snapshots.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_snapshots.py) / [kona_tool/core/db_schema.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/db_schema.py)：补齐逐资产日盈亏快照落库能力，后面新的日期不再只存总额和分市场，历史明细优先直接读逐资产快照。
+- [kona_tool/core/analysis_asset_breakdown_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_asset_breakdown_service.py) / [kona_tool/core/realtime_today_service.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/analysis_read_service.py)：今天这格的个股盈亏改成直接复用 realtime 逐资产结果，不再自己临时重算，顶部当日盈亏和下方明细现在同口径。
+- [kona_tool/core/trend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/core/trend.py) / [kona_tool/scripts/rebuild_asset_breakdown_from_history.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/scripts/rebuild_asset_breakdown_from_history.py)：补了历史价格读取守卫和历史逐资产重建脚本，用来修复老的 backfill 日历值，把 `kona` 的 `2026-03-24 / 25 / 26` 历史格子和个股盈亏重新对齐。
+- [kona_tool/tests/test_analysis_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_analysis_api.py) / [kona_tool/tests/test_read_services.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_read_services.py) / [kona_tool/tests/test_asset_trend.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_asset_trend.py) / [kona_tool/tests/test_snapshot_runtime.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_snapshot_runtime.py)：补了 today 明细口径、历史逐资产快照优先读取、历史价格脏点过滤和快照写入回归测试。
+
+### 影响范围
+- 后端：收益日历下钻明细、today realtime、历史快照写入
+- 线上数据：`kona` 账本 `62` 的 `2026-03-24 / 25 / 26` 历史日收益与逐资产明细
+
+### 验收重点
+- 分析页点开 `2026-03-24 / 25 / 26 / 27` 时，应满足“格子总额 = 明细总额 = 明细逐项求和”
+- `2026-03-27` 这类实时日，顶部当日盈亏和下方个股盈亏必须同口径同步变化，不应再冒出 `未归因收益`

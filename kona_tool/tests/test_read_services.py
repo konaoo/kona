@@ -192,6 +192,50 @@ class ReadServicesTests(unittest.TestCase):
             0.0,
         )
 
+    def test_realtime_today_service_keeps_asset_breakdowns_for_same_day_detail(self):
+        service = RealtimeTodayService(
+            stats_getter=lambda user_id=None, ledger_id=None: {
+                "total_cost": 1000.0,
+                "total_pnl": 88.0,
+                "display_day_pnl": 0.0,
+                "display_day_pnl_base": 0.0,
+                "display_day_pnl_effective_date": "2026-03-26",
+                "display_day_pnl_by_market": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0},
+                "asset_day_breakdowns_by_date": {
+                    "2026-03-26": [],
+                    "2026-03-25": [
+                        {
+                            "code": "sh600001",
+                            "name": "邯郸钢铁",
+                            "market": "a",
+                            "curr": "CNY",
+                            "day_pnl": 12.3,
+                            "day_base": 1000.0,
+                        }
+                    ],
+                },
+            }
+        )
+
+        payload = service.build_payload(user_id="u_1")
+
+        self.assertEqual(
+            payload["asset_day_breakdowns_by_date"],
+            {
+                "2026-03-26": [],
+                "2026-03-25": [
+                    {
+                        "code": "sh600001",
+                        "name": "邯郸钢铁",
+                        "market": "a",
+                        "curr": "CNY",
+                        "day_pnl": 12.3,
+                        "day_base": 1000.0,
+                    }
+                ],
+            },
+        )
+
     def test_analysis_overview_day_uses_stats_getter(self):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""
         called_with = []

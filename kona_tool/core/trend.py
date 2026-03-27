@@ -6,20 +6,112 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List
 
 import config
 from .asset_type import infer_asset_type
 from .fund import get_fund_overseas_history_points
+from .market_calendar import get_previous_trading_day
 from .price import _map_fund_code_to_exchange_if_tradable
 from .utils import monitored_http_get, safe_float
 
 logger = logging.getLogger(__name__)
 
+_RECENT_HISTORY_MAX_GAP_DAYS = 20
+
 
 def _normalize_code(code: Any) -> str:
     return str(code or "").strip()
+
+
+def _parse_history_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _dedupe_history_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: Dict[str, float] = {}
+    for item in points or []:
+        dt = str((item or {}).get("date") or "").strip()[:10]
+        value = safe_float((item or {}).get("value"))
+        if not dt or value <= 0:
+            continue
+        deduped[dt] = value
+    return [{"date": dt, "value": deduped[dt]} for dt in sorted(deduped.keys())]
+
+
+def _trim_recent_history_cluster(
+    points: List[Dict[str, Any]],
+    *,
+    max_gap_days: int = _RECENT_HISTORY_MAX_GAP_DAYS,
+) -> List[Dict[str, Any]]:
+    normalized = _dedupe_history_points(points)
+    if len(normalized) <= 1:
+        return normalized
+
+    recent_cluster = [normalized[-1]]
+    prev_date = _parse_history_date(normalized[-1]["date"])
+    if prev_date is None:
+        return normalized[-1:]
+
+    for item in reversed(normalized[:-1]):
+        current_date = _parse_history_date(item["date"])
+        if current_date is None:
+            continue
+        gap_days = (prev_date - current_date).days
+        if gap_days <= 0:
+            continue
+        if gap_days > max_gap_days:
+            break
+        recent_cluster.append(item)
+        prev_date = current_date
+
+    return list(reversed(recent_cluster))
+
+
+def _extract_tencent_prev_close(
+    payload: Dict[str, Any],
+    *,
+    symbol: str,
+) -> float:
+    data = (payload.get("data") or {}).get(symbol) or {}
+    qt = (data.get("qt") or {}).get(symbol) or []
+    if not isinstance(qt, list) or len(qt) < 5:
+        return 0.0
+    return safe_float(qt[4])
+
+
+def _complete_latest_tencent_us_history(
+    points: List[Dict[str, Any]],
+    *,
+    prev_close: float,
+) -> List[Dict[str, Any]]:
+    recent = _trim_recent_history_cluster(points)
+    if not recent:
+        return []
+    if len(recent) >= 2 or prev_close <= 0:
+        return recent
+
+    last_date = _parse_history_date(recent[-1]["date"])
+    if last_date is None:
+        return recent
+    previous_date = get_previous_trading_day("us", last_date)
+    if previous_date is None:
+        return recent
+
+    previous_date_str = previous_date.strftime("%Y-%m-%d")
+    if previous_date_str == recent[-1]["date"]:
+        return recent
+    return [
+        {"date": previous_date_str, "value": prev_close},
+        recent[-1],
+    ]
 
 
 def _is_exchange_fund_digits(digits: str) -> bool:
@@ -158,6 +250,15 @@ def _fetch_tencent_stock_history_points(code: str, limit: int, market_hint: str 
             if not date or close <= 0:
                 continue
             points.append({"date": date, "value": close})
+        if not points:
+            return []
+        if market == "us":
+            points = _complete_latest_tencent_us_history(
+                points,
+                prev_close=_extract_tencent_prev_close(payload, symbol=symbol),
+            )
+        else:
+            points = _trim_recent_history_cluster(points)
         return points[-limit:] if points else []
     except Exception as exc:
         logger.debug("tencent stock trend fetch failed code=%s symbol=%s error=%s", code, symbol, exc)
