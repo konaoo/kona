@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -45,6 +44,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   bool _profileLoaded = false;
   String _currentVersion = '';
+  String? _lastAvatarString;
+  MemoryImage? _cachedAvatarImage;
 
   @override
   void initState() {
@@ -536,17 +537,22 @@ class _ProfilePageState extends State<ProfilePage> {
                 : (appState.username?.substring(0, 1).toUpperCase() ?? 'U'))
             .toUpperCase();
 
-    Uint8List? avatarBytes;
-    if (appState.avatar != null && appState.avatar!.isNotEmpty) {
-      try {
-        avatarBytes = base64Decode(appState.avatar!);
-      } catch (_) {
-        avatarBytes = null;
+    final currentAvatarString = appState.avatar;
+    if (currentAvatarString != _lastAvatarString) {
+      _lastAvatarString = currentAvatarString;
+      if (currentAvatarString != null && currentAvatarString.isNotEmpty) {
+        try {
+          _cachedAvatarImage = MemoryImage(base64Decode(currentAvatarString));
+        } catch (_) {
+          _cachedAvatarImage = null;
+        }
+      } else {
+        _cachedAvatarImage = null;
       }
     }
 
-    final hasAvatar = avatarBytes != null;
-    final avatarImage = avatarBytes == null ? null : MemoryImage(avatarBytes);
+    final hasAvatar = _cachedAvatarImage != null;
+    final avatarImage = _cachedAvatarImage;
 
     return GestureDetector(
       onTap: () => _pickAvatar(appState),

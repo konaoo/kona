@@ -378,6 +378,13 @@ class _AnalysisPageState extends State<AnalysisPage>
       _calendarRetryTimer?.cancel();
       _rankRetryTimer?.cancel();
       _overviewRetryCount = 0;
+      final selectedDetail = _selectedCalendarDetail;
+      if (selectedDetail?['scope'] == _calendarTimeType) {
+        final selectedKey = selectedDetail?['key'];
+        if (selectedKey is int) {
+          unawaited(_loadCalendarDetail(selectedKey, forceReload: true));
+        }
+      }
     } catch (e) {
       debugPrint('加载分析屏幕数据失败: $e');
       if (!mounted || requestId != _screenRequestId) return;
@@ -866,37 +873,6 @@ class _AnalysisPageState extends State<AnalysisPage>
     };
   }
 
-  List<int> _calendarPrefetchNeighborKeys(int currentKey) {
-    final items = _calendarData['items'] as List<dynamic>? ?? [];
-    final validKeys = <int>[];
-    for (final item in items) {
-      final label = item['label'] ?? '';
-      final pnl = (item['pnl'] as num?)?.toDouble();
-      final key = _parseLabelKey(label.toString());
-      if (key != null && pnl != null) {
-        validKeys.add(key);
-      }
-    }
-    final effectiveDate = _realtimeTodayEffectiveDate();
-    final realtimeDayPnl =
-        (_realtimeTodayTotals()['day_pnl'] as num?)?.toDouble();
-    if (_calendarTimeType == 'day' &&
-        effectiveDate != null &&
-        realtimeDayPnl != null &&
-        effectiveDate.year == _selectedDayYear &&
-        effectiveDate.month == _selectedDayMonth &&
-        !validKeys.contains(effectiveDate.day)) {
-      validKeys.add(effectiveDate.day);
-      validKeys.sort();
-    }
-    final currentIndex = validKeys.indexOf(currentKey);
-    if (currentIndex < 0) return const [];
-    final result = <int>[];
-    if (currentIndex > 0) result.add(validKeys[currentIndex - 1]);
-    if (currentIndex + 1 < validKeys.length) result.add(validKeys[currentIndex + 1]);
-    return result;
-  }
-
   String? _calendarDetailDateForKey(int key) {
     if (_calendarTimeType == 'day') {
       if (_selectedDayYear == null || _selectedDayMonth == null) return null;
@@ -917,13 +893,20 @@ class _AnalysisPageState extends State<AnalysisPage>
         (_selectedCalendarDetail?['key'] == key);
   }
 
-  Future<void> _loadCalendarDetail(int key, {bool background = false}) async {
+  Future<void> _loadCalendarDetail(
+    int key, {
+    bool background = false,
+    bool forceReload = false,
+  }) async {
     final date = _calendarDetailDateForKey(key);
     if (date == null) return;
-    if (!background &&
+    final isSameSelection =
         _selectedCalendarDetail?['scope'] == _calendarTimeType &&
         _selectedCalendarDetail?['key'] == key &&
-        _selectedCalendarDetail?['date'] == date) {
+        _selectedCalendarDetail?['date'] == date;
+    if (!background &&
+        !forceReload &&
+        isSameSelection) {
       setState(_clearCalendarDetail);
       return;
     }
@@ -956,6 +939,9 @@ class _AnalysisPageState extends State<AnalysisPage>
     if (!background) {
       setState(() {
         _selectedCalendarDetail = selection;
+        if (!isSameSelection) {
+          _calendarDetailData = {};
+        }
         _calendarDetailLoading = true;
         _calendarDetailError = null;
       });
@@ -974,9 +960,6 @@ class _AnalysisPageState extends State<AnalysisPage>
           _calendarDetailData = data;
           _calendarDetailLoading = false;
         });
-        for (final neighborKey in _calendarPrefetchNeighborKeys(key)) {
-          unawaited(_loadCalendarDetail(neighborKey, background: true));
-        }
       }
     } catch (e) {
       if (!background) {
@@ -1701,6 +1684,14 @@ class _AnalysisPageState extends State<AnalysisPage>
         .map((item) => item is Map<String, dynamic>
             ? item
             : Map<String, dynamic>.from(item as Map))
+        .where((item) {
+          final code = (item['code'] ?? '').toString();
+          final pnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
+          if (code == '__unallocated__' && pnl.abs() < 0.005) {
+            return false;
+          }
+          return true;
+        })
         .toList();
     final totalPnl = (_calendarDetailData['total_pnl'] as num?)?.toDouble();
     final totalRate = (_calendarDetailData['total_rate'] as num?)?.toDouble();

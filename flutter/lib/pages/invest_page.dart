@@ -868,15 +868,50 @@ class InvestPageState extends State<InvestPage> {
       costAbsCny,
     );
     final totalPnlRate = (realtimeTotals['total_pnl_rate'] as num?)?.toDouble();
+    final derivedTotalPnlCny = PortfolioMetricsService.sumMetricOrNull(
+      items,
+      (item) => PortfolioMetricsService.resolveLiveTotalPnlCny(
+        item,
+        priceInfo: appState.resolvePriceInfo(item),
+        fallbackRateToCny: appState.getCurrencyRate(item.curr),
+      ),
+    );
+    final derivedTotalPnlBaseCny = PortfolioMetricsService.sumAbsMetricOrNull(
+      items,
+      (item) =>
+          PortfolioMetricsService.resolveTotalPnlDenominatorCny(item) ??
+          PortfolioMetricsService.resolveCostCnyLive(
+            item,
+            fallbackRateToCny: appState.getCurrencyRate(item.curr),
+          ),
+    );
+    final derivedTotalPnlRate =
+        (derivedTotalPnlCny != null &&
+            derivedTotalPnlBaseCny != null &&
+            derivedTotalPnlBaseCny > 0)
+        ? (derivedTotalPnlCny / derivedTotalPnlBaseCny * 100)
+        : null;
+    final realtimeTotalLooksSuspiciousZero =
+        items.isNotEmpty &&
+        totalPnlCny != null &&
+        totalPnlCny.abs() < 0.005 &&
+        derivedTotalPnlCny != null &&
+        derivedTotalPnlCny.abs() >= 0.5;
+    final displayTotalPnlCny = realtimeTotalLooksSuspiciousZero
+        ? derivedTotalPnlCny
+        : (totalPnlCny ?? derivedTotalPnlCny);
+    final displayTotalPnlRate = realtimeTotalLooksSuspiciousZero
+        ? derivedTotalPnlRate
+        : (totalPnlRate ?? derivedTotalPnlRate);
     final dayColor = dayPnlCny == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(dayPnlCny);
     final holdColor = holdPnlCny == null
         ? AppTheme.textMuted
         : AppState.getPnlColor(holdPnlCny);
-    final totalColor = totalPnlCny == null
+    final totalColor = displayTotalPnlCny == null
         ? AppTheme.textMuted
-        : AppState.getPnlColor(totalPnlCny);
+        : AppState.getPnlColor(displayTotalPnlCny);
 
     return Container(
       width: double.infinity,
@@ -1007,17 +1042,17 @@ class InvestPageState extends State<InvestPage> {
                 ),
                 _statItem(
                   '累计盈亏',
-                  totalPnlCny == null
+                  displayTotalPnlCny == null
                       ? '--'
-                      : appState.formatPnlInt(totalPnlCny),
+                      : appState.formatPnlInt(displayTotalPnlCny),
                   totalColor,
                   true,
                 ),
                 _statItem(
                   '累计盈亏率',
-                  totalPnlRate == null
+                  displayTotalPnlRate == null
                       ? '--'
-                      : appState.formatPct(totalPnlRate),
+                      : appState.formatPct(displayTotalPnlRate),
                   totalColor,
                   false,
                 ),

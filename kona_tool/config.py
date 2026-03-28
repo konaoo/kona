@@ -42,7 +42,7 @@ DEBUG = False
 APP_VERSION = "v13.0.0"  # 多用户版本
 
 # 客户端 App 更新配置 (Flutter端检查更新使用)
-CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.24").strip()
+CLIENT_APP_VERSION = os.getenv("CLIENT_APP_VERSION", "1.0.29").strip()
 _DEFAULT_CLIENT_APP_BUILD_NUMBER = _derive_build_number_from_version(CLIENT_APP_VERSION, fallback=1)
 _CLIENT_APP_BUILD_NUMBER_ENV = os.getenv("CLIENT_APP_BUILD_NUMBER", "").strip()
 if _CLIENT_APP_BUILD_NUMBER_ENV:

@@ -400,23 +400,6 @@ class AnalysisAssetBreakdownService:
         user_id: str | None,
         ledger_id: int | None,
     ) -> Dict[str, Any]:
-        persisted_items = self._build_persisted_day_items(
-            self.db.get_daily_snapshot_asset_breakdown_rows(
-                date_str=target.strftime("%Y-%m-%d"),
-                user_id=user_id,
-                ledger_id=ledger_id,
-            )
-        )
-        if persisted_items:
-            items = persisted_items
-        else:
-            context = self._build_period_context(
-                target,
-                target,
-                user_id=user_id,
-                ledger_id=ledger_id,
-            )
-            items = self._build_historical_day_items(target, context=context)
         snapshot_rows = self._fetch_snapshot_rows(
             target,
             target,
@@ -424,8 +407,46 @@ class AnalysisAssetBreakdownService:
             ledger_id=ledger_id,
         )
         expected_total = _round_amount(sum(float(row.get("pnl") or 0.0) for row in snapshot_rows))
+        persisted_items = self._build_persisted_day_items(
+            self.db.get_daily_snapshot_asset_breakdown_rows(
+                date_str=target.strftime("%Y-%m-%d"),
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
+        )
+
+        items = persisted_items
+        finalized = self._finalize_items(items, expected_total=expected_total) if items else []
+        persisted_residual = self._get_unallocated_residual(finalized)
+        persisted_has_unallocated = any(
+            str(item.get("code") or "") == UNALLOCATED_DETAIL_CODE
+            for item in persisted_items
+        )
+
+        if not items or (persisted_residual > 0.05 and not persisted_has_unallocated):
+            context = self._build_period_context(
+                target,
+                target,
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
+            rebuilt_items = self._build_historical_day_items(target, context=context)
+            market_breakdown = self.db.get_daily_snapshot_market_breakdown_map(
+                target.strftime("%Y-%m-%d"),
+                user_id=user_id,
+                ledger_id=ledger_id,
+            )
+            rebuilt_items = self._allocate_market_residuals(
+                rebuilt_items,
+                market_breakdown=market_breakdown,
+            )
+            rebuilt_finalized = self._finalize_items(rebuilt_items, expected_total=expected_total)
+            rebuilt_residual = self._get_unallocated_residual(rebuilt_finalized)
+            if not items or rebuilt_residual < persisted_residual:
+                items = rebuilt_items
+                finalized = rebuilt_finalized
+
         total_base = sum(float(item.get("base") or 0.0) for item in items)
-        finalized = self._finalize_items(items, expected_total=expected_total)
         total_rate = round(expected_total / total_base * 100, 2) if total_base > 0 else 0.0
         return {
             "total_pnl": expected_total,
@@ -505,6 +526,7 @@ class AnalysisAssetBreakdownService:
                     "curr": curr,
                     "pnl": item_pnl,
                     "base": item_base,
+                    "fallback_base": max(item_base, _safe_float(meta.get("price")) * qty * rate_to_cny),
                     "has_exposure": has_exposure,
                 }
             )
@@ -772,8 +794,63 @@ class AnalysisAssetBreakdownService:
 
         for item in finalized:
             item.pop("base", None)
+            item.pop("fallback_base", None)
             item.pop("has_exposure", None)
         return finalized
+
+    def _get_unallocated_residual(self, items: Iterable[Dict[str, Any]]) -> float:
+        for item in items:
+            if str(item.get("code") or "") == UNALLOCATED_DETAIL_CODE:
+                return abs(float(item.get("pnl") or 0.0))
+        return 0.0
+
+    def _allocate_market_residuals(
+        self,
+        raw_items: Iterable[Dict[str, Any]],
+        *,
+        market_breakdown: Dict[str, float] | None,
+    ) -> List[Dict[str, Any]]:
+        if not market_breakdown:
+            return [dict(item) for item in raw_items]
+
+        items = [dict(item) for item in raw_items]
+        for market in DEFAULT_MARKETS:
+            target = _round_amount((market_breakdown or {}).get(market))
+            actual = _round_amount(
+                sum(float(item.get("pnl") or 0.0) for item in items if str(item.get("market") or "") == market)
+            )
+            residual = _round_amount(target - actual)
+            if abs(residual) <= 0.05:
+                continue
+
+            candidates = [
+                item
+                for item in items
+                if str(item.get("market") or "") == market
+                and bool(item.get("has_exposure"))
+                and float(item.get("base") or 0.0) <= 0
+                and float(item.get("fallback_base") or 0.0) > 0
+            ]
+            if not candidates:
+                continue
+
+            total_weight = sum(float(item.get("fallback_base") or 0.0) for item in candidates)
+            allocated = 0.0
+            for index, item in enumerate(candidates):
+                if total_weight > 0:
+                    ratio = float(item.get("fallback_base") or 0.0) / total_weight
+                else:
+                    ratio = 1.0 / len(candidates)
+                share = (
+                    _round_amount(residual - allocated)
+                    if index == len(candidates) - 1
+                    else _round_amount(residual * ratio)
+                )
+                item["pnl"] = _round_amount(float(item.get("pnl") or 0.0) + share)
+                if float(item.get("base") or 0.0) <= 0:
+                    item["base"] = float(item.get("fallback_base") or 0.0)
+                allocated = _round_amount(allocated + share)
+        return items
 
     def _fetch_snapshot_rows(
         self,
