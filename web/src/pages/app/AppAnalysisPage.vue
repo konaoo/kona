@@ -185,7 +185,6 @@ import AppShell from '../../layouts/AppShell.vue'
 import { toNumber } from '../../shared/format'
 import { usePrivacyMode } from '../../shared/privacyMode'
 import { useKonaStore } from '../../stores/composables'
-import { useRealtimeTodayStore } from '../../stores/realtimeToday'
 import {
   useAnalysisStore,
   type AnalysisCalendarDetailSelection,
@@ -195,7 +194,6 @@ import {
 
 const konaStore = useKonaStore()
 const analysisStore = useAnalysisStore()
-const realtimeTodayStore = useRealtimeTodayStore()
 const { maskValue } = usePrivacyMode()
 function masked(text: string): string { return maskValue(text) }
 const {
@@ -218,7 +216,6 @@ const {
   detailLoading,
   detailError,
 } = storeToRefs(analysisStore)
-const { payload: realtimeTodayPayload, effectiveDate } = storeToRefs(realtimeTodayStore)
 
 const rankExpanded = ref(false)
 const overviewPeriod = ref<'day' | 'month' | 'year' | 'all'>('day')
@@ -245,36 +242,18 @@ const periodLabel = computed(() => {
 })
 
 const periodPnl = computed(() => {
-  if (overviewPeriod.value === 'day') {
-    return toNum(realtimeTodayPayload.value?.totals?.day_pnl)
-  }
   const key = overviewPeriod.value
   const value = overview.value[key]?.pnl
   return value == null ? null : toNum(value)
 })
 
 const periodRate = computed(() => {
-  if (overviewPeriod.value === 'day') {
-    return toNum(realtimeTodayPayload.value?.totals?.day_pnl_rate)
-  }
   const key = overviewPeriod.value
   const value = overview.value[key]?.pnl_rate
   return value == null ? null : toNum(value)
 })
 
-const calendarGridView = computed(() => {
-  const base = calendarGrid.value.map(cell => ({ ...cell }))
-  if (calendarType.value !== 'day') return base
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(effectiveDate.value || '').trim())
-  if (!match) return base
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  if (year !== selectedDayYear.value || month !== selectedDayMonth.value) return base
-  return base.map(cell => (cell.key === day
-    ? { ...cell, pnl: toNum(realtimeTodayPayload.value?.totals?.day_pnl) }
-    : cell))
-})
+const calendarGridView = computed(() => calendarGrid.value.map(cell => ({ ...cell })))
 
 const calendarColumns = computed(() => {
   if (calendarType.value === 'day') return 7
@@ -436,11 +415,9 @@ function onCalendarTypeChange(nextType: AnalysisCalendarType) {
 
 onMounted(() => {
   void analysisStore.initialize()
-  void realtimeTodayStore.load()
   konaStore.startAutoRefresh()
   void konaStore.refreshQuotesOnly()
   analysisRefreshTimer = window.setInterval(() => {
-    void realtimeTodayStore.load()
     void analysisStore.reload('light', true)
   }, 60_000)
 })

@@ -61,6 +61,7 @@ from web_entry_routes import create_web_entry_blueprint
 
 from core.db import DatabaseManager
 from core.analysis_read_service import AnalysisReadService
+from core.analysis_screen_service import AnalysisScreenService
 from core.history_read_service import HistoryReadService
 from core.portfolio_read_service import PortfolioReadService
 from core.price import PricePreloader
@@ -273,8 +274,14 @@ def create_app_components(
             market_runtime.get_market_status_cached().get("all_closed", False)
         ),
     )
+    analysis_screen_service = AnalysisScreenService(
+        db=db,
+        analysis_read_service=analysis_read_service,
+        realtime_today_service=realtime_today_service,
+    )
     analysis_payload_handlers = create_analysis_payload_handlers(
         analysis_read_service=analysis_read_service,
+        analysis_screen_service=analysis_screen_service,
         realtime_today_service=realtime_today_service,
     )
     web_entry_handlers = create_web_entry_handlers(
@@ -372,6 +379,7 @@ def create_app_components(
             analysis_market_breakdown_payload_getter=analysis_payload_handlers["market_breakdown"],
             analysis_asset_breakdown_payload_getter=analysis_payload_handlers["asset_breakdown"],
             analysis_rank_payload_getter=analysis_payload_handlers["rank"],
+            analysis_screen_payload_getter=analysis_payload_handlers["screen"],
             realtime_today_payload_getter=analysis_payload_handlers["realtime_today"],
         )
     )

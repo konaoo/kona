@@ -1414,6 +1414,23 @@ class ApiService {
     return await _get(endpoint) ?? {};
   }
 
+  Future<Map<String, dynamic>> getAnalysisScreen({
+    String timeType = 'day',
+    int? year,
+    int? month,
+    int? ledgerId,
+  }) async {
+    final query = <String, String>{
+      'type': timeType,
+      if (year != null) 'year': '$year',
+      if (month != null) 'month': '$month',
+      if (ledgerId != null) 'ledger_id': '$ledgerId',
+    };
+    final endpoint =
+        '/api/analysis/screen?${Uri(queryParameters: query).query}';
+    return await _get(endpoint) ?? {};
+  }
+
   Future<Map<String, dynamic>> getAnalysisCalendarAssetBreakdown({
     required String scope,
     required String date,

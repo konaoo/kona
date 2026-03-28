@@ -488,7 +488,15 @@ class AnalysisDatabaseMixin:
                 return {"error": "Invalid time type", "code": "INVALID_CALENDAR_PERIOD", "items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": "", "period": period, "selectable": selectable}
 
             total_rate = round(total_pnl / rate_base * 100, 2) if rate_base else 0.0
-            return {"items": items, "total_pnl": total_pnl, "total_rate": total_rate, "title": title, "period": period, "selectable": selectable}
+            return {
+                "items": items,
+                "total_pnl": total_pnl,
+                "total_rate": total_rate,
+                "base_value": rate_base,
+                "title": title,
+                "period": period,
+                "selectable": selectable,
+            }
         except Exception as exc:
             logger.error("Failed to get ledger calendar data: %s", exc)
             return {"items": [], "total_pnl": 0.0, "total_rate": 0.0, "title": "", "period": {"time_type": time_type}, "selectable": {"day": {"years": [], "months_by_year": {}}, "month": {"years": []}}}
@@ -560,6 +568,7 @@ class AnalysisDatabaseMixin:
                         "items": [],
                         "total_pnl": 0.0,
                         "total_rate": 0.0,
+                        "base_value": 0.0,
                         "title": f"{now.year}年{now.month}月累计",
                         "period": period,
                         "selectable": selectable,
@@ -589,6 +598,7 @@ class AnalysisDatabaseMixin:
                         "items": [],
                         "total_pnl": 0.0,
                         "total_rate": 0.0,
+                        "base_value": 0.0,
                         "title": f"{target_year}年{target_month}月累计",
                         "period": period,
                         "selectable": selectable,
@@ -628,6 +638,7 @@ class AnalysisDatabaseMixin:
                         "items": [],
                         "total_pnl": 0.0,
                         "total_rate": 0.0,
+                        "base_value": 0.0,
                         "title": f"{now.year}年累计",
                         "period": period,
                         "selectable": selectable,
@@ -643,6 +654,7 @@ class AnalysisDatabaseMixin:
                         "items": [],
                         "total_pnl": 0.0,
                         "total_rate": 0.0,
+                        "base_value": 0.0,
                         "title": f"{target_year}年累计",
                         "period": period,
                         "selectable": selectable,
@@ -703,6 +715,7 @@ class AnalysisDatabaseMixin:
                     "items": [],
                     "total_pnl": 0.0,
                     "total_rate": 0.0,
+                    "base_value": 0.0,
                     "title": "",
                     "period": period,
                     "selectable": selectable,
@@ -713,6 +726,7 @@ class AnalysisDatabaseMixin:
                 "items": items,
                 "total_pnl": total_pnl,
                 "total_rate": total_rate,
+                "base_value": rate_base,
                 "title": title,
                 "period": period,
                 "selectable": selectable,
@@ -724,6 +738,7 @@ class AnalysisDatabaseMixin:
                 "items": [],
                 "total_pnl": 0.0,
                 "total_rate": 0.0,
+                "base_value": 0.0,
                 "title": "",
                 "period": {"time_type": time_type},
                 "selectable": {"day": {"years": [], "months_by_year": {}}, "month": {"years": []}},

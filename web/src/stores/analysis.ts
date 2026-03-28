@@ -46,6 +46,17 @@ type AnalysisCalendarPayload = {
   }
 }
 
+type AnalysisScreenPayload = {
+  meta?: Record<string, unknown>
+  overview?: Record<AnalysisPeriodKey, AnalysisOverviewItem>
+  calendar?: AnalysisCalendarPayload
+  rank?: {
+    gain?: AnalysisRankItem[]
+    loss?: AnalysisRankItem[]
+  }
+  realtime_today?: Record<string, unknown>
+}
+
 export type AnalysisRankItem = {
   code: string
   name?: string
@@ -179,6 +190,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
   const selectedCalendarDetail = ref<AnalysisCalendarDetailSelection | null>(null)
   const detailLoading = ref(false)
   const detailError = ref('')
+  const screenMeta = ref<Record<string, unknown>>({})
 
   const pickerYears = computed(() => {
     if (calendarType.value === 'day') return selectableDayYears.value
@@ -403,12 +415,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadOverview() {
-    const params = new URLSearchParams({ period: 'all' })
-    if (ledgerScopeStore.currentLedgerId != null) {
-      params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
-    }
-    const payload = await api.get<Record<string, AnalysisOverviewItem>>(`/api/analysis/overview?${params.toString()}`)
-    Object.assign(overview, payload)
+    await loadScreen()
   }
 
   async function loadCalendar(recoverOnInvalid = true) {
@@ -428,15 +435,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
 
     try {
-      const payload = await api.get<AnalysisCalendarPayload>(`/api/analysis/calendar?${params.toString()}`)
+      const payload = await api.get<AnalysisScreenPayload>(`/api/analysis/screen?${params.toString()}`)
       if (requestId !== calendarRequestId) return
-
-      applyCalendarSelectable(payload)
-      syncCalendarSelectionFromPayload(payload)
-      calendarState.title = payload.title || ''
-      calendarState.items = payload.items || []
-      calendarState.totalPnl = payload.total_pnl == null ? null : toNumber(payload.total_pnl)
-      calendarState.totalRate = payload.total_rate == null ? null : toNumber(payload.total_rate)
+      applyScreenPayload(payload)
     } catch (error) {
       const invalidPayload = invalidCalendarPeriodPayload(error)
       if (recoverOnInvalid && invalidPayload) {
@@ -448,15 +449,53 @@ export const useAnalysisStore = defineStore('analysis', () => {
   }
 
   async function loadRank() {
-    const params = new URLSearchParams({ type: 'all', market: 'all' })
+    await loadScreen()
+  }
+
+  function applyScreenPayload(payload: AnalysisScreenPayload) {
+    Object.assign(overview, payload.overview || {})
+    screenMeta.value = { ...(payload.meta || {}) }
+    const calendarPayload = payload.calendar || {}
+    applyCalendarSelectable(calendarPayload)
+    syncCalendarSelectionFromPayload(calendarPayload)
+    calendarState.title = calendarPayload.title || ''
+    calendarState.items = calendarPayload.items || []
+    calendarState.totalPnl = calendarPayload.total_pnl == null ? null : toNumber(calendarPayload.total_pnl)
+    calendarState.totalRate = calendarPayload.total_rate == null ? null : toNumber(calendarPayload.total_rate)
+    rank.gain = payload.rank?.gain || []
+    rank.loss = payload.rank?.loss || []
+  }
+
+  async function loadScreen(recoverOnInvalid = true) {
+    const requestId = ++calendarRequestId
+    const params = new URLSearchParams({ type: calendarType.value })
+    if (calendarType.value === 'day') {
+      ensureDaySelection()
+      if (selectedDayYear.value && selectedDayMonth.value) {
+        params.set('year', String(selectedDayYear.value))
+        params.set('month', String(selectedDayMonth.value))
+      }
+    } else if (calendarType.value === 'month' && selectedMonthYear.value) {
+      params.set('year', String(selectedMonthYear.value))
+    }
     if (ledgerScopeStore.currentLedgerId != null) {
       params.set('ledger_id', String(ledgerScopeStore.currentLedgerId))
     }
-    const payload = await api.get<{ gain?: AnalysisRankItem[]; loss?: AnalysisRankItem[] }>(
-      `/api/analysis/rank?${params.toString()}`
-    )
-    rank.gain = payload.gain || []
-    rank.loss = payload.loss || []
+
+    try {
+      const payload = await api.get<AnalysisScreenPayload>(`/api/analysis/screen?${params.toString()}`)
+      if (requestId !== calendarRequestId) return
+      applyScreenPayload(payload)
+    } catch (error) {
+      const invalidPayload = invalidCalendarPeriodPayload(error)
+      if (recoverOnInvalid && invalidPayload) {
+        applyCalendarSelectable(invalidPayload)
+        syncCalendarSelectionFromPayload(invalidPayload)
+        await loadScreen(false)
+        return
+      }
+      throw error
+    }
   }
 
   async function reload(mode: 'light' | 'force' = 'light', includeAnalysis = true) {
@@ -475,8 +514,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
       }
 
       if (includeAnalysis) {
-        await Promise.all([loadOverview()])
-        await Promise.all([loadCalendar(), loadRank()])
+        await loadScreen()
       }
       persistAnalysisCache()
     })()
@@ -612,6 +650,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     selectableDayYears,
     selectableDayMonthsByYear,
     selectableMonthYears,
+    screenMeta,
     selectedCalendarDetail,
     detailLoading,
     detailError,
@@ -623,6 +662,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     calendarSummaryLabel,
     calendarGrid,
     restoreAnalysisCache,
+    loadScreen,
     loadOverview,
     loadCalendar,
     loadRank,

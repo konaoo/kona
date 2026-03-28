@@ -91,6 +91,7 @@ class AnalysisPage extends StatefulWidget {
     super.key,
     this.isActive = true,
     this.autoRefreshInterval = const Duration(minutes: 2),
+    this.screenLoader,
     this.overviewLoader,
     this.calendarLoader,
     this.rankLoader,
@@ -98,6 +99,12 @@ class AnalysisPage extends StatefulWidget {
 
   final bool isActive;
   final Duration autoRefreshInterval;
+  final Future<Map<String, dynamic>> Function({
+    required String timeType,
+    int? year,
+    int? month,
+  })?
+  screenLoader;
   final Future<Map<String, dynamic>> Function(String period)? overviewLoader;
   final Future<Map<String, dynamic>> Function({
     required String timeType,
@@ -129,11 +136,13 @@ class _AnalysisPageState extends State<AnalysisPage>
   int _overviewRetryCount = 0;
   Timer? _overviewRetryTimer;
   int? _activeLedgerId;
+  int _screenRequestId = 0;
+  Map<String, dynamic> _screenMeta = {};
+  Map<String, dynamic> _screenRealtimeToday = {};
 
   // 收益日历相关
   String _calendarTimeType = 'day';
   Map<String, dynamic> _calendarData = {};
-  int _calendarRetryCount = 0;
   Timer? _calendarRetryTimer;
   final Map<String, Map<String, dynamic>> _calendarCache = {};
   final Map<String, Map<String, dynamic>> _calendarDetailCache = {};
@@ -153,7 +162,6 @@ class _AnalysisPageState extends State<AnalysisPage>
   String _rankType = 'profit'; // 'profit' 或 'loss'
   Map<String, dynamic> _rankData = {};
   bool _rankLoading = false;
-  int _rankRetryCount = 0;
   Timer? _rankRetryTimer;
   Timer? _autoRefreshTimer;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
@@ -166,13 +174,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     _selectedDayYear = now.year;
     _selectedDayMonth = now.month;
     _selectedMonthYear = now.year;
-    _loadData();
-    _loadCalendar();
-    _loadRank();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(context.read<AppState>().refreshRealtimeToday());
-    });
+    _loadScreen();
     _syncAutoRefreshTimer();
   }
 
@@ -238,10 +240,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     if (!mounted || !_canAutoRefresh) return;
     _calendarCache.clear();
     _calendarDetailCache.clear();
-    unawaited(context.read<AppState>().refreshRealtimeToday());
-    unawaited(_loadData(force: true, showLoadingUi: false));
-    unawaited(_loadCalendar(force: true, showLoadingUi: false));
-    unawaited(_loadRank(force: true));
+    unawaited(_loadScreen(force: true, showLoadingUi: false));
   }
 
   void _handleLedgerChanged() {
@@ -255,70 +254,19 @@ class _AnalysisPageState extends State<AnalysisPage>
       _loading = true;
       _overviewRetryCount = 0;
       _calendarData = {};
-      _calendarRetryCount = 0;
       _clearCalendarDetail();
       _rankData = {};
       _rankLoading = true;
-      _rankRetryCount = 0;
+      _screenMeta = {};
+      _screenRealtimeToday = {};
     });
-    unawaited(context.read<AppState>().refreshRealtimeToday(ledgerId: _activeLedgerId));
-    unawaited(_loadData(force: true));
-    unawaited(_loadCalendar(force: true));
-    unawaited(_loadRank(force: true));
+    unawaited(_loadScreen(force: true));
   }
 
   Future<void> _loadData({
     bool force = false,
     bool showLoadingUi = true,
-  }) async {
-    var renderedByCache = false;
-    if (!force && !_overviewLoaded) {
-      final cached = await _loadOverviewFromStorage();
-      if (cached != null && mounted) {
-        setState(() {
-          _overview = cached;
-          _loading = false;
-        });
-        renderedByCache = true;
-      }
-    }
-    if (_overviewLoaded && !force) return;
-    if (!renderedByCache && showLoadingUi) {
-      setState(() => _loading = true);
-    }
-    try {
-      if (!mounted) return;
-      final ledgerId = context.read<AppState>().currentLedgerId;
-      final data = widget.overviewLoader != null
-          ? await widget.overviewLoader!('all')
-          : await _api.getAnalysisOverview(period: 'all', ledgerId: ledgerId);
-      if (!mounted) return;
-      setState(() {
-        _overview = data;
-        _loading = false;
-        _overviewLoaded = true;
-      });
-      unawaited(_saveOverviewToStorage(data));
-      _overviewRetryTimer?.cancel();
-      _overviewRetryCount = 0;
-    } catch (e) {
-      debugPrint('加载分析数据失败: $e');
-      if (!mounted) return;
-      if (!renderedByCache && showLoadingUi) {
-        setState(() => _loading = false);
-      }
-      if (_overviewRetryCount < _maxTransientRetry) {
-        _overviewRetryCount += 1;
-        final retryCount = _overviewRetryCount;
-        final delayMs = 600 * retryCount;
-        _overviewRetryTimer?.cancel();
-        _overviewRetryTimer = Timer(Duration(milliseconds: delayMs), () {
-          if (!mounted) return;
-          unawaited(_loadData(force: true));
-        });
-      }
-    }
-  }
+  }) => _loadScreen(force: force, showLoadingUi: showLoadingUi);
 
   Future<Map<String, dynamic>?> _loadOverviewFromStorage() async {
     try {
@@ -354,8 +302,13 @@ class _AnalysisPageState extends State<AnalysisPage>
   Future<void> _loadCalendar({
     bool force = false,
     bool showLoadingUi = true,
+  }) => _loadScreen(force: force, showLoadingUi: showLoadingUi);
+
+  Future<void> _loadScreen({
+    bool force = false,
+    bool showLoadingUi = true,
   }) async {
-    final requestCacheKey = _calendarCacheKey();
+    final requestCacheKey = 'screen:${_calendarCacheKey()}';
     final requestStorageKey = _calendarStorageKey(requestCacheKey);
     var renderedByCache = false;
 
@@ -379,106 +332,267 @@ class _AnalysisPageState extends State<AnalysisPage>
         }
       }
       if (cached != null && mounted) {
-        final cachedData = cached;
+        final cachedData = Map<String, dynamic>.from(cached);
         setState(() {
-          _syncCalendarMetaFromData(cachedData);
-          _normalizeCalendarSelections();
-          _calendarData = cachedData;
+          _applyScreenPayload(cachedData);
         });
         renderedByCache = true;
+      } else if (!_overviewLoaded) {
+        final cachedOverview = await _loadOverviewFromStorage();
+        if (cachedOverview != null && mounted) {
+          setState(() {
+            _overview = cachedOverview;
+            _loading = false;
+          });
+          renderedByCache = true;
+        }
       }
-      // SWR: show stale cache but still refresh from API
       if (cacheExpired) {
         force = true;
       }
     }
 
-    if (!renderedByCache && showLoadingUi) {
-      if (mounted) setState(() {});
+    if (!renderedByCache && showLoadingUi && mounted) {
+      setState(() {
+        _loading = true;
+        _rankLoading = true;
+      });
     }
+
+    final requestId = ++_screenRequestId;
     try {
       if (!mounted) return;
       final ledgerId = context.read<AppState>().currentLedgerId;
-      final data = widget.calendarLoader != null
-          ? await widget.calendarLoader!(
-              timeType: _calendarTimeType,
-              year: _currentCalendarRequestYear,
-              month: _currentCalendarRequestMonth,
-            )
-          : await _api.getAnalysisCalendar(
-              timeType: _calendarTimeType,
-              year: _currentCalendarRequestYear,
-              month: _currentCalendarRequestMonth,
-              ledgerId: ledgerId,
-            );
-      if (!mounted) return;
+      final payload = await _fetchScreenPayload(ledgerId: ledgerId);
+      if (!mounted || requestId != _screenRequestId) return;
       setState(() {
-        _syncCalendarMetaFromData(data);
-        _normalizeCalendarSelections();
-        _calendarData = data;
-        final resolvedCacheKey = _calendarCacheKey();
-        _calendarCache[resolvedCacheKey] = {
-          ...data,
-          '_cached_at': DateTime.now().millisecondsSinceEpoch,
-        };
+        _applyScreenPayload(payload);
       });
+      _calendarCache[requestCacheKey] = {
+        ...payload,
+        '_cached_at': DateTime.now().millisecondsSinceEpoch,
+      };
+      unawaited(_saveCalendarToStorage(requestStorageKey, payload));
+      unawaited(_saveOverviewToStorage(_overview));
+      _overviewRetryTimer?.cancel();
       _calendarRetryTimer?.cancel();
-      _calendarRetryCount = 0;
-      final resolvedStorageKey = _calendarStorageKey(_calendarCacheKey());
-      unawaited(_saveCalendarToStorage(resolvedStorageKey, data));
+      _rankRetryTimer?.cancel();
+      _overviewRetryCount = 0;
     } catch (e) {
-      debugPrint('加载收益日历失败: $e');
-      if (!mounted) return;
+      debugPrint('加载分析屏幕数据失败: $e');
+      if (!mounted || requestId != _screenRequestId) return;
       if (!renderedByCache && showLoadingUi) {
-        if (mounted) setState(() {});
+        setState(() {
+          _loading = false;
+          _rankLoading = false;
+        });
       }
-      if (_calendarRetryCount < _maxTransientRetry) {
-        _calendarRetryCount += 1;
-        final retryCount = _calendarRetryCount;
+      if (_overviewRetryCount < _maxTransientRetry) {
+        _overviewRetryCount += 1;
+        final retryCount = _overviewRetryCount;
         final delayMs = 700 * retryCount;
-        _calendarRetryTimer?.cancel();
-        _calendarRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+        _overviewRetryTimer?.cancel();
+        _overviewRetryTimer = Timer(Duration(milliseconds: delayMs), () {
           if (!mounted) return;
-          unawaited(_loadCalendar(force: true));
+          unawaited(_loadScreen(force: true));
         });
       }
     }
   }
 
-  Future<void> _loadRank({bool force = false}) async {
-    if (_rankLoading && !force) return;
-    setState(() => _rankLoading = true);
-    try {
-      final ledgerId = context.read<AppState>().currentLedgerId;
-      final data = widget.rankLoader != null
-          ? await widget.rankLoader!(rankType: 'all', market: 'all')
-          : await _api.getAnalysisRank(
-              rankType: 'all',
-              market: 'all',
-              ledgerId: ledgerId,
-            );
-      if (!mounted) return;
-      setState(() {
-        _rankData = data;
-        _rankLoading = false;
-        _rankRetryCount = 0;
-      });
-      _rankRetryTimer?.cancel();
-    } catch (e) {
-      debugPrint('加载盈亏排行失败: $e');
-      if (!mounted) return;
-      setState(() => _rankLoading = false);
-      if (_rankRetryCount < _maxTransientRetry) {
-        _rankRetryCount += 1;
-        final retryCount = _rankRetryCount;
-        final delayMs = 600 * retryCount;
-        _rankRetryTimer?.cancel();
-        _rankRetryTimer = Timer(Duration(milliseconds: delayMs), () {
-          if (!mounted) return;
-          unawaited(_loadRank(force: true));
-        });
-      }
+  Future<Map<String, dynamic>> _fetchScreenPayload({int? ledgerId}) async {
+    if (widget.screenLoader != null) {
+      return widget.screenLoader!(
+        timeType: _calendarTimeType,
+        year: _currentCalendarRequestYear,
+        month: _currentCalendarRequestMonth,
+      );
     }
+    if (widget.overviewLoader != null ||
+        widget.calendarLoader != null ||
+        widget.rankLoader != null) {
+      final appState = context.read<AppState>();
+      final overview = widget.overviewLoader != null
+          ? await widget.overviewLoader!('all')
+          : <String, dynamic>{
+              'day': {'pnl': 0.0, 'pnl_rate': 0.0},
+              'month': {'pnl': 0.0, 'pnl_rate': 0.0},
+              'year': {'pnl': 0.0, 'pnl_rate': 0.0},
+              'all': {'pnl': 0.0, 'pnl_rate': 0.0},
+            };
+      final calendar = widget.calendarLoader != null
+          ? await widget.calendarLoader!(
+              timeType: _calendarTimeType,
+              year: _currentCalendarRequestYear,
+              month: _currentCalendarRequestMonth,
+            )
+          : <String, dynamic>{
+              'items': <Map<String, dynamic>>[],
+              'total_pnl': 0.0,
+              'total_rate': 0.0,
+              'title': '',
+              'period': <String, dynamic>{},
+              'selectable': {
+                'day': {'years': <int>[], 'months_by_year': <String, dynamic>{}},
+                'month': {'years': <int>[]},
+              },
+            };
+      final rank = widget.rankLoader != null
+          ? await widget.rankLoader!(rankType: 'all', market: 'all')
+          : <String, dynamic>{
+              'gain': <Map<String, dynamic>>[],
+              'loss': <Map<String, dynamic>>[],
+            };
+      final realtimeToday = _asMap(appState.realtimeToday);
+      return _buildScreenPayloadFromLegacyLoaders(
+        overview: overview,
+        calendar: calendar,
+        rank: rank,
+        realtimeToday: realtimeToday,
+        ledgerId: ledgerId,
+      );
+    }
+    return _api.getAnalysisScreen(
+      timeType: _calendarTimeType,
+      year: _currentCalendarRequestYear,
+      month: _currentCalendarRequestMonth,
+      ledgerId: ledgerId,
+    );
+  }
+
+  Map<String, dynamic> _buildScreenPayloadFromLegacyLoaders({
+    required Map<String, dynamic> overview,
+    required Map<String, dynamic> calendar,
+    required Map<String, dynamic> rank,
+    required Map<String, dynamic> realtimeToday,
+    required int? ledgerId,
+  }) {
+    final normalizedOverview = Map<String, dynamic>.from(overview);
+    final realtimeTotals = _asMap(realtimeToday['totals']);
+    if (realtimeTotals.isNotEmpty) {
+      normalizedOverview['day'] = {
+        'pnl': (realtimeTotals['day_pnl'] as num?)?.toDouble() ?? 0.0,
+        'pnl_rate': (realtimeTotals['day_pnl_rate'] as num?)?.toDouble() ?? 0.0,
+        'base_value': (realtimeTotals['day_pnl_base'] as num?)?.toDouble() ?? 0.0,
+        'source': 'realtime',
+      };
+    }
+    final normalizedCalendar = _applyLegacyRealtimeToCalendar(calendar, realtimeToday);
+    return {
+      'meta': {
+        'analysis_version': DateTime.now().toUtc().toIso8601String(),
+        'generated_at': DateTime.now().toUtc().toIso8601String(),
+        'ledger_id': ledgerId,
+        'today_effective_date': realtimeToday['effective_date'],
+        'today_status': _resolveLegacyTodayStatus(realtimeToday),
+      },
+      'overview': normalizedOverview,
+      'calendar': normalizedCalendar,
+      'rank': rank,
+      'realtime_today': realtimeToday,
+    };
+  }
+
+  Map<String, dynamic> _applyLegacyRealtimeToCalendar(
+    Map<String, dynamic> calendar,
+    Map<String, dynamic> realtimeToday,
+  ) {
+    final normalized = Map<String, dynamic>.from(calendar);
+    final realtimeTotals = _asMap(realtimeToday['totals']);
+    final effectiveDateRaw = realtimeToday['effective_date']?.toString() ?? '';
+    final period = _asMap(normalized['period']);
+    final items = (normalized['items'] as List<dynamic>? ?? [])
+        .map((item) => item is Map<String, dynamic>
+            ? Map<String, dynamic>.from(item)
+            : Map<String, dynamic>.from(item as Map))
+        .toList();
+    normalized['summary'] = {
+      'label': _calendarTimeType == 'day'
+          ? '本月盈亏'
+          : (_calendarTimeType == 'month' ? '本年盈亏' : '累计盈亏'),
+      'total_pnl': normalized['total_pnl'],
+      'total_rate': normalized['total_rate'],
+    };
+    if (_calendarTimeType != 'day' ||
+        realtimeTotals.isEmpty ||
+        effectiveDateRaw.isEmpty ||
+        normalized['code'] == 'INVALID_CALENDAR_PERIOD') {
+      normalized['items'] = items;
+      return normalized;
+    }
+    final effectiveDate = DateTime.tryParse(effectiveDateRaw);
+    if (effectiveDate == null) {
+      normalized['items'] = items;
+      return normalized;
+    }
+    final periodYear = (period['year'] as num?)?.toInt() ?? 0;
+    final periodMonth = (period['month'] as num?)?.toInt() ?? 0;
+    if (effectiveDate.year != periodYear || effectiveDate.month != periodMonth) {
+      normalized['items'] = items;
+      return normalized;
+    }
+    final targetLabel = '$periodMonth-${effectiveDate.day}';
+    final realtimePnl = (realtimeTotals['day_pnl'] as num?)?.toDouble() ?? 0.0;
+    var originalPnl = 0.0;
+    var replaced = false;
+    for (final item in items) {
+      if ((item['label'] ?? '').toString() != targetLabel) continue;
+      originalPnl = (item['pnl'] as num?)?.toDouble() ?? 0.0;
+      item['pnl'] = realtimePnl;
+      replaced = true;
+      break;
+    }
+    if (!replaced) {
+      items.add({'label': targetLabel, 'pnl': realtimePnl});
+    }
+    final totalPnl = (normalized['total_pnl'] as num?)?.toDouble() ?? 0.0;
+    final originalRate = (normalized['total_rate'] as num?)?.toDouble();
+    final inferredBaseValue =
+        originalRate != null && originalRate != 0
+        ? totalPnl / (originalRate / 100)
+        : 0.0;
+    final baseValue =
+        (normalized['base_value'] as num?)?.toDouble() ?? inferredBaseValue;
+    final adjustedTotal = totalPnl - originalPnl + realtimePnl;
+    final adjustedRate = baseValue > 0 ? adjustedTotal / baseValue * 100 : 0.0;
+    normalized['items'] = items;
+    normalized['total_pnl'] = adjustedTotal;
+    normalized['total_rate'] = adjustedRate;
+    normalized['summary'] = {
+      'label': '本月盈亏',
+      'total_pnl': adjustedTotal,
+      'total_rate': adjustedRate,
+    };
+    return normalized;
+  }
+
+  String _resolveLegacyTodayStatus(Map<String, dynamic> realtimeToday) {
+    final raw = realtimeToday['effective_date']?.toString() ?? '';
+    final effectiveDate = DateTime.tryParse(raw);
+    if (effectiveDate == null) return 'unavailable';
+    final now = DateTime.now();
+    if (effectiveDate.year == now.year &&
+        effectiveDate.month == now.month &&
+        effectiveDate.day == now.day) {
+      return 'ready';
+    }
+    return 'pending';
+  }
+
+  void _applyScreenPayload(Map<String, dynamic> payload) {
+    final overview = _asMap(payload['overview']);
+    final calendar = _asMap(payload['calendar']);
+    final rank = _asMap(payload['rank']);
+    _syncCalendarMetaFromData(calendar);
+    _normalizeCalendarSelections();
+    _overview = overview;
+    _calendarData = calendar;
+    _rankData = rank;
+    _screenMeta = _asMap(payload['meta']);
+    _screenRealtimeToday = _asMap(payload['realtime_today']);
+    _loading = false;
+    _overviewLoaded = true;
+    _rankLoading = false;
   }
 
   String _calendarStorageKey(String cacheKey) {
@@ -637,12 +751,12 @@ class _AnalysisPageState extends State<AnalysisPage>
     return result;
   }
 
-  Map<String, dynamic> _realtimeTodayTotals(AppState appState) {
-    return _asMap(_asMap(appState.realtimeToday)['totals']);
+  Map<String, dynamic> _realtimeTodayTotals() {
+    return _asMap(_screenRealtimeToday['totals']);
   }
 
-  DateTime? _realtimeTodayEffectiveDate(AppState appState) {
-    final raw = _asMap(appState.realtimeToday)['effective_date']?.toString() ?? '';
+  DateTime? _realtimeTodayEffectiveDate() {
+    final raw = _screenRealtimeToday['effective_date']?.toString() ?? '';
     if (raw.isEmpty) return null;
     try {
       return DateTime.parse(raw);
@@ -651,7 +765,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     }
   }
 
-  double? _currentMonthTodayCellPnlOverride(AppState appState) {
+  double? _currentMonthTodayCellPnlOverride() {
     if (_calendarTimeType != 'day') return null;
     final now = DateTime.now();
     final dayYear = _selectedDayYear ?? now.year;
@@ -660,16 +774,18 @@ class _AnalysisPageState extends State<AnalysisPage>
       return null;
     }
 
-    final realtimeToday = _asMap(appState.realtimeToday);
-    if (realtimeToday.isEmpty) {
+    if (_screenRealtimeToday.isEmpty) {
+      return null;
+    }
+    if ((_screenMeta['today_status']?.toString() ?? '') == 'unavailable') {
       return null;
     }
 
-    final totals = _realtimeTodayTotals(appState);
+    final totals = _realtimeTodayTotals();
     final realtimeDayPnl = (totals['day_pnl'] as num?)?.toDouble() ?? 0.0;
-    final effectiveDate = _realtimeTodayEffectiveDate(appState);
+    final effectiveDate = _realtimeTodayEffectiveDate();
     if (effectiveDate == null) {
-      return 0.0;
+      return null;
     }
 
     final isTodayEffective =
@@ -761,10 +877,9 @@ class _AnalysisPageState extends State<AnalysisPage>
         validKeys.add(key);
       }
     }
-    final effectiveDate = _realtimeTodayEffectiveDate(context.read<AppState>());
+    final effectiveDate = _realtimeTodayEffectiveDate();
     final realtimeDayPnl =
-        (_realtimeTodayTotals(context.read<AppState>())['day_pnl'] as num?)
-            ?.toDouble();
+        (_realtimeTodayTotals()['day_pnl'] as num?)?.toDouble();
     if (_calendarTimeType == 'day' &&
         effectiveDate != null &&
         realtimeDayPnl != null &&
@@ -880,7 +995,6 @@ class _AnalysisPageState extends State<AnalysisPage>
     _overviewRetryTimer?.cancel();
     _calendarRetryTimer?.cancel();
     _overviewRetryCount = 0;
-    _calendarRetryCount = 0;
     final appState = context.read<AppState>();
     if (!appState.portfolioLoaded) {
       unawaited(appState.refreshHomeData());
@@ -888,10 +1002,7 @@ class _AnalysisPageState extends State<AnalysisPage>
     try {
       _calendarCache.clear();
       _calendarDetailCache.clear();
-      await Future.wait<void>([
-        _loadData(force: true, showLoadingUi: false),
-        _loadCalendar(force: true, showLoadingUi: false),
-      ]);
+      await _loadScreen(force: true, showLoadingUi: false);
     } finally {
       if (mounted) {
         setState(() => _isRefreshing = false);
@@ -931,23 +1042,17 @@ class _AnalysisPageState extends State<AnalysisPage>
 
   Widget _buildOverviewCard(AppState appState) {
     final periodData = _asMap(_overview[_currentPeriod]);
-    final realtimeTotals = _realtimeTodayTotals(appState);
-    final useRealtimeDay = _currentPeriod == 'day';
     final apiPnl = (periodData['pnl'] as num?)?.toDouble();
     final apiRate = (periodData['pnl_rate'] as num?)?.toDouble();
-    final effectivePnl = useRealtimeDay
-        ? (realtimeTotals['day_pnl'] as num?)?.toDouble()
-        : apiPnl;
-    final effectiveRate = useRealtimeDay
-        ? (realtimeTotals['day_pnl_rate'] as num?)?.toDouble()
-        : apiRate;
+    final effectivePnl = apiPnl;
+    final effectiveRate = apiRate;
     final hasPnl = effectivePnl != null;
     final hasRate = effectiveRate != null;
     final pnl = effectivePnl ?? 0;
     final pnlColor = hasPnl
         ? (pnl >= 0 ? AppTheme.danger : AppTheme.success)
         : AppTheme.textMuted;
-    final showLoading = _loading && !_overviewLoaded && !useRealtimeDay;
+    final showLoading = _loading && !_overviewLoaded;
     final pnlValue = effectivePnl ?? 0;
     final amountText = appState.amountHidden
         ? '****'
@@ -1128,7 +1233,7 @@ class _AnalysisPageState extends State<AnalysisPage>
         gridItem['pnl'] = pnlMap[key];
       }
     }
-    final todayCellPnlOverride = _currentMonthTodayCellPnlOverride(appState);
+    final todayCellPnlOverride = _currentMonthTodayCellPnlOverride();
     if (_calendarTimeType == 'day' &&
         dayYear == now.year &&
         dayMonth == now.month &&

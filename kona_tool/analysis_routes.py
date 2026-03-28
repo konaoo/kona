@@ -21,6 +21,7 @@ def create_analysis_blueprint(
     analysis_market_breakdown_payload_getter,
     analysis_asset_breakdown_payload_getter,
     analysis_rank_payload_getter,
+    analysis_screen_payload_getter,
     realtime_today_payload_getter,
 ):
     bp = Blueprint("analysis_routes", __name__)
@@ -54,6 +55,12 @@ def create_analysis_blueprint(
     def analysis_rank():
         """盈亏排行。"""
         return _jsonify_result(analysis_rank_payload_getter())
+
+    @bp.route("/api/analysis/screen")
+    @optional_auth
+    def analysis_screen():
+        """分析页统一屏幕数据。"""
+        return _jsonify_result(analysis_screen_payload_getter())
 
     @bp.route("/api/realtime/today")
     @optional_auth

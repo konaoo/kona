@@ -7,6 +7,7 @@ from flask import g, request
 def create_analysis_payload_handlers(
     *,
     analysis_read_service,
+    analysis_screen_service,
     realtime_today_service,
 ):
     def _parse_positive_int_arg(name: str):
@@ -201,6 +202,42 @@ def create_analysis_payload_handlers(
             ledger_id=ledger_id,
         )
 
+    def build_analysis_screen_payload():
+        time_type = request.args.get('type', 'day')
+        if time_type not in ('day', 'month', 'year'):
+            return {"error": "Invalid calendar type", "code": "INVALID_CALENDAR_PERIOD"}, 400
+
+        year = None
+        month = None
+        try:
+            if time_type == 'day':
+                year = _parse_positive_int_arg('year')
+                month = _parse_positive_int_arg('month')
+                if month is not None and not 1 <= month <= 12:
+                    return {"error": "Invalid month", "code": "INVALID_CALENDAR_PERIOD"}, 400
+            elif time_type == 'month':
+                year = _parse_positive_int_arg('year')
+        except ValueError:
+            return {"error": "Invalid year or month", "code": "INVALID_CALENDAR_PERIOD"}, 400
+
+        user_id = g.user_id
+        try:
+            ledger_id = _parse_optional_ledger_id_arg()
+        except ValueError:
+            return {"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}, 400
+
+        result = analysis_screen_service.build_payload(
+            time_type=time_type,
+            user_id=user_id,
+            year=year,
+            month=month,
+            ledger_id=ledger_id,
+        )
+        calendar = result.get("calendar") or {}
+        if calendar.get("code") == "INVALID_CALENDAR_PERIOD":
+            return calendar, 400
+        return result
+
     return {
         'overview': build_analysis_overview_payload,
         'calendar': build_analysis_calendar_payload,
@@ -208,4 +245,5 @@ def create_analysis_payload_handlers(
         'asset_breakdown': build_analysis_asset_breakdown_payload,
         'rank': build_analysis_rank_payload,
         'realtime_today': build_realtime_today_payload,
+        'screen': build_analysis_screen_payload,
     }
