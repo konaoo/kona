@@ -209,7 +209,10 @@ def _rate_to_cny(curr: Any, rates: Dict[str, Any]) -> float:
         rate = float((rates or {}).get(code, 0.0) or 0.0)
     except Exception:
         rate = 0.0
-    return rate if rate > 0 else 1.0
+    if rate > 0:
+        return rate
+    logger.warning("_rate_to_cny: 汇率缺失或为零 curr=%s, fallback 1.0, 外币资产金额可能严重失真", code)
+    return 1.0
 
 
 def _asset_amount_to_cny(asset: Dict[str, Any], rates: Dict[str, Any], use_abs: bool = False) -> float:
@@ -353,7 +356,7 @@ def _persist_late_effective_date_settlements(
     *,
     ledger_id: int | None = None,
 ) -> set[str]:
-    """把晚到收益按 market 级别局部结算到对应 effective_date。"""
+    """把晚到收益按 effective_date 整天覆盖回填到对应日期。"""
     snapshot_date = str(stats.get("snapshot_date") or "").strip()
     day_pnl_breakdowns_by_date = stats.get("day_pnl_breakdowns_by_date") or {}
     asset_day_breakdowns_by_date = stats.get("asset_day_breakdowns_by_date") or {}
@@ -369,10 +372,22 @@ def _persist_late_effective_date_settlements(
         for market in LATE_SETTLEMENT_MARKETS
     }
 
+    candidate_dates = sorted({
+        str(effective_date)
+        for effective_date in latest_prior_dates.values()
+        if effective_date
+    })
+
     handled_dates: set[str] = set()
-    for market in LATE_SETTLEMENT_MARKETS:
-        effective_date = latest_prior_dates.get(market)
+    for effective_date in candidate_dates:
         if not effective_date:
+            continue
+        impacted_markets = {
+            market
+            for market, market_effective_date in latest_prior_dates.items()
+            if market_effective_date == effective_date
+        }
+        if not impacted_markets:
             continue
         if ledger_id is None:
             if not db_obj.has_daily_snapshot(effective_date, user_id=user_id):
@@ -386,42 +401,62 @@ def _persist_late_effective_date_settlements(
             ):
                 continue
 
-        market_map = day_pnl_breakdowns_by_date.get(effective_date) or {}
-        value = round(float(market_map.get(market, 0.0) or 0.0), 2)
-        if abs(value) < 0.005:
-            continue
-        asset_items = [
+        existing_market_map = db_obj.get_daily_snapshot_market_breakdown_map(
+            effective_date,
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        market_map = _round_market_breakdown(existing_market_map)
+        late_market_map = _round_market_breakdown(day_pnl_breakdowns_by_date.get(effective_date))
+        for market in impacted_markets:
+            market_map[market] = round(float(late_market_map.get(market, 0.0) or 0.0), 2)
+        existing_asset_items = db_obj.get_daily_snapshot_asset_breakdown_rows(
+            date_str=effective_date,
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        late_asset_items = [
             item
             for item in (asset_day_breakdowns_by_date.get(effective_date) or [])
-            if str(item.get("market") or "").strip().lower() == market
+            if str(item.get("market") or "").strip().lower() in impacted_markets
         ]
+        asset_items = [
+            item
+            for item in existing_asset_items
+            if str(item.get("market") or "").strip().lower() not in impacted_markets
+        ]
+        asset_items.extend(late_asset_items)
+        total_day_pnl = round(sum(float(v or 0.0) for v in market_map.values()), 2)
+        if abs(total_day_pnl) < 0.005:
+            continue
 
         if ledger_id is None:
-            ok = db_obj.save_daily_snapshot_market_breakdown_partial(
+            ok = db_obj.save_daily_snapshot_market_breakdown(
                 date_str=effective_date,
-                market_updates={market: value},
+                day_pnl_by_market=market_map,
+                total_day_pnl=total_day_pnl,
                 user_id=user_id,
                 snapshot_date=snapshot_date,
                 source="backfill",
                 confidence=1.0,
             )
         else:
-            ok = db_obj.save_ledger_daily_snapshot_market_breakdown_partial(
+            ok = db_obj.save_ledger_daily_snapshot_market_breakdown(
                 user_id=str(user_id or ""),
                 ledger_id=int(ledger_id),
                 date_str=effective_date,
-                market_updates={market: value},
+                day_pnl_by_market=market_map,
+                total_day_pnl=total_day_pnl,
                 snapshot_date=snapshot_date,
                 source="backfill",
                 confidence=1.0,
             )
         if not ok:
             logger_obj.warning(
-                "Late settlement save failed: user=%s ledger_id=%s date=%s market=%s",
+                "Late settlement full-date save failed: user=%s ledger_id=%s date=%s",
                 user_id,
                 ledger_id,
                 effective_date,
-                market,
             )
             continue
         if ledger_id is None:
@@ -432,7 +467,7 @@ def _persist_late_effective_date_settlements(
                 snapshot_date=snapshot_date,
                 source="exact",
                 confidence=1.0,
-                replace_existing=False,
+                replace_existing=True,
             )
         else:
             asset_ok = db_obj.save_daily_snapshot_asset_breakdowns(
@@ -443,15 +478,14 @@ def _persist_late_effective_date_settlements(
                 snapshot_date=snapshot_date,
                 source="exact",
                 confidence=1.0,
-                replace_existing=False,
+                replace_existing=True,
             )
         if not asset_ok:
             logger_obj.warning(
-                "Late settlement asset breakdown save failed: user=%s ledger_id=%s date=%s market=%s",
+                "Late settlement asset breakdown save failed: user=%s ledger_id=%s date=%s",
                 user_id,
                 ledger_id,
                 effective_date,
-                market,
             )
         handled_dates.add(effective_date)
 
@@ -475,7 +509,7 @@ def _persist_late_effective_date_settlements(
 
 
 def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: str | None = None) -> bool:
-    """保存当天快照，并按市场局部结算晚到收益。"""
+    """保存当天快照，并把晚到收益按 effective_date 整天覆盖回填。"""
     now_utc = stats.get("now_utc")
     if not isinstance(now_utc, datetime):
         now_utc = datetime.now(timezone.utc)
@@ -878,9 +912,15 @@ def _calculate_portfolio_stats_direct(
                     sold_qty = float(sell_info["qty"])
                     sold_amount = float(sell_info["amount"])
 
-                if buy_info and buy_info.get("qty", 0) > 0:
-                    effective_buy_qty = min(float(buy_info["qty"]), qty)
-                    effective_avg_price = float(buy_info["amount"]) / effective_buy_qty
+                # 已清仓且当日无买卖，跳过日内收益计算和明细写入
+                has_buy = buy_info and buy_info.get("qty", 0) > 0
+                has_sell = sold_qty > 0
+                if qty <= 0 and not has_buy and not has_sell:
+                    pass  # 跳过，不写 breakdown / asset / display
+                elif has_buy:
+                    buy_qty_total = float(buy_info["qty"])
+                    effective_buy_qty = min(buy_qty_total, qty)
+                    effective_avg_price = (float(buy_info["amount"]) / buy_qty_total) if buy_qty_total > 0 else yclose_ref
                     pre_trade_qty = max(0.0, qty - effective_buy_qty)
                     item_day_pnl = (
                         (cur_price - yclose_ref) * pre_trade_qty
@@ -888,34 +928,57 @@ def _calculate_portfolio_stats_direct(
                         + (sold_amount - yclose_ref * sold_qty)
                     ) * rate
                     item_day_base = yclose_ref * (pre_trade_qty + sold_qty) * rate
+                    _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
+                    _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
+                    _add_asset_day_breakdown(
+                        asset_day_breakdowns_by_date,
+                        effective_date=effective_date,
+                        code=code,
+                        name=str(asset.get("name") or code),
+                        market=market,
+                        curr=curr,
+                        day_pnl=item_day_pnl,
+                        day_base=item_day_base,
+                    )
+                    if display_effective_date == effective_date:
+                        _add_market_breakdown(
+                            display_day_pnl_breakdowns_by_date,
+                            display_effective_date,
+                            market,
+                            item_day_pnl,
+                        )
+                        _add_day_pnl_base(
+                            display_day_pnl_bases_by_date,
+                            display_effective_date,
+                            item_day_base,
+                        )
                 else:
                     item_day_pnl = ((cur_price - yclose_ref) * qty + (sold_amount - yclose_ref * sold_qty)) * rate
                     item_day_base = yclose_ref * (qty + sold_qty) * rate
-                
-                _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
-                _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
-                _add_asset_day_breakdown(
-                    asset_day_breakdowns_by_date,
-                    effective_date=effective_date,
-                    code=code,
-                    name=str(asset.get("name") or code),
-                    market=market,
-                    curr=curr,
-                    day_pnl=item_day_pnl,
-                    day_base=item_day_base,
-                )
-                if display_effective_date == effective_date:
-                    _add_market_breakdown(
-                        display_day_pnl_breakdowns_by_date,
-                        display_effective_date,
-                        market,
-                        item_day_pnl,
+                    _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
+                    _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
+                    _add_asset_day_breakdown(
+                        asset_day_breakdowns_by_date,
+                        effective_date=effective_date,
+                        code=code,
+                        name=str(asset.get("name") or code),
+                        market=market,
+                        curr=curr,
+                        day_pnl=item_day_pnl,
+                        day_base=item_day_base,
                     )
-                    _add_day_pnl_base(
-                        display_day_pnl_bases_by_date,
-                        display_effective_date,
-                        item_day_base,
-                    )
+                    if display_effective_date == effective_date:
+                        _add_market_breakdown(
+                            display_day_pnl_breakdowns_by_date,
+                            display_effective_date,
+                            market,
+                            item_day_pnl,
+                        )
+                        _add_day_pnl_base(
+                            display_day_pnl_bases_by_date,
+                            display_effective_date,
+                            item_day_base,
+                        )
 
         # 累加
         invest_mv += item_mv
@@ -1031,9 +1094,19 @@ def calculate_portfolio_stats(
     total_other = sum(_asset_amount_to_cny(a, get_forex_rates()) for a in db.get_other_assets(user_id=user_id))
     total_liability = sum(_asset_amount_to_cny(a, get_forex_rates(), use_abs=True) for a in db.get_liabilities(user_id=user_id))
     total_asset = round(total_cash + total_invest + total_other - total_liability, 2)
-    realtime_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(snapshot_date))
+    # display 口径：从各 ledger 的 display_day_pnl_by_market 聚合（盘前归零）
+    display_by_market: Dict[str, float] = {m: 0.0 for m in DEFAULT_MARKETS}
+    display_base = 0.0
+    for stats in ledger_stats_list:
+        for m in DEFAULT_MARKETS:
+            display_by_market[m] = round(
+                display_by_market[m] + float((stats.get("display_day_pnl_by_market") or {}).get(m, 0.0) or 0.0), 2
+            )
+        display_base += float(stats.get("display_day_pnl_base") or 0.0)
+    realtime_day_pnl_by_market = _round_market_breakdown(display_by_market)
     realtime_day_pnl = round(sum(realtime_day_pnl_by_market.values()), 2)
-    realtime_day_pnl_base = round(float(aggregated_bases.get(snapshot_date) or 0.0), 2)
+    realtime_day_pnl_base = round(display_base, 2)
+    # snapshot 口径：从 aggregated_breakdowns 取（保留前一交易日归属）
     snapshot_day_pnl_by_market = _round_market_breakdown(aggregated_breakdowns.get(snapshot_date))
     snapshot_day_pnl = round(sum(snapshot_day_pnl_by_market.values()), 2)
     snapshot_day_pnl_base = round(float(aggregated_bases.get(snapshot_date) or 0.0), 2)

@@ -1181,6 +1181,55 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(payload.get('items'), [])
         self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 0.0)
 
+    def test_analysis_screen_returns_unified_payload(self):
+        fixed_now = datetime(2026, 3, 28, 10, 0, 0)
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES
+            ('2026-03-01', 1, 1000, 0, 0, 0, 10, 10, '', '2026-03-01 10:00:00'),
+            ('2026-03-28', 1, 1000, 0, 0, 0, 100, 30, '', '2026-03-28 10:00:00')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.realtime_today_service.RealtimeTodayService.build_payload',
+            return_value={
+                'effective_date': '2026-03-28',
+                'totals': {
+                    'day_pnl': 88.0,
+                    'day_pnl_rate': 8.8,
+                    'day_pnl_base': 1000.0,
+                },
+            },
+        ), patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            resp = self.client.get('/api/analysis/screen?type=day&year=2026&month=3')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertIn('meta', payload)
+        self.assertIn('overview', payload)
+        self.assertIn('calendar', payload)
+        self.assertIn('rank', payload)
+        self.assertIn('realtime_today', payload)
+        self.assertEqual(((payload.get('meta') or {}).get('today_status')), 'ready')
+        self.assertAlmostEqual(float((((payload.get('overview') or {}).get('day') or {}).get('pnl') or 0.0)), 88.0)
+        self.assertAlmostEqual(
+            float((((payload.get('calendar') or {}).get('summary') or {}).get('total_pnl') or 0.0)),
+            98.0,
+        )
+
+    def test_analysis_screen_invalid_calendar_period_returns_400(self):
+        resp = self.client.get('/api/analysis/screen?type=day&year=2026&month=13')
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'INVALID_CALENDAR_PERIOD')
+
 
 if __name__ == '__main__':
     unittest.main()

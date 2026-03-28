@@ -271,9 +271,11 @@ class MarketBreakdownTests(unittest.TestCase):
         self.assertAlmostEqual(by_market["hk"], 0.0, places=2)
         self.assertAlmostEqual(by_market["us"], 0.0, places=2)
         self.assertAlmostEqual(by_market["fund"], 20.0, places=2)
-        self.assertAlmostEqual(by_market["unallocated"], 30.0, places=2)
+        # partial update 不再制造 unallocated，保持 0
+        self.assertAlmostEqual(by_market["unallocated"], 0.0, places=2)
         self.assertIsNotNone(snapshot_row)
-        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 50.0, places=2)
+        # day_pnl 跟随实际 breakdown 总和
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 20.0, places=2)
 
     def test_ledger_partial_backfill_aggregates_without_zeroing_missing_markets(self):
         user_id = "u_ledger_partial"
@@ -359,11 +361,13 @@ class MarketBreakdownTests(unittest.TestCase):
         ledger_by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in ledger_rows}
         global_by_market = {str(row["market"]): float(row["day_pnl"] or 0.0) for row in global_rows}
         self.assertAlmostEqual(ledger_by_market["fund"], 20.0, places=2)
-        self.assertAlmostEqual(ledger_by_market["unallocated"], 30.0, places=2)
+        # partial update 不再用 day_pnl 反推 unallocated，保持 0
+        self.assertAlmostEqual(ledger_by_market["unallocated"], 0.0, places=2)
         self.assertAlmostEqual(global_by_market["fund"], 20.0, places=2)
-        self.assertAlmostEqual(global_by_market["unallocated"], 30.0, places=2)
+        self.assertAlmostEqual(global_by_market["unallocated"], 0.0, places=2)
         self.assertIsNotNone(snapshot_row)
-        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 50.0, places=2)
+        # sync_day_pnl_from_breakdown 按实际 breakdown 总和更新 day_pnl
+        self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 20.0, places=2)
 
     def test_save_single_market_breakdown_row_does_not_rebalance_other_markets(self):
         user_id = "u_single_market"

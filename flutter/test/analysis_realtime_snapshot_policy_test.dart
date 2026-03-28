@@ -34,6 +34,13 @@ void main() {
     };
   }
 
+  Finder overviewAmountFinder(String text) {
+    return find.descendant(
+      of: find.byType(FittedBox).first,
+      matching: find.text(text),
+    );
+  }
+
   Widget buildPage({
     bool isActive = true,
     Duration autoRefreshInterval = const Duration(minutes: 2),
@@ -119,14 +126,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('当日盈亏'), findsOneWidget);
-    expect(find.text('¥88'), findsOneWidget);
+    expect(overviewAmountFinder('¥88'), findsOneWidget);
     expect(find.text('+1.23%'), findsOneWidget);
 
     await tester.tap(find.text('本年'));
     await tester.pumpAndSettle();
 
     expect(find.text('本年盈亏'), findsOneWidget);
-    expect(find.text('¥333'), findsOneWidget);
+    expect(overviewAmountFinder('¥333'), findsOneWidget);
     expect(find.text('+3.33%'), findsOneWidget);
   });
 
@@ -150,7 +157,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥88'), findsOneWidget);
+    expect(overviewAmountFinder('¥88'), findsOneWidget);
     expect(find.text('88'), findsWidgets);
   });
 
@@ -189,7 +196,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('¥88'), findsOneWidget);
+    expect(overviewAmountFinder('¥88'), findsOneWidget);
     expect(find.text('41'), findsWidgets);
     expect(find.text('本月盈亏'), findsOneWidget);
     expect(find.text('88'), findsNothing);
@@ -225,16 +232,16 @@ void main() {
     await tester.tap(find.text('全部'));
     await tester.pumpAndSettle();
     expect(find.text('累计盈亏'), findsOneWidget);
-    expect(find.text('¥444'), findsOneWidget);
+    expect(overviewAmountFinder('¥444'), findsOneWidget);
 
     await tester.tap(find.text('月'));
     await tester.pumpAndSettle();
 
     expect(find.text('累计盈亏'), findsOneWidget);
-    expect(find.text('¥444'), findsOneWidget);
+    expect(overviewAmountFinder('¥444'), findsOneWidget);
   });
 
-  testWidgets('日历底部汇总优先使用接口 total_pnl，使用后端周期累计口径', (tester) async {
+  testWidgets('日历底部汇总会和今天格子保持同一口径', (tester) async {
     final now = DateTime.now();
     await tester.pumpWidget(
       buildPage(
@@ -261,7 +268,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('本月盈亏'), findsOneWidget);
-    expect(find.text('¥17118'), findsOneWidget);
+    expect(find.text('¥17206'), findsOneWidget);
     expect(find.text('+0.83%'), findsOneWidget);
   });
 

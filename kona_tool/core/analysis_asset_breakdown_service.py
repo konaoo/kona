@@ -5,6 +5,7 @@ from __future__ import annotations
 import bisect
 import logging
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Callable, Dict, Iterable, List
 
 from .day_pnl_attribution import resolve_fund_nav_effective_date
@@ -111,7 +112,7 @@ class AnalysisAssetBreakdownService:
     ) -> Dict[str, Any]:
         target = _parse_iso_date(raw_date)
         if scope not in {"day", "month", "year"} or target is None:
-            return {"error": "Invalid scope or date", "code": "INVALID_CALENDAR_DETAIL"}, 400
+            return {"error": "Invalid scope or date", "code": "INVALID_CALENDAR_DETAIL"}
 
         if scope == "day":
             result = self._build_day_payload(target, user_id=user_id, ledger_id=ledger_id)
@@ -520,6 +521,8 @@ class AnalysisAssetBreakdownService:
                 continue
             pnl = _round_amount(row.get("day_pnl"))
             base = _safe_float(row.get("day_base"))
+            # 根据实际数据判断是否有敞口，不硬编码 True
+            has_exposure = abs(pnl) >= 1e-9 or abs(base) >= 1e-9
             items.append(
                 {
                     "code": code,
@@ -528,7 +531,7 @@ class AnalysisAssetBreakdownService:
                     "curr": str(row.get("curr") or "CNY").upper(),
                     "pnl": pnl,
                     "base": base,
-                    "has_exposure": True,
+                    "has_exposure": has_exposure,
                 }
             )
         return items
@@ -677,7 +680,7 @@ class AnalysisAssetBreakdownService:
                     return current_price, float(values[idx - 1] or 0.0)
                 return current_price, 0.0
             return current_price, 0.0
-        return current_price, current_price
+        return 0.0, 0.0
 
     def _compute_exchange_day_metrics(
         self,
@@ -708,7 +711,7 @@ class AnalysisAssetBreakdownService:
         sold_amount = max(sell_amount, 0.0)
         if buy_qty > 0 and qty > 0:
             effective_buy_qty = min(buy_qty, qty)
-            effective_avg_price = (buy_amount / effective_buy_qty) if effective_buy_qty > 0 else yclose_ref
+            effective_avg_price = (buy_amount / buy_qty) if buy_qty > 0 else yclose_ref
             pre_trade_qty = max(0.0, qty - effective_buy_qty)
             pnl = (
                 (current_price - yclose_ref) * pre_trade_qty
@@ -917,7 +920,7 @@ class AnalysisAssetBreakdownService:
             start_date = target.replace(month=1, day=1)
             end_date = target.replace(month=12, day=31)
 
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date()
         if end_date > today:
             end_date = today
         return start_date, end_date

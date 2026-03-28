@@ -302,11 +302,11 @@ class SnapshotDatabaseMixin:
             clean_updates[market] = round(float(raw_value or 0.0), 2)
             values[market] = clean_updates[market]
 
-        allocated = sum(float(values[market] or 0.0) for market in ("a", "hk", "us", "fund"))
-        values["unallocated"] = round(float(total_day_pnl) - allocated, 2)
+        # 不再用 day_pnl 反推 unallocated，保持现有 unallocated 不变。
+        # 后续 sync_day_pnl_from_breakdown 会把 day_pnl 更新为所有 breakdown 的实际总和。
 
         meta_map = meta_by_market or {}
-        write_markets = {"unallocated"}
+        write_markets: set[str] = set()
         write_markets.update(clean_updates.keys())
         write_markets.update(market for market in MARKET_BREAKDOWN_MARKETS if market not in existing)
 
@@ -573,6 +573,7 @@ class SnapshotDatabaseMixin:
         self,
         date_str: str,
         user_id: str = None,
+        ledger_id: int | None = None,
     ) -> Dict[str, float]:
         """读取指定日期的分市场拆分。"""
         conn = self.get_connection()
@@ -580,15 +581,25 @@ class SnapshotDatabaseMixin:
         uid = user_id or ""
 
         try:
-            cursor.execute(
-                """
-                SELECT market, day_pnl
-                FROM daily_snapshot_market_breakdowns
-                WHERE date = ? AND user_id = ?
-                """,
-                (str(date_str or ""), uid),
-            )
             result = {market: 0.0 for market in MARKET_BREAKDOWN_MARKETS}
+            if ledger_id is None:
+                cursor.execute(
+                    """
+                    SELECT market, day_pnl
+                    FROM daily_snapshot_market_breakdowns
+                    WHERE date = ? AND user_id = ?
+                    """,
+                    (str(date_str or ""), uid),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT market, day_pnl
+                    FROM ledger_daily_snapshot_market_breakdowns
+                    WHERE date = ? AND user_id = ? AND ledger_id = ?
+                    """,
+                    (str(date_str or ""), uid, int(ledger_id)),
+                )
             for row in cursor.fetchall():
                 market = str(row["market"] or "").strip().lower()
                 if market in result:
@@ -1007,7 +1018,7 @@ class SnapshotDatabaseMixin:
             cursor.execute(
                 """
                 UPDATE ledger_daily_snapshots
-                SET day_pnl = ?, created_at = datetime('now','localtime')
+                SET day_pnl = ?, updated_at = datetime('now','localtime')
                 WHERE date = ? AND user_id = ? AND ledger_id = ?
                 """,
                 (total, str(date_str or ""), uid, int(ledger_id)),
@@ -1261,6 +1272,7 @@ class SnapshotDatabaseMixin:
                 if market in totals:
                     totals[market] = round(float(row["total_day_pnl"] or 0.0), 2)
             total_day_pnl = sum(float(value or 0.0) for value in totals.values())
+            conn.commit()
             conn.close()
             return self.save_daily_snapshot_market_breakdown(
                 date_str=str(date_str or ""),
@@ -1311,7 +1323,7 @@ class SnapshotDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE ledger_daily_snapshots 
-                    SET day_pnl = ?, created_at = datetime('now','localtime') 
+                    SET day_pnl = ?, updated_at = datetime('now','localtime')
                     WHERE date = ? AND user_id = ? AND ledger_id = ?
                     """,
                     (round(global_day_pnl, 2), str(date_str or ""), uid, ledgers[0]["ledger_id"])
@@ -1325,8 +1337,8 @@ class SnapshotDatabaseMixin:
                     allocated_pnl = round(global_day_pnl * ratio, 2)
                     cursor.execute(
                         """
-                        UPDATE ledger_daily_snapshots 
-                        SET day_pnl = ?, created_at = datetime('now','localtime') 
+                        UPDATE ledger_daily_snapshots
+                        SET day_pnl = ?, updated_at = datetime('now','localtime')
                         WHERE date = ? AND user_id = ? AND ledger_id = ?
                         """,
                         (allocated_pnl, str(date_str or ""), uid, lid)
