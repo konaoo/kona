@@ -4,7 +4,7 @@
       <!-- LEFT: FORM PANEL -->
       <div class="form-panel">
         <RouterLink to="/" class="panel-logo">
-          <img class="logo-icon" src="/assets/logo.svg" alt="咔咔记账 logo" />
+          <img class="logo-icon" src="/assets/logo.png" alt="咔咔记账 logo" />
           <div>
             <div class="logo-name">咔咔记账</div>
           </div>

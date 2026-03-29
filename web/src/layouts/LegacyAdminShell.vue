@@ -2,7 +2,7 @@
   <div class="admin-layout">
     <aside class="admin-sidebar">
       <div class="brand">
-        <img src="/assets/logo.svg" class="brand-logo" alt="logo" />
+        <img src="/assets/logo.png" class="brand-logo" alt="logo" />
         <div class="brand-title">管理后台</div>
       </div>
 

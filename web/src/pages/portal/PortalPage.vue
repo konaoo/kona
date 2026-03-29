@@ -14,7 +14,7 @@
       <div class="container">
         <header class="topbar">
           <div class="brand">
-            <img class="brand-logo" alt="咔咔记账 logo" src="/assets/logo.svg" />
+            <img class="brand-logo" alt="咔咔记账 logo" src="/assets/logo.png" />
             <div class="brand-text">
               <div class="brand-name">咔咔记账</div>
             </div>
@@ -53,7 +53,7 @@
                 <div class="screen-glow" aria-hidden="true"></div>
 
                 <div class="app-mark">
-                  <img class="app-logo" alt="咔咔记账 logo" src="/assets/logo.svg" />
+                  <img class="app-logo" alt="咔咔记账 logo" src="/assets/logo.png" />
                 </div>
 
                 <div class="float f1" aria-hidden="true"></div>

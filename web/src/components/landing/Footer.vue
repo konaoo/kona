@@ -1,7 +1,7 @@
 <template>
   <footer>
     <div class="footer-brand">
-      <img class="footer-logo" src="/assets/logo.svg" alt="logo" />
+      <img class="footer-logo" src="/assets/logo.png" alt="logo" />
       <div>
         <div class="footer-name">咔咔记账</div>
         <div class="footer-copy">2026 kaka wallet</div>

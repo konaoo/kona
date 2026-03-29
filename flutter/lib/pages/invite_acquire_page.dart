@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-
 import '../config/theme.dart';
 import '../services/api_service.dart';
 
@@ -16,7 +14,7 @@ class InviteAcquirePage extends StatefulWidget {
 }
 
 class _InviteAcquirePageState extends State<InviteAcquirePage> {
-  static const String _fallbackAsset = 'assets/images/01_app_icon.svg';
+  static const String _fallbackAsset = 'assets/images/logo.png';
 
   final ApiService _api = ApiService();
 
@@ -70,7 +68,7 @@ class _InviteAcquirePageState extends State<InviteAcquirePage> {
   Widget _buildFallbackImage() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
-      child: SvgPicture.asset(
+      child: Image.asset(
         _fallbackAsset,
         fit: BoxFit.contain,
         width: double.infinity,

@@ -2,7 +2,7 @@
   <aside class="admin-sidebar">
     <div class="logo">
       <div class="logo-icon">
-        <img src="/assets/logo.svg" alt="logo" class="logo-img" />
+        <img src="/assets/logo.png" alt="logo" class="logo-img" />
       </div>
       <span>咔咔管理后台</span>
     </div>

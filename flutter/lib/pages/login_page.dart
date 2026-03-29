@@ -159,7 +159,7 @@ class _S {
     );
     brandSub = GoogleFonts.dmSans(
       fontSize: 15,
-      color: c.textDim,
+      color: c.isLight ? c.textDim : c.textSub,
       letterSpacing: 1.1,
     );
     tabActive = GoogleFonts.dmSans(
@@ -1199,7 +1199,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               right: 0,
               child: IgnorePointer(
                 child: SizedBox(
-                  height: 150,
+                  height: p.isLight ? 150 : 96,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -1213,10 +1213,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                 Color(0x00DCE7FF),
                               ]
                             : const [
-                                Color(0x264B86F0),
-                                Color(0x163B5D96),
-                                Color(0x08324C73),
-                                Color(0x00324C73),
+                                Color(0x104B86F0),
+                                Color(0x063B5D96),
+                                Color(0x02283D61),
+                                Color(0x00283D61),
                               ],
                         stops: const [0.0, 0.34, 0.72, 1.0],
                       ),

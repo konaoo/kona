@@ -1,7 +1,7 @@
 <template>
   <nav>
     <a href="#" class="nav-brand">
-      <img class="nav-logo" src="/assets/logo.svg" alt="logo" />
+      <img class="nav-logo" src="/assets/logo.png" alt="logo" />
       <div>
         <div class="nav-name">咔咔记账</div>
       </div>

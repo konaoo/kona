@@ -14,6 +14,8 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
+  static const String _logoAssetDark = 'assets/images/about_logo_dark_small.png';
+  static const String _logoAssetLight = 'assets/images/about_logo_light.png';
   String _versionInfo = '加载中...';
 
   @override
@@ -46,6 +48,7 @@ class _AboutPageState extends State<AboutPage> {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final logoAsset = isLight ? _logoAssetLight : _logoAssetDark;
 
     return Scaffold(
       backgroundColor: AppTheme.bgElevated,
@@ -86,41 +89,13 @@ class _AboutPageState extends State<AboutPage> {
               // Logo 区域 - `.about-app-top`
               Column(
                 children: [
-                  Container(
+                  Image.asset(
+                    logoAsset,
                     width: 80,
                     height: 80,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: const Color(0x29FFFFFF)),
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFFFF7B67),
-                          Color(0xFFF24688),
-                          Color(0xFFF0279E),
-                        ],
-                        stops: [0.0, 0.55, 1.0],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x38F0279E),
-                          blurRadius: 26,
-                          offset: Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Text(
-                      'K',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.02,
-                        height: 1,
-                      ),
-                    ),
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    isAntiAlias: true,
                   ),
                   const SizedBox(height: 16),
                   Text(
