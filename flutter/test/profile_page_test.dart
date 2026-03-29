@@ -133,8 +133,9 @@ void main() {
     expect(find.text('发现新版本 v1.0.2'), findsOneWidget);
     expect(find.text('test notes'), findsOneWidget);
     expect(find.text('暂不更新'), findsNothing);
-    expect(find.text('稍后再说'), findsOneWidget);
+    expect(find.text('稍后再说'), findsNothing);
     expect(find.text('立即升级'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
 
     await tester.tap(find.text('立即升级'));
     await tester.pumpAndSettle();

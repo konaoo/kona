@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config/theme.dart';
 import '../models/app_version.dart';
 import '../providers/app_state.dart';
+import '../widgets/app_update_dialog.dart';
 import '../widgets/profile_custom_dialog.dart';
 import '../widgets/profile_icons.dart';
 import 'about_page.dart';
@@ -315,13 +316,10 @@ class _ProfilePageState extends State<ProfilePage> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => ProfileCustomDialog(
-        title: '发现新版本 v${version.version}',
-        subTitle: '本次升级包含以下优化内容',
-        ghostText: '稍后再说',
-        onGhost: () => Navigator.of(dialogContext).pop(),
-        primaryText: '立即升级',
-        onPrimary: () async {
+      builder: (dialogContext) => AppUpdateDialog(
+        version: version,
+        onClose: () => Navigator.of(dialogContext).pop(),
+        onUpdate: () async {
           final urlText = version.downloadUrl.trim();
           final uri = Uri.tryParse(urlText);
           if (uri == null ||
@@ -344,44 +342,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ).showSnackBar(const SnackBar(content: Text('无法打开下载链接')));
           }
         },
-        body: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: context.read<AppState>().isLightTheme
-                ? const Color.fromRGBO(34, 44, 64, 0.05)
-                : const Color.fromRGBO(255, 255, 255, 0.02),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: context.read<AppState>().isLightTheme
-                  ? const Color.fromRGBO(34, 44, 64, 0.09)
-                  : const Color.fromRGBO(255, 255, 255, 0.05),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '更新内容',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                version.releaseNotes.trim().isEmpty
-                    ? '修复已知问题，优化使用体验。'
-                    : version.releaseNotes,
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

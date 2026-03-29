@@ -152,13 +152,13 @@ class _S {
 
   _S(_C c) {
     brandName = GoogleFonts.dmSans(
-      fontSize: 22,
+      fontSize: 20,
       fontWeight: FontWeight.w700,
       color: c.text,
       letterSpacing: -0.3,
     );
     brandSub = GoogleFonts.dmSans(
-      fontSize: 11,
+      fontSize: 15,
       color: c.textDim,
       letterSpacing: 1.1,
     );
@@ -227,41 +227,6 @@ class _S {
   }
 }
 
-// ───────────────────────────────────────────
-// M 形 Logo 画笔
-// ───────────────────────────────────────────
-class _LogoMPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.95)
-      ..strokeWidth = 90 / 1024 * size.width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    final sx = size.width / 1024;
-    final sy = size.height / 1024;
-    final points = [
-      Offset(222 * sx, 648 * sy),
-      Offset(312 * sx, 376 * sy),
-      Offset(410 * sx, 648 * sy),
-      Offset(512 * sx, 376 * sy),
-      Offset(614 * sx, 648 * sy),
-      Offset(712 * sx, 376 * sy),
-      Offset(802 * sx, 648 * sy),
-    ];
-    final path = Path()..moveTo(points[0].dx, points[0].dy);
-    for (final p in points.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 /// 登录/注册页面
 class LoginPage extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -311,8 +276,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   // ── Animations ──
   late final AnimationController _entranceCtrl;
-  late final Animation<double> _brandFade;
-  late final Animation<Offset> _brandSlide;
   late final Animation<double> _cardFade;
   late final Animation<Offset> _cardSlide;
   late final Animation<double> _footerFade;
@@ -330,18 +293,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-
-    _brandFade = CurvedAnimation(
-      parent: _entranceCtrl,
-      curve: const Interval(0.0, 0.7, curve: Curves.ease),
-    );
-    _brandSlide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-        .animate(
-          CurvedAnimation(
-            parent: _entranceCtrl,
-            curve: const Interval(0.0, 0.7, curve: Curves.ease),
-          ),
-        );
 
     _cardFade = CurvedAnimation(
       parent: _entranceCtrl,
@@ -610,64 +561,31 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   // 构建 UI ──────────────────────────────────
   // ───────────────────────────────────────────
 
-  Widget _buildBrandArea() {
-    final s = _styles;
-    return Column(
-      key: const Key('login_brand_area'),
-      children: [
-        // Logo
-        Container(
-          width: 76,
-          height: 76,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFF7B54), Color(0xFFFF4F7B), Color(0xFFFF1493)],
-              stops: [0.0, 0.5, 1.0],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFF4F7B).withValues(alpha: 0.25),
-                blurRadius: 32,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: CustomPaint(painter: _LogoMPainter()),
-        ),
-        const SizedBox(height: 14),
-        Text('咔咔记账', style: s.brandName),
-        const SizedBox(height: 4),
-        Text('一站式管理全市场资产', style: s.brandSub),
-      ],
-    );
-  }
-
   Widget _buildTabSwitcher() {
     final p = _colors;
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: p.tabShellBg,
-        border: Border.all(color: p.tabShellBorder),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          _buildTab(
-            '登录',
-            isActive: _currentTab == 'login',
-            onTap: () => _switchTab('login'),
+    return Center(
+      child: Container(
+        width: 240,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: p.border.withValues(alpha: 0.85)),
           ),
-          const SizedBox(width: 2),
-          _buildTab(
-            '注册',
-            isActive: _currentTab == 'register',
-            onTap: () => _switchTab('register'),
-          ),
-        ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTab(
+              '登录',
+              isActive: _currentTab == 'login',
+              onTap: () => _switchTab('login'),
+            ),
+            _buildTab(
+              '注册',
+              isActive: _currentTab == 'register',
+              onTap: () => _switchTab('register'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -679,27 +597,21 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }) {
     final p = _colors;
     final s = _styles;
-    return Expanded(
+    return SizedBox(
+      width: 120,
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: isActive ? p.tabActiveBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: p.isLight && isActive
-                ? Border.all(color: p.border.withValues(alpha: 0.6))
-                : null,
-            boxShadow: isActive
-                ? [
-                    if (!p.isLight)
-                      BoxShadow(
-                        color: p.cardShadow.withValues(alpha: 0.7),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                  ]
-                : [],
+            border: Border(
+              bottom: BorderSide(
+                color: isActive ? p.blue : Colors.transparent,
+                width: 2,
+              ),
+            ),
           ),
           child: Text(
             label,
@@ -1188,6 +1100,57 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         backgroundColor: p.bg,
         body: Stack(
           children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: p.isLight
+                          ? const [
+                              Color(0xFFF7FAFF),
+                              Color(0xFFF0F4FC),
+                              Color(0xFFE9EEF8),
+                            ]
+                          : const [
+                              Color(0xFF0B0D13),
+                              Color(0xFF10141D),
+                              Color(0xFF0C1018),
+                            ],
+                      stops: const [0.0, 0.52, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -180,
+              right: -120,
+              child: IgnorePointer(
+                child: Container(
+                  width: 420,
+                  height: 420,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: p.isLight
+                          ? const [
+                              Color(0x1EFFF5D9),
+                              Color(0x0AFFF5D9),
+                              Colors.transparent,
+                            ]
+                          : const [
+                              Color(0x18F6D997),
+                              Color(0x08F6D997),
+                              Colors.transparent,
+                            ],
+                      stops: const [0.0, 0.42, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // 背景光晕 - 左上蓝
             Positioned(
               top: -120,
@@ -1230,124 +1193,157 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            // 主体内容
-            SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 380),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 24,
-                      ),
-                      child: Column(
-                        children: [
-                          // 品牌区
-                          SlideTransition(
-                            position: _brandSlide,
-                            child: FadeTransition(
-                              opacity: _brandFade,
-                              child: _buildBrandArea(),
-                            ),
-                          ),
-                          const SizedBox(height: 36),
-                          // 卡片区
-                          SlideTransition(
-                            position: _cardSlide,
-                            child: FadeTransition(
-                              opacity: _cardFade,
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: p.card,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(color: p.border),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: p.cardShadow,
-                                          blurRadius: p.isLight ? 36 : 60,
-                                          offset: p.isLight ? const Offset(0, 18) : const Offset(0, 24),
-                                        ),
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.fromLTRB(
-                                      24,
-                                      28,
-                                      24,
-                                      24,
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        _buildTabSwitcher(),
-                                        const SizedBox(height: 24),
-                                        AnimatedSwitcher(
-                                          duration: const Duration(
-                                            milliseconds: 220,
-                                          ),
-                                          transitionBuilder: (child, anim) {
-                                            return FadeTransition(
-                                              opacity: anim,
-                                              child: SlideTransition(
-                                                position: Tween<Offset>(
-                                                  begin: const Offset(0, 0.02),
-                                                  end: Offset.zero,
-                                                ).animate(anim),
-                                                child: child,
-                                              ),
-                                            );
-                                          },
-                                          child: _currentTab == 'login'
-                                              ? KeyedSubtree(
-                                                  key: const ValueKey('login'),
-                                                  child: _buildLoginPanel(),
-                                                )
-                                              : KeyedSubtree(
-                                                  key: const ValueKey(
-                                                    'register',
-                                                  ),
-                                                  child: _buildRegisterPanel(),
-                                                ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // 卡片顶部高光线
-                                  Positioned(
-                                    top: 0,
-                                    left: 20,
-                                    right: 20,
-                                    height: 1,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Colors.transparent,
-                                            p.topHighlight,
-                                            Colors.transparent,
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // 底部法律声明
-                          SlideTransition(
-                            position: _footerSlide,
-                            child: FadeTransition(
-                              opacity: _footerFade,
-                              child: _buildLegalFooter(),
-                            ),
-                          ),
-                        ],
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: SizedBox(
+                  height: 150,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: p.isLight
+                            ? const [
+                                Color(0x52F7FAFF),
+                                Color(0x30EEF4FF),
+                                Color(0x18DCE7FF),
+                                Color(0x00DCE7FF),
+                              ]
+                            : const [
+                                Color(0x264B86F0),
+                                Color(0x163B5D96),
+                                Color(0x08324C73),
+                                Color(0x00324C73),
+                              ],
+                        stops: const [0.0, 0.34, 0.72, 1.0],
                       ),
                     ),
                   ),
                 ),
+              ),
+            ),
+            // 主体内容
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const brandAreaTop = 56.0;
+                  const brandAreaReservedHeight = 84.0;
+                  final contentLeft =
+                      ((constraints.maxWidth - 380) / 2).clamp(28.0, double.infinity).toDouble();
+
+                  return Stack(
+                    children: [
+                      Positioned(
+                        top: brandAreaTop,
+                        left: contentLeft,
+                        child: FadeTransition(
+                          opacity: _cardFade,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '咔咔记账',
+                                style: _styles.brandName,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '很高兴见到你。',
+                                style: _styles.brandSub,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: IntrinsicHeight(
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 380),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 24,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.center,
+                                          child: SlideTransition(
+                                            position: _cardSlide,
+                                            child: FadeTransition(
+                                              opacity: _cardFade,
+                                              child: Padding(
+                                                padding: const EdgeInsets.fromLTRB(
+                                                  8,
+                                                  brandAreaReservedHeight,
+                                                  8,
+                                                  0,
+                                                ),
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    _buildTabSwitcher(),
+                                                    const SizedBox(height: 24),
+                                                    AnimatedSwitcher(
+                                                      duration: const Duration(
+                                                        milliseconds: 220,
+                                                      ),
+                                                      transitionBuilder: (child, anim) {
+                                                        return FadeTransition(
+                                                          opacity: anim,
+                                                          child: SlideTransition(
+                                                            position: Tween<Offset>(
+                                                              begin: const Offset(0, 0.02),
+                                                              end: Offset.zero,
+                                                            ).animate(anim),
+                                                            child: child,
+                                                          ),
+                                                        );
+                                                      },
+                                                      child: _currentTab == 'login'
+                                                          ? KeyedSubtree(
+                                                              key: const ValueKey('login'),
+                                                              child: _buildLoginPanel(),
+                                                            )
+                                                          : KeyedSubtree(
+                                                              key: const ValueKey(
+                                                                'register',
+                                                              ),
+                                                              child: _buildRegisterPanel(),
+                                                            ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SlideTransition(
+                                        position: _footerSlide,
+                                        child: FadeTransition(
+                                          opacity: _footerFade,
+                                          child: _buildLegalFooter(),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -1357,7 +1353,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 }
 
-// ─────────────────────────────────────────────────
 // 自定义输入框组件（有自己的聚焦状态管理）
 // ─────────────────────────────────────────────────
 class _InputWrap extends StatefulWidget {
