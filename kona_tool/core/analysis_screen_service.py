@@ -24,6 +24,7 @@ class AnalysisScreenService:
         self.analysis_read_service = analysis_read_service
         self.realtime_today_service = realtime_today_service
         self.timezone_name = timezone_name
+        self._has_explicit_now_getter = now_getter is not None
         self.now_getter = now_getter or (lambda: datetime.now(timezone.utc))
 
     def build_payload(
@@ -38,7 +39,7 @@ class AnalysisScreenService:
         now_utc = self.now_getter()
         if now_utc.tzinfo is None:
             now_utc = now_utc.replace(tzinfo=timezone.utc)
-        local_now = now_utc.astimezone(ZoneInfo(self.timezone_name))
+        local_now = self._resolve_local_now(now_utc)
         generated_at = now_utc.isoformat()
         analysis_version = f"{generated_at}|ledger={ledger_id or 'all'}|calendar={time_type}:{year or ''}:{month or ''}"
 
@@ -244,6 +245,26 @@ class AnalysisScreenService:
         if effective_date[:10] == today_str:
             return "ready"
         return "pending"
+
+    def _resolve_local_now(self, now_utc: datetime) -> datetime:
+        if self._has_explicit_now_getter:
+            return now_utc.astimezone(ZoneInfo(self.timezone_name))
+
+        try:
+            try:
+                from .db_analysis import _get_datetime_now
+            except ImportError:  # pragma: no cover
+                from core.db_analysis import _get_datetime_now
+
+            local_now = _get_datetime_now()
+            if isinstance(local_now, datetime):
+                if local_now.tzinfo is None:
+                    return local_now.replace(tzinfo=ZoneInfo(self.timezone_name))
+                return local_now.astimezone(ZoneInfo(self.timezone_name))
+        except Exception:
+            pass
+
+        return now_utc.astimezone(ZoneInfo(self.timezone_name))
 
     @staticmethod
     def _calendar_summary_label(time_type: str) -> str:

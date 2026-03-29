@@ -15,6 +15,24 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-03-29-02
+
+### 这版一句话
+修掉了主干 CI 里分析页统一接口的时间源漂移问题，并把 Android 桌面图标正式收成自适应图标，解决手机端外层白壳。
+
+### 主要变化
+- **后端：分析页统一接口时间源对齐**：更新 `core/analysis_screen_service.py`，`today_status` 和日历 today 覆盖逻辑不再偷偷直接吃系统当前时间，而是优先跟分析链现有的时间源保持一致；这样测试里 patch 的 `_get_datetime_now` 会真正影响 `analysis/screen`，避免同一天数据被误判成 `pending`。
+- **CI：后端门禁恢复**：本地按 GitHub Actions 同款命令重跑 `python -m unittest discover -s kona_tool/tests -p "test_*.py" -v`，`407` 条后端测试已全绿。
+- **Android：桌面图标改成自适应图标**：新增 `mipmap-anydpi-v26/ic_launcher*.xml`、前景层 `ic_launcher_foreground.png` 和背景色配置，Manifest 同步补 `roundIcon`，让安卓桌面直接使用深色背景 + 幽灵前景，不再被系统额外套一层白底壳。
+
+### 影响范围
+- 后端：`/api/analysis/screen` 的 `today_status` 与 today 覆盖逻辑
+- Android：桌面安装图标显示方式
+
+### 验收重点
+- GitHub Actions 的 `Backend Gate (Python 3.10/3.11)` 应恢复绿色，不再卡在 `test_analysis_screen_returns_unified_payload`。
+- Android 手机重新安装新 APK 后，桌面图标外面不应再出现系统自动加的白色底壳。
+
 ## 2026-03-29-01
 
 ### 这版一句话
