@@ -59,6 +59,64 @@ function isPreopenOffHoursMarket(
   return minutes < firstSessionStart
 }
 
+function normalizeQuoteSession(raw: unknown): string {
+  const text = String(raw || '').trim().toLowerCase()
+  if (text === 'pre' || text === 'post' || text === 'regular') return text
+  return 'closed'
+}
+
+function isUsExtendedSessionActive(
+  market: MarketCode,
+  quote: Record<string, unknown> | undefined,
+): boolean {
+  if (market !== 'us' || !quote || typeof quote !== 'object') return false
+  const price = toNumber(quote.price ?? quote.regular_price ?? quote.regularPrice)
+  const yclose = toNumber(quote.yclose ?? quote.prev_close ?? quote.previous_close)
+  if (!(price > 0) || !(yclose > 0)) return false
+  if (Boolean(quote.extended_active ?? quote.extendedActive)) return true
+  const session = normalizeQuoteSession(
+    quote.effective_session ?? quote.effectiveSession ?? quote.session,
+  )
+  return session === 'pre' || session === 'post'
+}
+
+function resolveDayPnlDisplayEnabled(params: {
+  explicitEnabled: boolean | null
+  navUpdatePending: boolean
+  suppressPreopen: boolean
+  hasResolvedYclose: boolean
+}): boolean {
+  const { explicitEnabled, navUpdatePending, suppressPreopen, hasResolvedYclose } = params
+  if (suppressPreopen) return false
+  if (explicitEnabled != null) return explicitEnabled
+  if (navUpdatePending) return false
+  return hasResolvedYclose
+}
+
+function resolveDayPnlAggregateEnabled(params: {
+  explicitEnabled: boolean | null
+  navUpdatePending: boolean
+  suppressPreopen: boolean
+  hasResolvedYclose: boolean
+  marketTradingDay: boolean
+  usExtendedActive: boolean
+}): boolean {
+  const {
+    explicitEnabled,
+    navUpdatePending,
+    suppressPreopen,
+    hasResolvedYclose,
+    marketTradingDay,
+    usExtendedActive,
+  } = params
+  if (suppressPreopen) return false
+  if (explicitEnabled != null) return explicitEnabled
+  if (navUpdatePending) return false
+  if (!hasResolvedYclose) return false
+  if (marketTradingDay) return true
+  return usExtendedActive
+}
+
 export const usePortfolioStore = defineStore('portfolio', () => {
   // ───────────────────────────────────────────────────────────────
   // State
@@ -175,6 +233,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         marketStatusReason,
       )
       const quote = quoteStore.getQuote(code) as Record<string, unknown> | undefined
+      const quoteSession = normalizeQuoteSession(
+        quote?.effective_session ?? quote?.effectiveSession ?? quote?.session,
+      )
+      const usExtendedActive = isUsExtendedSessionActive(market, quote)
       const liveQuotePrice =
         quote && typeof quote === 'object'
           ? toNumber(quote.price ?? quote.regular_price ?? quote.regularPrice)
@@ -187,28 +249,35 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const hasLiveYclose = Number.isFinite(liveYclose) && liveYclose > 0
       const currentPrice = hasLiveQuotePrice ? liveQuotePrice : staticCurrentPrice
       const yclose = hasLiveYclose ? liveYclose : staticYclose
+      const hasResolvedYclose = Number.isFinite(yclose) && yclose > 0
       const value = hasLiveQuotePrice && qty > 0 ? currentPrice * qty : staticValue
       const valueCny = rateToCny != null ? value * rateToCny : pickNumber(item, ['value_cny']) ?? undefined
+      const dayPnlDisplayEnabled = resolveDayPnlDisplayEnabled({
+        explicitEnabled: staticDayPnlDisplayEnabledRaw,
+        navUpdatePending,
+        suppressPreopen: suppressDayPnlForPreopen,
+        hasResolvedYclose,
+      })
+      const dayPnlAggregateEnabled = resolveDayPnlAggregateEnabled({
+        explicitEnabled: staticDayPnlAggregateEnabledRaw,
+        navUpdatePending,
+        suppressPreopen: suppressDayPnlForPreopen,
+        hasResolvedYclose,
+        marketTradingDay: marketTradingDayValue,
+        usExtendedActive,
+      })
       const canUseLiveDayPnlDisplay =
-        !navUpdatePending &&
-        !suppressDayPnlForPreopen &&
+        dayPnlDisplayEnabled &&
         hasLiveQuotePrice &&
-        hasLiveYclose &&
-        staticDayPnlDisplayEnabledRaw !== false
+        hasLiveYclose
       const canUseLiveDayPnlAggregate =
-        !navUpdatePending &&
-        !suppressDayPnlForPreopen &&
+        dayPnlAggregateEnabled &&
         hasLiveQuotePrice &&
-        hasLiveYclose &&
-        staticDayPnlAggregateEnabledRaw !== false
+        hasLiveYclose
       const liveDayPnlDisplay = canUseLiveDayPnlDisplay ? (currentPrice - yclose) * qty : null
       const liveDayPnlBaseDisplay = canUseLiveDayPnlDisplay ? Math.abs(yclose * qty) : null
       const liveDayPnlAggregate = canUseLiveDayPnlAggregate ? (currentPrice - yclose) * qty : null
       const liveDayPnlBaseAggregate = canUseLiveDayPnlAggregate ? Math.abs(yclose * qty) : null
-      const dayPnlDisplayEnabled =
-        suppressDayPnlForPreopen ? false : (staticDayPnlDisplayEnabledRaw ?? (liveDayPnlDisplay != null))
-      const dayPnlAggregateEnabled =
-        suppressDayPnlForPreopen ? false : (staticDayPnlAggregateEnabledRaw ?? (liveDayPnlAggregate != null))
       const dayPnlDisplay = !dayPnlDisplayEnabled ? 0 : (liveDayPnlDisplay ?? staticDayPnlDisplay)
       const dayPnlBaseDisplay = !dayPnlDisplayEnabled ? 0 : (liveDayPnlBaseDisplay ?? staticDayPnlBaseDisplay)
       const dayPnlRateDisplay =
@@ -297,11 +366,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         quotePrice: quotePrice ?? undefined,
         quoteChange: pickNumber(item, ['quote_change']) ?? undefined,
         quoteChangePct: pickNumber(item, ['quote_change_pct']) ?? undefined,
-        session: 'closed',
+        session: quoteSession,
         marketOpen,
         marketTradingDay: marketTradingDayValue,
         marketStatusReason,
-        usExtendedActive: false,
+        usExtendedActive,
         navUpdatePending,
         quoteReady,
         quotePending,

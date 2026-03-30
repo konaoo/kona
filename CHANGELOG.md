@@ -25,6 +25,8 @@
 - **Web：单只资产卡片改成看 aggregate 开关**：更新 `web/src/pages/app/AppInvestPage.vue`，持仓卡片和列表行里的“当日盈亏金额 / 百分比”不再继续看 `dayPnlDisplayEnabled`，而是改成和市场汇总一致，统一尊重 `dayPnlAggregateEnabled`、基金净值延迟、`quotePending`、`navUpdatePending` 等条件；这样美股休市时不会再显示 `+¥0 / +0.00%`。
 - **Web：布尔字段解析对齐 App**：更新 `web/src/stores/portfolio.ts`，`day_pnl_display_enabled / day_pnl_aggregate_enabled / market_open / market_trading_day` 等字段的解析逻辑改成和 Flutter 一致，避免后端如果返回字符串 `0/1/true/false` 时，Web 误把 `'0'` 当成 `true`。
 - **Web：状态层不再覆盖后端开关**：继续更新 `web/src/stores/portfolio.ts`，当后端已经明确把 `day_pnl_display_enabled / day_pnl_aggregate_enabled` 置为 `false` 时，Web 不会再因为拿到了最新 quote 和昨收，就擅自把开关改回 `true` 并重新算出“今日盈亏”；这次修的是导致美股休市时仍然显示真实盈亏的根因。
+- **Web：今日盈亏兜底规则正式对齐 App**：继续收 `web/src/stores/portfolio.ts`，当后端没显式给 `day_pnl_*_enabled` 时，Web 不再“只要有 quote 就算今日盈亏”，而是改成和 App 一样：先看 `nav_update_pending`、A/HK/Fund 盘前抑制，再看是否有有效昨收；聚合口径下，美股只有在交易日或扩展时段（盘前/盘后）才允许启用今日盈亏。
+- **Web：状态层补齐 quote session / 美股扩展时段**：Web 的 `rows` 现在会落 `session`、`usExtendedActive`，后续页面和汇总层不需要再自己猜“美股现在是不是可展示今日盈亏”，统一只读状态层结果。
 - **Web：持仓卡片数量样式收口**：修复 `美股 284 股` 这类元信息被 `space-between` 硬拉开的样式问题，数量和单位现在会作为一组正常排布，不再“数量飘左、股字飘右”。
 - **展示收口**：当单只资产当前不应展示今日盈亏时，Web 现在显示 `--`，不再出现“百分比已经隐藏，但金额还在跳”或“显示成 0”的口径分裂。
 
@@ -36,6 +38,7 @@
 - 周一白天美股未开盘时，Web 投资页“美股”市场卡片不应再显示非零当日盈亏。
 - Web 投资页里美股单只资产卡片和列表行，不应再继续显示 `+¥0 / +0.00%` 这种伪“今日盈亏”；应与 App 的休市展示口径一致。
 - Web 状态层在拿到最新 quote 后，不应再把后端已判定为 `false` 的今日盈亏开关改回 `true`；美股休市时不应继续出现 `-¥117.63 / +¥78.61 / -¥482.99` 这类真实今日盈亏数值。
+- 当后端没有显式给今日盈亏开关时，Web 应和 App 一样：美股只有在交易日或扩展时段才显示当日盈亏；周一白天这类美股未开盘场景，不应再因为拿到了 quote 就继续显示今日盈亏。
 - 持仓卡片头部的 `284 股` 这类数量文案，不应再出现数字和单位被横向拉开的漂移现象。
 
 ## 2026-03-30-01
