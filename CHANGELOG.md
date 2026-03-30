@@ -22,16 +22,19 @@
 
 ### 主要变化
 - **Web：汇总口径补齐开关保护**：更新 `web/src/stores/portfolioMetrics.ts`，投资总览和市场卡片在累计“当日盈亏 / 当日收益率”时，开始尊重 `dayPnlAggregateEnabled`；不再把后端明确标记为“当前不该参与今日汇总”的资产继续加进来。
-- **Web：单只资产卡片金额也走同一套规则**：更新 `web/src/pages/app/AppInvestPage.vue`，持仓卡片和列表行里的“当日盈亏金额”不再无脑显示聚合值，而是和百分比标签一样统一尊重 `dayPnlDisplayEnabled`、基金净值延迟、`quotePending`、`navUpdatePending` 等条件。
-- **展示收口**：当单只资产当前不应展示今日盈亏时，Web 现在显示 `--`，不再出现“百分比已经隐藏，但金额还在跳”的口径分裂。
+- **Web：单只资产卡片改成看 aggregate 开关**：更新 `web/src/pages/app/AppInvestPage.vue`，持仓卡片和列表行里的“当日盈亏金额 / 百分比”不再继续看 `dayPnlDisplayEnabled`，而是改成和市场汇总一致，统一尊重 `dayPnlAggregateEnabled`、基金净值延迟、`quotePending`、`navUpdatePending` 等条件；这样美股休市时不会再显示 `+¥0 / +0.00%`。
+- **Web：布尔字段解析对齐 App**：更新 `web/src/stores/portfolio.ts`，`day_pnl_display_enabled / day_pnl_aggregate_enabled / market_open / market_trading_day` 等字段的解析逻辑改成和 Flutter 一致，避免后端如果返回字符串 `0/1/true/false` 时，Web 误把 `'0'` 当成 `true`。
+- **Web：持仓卡片数量样式收口**：修复 `美股 284 股` 这类元信息被 `space-between` 硬拉开的样式问题，数量和单位现在会作为一组正常排布，不再“数量飘左、股字飘右”。
+- **展示收口**：当单只资产当前不应展示今日盈亏时，Web 现在显示 `--`，不再出现“百分比已经隐藏，但金额还在跳”或“显示成 0”的口径分裂。
 
 ### 影响范围
-- Web：投资页顶部市场卡片、投资页持仓卡片、投资页列表行
+- Web：投资页顶部市场卡片、投资页持仓卡片、投资页列表行、投资页状态层布尔解析
 - 口径：仅影响 Web 端“今日盈亏”的展示与汇总，不改后端数据，不改 App 逻辑
 
 ### 验收重点
 - 周一白天美股未开盘时，Web 投资页“美股”市场卡片不应再显示非零当日盈亏。
-- Web 投资页里美股单只资产卡片和列表行，不应再继续显示当日盈亏金额；应与 App 的休市展示口径一致。
+- Web 投资页里美股单只资产卡片和列表行，不应再继续显示 `+¥0 / +0.00%` 这种伪“今日盈亏”；应与 App 的休市展示口径一致。
+- 持仓卡片头部的 `284 股` 这类数量文案，不应再出现数字和单位被横向拉开的漂移现象。
 
 ## 2026-03-30-01
 

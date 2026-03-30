@@ -69,17 +69,8 @@ export function resolvePositionDayPnlCny(row: PositionRow): number | null {
   return finiteOrNull(row.dayPnlAggregateCny) ?? metricWithRate(row.dayPnlAggregate, row.rateToCny)
 }
 
-export function isPositionDayPnlDisplayEnabled(row: PositionRow): boolean {
-  return row.dayPnlDisplayEnabled !== false
-}
-
 export function isPositionDayPnlAggregateEnabled(row: PositionRow): boolean {
   return row.dayPnlAggregateEnabled !== false
-}
-
-export function resolvePositionDisplayDayPnlCny(row: PositionRow): number | null {
-  if (!isPositionDayPnlDisplayEnabled(row)) return null
-  return resolvePositionDayPnlCny(row)
 }
 
 export function resolvePositionTotalPnlCny(row: PositionRow): number | null {

@@ -94,6 +94,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         if (!Object.prototype.hasOwnProperty.call(item, key)) continue
         const value = (item as Record<string, unknown>)[key]
         if (value === undefined || value === null) continue
+        if (typeof value === 'boolean') return value
+        if (typeof value === 'number') return value !== 0
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase()
+          if (!normalized) continue
+          return normalized === '1' || normalized === 'true' || normalized === 'yes'
+        }
         return Boolean(value)
       }
       return null

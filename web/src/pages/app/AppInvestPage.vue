@@ -11,8 +11,7 @@ import { useRealtimeTodayStore } from '@/stores/realtimeToday'
 import {
   buildMarketSummaries,
   buildPortfolioSummary,
-  isPositionDayPnlDisplayEnabled,
-  resolvePositionDisplayDayPnlCny,
+  isPositionDayPnlAggregateEnabled,
   resolvePositionTotalPnlCny,
   resolvePositionValueCny
 } from '@/stores/portfolioMetrics'
@@ -173,8 +172,8 @@ const filteredRows = computed(() => {
       !isStaleFund(row) &&
       !Boolean(row.navUpdatePending) &&
       !Boolean(row.quotePending) &&
-      isPositionDayPnlDisplayEnabled(row)
-    const dayPnl = dayPnlVisible ? (resolvePositionDisplayDayPnlCny(row) ?? 0) : 0
+      isPositionDayPnlAggregateEnabled(row)
+    const dayPnl = dayPnlVisible ? (Number(row.dayPnlAggregateCny ?? row.dayPnlAggregate ?? 0) || 0) : 0
 
     return {
       ...row,
@@ -219,7 +218,7 @@ function quoteLabel(row: any): string {
 function dayPnlRateLabel(row: any): string {
   const latestNavDate = readLatestNavDate(row)
   const shouldHoldFundDayPnl = isFundAsset(row) && latestNavDate != null && !isDateToday(latestNavDate)
-  if (shouldHoldFundDayPnl || row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
+  if (shouldHoldFundDayPnl || row?.navUpdatePending || row?.quotePending || row?.dayPnlVisible === false) return '--'
   return formatPct(toNumber(row?.dayPnlRate))
 }
 
@@ -680,7 +679,7 @@ const handleTradeSuccess = async () => {
                   </div>
                   <div
                     class="h-price-tag badge"
-                    :class="valueClass(toNumber(row.dayPnlRate))"
+                    :class="row.dayPnlVisible ? valueClass(toNumber(row.dayPnlRate)) : 'muted'"
                     style="padding: 2px 6px; border-radius: 4px; font-size: 10px"
                   >
                     {{ dayPnlRateLabel(row) }}
@@ -1434,12 +1433,10 @@ const handleTradeSuccess = async () => {
   color: var(--muted);
   font-weight: 500;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  flex: 0 0 auto;
 }
 /* 字数较多时自动缩小字号的微调 */
 .h-qty span {
@@ -1672,6 +1669,10 @@ const handleTradeSuccess = async () => {
 .h-price-tag.dn {
   color: var(--green);
   background: rgba(62, 207, 130, 0.12);
+}
+.h-price-tag.muted {
+  color: var(--muted);
+  background: var(--surface-soft);
 }
 .h-price-meta {
   font-size: 10px;
