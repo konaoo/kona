@@ -16,6 +16,14 @@ describe('portfolio store realtime quotes', () => {
   it('只更新 quotes 时 rows 和 summary 也会跟着实时变化', () => {
     const portfolioStore = usePortfolioStore()
     const quoteStore = useQuoteStore()
+    const marketStore = useMarketStore()
+
+    marketStore.marketStatus = {
+      a: { open: false, trading_day: false, reason: 'holiday_or_weekend' },
+      hk: { open: false, trading_day: true, reason: 'off_hours' },
+      us: { open: false, trading_day: false, reason: 'holiday_or_weekend' },
+      fund: { open: false, trading_day: false, reason: 'holiday_or_weekend' },
+    }
 
     portfolioStore.portfolio = [
       {
