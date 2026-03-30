@@ -11,7 +11,8 @@ import { useRealtimeTodayStore } from '@/stores/realtimeToday'
 import {
   buildMarketSummaries,
   buildPortfolioSummary,
-  resolvePositionDayPnlCny,
+  isPositionDayPnlDisplayEnabled,
+  resolvePositionDisplayDayPnlCny,
   resolvePositionTotalPnlCny,
   resolvePositionValueCny
 } from '@/stores/portfolioMetrics'
@@ -168,6 +169,12 @@ const filteredRows = computed(() => {
     const cnyMv = resolvePositionValueCny(row) ?? 0
     const totalMarketMv = investTotal.value.mv || 1
     const pct = (cnyMv / totalMarketMv) * 100
+    const dayPnlVisible =
+      !isStaleFund(row) &&
+      !Boolean(row.navUpdatePending) &&
+      !Boolean(row.quotePending) &&
+      isPositionDayPnlDisplayEnabled(row)
+    const dayPnl = dayPnlVisible ? (resolvePositionDisplayDayPnlCny(row) ?? 0) : 0
 
     return {
       ...row,
@@ -179,7 +186,8 @@ const filteredRows = computed(() => {
       cost,
       mv,
       mvCny: cnyMv,
-      dayPnl: resolvePositionDayPnlCny(row) ?? 0,
+      dayPnl,
+      dayPnlVisible,
       totalPnl: resolvePositionTotalPnlCny(row) ?? 0,
       dayPnlRate: Number(row.dayPnlRateAggregate ?? row.dayPnlRate) || 0,
       totalPnlRate,
@@ -213,6 +221,11 @@ function dayPnlRateLabel(row: any): string {
   const shouldHoldFundDayPnl = isFundAsset(row) && latestNavDate != null && !isDateToday(latestNavDate)
   if (shouldHoldFundDayPnl || row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
   return formatPct(toNumber(row?.dayPnlRate))
+}
+
+function dayPnlAmountLabel(row: any): string {
+  if (row?.dayPnlVisible === false) return '--'
+  return masked(formatCurrency(toNumber(row?.dayPnl), true))
 }
 
 function isFundAsset(row: any): boolean {
@@ -505,9 +518,9 @@ const handleTradeSuccess = async () => {
             <div class="m-stats">
               <div class="ms-item">
                 <div class="ms-lbl">当日盈亏</div>
-                <div class="ms-val-group" :class="valueClass(m.dayPnl)">
-                  <div class="ms-amt">{{ masked(formatCurrency(m.dayPnl, true, true)) }}</div>
-                  <div class="ms-pct">{{ formatPct(m.dayRate) }}</div>
+                <div class="ms-val-group" :class="m.dayPnlEnabled ? valueClass(m.dayPnl) : ''">
+                  <div class="ms-amt">{{ m.dayPnlEnabled ? masked(formatCurrency(m.dayPnl, true, true)) : '--' }}</div>
+                  <div class="ms-pct">{{ m.dayPnlEnabled ? formatPct(m.dayRate) : '--' }}</div>
                 </div>
               </div>
               <div class="ms-item">
@@ -703,14 +716,14 @@ const handleTradeSuccess = async () => {
                         当日盈亏
                       </div>
                       <div
-                        :class="[isStaleFund(row) ? 'text-muted' : (toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn')]"
+                        :class="[row.dayPnlVisible ? (toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn') : 'text-muted']"
                         style="
                           font-family: 'JetBrains Mono', monospace;
                           font-size: 12.5px;
                           font-weight: 600;
                         "
                       >
-                        {{ isStaleFund(row) ? '--' : masked(formatCurrency(row.dayPnl, true)) }}
+                        {{ dayPnlAmountLabel(row) }}
                       </div>
                     </div>
                     <div>
@@ -913,18 +926,18 @@ const handleTradeSuccess = async () => {
                       今日盈亏
                     </div>
                     <div
-                      :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']"
+                      :class="[row.dayPnlVisible ? (toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn') : 'text-muted']"
                       style="
                         font-family: 'JetBrains Mono', monospace;
                         font-size: 12.5px;
                         font-weight: 600;
                       "
                     >
-                      {{ masked(formatCurrency(row.dayPnl, true)) }}
+                      {{ dayPnlAmountLabel(row) }}
                     </div>
                     <div
                       style="font-size: 11px; margin-top: 1px"
-                      :class="[toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn']"
+                      :class="[row.dayPnlVisible ? (toNumber(row.dayPnl) >= 0 ? 'text-up' : 'text-dn') : 'text-muted']"
                     >
                       {{ dayPnlRateLabel(row) }}
                     </div>

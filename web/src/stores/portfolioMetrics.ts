@@ -14,6 +14,7 @@ export type PortfolioMarketSummary = {
   mv: number
   cost: number
   dayPnl: number
+  dayPnlEnabled: boolean
   totalPnl: number
   dayRate: number
   totalRate: number
@@ -21,6 +22,7 @@ export type PortfolioMarketSummary = {
 
 type PortfolioMarketBucket = PortfolioMarketSummary & {
   dayPnlBase: number
+  dayPnlEnabledCount: number
   totalPnlDenominator: number
 }
 
@@ -67,6 +69,19 @@ export function resolvePositionDayPnlCny(row: PositionRow): number | null {
   return finiteOrNull(row.dayPnlAggregateCny) ?? metricWithRate(row.dayPnlAggregate, row.rateToCny)
 }
 
+export function isPositionDayPnlDisplayEnabled(row: PositionRow): boolean {
+  return row.dayPnlDisplayEnabled !== false
+}
+
+export function isPositionDayPnlAggregateEnabled(row: PositionRow): boolean {
+  return row.dayPnlAggregateEnabled !== false
+}
+
+export function resolvePositionDisplayDayPnlCny(row: PositionRow): number | null {
+  if (!isPositionDayPnlDisplayEnabled(row)) return null
+  return resolvePositionDayPnlCny(row)
+}
+
 export function resolvePositionTotalPnlCny(row: PositionRow): number | null {
   return finiteOrNull(row.totalPnlCny) ?? metricWithRate(row.totalPnl, row.rateToCny)
 }
@@ -92,10 +107,13 @@ export function buildPortfolioSummary(rows: PositionRow[]): PortfolioSummary {
   for (const row of rows) {
     totalValue += resolvePositionValueCny(row) ?? 0
     totalCostAbs += Math.abs(resolvePositionCostCny(row) ?? 0)
-    totalDayPnlBase += resolvePositionDayPnlBaseCny(row) ?? 0
     totalPnlDenominator += resolvePositionTotalPnlDenominatorCny(row) ?? 0
-    todayPnl += resolvePositionDayPnlCny(row) ?? 0
     totalPnl += resolvePositionTotalPnlCny(row) ?? 0
+
+    if (isPositionDayPnlAggregateEnabled(row)) {
+      totalDayPnlBase += resolvePositionDayPnlBaseCny(row) ?? 0
+      todayPnl += resolvePositionDayPnlCny(row) ?? 0
+    }
   }
 
   const floatPnl = totalValue - totalCostAbs
@@ -121,7 +139,9 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       mv: 0,
       cost: 0,
       dayPnl: 0,
+      dayPnlEnabled: false,
       dayPnlBase: 0,
+      dayPnlEnabledCount: 0,
       totalPnl: 0,
       totalPnlDenominator: 0,
       dayRate: 0,
@@ -134,7 +154,9 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       mv: 0,
       cost: 0,
       dayPnl: 0,
+      dayPnlEnabled: false,
       dayPnlBase: 0,
+      dayPnlEnabledCount: 0,
       totalPnl: 0,
       totalPnlDenominator: 0,
       dayRate: 0,
@@ -147,7 +169,9 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       mv: 0,
       cost: 0,
       dayPnl: 0,
+      dayPnlEnabled: false,
       dayPnlBase: 0,
+      dayPnlEnabledCount: 0,
       totalPnl: 0,
       totalPnlDenominator: 0,
       dayRate: 0,
@@ -160,7 +184,9 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
       mv: 0,
       cost: 0,
       dayPnl: 0,
+      dayPnlEnabled: false,
       dayPnlBase: 0,
+      dayPnlEnabledCount: 0,
       totalPnl: 0,
       totalPnlDenominator: 0,
       dayRate: 0,
@@ -174,18 +200,24 @@ export function buildMarketSummaries(rows: PositionRow[]): PortfolioMarketSummar
     const bucket = totals[market]
     bucket.mv += resolvePositionValueCny(row) ?? 0
     bucket.cost += Math.abs(resolvePositionCostCny(row) ?? 0)
-    bucket.dayPnl += resolvePositionDayPnlCny(row) ?? 0
-    bucket.dayPnlBase += resolvePositionDayPnlBaseCny(row) ?? 0
     bucket.totalPnl += resolvePositionTotalPnlCny(row) ?? 0
     bucket.totalPnlDenominator += resolvePositionTotalPnlDenominatorCny(row) ?? 0
+
+    if (isPositionDayPnlAggregateEnabled(row)) {
+      bucket.dayPnl += resolvePositionDayPnlCny(row) ?? 0
+      bucket.dayPnlBase += resolvePositionDayPnlBaseCny(row) ?? 0
+      bucket.dayPnlEnabledCount += 1
+      bucket.dayPnlEnabled = true
+    }
   }
 
   return (Object.keys(totals) as MarketCode[]).map(market => {
     const bucket = totals[market]
-    const { dayPnlBase, totalPnlDenominator, ...summary } = bucket
+    const { dayPnlBase, dayPnlEnabledCount, totalPnlDenominator, ...summary } = bucket
     return {
       ...summary,
       dayRate: calcDayPnlRate(bucket.dayPnl, dayPnlBase),
+      dayPnlEnabled: dayPnlEnabledCount > 0,
       totalRate: calcHoldingPnlRate(bucket.totalPnl, totalPnlDenominator)
     }
   })
