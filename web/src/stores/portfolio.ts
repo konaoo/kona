@@ -157,10 +157,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
       const navUpdatePending =
         pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
-      const staticDayPnlDisplayEnabled =
-        pickBool(item, ['day_pnl_display_enabled']) ?? false
-      const staticDayPnlAggregateEnabled =
-        pickBool(item, ['day_pnl_aggregate_enabled']) ?? false
+      const staticDayPnlDisplayEnabledRaw =
+        pickBool(item, ['day_pnl_display_enabled'])
+      const staticDayPnlAggregateEnabledRaw =
+        pickBool(item, ['day_pnl_aggregate_enabled'])
       const staticQuotePrice = pickNumber(item, ['quote_price'])
       const rateToCny = pickNumber(item, ['rate_to_cny']) ?? undefined
       const costCny = pickNumber(item, ['cost_cny']) ?? undefined
@@ -189,24 +189,41 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const yclose = hasLiveYclose ? liveYclose : staticYclose
       const value = hasLiveQuotePrice && qty > 0 ? currentPrice * qty : staticValue
       const valueCny = rateToCny != null ? value * rateToCny : pickNumber(item, ['value_cny']) ?? undefined
-      const canUseLiveDayPnl = !navUpdatePending && !suppressDayPnlForPreopen && hasLiveQuotePrice && hasLiveYclose
-      const liveDayPnl = canUseLiveDayPnl ? (currentPrice - yclose) * qty : null
-      const liveDayPnlBase = canUseLiveDayPnl ? Math.abs(yclose * qty) : null
-      const dayPnlDisplay = suppressDayPnlForPreopen ? 0 : (liveDayPnl ?? staticDayPnlDisplay)
-      const dayPnlBaseDisplay = suppressDayPnlForPreopen ? 0 : (liveDayPnlBase ?? staticDayPnlBaseDisplay)
+      const canUseLiveDayPnlDisplay =
+        !navUpdatePending &&
+        !suppressDayPnlForPreopen &&
+        hasLiveQuotePrice &&
+        hasLiveYclose &&
+        staticDayPnlDisplayEnabledRaw !== false
+      const canUseLiveDayPnlAggregate =
+        !navUpdatePending &&
+        !suppressDayPnlForPreopen &&
+        hasLiveQuotePrice &&
+        hasLiveYclose &&
+        staticDayPnlAggregateEnabledRaw !== false
+      const liveDayPnlDisplay = canUseLiveDayPnlDisplay ? (currentPrice - yclose) * qty : null
+      const liveDayPnlBaseDisplay = canUseLiveDayPnlDisplay ? Math.abs(yclose * qty) : null
+      const liveDayPnlAggregate = canUseLiveDayPnlAggregate ? (currentPrice - yclose) * qty : null
+      const liveDayPnlBaseAggregate = canUseLiveDayPnlAggregate ? Math.abs(yclose * qty) : null
+      const dayPnlDisplayEnabled =
+        suppressDayPnlForPreopen ? false : (staticDayPnlDisplayEnabledRaw ?? (liveDayPnlDisplay != null))
+      const dayPnlAggregateEnabled =
+        suppressDayPnlForPreopen ? false : (staticDayPnlAggregateEnabledRaw ?? (liveDayPnlAggregate != null))
+      const dayPnlDisplay = !dayPnlDisplayEnabled ? 0 : (liveDayPnlDisplay ?? staticDayPnlDisplay)
+      const dayPnlBaseDisplay = !dayPnlDisplayEnabled ? 0 : (liveDayPnlBaseDisplay ?? staticDayPnlBaseDisplay)
       const dayPnlRateDisplay =
-        suppressDayPnlForPreopen
+        !dayPnlDisplayEnabled
           ? 0
-          : liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
-          ? (liveDayPnl / liveDayPnlBase) * 100
+          : liveDayPnlDisplay != null && liveDayPnlBaseDisplay != null && liveDayPnlBaseDisplay > 0
+          ? (liveDayPnlDisplay / liveDayPnlBaseDisplay) * 100
           : staticDayPnlRateDisplay
-      const dayPnlAggregate = suppressDayPnlForPreopen ? 0 : (liveDayPnl ?? staticDayPnlAggregate)
-      const dayPnlBaseAggregate = suppressDayPnlForPreopen ? 0 : (liveDayPnlBase ?? staticDayPnlBaseAggregate)
+      const dayPnlAggregate = !dayPnlAggregateEnabled ? 0 : (liveDayPnlAggregate ?? staticDayPnlAggregate)
+      const dayPnlBaseAggregate = !dayPnlAggregateEnabled ? 0 : (liveDayPnlBaseAggregate ?? staticDayPnlBaseAggregate)
       const dayPnlRateAggregate =
-        suppressDayPnlForPreopen
+        !dayPnlAggregateEnabled
           ? 0
-          : liveDayPnl != null && liveDayPnlBase != null && liveDayPnlBase > 0
-          ? (liveDayPnl / liveDayPnlBase) * 100
+          : liveDayPnlAggregate != null && liveDayPnlBaseAggregate != null && liveDayPnlBaseAggregate > 0
+          ? (liveDayPnlAggregate / liveDayPnlBaseAggregate) * 100
           : staticDayPnlRateAggregate
       const totalPnl = hasLiveQuotePrice ? value - cost : staticTotalPnl
       const totalPnlBase = Math.abs(cost) || staticTotalPnlBase
@@ -214,36 +231,32 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         totalPnlBase > 0 ? (totalPnl / totalPnlBase) * 100 : staticTotalPnlRate
       const totalPnlCny = rateToCny != null ? totalPnl * rateToCny : pickNumber(item, ['total_pnl_cny']) ?? undefined
       const dayPnlCny =
-        suppressDayPnlForPreopen
+        !dayPnlDisplayEnabled
           ? 0
-          : liveDayPnl != null && rateToCny != null
-          ? liveDayPnl * rateToCny
+          : liveDayPnlDisplay != null && rateToCny != null
+          ? liveDayPnlDisplay * rateToCny
           : pickNumber(item, ['day_pnl_cny']) ?? undefined
       const dayPnlBaseCny =
-        suppressDayPnlForPreopen
+        !dayPnlDisplayEnabled
           ? 0
-          : liveDayPnlBase != null && rateToCny != null
-          ? liveDayPnlBase * rateToCny
+          : liveDayPnlBaseDisplay != null && rateToCny != null
+          ? liveDayPnlBaseDisplay * rateToCny
           : pickNumber(item, ['day_pnl_base_cny']) ?? undefined
       const dayPnlAggregateCny =
-        suppressDayPnlForPreopen
+        !dayPnlAggregateEnabled
           ? 0
-          : liveDayPnl != null && rateToCny != null
-          ? liveDayPnl * rateToCny
+          : liveDayPnlAggregate != null && rateToCny != null
+          ? liveDayPnlAggregate * rateToCny
           : pickNumber(item, ['day_pnl_aggregate_cny']) ?? undefined
       const dayPnlBaseAggregateCny =
-        suppressDayPnlForPreopen
+        !dayPnlAggregateEnabled
           ? 0
-          : liveDayPnlBase != null && rateToCny != null
-          ? liveDayPnlBase * rateToCny
+          : liveDayPnlBaseAggregate != null && rateToCny != null
+          ? liveDayPnlBaseAggregate * rateToCny
           : pickNumber(item, ['day_pnl_base_aggregate_cny']) ?? undefined
       const quotePrice = hasLiveQuotePrice ? currentPrice : staticQuotePrice
       const quoteReady = hasLiveQuotePrice || (pickBool(item, ['quote_ready']) ?? Boolean(staticQuotePrice && staticQuotePrice > 0))
       const quotePending = hasLiveQuotePrice ? false : (pickBool(item, ['quote_pending']) ?? false)
-      const dayPnlDisplayEnabled =
-        suppressDayPnlForPreopen ? false : (liveDayPnl != null ? true : staticDayPnlDisplayEnabled)
-      const dayPnlAggregateEnabled =
-        suppressDayPnlForPreopen ? false : (liveDayPnl != null ? true : staticDayPnlAggregateEnabled)
 
       return {
         ...item,
