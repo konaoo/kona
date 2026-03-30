@@ -184,7 +184,7 @@ jobs:
       needs.frontend-gate.result == 'success'
     # 部署链路允许非代码原因失败（网络/SSH抖动），不阻塞代码检查结论。
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       REMOTE_WEB_ARCHIVE: /tmp/web-dist-${{ github.sha }}.tar.gz
     steps:
@@ -206,6 +206,9 @@ jobs:
           gzip -t ../web-dist.tar.gz
 
       - name: Upload Web artifact to server (with retries)
+        id: upload_artifact
+        continue-on-error: true
+        timeout-minutes: 10
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
@@ -263,6 +266,10 @@ jobs:
           fi
 
       - name: SSH and deploy
+        id: remote_deploy
+        if: steps.upload_artifact.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 10
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -475,3 +482,24 @@ jobs:
             fi
             python3 -c "import json; data=json.load(open('/tmp/kona_login_probe.json','r',encoding='utf-8')); assert 'error' in data, 'missing error field in /api/auth/login probe response'; print('login probe payload OK')"
             echo "Post-deploy smoke checks passed."
+
+      - name: Deploy result summary
+        if: always()
+        run: |
+          upload_outcome="${{ steps.upload_artifact.outcome }}"
+          deploy_outcome="${{ steps.remote_deploy.outcome }}"
+
+          echo "upload_artifact outcome: ${upload_outcome:-not-run}"
+          echo "remote_deploy outcome: ${deploy_outcome:-not-run}"
+
+          if [ "$upload_outcome" != "success" ]; then
+            echo "::warning::生产部署未完成：Web 制品上传阶段失败或超时。代码门禁已通过，可稍后重试部署 workflow。"
+            exit 0
+          fi
+
+          if [ "$deploy_outcome" != "success" ]; then
+            echo "::warning::生产部署未完成：远程部署阶段失败或超时。代码门禁已通过，可稍后重试部署 workflow。"
+            exit 0
+          fi
+
+          echo "Deploy finished successfully."

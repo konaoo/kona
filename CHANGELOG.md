@@ -15,6 +15,24 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-03-30-01
+
+### 这版一句话
+把 GitHub Actions 的生产部署链路改成“部署抖动只给 warning，不再把前后端门禁全绿的 run 打成红叉或取消”。
+
+### 主要变化
+- **CI：部署 job 超时上调**：把 `.github/workflows/deploy.yml` 里的 `Deploy to Production` job 超时从 `20` 分钟提高到 `30` 分钟，避免上传重试阶段还没跑完就被 GitHub 直接 cancel。
+- **CI：上传和远程部署改成非阻断**：`Upload Web artifact to server (with retries)` 和 `SSH and deploy` 两个步骤都改成 `continue-on-error`，并分别加了步骤级 `timeout-minutes`，避免网络抖动把整条 workflow 结论打红。
+- **CI：补部署结果总结**：新增 `Deploy result summary` 步骤；如果上传或远程部署失败，会在 Actions 里明确给出 warning，提示“代码门禁已通过，可稍后重试部署 workflow”，不再只留下一个不清楚的红叉或 cancel 结果。
+
+### 影响范围
+- GitHub Actions：`.github/workflows/deploy.yml`
+- 生产部署：仅影响 Actions 展示方式和部署失败时的结论，不改线上应用逻辑
+
+### 验收重点
+- 当前后端、前端门禁都通过时，workflow 不应再因为上传 Web 制品超时而整条显示红叉或 cancelled。
+- 如果服务器 SSH / SCP 抖动，Actions 应出现明确 warning，并指出失败发生在“上传阶段”还是“远程部署阶段”。
+
 ## 2026-03-29-02
 
 ### 这版一句话
