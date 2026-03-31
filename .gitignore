@@ -47,6 +47,7 @@ app_output.log
 !web/tsconfig.json
 !web/tsconfig.app.json
 !web/tsconfig.node.json
+web/package-lock.json.old.*
 
 # Node modules
 node_modules/
@@ -56,6 +57,8 @@ node_modules.old.*/
 web/dist/
 web/test-results/
 web/dev.log
+web/modal_test.png
+web/screenshots/
 
 # Flutter build / cache artifacts
 flutter/.dart_tool/
