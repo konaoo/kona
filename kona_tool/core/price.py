@@ -245,11 +245,41 @@ def _exchange_fund_candidates(code: str) -> List[str]:
 
 def is_exchange_fund_code(code: str) -> bool:
     """
-    判断是否为“场内 ETF 的 f_ 代码”。
+    判断是否为“场内基金/ETF”代码。
 
-    仅针对 f_ 纯数字且落在场内 ETF 号段的代码返回 True。
+    兼容 3 类输入：
+    - `f_511360` 这类历史“基金搜索”产物（需要按号段识别是否为场内可交易）
+    - `sh512890` / `sz159201` 这类带市场前缀的场内基金代码
+    - `512890` / `159201` 这类纯数字场内基金代码（旧数据里可能被误标为 fund）
+
+    注意：这里的判断目标是“交易日/开市状态应该按 A 股走”，
+    不是“统计分类一定是 fund”。统计分类请看 `infer_category_type`。
     """
-    return bool(_exchange_fund_candidates(code))
+    lower = str(code or "").strip().lower()
+
+    # f_ 代码：取后 6 位号段判断
+    if lower.startswith("f_"):
+        suffix = lower[2:].strip()
+    # 交易所前缀：取后 6 位号段判断
+    elif lower.startswith(("sh", "sz", "bj")):
+        suffix = lower[2:].strip()
+    else:
+        suffix = lower
+
+    if not re.fullmatch(r"\d{6}", suffix):
+        return False
+
+    # 11xxxx 多为转债/债券等，排除；但 511xxx 是场内货基 ETF，需要保留。
+    if suffix.startswith("11") and not suffix.startswith(("511",)):
+        return False
+
+    # 深圳场内基金：15/16/18 开头
+    if suffix.startswith(("15", "16", "18")):
+        return True
+    # 上海场内基金/ETF：50/51/52/56/58/511 开头
+    if suffix.startswith(("50", "51", "52", "56", "58", "511")):
+        return True
+    return False
 
 
 def _map_fund_code_to_exchange_if_tradable(code: str) -> str:
