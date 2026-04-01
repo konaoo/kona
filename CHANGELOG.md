@@ -65,6 +65,22 @@ Web 端对齐 App：场内 ETF（`navUpdatePending=false`）不再因为缺少 `
 - `kona` 用户的 `自由现金流ETF(159201)`、`标普ETF(159655)`、`红利低波ETF(512890)`、`港股通红利ETF(513530)`：Web 端应恢复显示当日涨幅/当日盈亏，不再是 `--`。
 - 场外基金（`navUpdatePending=true`）仍维持保守策略：无净值日期或非当日净值时，当日盈亏显示 `--`。
 
+## 2026-04-01-04
+
+### 这版一句话
+Web 端兜底对齐后端：当持仓被标成 `fund` 但代码属于“场内 ETF/LOF”等可交易号段时，Web 侧交易日/开市状态按 A 股口径推断，避免因为 bootstrap/缓存缺字段导致当日盈亏被误隐藏。
+
+### 主要变化
+- **Web：补一份场内基金号段识别（仅用于市场状态推断）**：更新 [web/src/stores/portfolio.ts](/Users/kona/Desktop/kaka/kona_repo/web/src/stores/portfolio.ts)，新增 `isExchangeFundCode()`，当 `market === 'fund'` 且代码命中场内号段时，把内部 `market` 视为 `a` 来读取市场开休市状态与交易日，从而恢复 `dayPnlAggregateEnabled` 推断。
+
+### 影响范围
+- Web：状态层（影响“当日盈亏开关推断/汇总口径”）
+- 不改后端、不改数据库，不会写任何线上数据
+
+### 验收重点
+- `kona` 用户场内 ETF：Web 端应稳定显示当日盈亏/百分比（只要行情正常返回），不再被“基金市场未开盘/非交易日”误判挡住。
+- 场外基金（`f_` / `ft_` 且 `navUpdatePending=true`）仍维持净值口径与保守门禁不变。
+
 ## 2026-03-31-01
 
 ### 这版一句话

@@ -12,6 +12,35 @@ import { useMarketStore } from './market'
 import { useQuoteStore } from './quote'
 import { useLedgerScopeStore } from './ledgerScope'
 
+function isExchangeFundCode(code: string): boolean {
+  const lower = String(code || '').trim().toLowerCase()
+  let suffix = lower
+  if (suffix.startsWith('f_')) suffix = suffix.slice(2)
+  else if (suffix.startsWith('ft_')) return false
+  else if (suffix.startsWith('gb_')) return false
+  else if (suffix.startsWith('hk') || suffix.endsWith('.hk')) return false
+  else if (suffix.startsWith('sh') || suffix.startsWith('sz') || suffix.startsWith('bj')) suffix = suffix.slice(2)
+
+  if (!/^\d{6}$/.test(suffix)) return false
+
+  // 11xxxx 里既有场外基金，也有沪市场内 ETF（如 511xxx）。这里只保留明确的场内段。
+  if (suffix.startsWith('11') && !suffix.startsWith('511')) return false
+
+  // 深圳场内基金：15/16/18 开头；上海场内基金/ETF：50/51/52/56/58/511 开头
+  if (suffix.startsWith('15') || suffix.startsWith('16') || suffix.startsWith('18')) return true
+  if (
+    suffix.startsWith('50') ||
+    suffix.startsWith('51') ||
+    suffix.startsWith('52') ||
+    suffix.startsWith('56') ||
+    suffix.startsWith('58') ||
+    suffix.startsWith('511')
+  ) {
+    return true
+  }
+  return false
+}
+
 const MARKET_PREOPEN_TIMEZONES: Partial<Record<MarketCode, string>> = {
   a: 'Asia/Shanghai',
   hk: 'Asia/Hong_Kong',
@@ -187,7 +216,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     return portfolio.value.map(item => {
       const code = String(item.code || '')
       const marketFromPayload = normalizeMarketCode((item as any).market)
-      const market = marketFromPayload ?? inferMarket(item)
+      let market = marketFromPayload ?? inferMarket(item)
+      // 对齐后端口径：场内 ETF（旧数据可能被标成 fund）交易时段和当日盈亏按 A 股市场走。
+      if (market === 'fund' && isExchangeFundCode(code)) {
+        market = 'a'
+      }
       const category = inferCategory(item)
       const qty = toNumber(item.qty)
       const rawCostPrice = toNumber(item.price)
