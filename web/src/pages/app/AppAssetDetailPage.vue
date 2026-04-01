@@ -59,6 +59,11 @@ function isFundAsset(item: any): boolean {
   return codeText.startsWith('f_') || codeText.startsWith('ft_')
 }
 
+function shouldShowFundNavMeta(item: any): boolean {
+  // 对齐 App：只有“场外基金净值待更新”才显示“最新净值(日期)”提示。
+  return isFundAsset(item) && Boolean(item?.navUpdatePending)
+}
+
 function isStaleFund(item: any): boolean {
   if (!isFundAsset(item)) return false
   const latestNavDate = readLatestNavDate(item)
@@ -320,11 +325,11 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="metric-grid">
-            <div class="metric-item">
-              <div class="metric-label">{{ isFundAsset(row) ? '最新净值' : '最新价格' }}</div>
+            <div class="metric-grid">
+              <div class="metric-item">
+              <div class="metric-label">{{ shouldShowFundNavMeta(row) ? '最新净值' : '最新价格' }}</div>
               <div class="metric-value">{{ formatPrice(row) }}</div>
-              <div v-if="isFundAsset(row)" class="metric-sub">
+              <div v-if="shouldShowFundNavMeta(row)" class="metric-sub">
                 {{ formatLatestNavDateText(readLatestNavDate(row)) ? `最新净值 (${formatLatestNavDateText(readLatestNavDate(row))})` : '最新净值' }}
               </div>
             </div>

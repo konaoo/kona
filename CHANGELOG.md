@@ -32,6 +32,23 @@
 - `kona` 用户的 `红利低波ETF(512890)`、`港股通红利ETF(513530)` 等场内 ETF，在交易日时应恢复显示当日盈亏和百分比，不再是 `--`。
 - 场外基金（`f_` / `ft_`）仍应维持“净值未更新时不展示当日盈亏”的原有规则。
 
+## 2026-04-01-02
+
+### 这版一句话
+Web 端对齐 App：场内 ETF（统计归基金但可交易）不再显示“最新净值(日期)”的误导文案，统一按“价格口径”展示。
+
+### 主要变化
+- **Web：净值提示只对场外基金显示**：更新 [web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue) 和 [web/src/pages/app/AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue)，只有 `navUpdatePending=true` 才显示“最新净值(日期)”；场内 ETF 不再显示该提示。
+- **Web：资产详情页同步对齐**：更新 [web/src/pages/app/AppAssetDetailPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAssetDetailPage.vue)，最新价格/净值标题与净值日期提示同样改为只在 `navUpdatePending=true` 时出现。
+
+### 影响范围
+- Web：首页、投资页、资产详情页
+- 不改后端，不改数据库，不会写任何线上数据
+
+### 验收重点
+- `kona` 用户的 `自由现金流ETF(159201)`、`标普ETF(159655)`、`红利低波ETF(512890)`、`港股通红利ETF(513530)`：Web 卡片不再出现“最新净值(日期)”提示，展示与 App 一致。
+- 场外基金（`f_` / `ft_`）仍应维持“净值未更新时不展示当日盈亏，并显示净值日期提示”的原有规则。
+
 ## 2026-03-31-01
 
 ### 这版一句话

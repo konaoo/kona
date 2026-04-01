@@ -268,7 +268,9 @@ function isDateToday(value: string): boolean {
 }
 
 function quoteMetaLabel(row: any): string {
-  if (!isFundAsset(row)) return ''
+  // 对齐 App：只有“场外基金净值待更新”才展示“最新净值(日期)”提示。
+  // 场内 ETF 虽然统计上仍可能归为基金，但展示应按“价格口径”走，避免误导。
+  if (!isFundAsset(row) || !row?.navUpdatePending) return ''
   const dateText = formatLatestNavDateText(readLatestNavDate(row))
   return dateText ? `最新净值 (${dateText})` : '最新净值'
 }
