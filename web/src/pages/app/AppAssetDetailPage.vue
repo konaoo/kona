@@ -66,6 +66,9 @@ function shouldShowFundNavMeta(item: any): boolean {
 
 function isStaleFund(item: any): boolean {
   if (!isFundAsset(item)) return false
+  // 对齐 App：只有“场外基金净值待更新”才需要用 latest_nav_date 判断 stale。
+  // 场内 ETF（navUpdatePending=false）即使没有 latest_nav_date，也不应隐藏当日盈亏/涨幅。
+  if (!Boolean(item?.navUpdatePending)) return false
   const latestNavDate = readLatestNavDate(item)
   if (!latestNavDate) return true
   return !isDateToday(latestNavDate)

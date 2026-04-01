@@ -49,6 +49,22 @@ Web 端对齐 App：场内 ETF（统计归基金但可交易）不再显示“�
 - `kona` 用户的 `自由现金流ETF(159201)`、`标普ETF(159655)`、`红利低波ETF(512890)`、`港股通红利ETF(513530)`：Web 卡片不再出现“最新净值(日期)”提示，展示与 App 一致。
 - 场外基金（`f_` / `ft_`）仍应维持“净值未更新时不展示当日盈亏，并显示净值日期提示”的原有规则。
 
+## 2026-04-01-03
+
+### 这版一句话
+Web 端对齐 App：场内 ETF（`navUpdatePending=false`）不再因为缺少 `latest_nav_date` 就被当成“净值过期”，当日涨幅/当日盈亏恢复展示。
+
+### 主要变化
+- **Web：stale 判断加门禁**：更新 [web/src/pages/app/AppInvestPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppInvestPage.vue)、[web/src/pages/app/AppHomePage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppHomePage.vue) 和 [web/src/pages/app/AppAssetDetailPage.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/pages/app/AppAssetDetailPage.vue)，`isStaleFund()` 只在 `navUpdatePending=true` 时才要求 `latest_nav_date`，否则直接视为非 stale。
+
+### 影响范围
+- Web：首页、投资页、资产详情页
+- 不改后端，不改数据库，不会写任何线上数据
+
+### 验收重点
+- `kona` 用户的 `自由现金流ETF(159201)`、`标普ETF(159655)`、`红利低波ETF(512890)`、`港股通红利ETF(513530)`：Web 端应恢复显示当日涨幅/当日盈亏，不再是 `--`。
+- 场外基金（`navUpdatePending=true`）仍维持保守策略：无净值日期或非当日净值时，当日盈亏显示 `--`。
+
 ## 2026-03-31-01
 
 ### 这版一句话

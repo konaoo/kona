@@ -532,6 +532,9 @@ function isFundAsset(row: any): boolean {
 
 function isStaleFund(row: any): boolean {
   if (!isFundAsset(row)) return false
+  // 对齐 App：只有“场外基金净值待更新”才需要用 latest_nav_date 判断 stale。
+  // 场内 ETF（navUpdatePending=false）即使没有 latest_nav_date，也不应隐藏当日盈亏/涨幅。
+  if (!Boolean(row?.navUpdatePending)) return false
   const latestNavDate = readLatestNavDate(row)
   if (!latestNavDate) return true
   return !isDateToday(latestNavDate)
