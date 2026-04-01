@@ -215,10 +215,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     return portfolio.value.map(item => {
       const code = String(item.code || '')
+      const isExchangeFund = isExchangeFundCode(code)
       const marketFromPayload = normalizeMarketCode((item as any).market)
       let market = marketFromPayload ?? inferMarket(item)
       // 对齐后端口径：场内 ETF（旧数据可能被标成 fund）交易时段和当日盈亏按 A 股市场走。
-      if (market === 'fund' && isExchangeFundCode(code)) {
+      if (market === 'fund' && isExchangeFund) {
         market = 'a'
       }
       const category = inferCategory(item)
@@ -246,8 +247,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         pickNumber(item, ['day_pnl_base_aggregate', 'day_pnl_base']) ?? 0
       const staticDayPnlRateAggregate =
         pickNumber(item, ['day_pnl_rate_aggregate', 'day_pnl_rate']) ?? 0
-      const navUpdatePending =
-        pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item)
+      // 场内 ETF 即使历史上误标为 f_，也不应进入“净值待更新”的展示分支：
+      // 1) 否则会把“涨幅/当日盈亏”整块隐藏成 --，与 App 口径不一致
+      // 2) 场内 ETF 的价格/昨收/当日盈亏应按交易所行情走
+      const navUpdatePending = isExchangeFund
+        ? false
+        : (pickBool(item, ['nav_update_pending']) ?? isNavUpdatePendingAsset(item))
       const staticDayPnlDisplayEnabledRaw =
         pickBool(item, ['day_pnl_display_enabled'])
       const staticDayPnlAggregateEnabledRaw =
