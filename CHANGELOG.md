@@ -97,6 +97,22 @@ Web 端对齐 App：场内 ETF 即使历史上用 `f_` 前缀入库，也不再�
 - `kona` 用户的 `红利低波ETF(512890)`、`港股通红利ETF(513530)`、`自由现金流ETF(159201)`、`标普ETF(159655)`：Web 端应恢复显示当日涨幅 badge 和当日盈亏，不再是 `--`。
 - 场外基金仍维持“净值待更新时不展示当日盈亏”的规则。
 
+## 2026-04-03-01
+
+### 这版一句话
+修复 Web 首页顶部“指数卡片一直加载中”问题：`/api/market/indices` 兼容价格接口 5 元组返回，不再 500。
+
+### 主要变化
+- **后端：指数接口解包兼容 4/5 元组**：更新 [kona_tool/market_handlers.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/market_handlers.py)，只取 `(price, yclose, amt, pct)` 前 4 个字段，忽略 `nav_date` 等尾部字段，避免 ValueError 导致接口报错。
+- **测试：锁住 5 元组回归**：更新 [kona_tool/tests/test_market_api.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_market_api.py)，mock 改为 5 元组，确保后续不会再回退到错误解包。
+
+### 影响范围
+- Web：首页顶部指数条（依赖 `/api/market/indices`）
+- 不改数据库、不改持仓口径，不会写任何线上数据
+
+### 验收重点
+- Web 首页顶部应能正常显示上证/深成/创业板/恒生科技/纳指和 USD/CNY，不再一直显示“加载中.../--%”。
+
 ## 2026-03-31-01
 
 ### 这版一句话

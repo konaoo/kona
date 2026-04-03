@@ -11,9 +11,11 @@ from core.request_trace import trace_request_stage
 def create_market_payload_handlers(
     *,
     market_status_getter: Callable[..., Dict[str, Any]],
-    prices_batch_getter: Callable[[list[str]], Dict[str, tuple[Any, Any, Any, Any]]],
+    # 价格抓取链路已标准化为 5 元组：(price, yclose, amt, pct, nav_date)
+    # 但这里允许兼容旧的 4 元组返回，避免历史代码/测试 mock 断裂。
+    prices_batch_getter: Callable[[list[str]], Dict[str, tuple[Any, ...]]],
     rates_getter: Callable[[], Dict[str, Any]],
-    hstech_price_getter: Callable[[], tuple[Any, Any, Any, Any]],
+    hstech_price_getter: Callable[[], tuple[Any, ...]],
 ):
     def build_market_status_payload() -> Dict[str, Any]:
         now_utc = datetime.now(timezone.utc)
@@ -36,8 +38,21 @@ def create_market_payload_handlers(
             rates = rates_getter()
         usd_cny = rates.get('USD', 0.0)
 
+        def _unpack_price_tuple(data: Any) -> tuple[float, float, float, float]:
+            """
+            兼容 (price, yclose, amt, pct) 和 (price, yclose, amt, pct, nav_date) 两种格式。
+            """
+            if not isinstance(data, tuple) or len(data) < 4:
+                return (0.0, 0.0, 0.0, 0.0)
+            # 只取前 4 个，忽略 nav_date 等尾部字段
+            price, yclose, amt, pct = data[0], data[1], data[2], data[3]
+            try:
+                return (float(price or 0.0), float(yclose or 0.0), float(amt or 0.0), float(pct or 0.0))
+            except Exception:
+                return (0.0, 0.0, 0.0, 0.0)
+
         def format_item(name, data):
-            curr, _yclose, amt, pct = data
+            curr, _yclose, amt, pct = _unpack_price_tuple(data)
             return {
                 "name": name,
                 "value": curr,

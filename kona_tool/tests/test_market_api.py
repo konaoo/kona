@@ -55,15 +55,16 @@ class MarketApiTests(unittest.TestCase):
             app_module,
             "batch_get_prices",
             return_value={
-                's_sh000001': (3200.0, 3190.0, 10.0, 0.31),
-                's_sz399001': (10100.0, 10000.0, 100.0, 1.0),
-                's_sz399006': (2000.0, 1980.0, 20.0, 1.01),
-                'gb_ixic': (17000.0, 16900.0, 100.0, 0.59),
+                # 价格接口已标准化为 5 元组：(price, yclose, amt, pct, nav_date)
+                's_sh000001': (3200.0, 3190.0, 10.0, 0.31, None),
+                's_sz399001': (10100.0, 10000.0, 100.0, 1.0, None),
+                's_sz399006': (2000.0, 1980.0, 20.0, 1.01, None),
+                'gb_ixic': (17000.0, 16900.0, 100.0, 0.59, None),
             },
         ), patch.object(
             app_module,
             "get_hstech_price",
-            return_value=(3500.0, 3480.0, 20.0, 0.57),
+            return_value=(3500.0, 3480.0, 20.0, 0.57, None),
         ), patch.object(
             app_module,
             "get_forex_rates",
