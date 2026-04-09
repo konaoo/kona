@@ -24,6 +24,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
 
   List<Map<String, dynamic>> _transactions = [];
   bool _transactionsLoaded = false;
+  bool _deleting = false;
 
   String get _cacheKey => widget.item.code;
 
@@ -303,9 +304,18 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
     );
 
     if (confirmed == true && mounted) {
+      setState(() => _deleting = true);
       final appState = context.read<AppState>();
-      await appState.deleteInvestment(code: item.code);
-      if (mounted) Navigator.of(context).pop();
+      final result = await appState.deleteInvestment(
+        code: item.code,
+        corrective: true,
+      );
+      if (!mounted) return;
+      if (result.ok) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() => _deleting = false);
+      }
     }
   }
 
@@ -1146,11 +1156,13 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 orElse: () => null,
               );
 
-              // 资产被删除时自动返回
+              // 资产被删除时自动返回（删除操作进行中由 _deleteAsset 控制导航）
               if (item == null) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (context.mounted) Navigator.of(context).pop();
-                });
+                if (!_deleting) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted) Navigator.of(context).pop();
+                  });
+                }
                 return const SizedBox.shrink();
               }
 
