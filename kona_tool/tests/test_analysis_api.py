@@ -1073,12 +1073,10 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
         items = payload.get('items') or []
-        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 150.0)
+        # 安全网兜底：有 asset 数据时不再创建"未归因"，total_pnl 以 asset_sum 为准
+        self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 100.0)
         residual_item = next((item for item in items if item.get('code') == '__unallocated__'), None)
-        self.assertIsNotNone(residual_item)
-        self.assertEqual(residual_item.get('name'), '未归因收益')
-        self.assertAlmostEqual(float(residual_item.get('pnl') or 0), 50.0)
-        self.assertIsNone(residual_item.get('pnl_rate'))
+        self.assertIsNone(residual_item)
 
     def test_analysis_asset_breakdown_historical_day_prefers_persisted_rows_without_rebuilding_context(self):
         conn = app_module.db.get_connection()

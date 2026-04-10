@@ -1293,6 +1293,65 @@ class SnapshotDatabaseMixin:
             conn.close()
             return False
 
+    def aggregate_daily_snapshot_asset_breakdown_from_ledgers(
+        self,
+        *,
+        user_id: str,
+        date_str: str,
+        snapshot_date: str | None = None,
+        source: str = "recalculated",
+    ) -> bool:
+        """从 ledger_daily_snapshot_asset_breakdowns 聚合写入 daily_snapshot_asset_breakdowns。"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        uid = user_id or ""
+        try:
+            cursor.execute(
+                """
+                SELECT code, name, market, curr,
+                       COALESCE(SUM(day_pnl), 0.0) AS day_pnl,
+                       COALESCE(SUM(day_base), 0.0) AS day_base
+                FROM ledger_daily_snapshot_asset_breakdowns
+                WHERE user_id = ? AND date = ?
+                GROUP BY code
+                """,
+                (uid, str(date_str or "")),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            items = [
+                {
+                    "code": str(row["code"] or ""),
+                    "name": str(row["name"] or row["code"] or ""),
+                    "market": str(row["market"] or "a"),
+                    "curr": str(row["curr"] or "CNY"),
+                    "day_pnl": round(float(row["day_pnl"] or 0.0), 2),
+                    "day_base": round(float(row["day_base"] or 0.0), 2),
+                }
+                for row in rows
+            ]
+            return self.save_daily_snapshot_asset_breakdowns(
+                date_str=str(date_str or ""),
+                items=items,
+                user_id=uid,
+                snapshot_date=snapshot_date or date_str,
+                source=source,
+                confidence=1.0,
+                replace_existing=True,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to aggregate global asset breakdown from ledgers date=%s user_id=%s: %s",
+                date_str,
+                uid,
+                exc,
+            )
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return False
+
     def sync_ledger_daily_snapshot_day_pnl(self, date_str: str, user_id: str = None) -> bool:
         """
         同步全局的 day_pnl 调整到 ledger_daily_snapshots。

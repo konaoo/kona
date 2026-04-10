@@ -258,13 +258,14 @@ class AnalysisAssetBreakdownService:
             items = self._build_realtime_items_from_payload(
                 realtime_asset_breakdowns.get(target_key) or [],
             )
+            finalized = self._finalize_items(
+                items,
+                expected_total=_round_amount(totals.get("day_pnl")),
+            )
             return {
                 "total_pnl": _round_amount(totals.get("day_pnl")),
                 "total_rate": _round_amount(totals.get("day_pnl_rate")),
-                "items": self._finalize_items(
-                    items,
-                    expected_total=_round_amount(totals.get("day_pnl")),
-                ),
+                "items": finalized,
             }
 
         now_utc = datetime.now(timezone.utc)
@@ -416,8 +417,9 @@ class AnalysisAssetBreakdownService:
         )
 
         items = persisted_items
-        finalized = self._finalize_items(items, expected_total=expected_total) if items else []
-        persisted_residual = self._get_unallocated_residual(finalized)
+        # 独立计算残差（不依赖 _finalize_items 的输出），用于判断是否需要 rebuild
+        persisted_asset_sum = _round_amount(sum(float(it.get("pnl") or 0.0) for it in persisted_items))
+        persisted_residual = abs(_round_amount(expected_total - persisted_asset_sum))
         persisted_has_unallocated = any(
             str(item.get("code") or "") == UNALLOCATED_DETAIL_CODE
             for item in persisted_items
@@ -440,12 +442,14 @@ class AnalysisAssetBreakdownService:
                 rebuilt_items,
                 market_breakdown=market_breakdown,
             )
-            rebuilt_finalized = self._finalize_items(rebuilt_items, expected_total=expected_total)
-            rebuilt_residual = self._get_unallocated_residual(rebuilt_finalized)
+            rebuilt_asset_sum = _round_amount(sum(float(it.get("pnl") or 0.0) for it in rebuilt_items))
+            rebuilt_residual = abs(_round_amount(expected_total - rebuilt_asset_sum))
             if not items or rebuilt_residual < persisted_residual:
                 items = rebuilt_items
-                finalized = rebuilt_finalized
 
+        finalized = self._finalize_items(items, expected_total=expected_total) if items else []
+
+        # total_pnl 始终用 day_pnl（真值），不用 asset_sum，防止历史数据缺失时收益丢失
         total_base = sum(float(item.get("base") or 0.0) for item in items)
         total_rate = round(expected_total / total_base * 100, 2) if total_base > 0 else 0.0
         return {
@@ -740,7 +744,7 @@ class AnalysisAssetBreakdownService:
                 + (current_price - effective_avg_price) * effective_buy_qty
                 + (sold_amount - yclose_ref * sold_qty)
             ) * rate_to_cny
-            base = yclose_ref * (pre_trade_qty + sold_qty) * rate_to_cny
+            base = (yclose_ref * (pre_trade_qty + sold_qty) + effective_avg_price * effective_buy_qty) * rate_to_cny
             return pnl, base
 
         pnl = ((current_price - yclose_ref) * qty + (sold_amount - yclose_ref * sold_qty)) * rate_to_cny
@@ -773,20 +777,29 @@ class AnalysisAssetBreakdownService:
                 }
             )
 
-        residual = _round_amount(expected_total - sum(float(item.get("pnl") or 0.0) for item in finalized))
+        asset_sum = _round_amount(sum(float(item.get("pnl") or 0.0) for item in finalized))
+        residual = _round_amount(expected_total - asset_sum)
         if abs(residual) > 0.05:
-            finalized.append(
-                {
-                    "code": UNALLOCATED_DETAIL_CODE,
-                    "name": UNALLOCATED_DETAIL_NAME,
-                    "market": "unallocated",
-                    "curr": "CNY",
-                    "pnl": residual,
-                    "pnl_rate": None,
-                    "base": 0.0,
-                    "has_exposure": True,
-                }
-            )
+            if not finalized:
+                # 完全没有 asset 数据 → 真正的系统故障，保留"未归因"
+                finalized.append(
+                    {
+                        "code": UNALLOCATED_DETAIL_CODE,
+                        "name": UNALLOCATED_DETAIL_NAME,
+                        "market": "unallocated",
+                        "curr": "CNY",
+                        "pnl": residual,
+                        "pnl_rate": None,
+                        "base": 0.0,
+                        "has_exposure": True,
+                    }
+                )
+            else:
+                # 有 asset 数据但与 day_pnl 不一致 → 以 asset 明细为准，记日志
+                logger.warning(
+                    "_finalize_items: day_pnl/asset mismatch expected=%.2f asset_sum=%.2f residual=%.2f",
+                    expected_total, asset_sum, residual,
+                )
         elif finalized and abs(residual) > 0:
             finalized[0]["pnl"] = _round_amount(float(finalized[0]["pnl"] or 0.0) + residual)
             base = float(finalized[0].get("base") or 0.0)

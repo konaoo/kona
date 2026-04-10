@@ -120,6 +120,58 @@ def _adjust_snapshot_breakdowns_for_preopen(
     return adjusted
 
 
+def _adjust_asset_breakdowns_for_preopen(
+    *,
+    asset_day_breakdowns_by_date: Dict[str, List[Dict[str, Any]]],
+    snapshot_date: str,
+    now_utc: datetime,
+    market_statuses: Dict[str, Dict[str, str]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """盘前把 snapshot_date 中属于 a/hk/fund 市场的 asset items 挪到上一个交易日。"""
+    adjusted: Dict[str, List[Dict[str, Any]]] = {
+        date_str: [dict(it) for it in items]
+        for date_str, items in (asset_day_breakdowns_by_date or {}).items()
+    }
+    snapshot_items = adjusted.get(snapshot_date)
+    if not snapshot_items:
+        return adjusted
+    preopen_markets: set[str] = set()
+    previous_keys: Dict[str, str] = {}
+    for market in ("a", "hk", "fund"):
+        if not _is_preopen_off_hours_market(market, now_utc, market_statuses):
+            continue
+        previous_day = get_previous_trading_day(market, snapshot_date)
+        if previous_day is None:
+            continue
+        preopen_markets.add(market)
+        previous_keys[market] = previous_day.strftime("%Y-%m-%d")
+    if not preopen_markets:
+        return adjusted
+    keep: List[Dict[str, Any]] = []
+    move: Dict[str, List[Dict[str, Any]]] = {}
+    for item in snapshot_items:
+        m = str(item.get("market") or "a").strip().lower()
+        if m in preopen_markets:
+            move.setdefault(previous_keys[m], []).append(item)
+        else:
+            keep.append(item)
+    adjusted[snapshot_date] = keep
+    for target_date, items_to_move in move.items():
+        existing = adjusted.setdefault(target_date, [])
+        existing_by_code: Dict[str, Dict[str, Any]] = {
+            str(it.get("code") or ""): it for it in existing
+        }
+        for item in items_to_move:
+            code = str(item.get("code") or "")
+            if code in existing_by_code:
+                existing_by_code[code]["day_pnl"] = float(existing_by_code[code].get("day_pnl") or 0.0) + float(item.get("day_pnl") or 0.0)
+                existing_by_code[code]["day_base"] = float(existing_by_code[code].get("day_base") or 0.0) + float(item.get("day_base") or 0.0)
+            else:
+                existing.append(dict(item))
+                existing_by_code[code] = existing[-1]
+    return adjusted
+
+
 def _resolve_snapshot_exchange_effective_date(
     *,
     market: str,
@@ -296,6 +348,14 @@ def _normalize_asset_breakdowns_by_date(
                     "day_base": round(float(raw.get("day_base") or 0.0), 2),
                 }
             )
+        # 尾差分摊：确保 sum(rounded items) == round(raw total, 2)
+        if items:
+            total_rounded = sum(it["day_pnl"] for it in items)
+            total_raw = round(sum(float((code_map.get(c) or {}).get("day_pnl") or 0.0) for c in code_map), 2)
+            penny = round(total_raw - total_rounded, 2)
+            if abs(penny) > 0:
+                idx = max(range(len(items)), key=lambda i: abs(items[i]["day_pnl"]))
+                items[idx]["day_pnl"] = round(items[idx]["day_pnl"] + penny, 2)
         normalized[str(date_str)] = items
     return normalized
 
@@ -540,9 +600,15 @@ def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: s
     )
     if not breakdown_ok:
         logger_obj.warning("Market breakdown save failed: user=%s date=%s", user_id, snapshot_date)
+    persist_asset_breakdowns_by_date = _adjust_asset_breakdowns_for_preopen(
+        asset_day_breakdowns_by_date=stats.get("asset_day_breakdowns_by_date") or {},
+        snapshot_date=snapshot_date,
+        now_utc=now_utc,
+        market_statuses=market_statuses,
+    )
     asset_breakdown_ok = db_obj.save_daily_snapshot_asset_breakdowns(
         date_str=snapshot_date,
-        items=(stats.get("asset_day_breakdowns_by_date") or {}).get(snapshot_date, []),
+        items=persist_asset_breakdowns_by_date.get(snapshot_date, []),
         user_id=user_id,
         snapshot_date=snapshot_date,
         source="exact",
@@ -557,7 +623,7 @@ def persist_snapshot_stats(db_obj, logger_obj, stats: Dict[str, Any], user_id: s
         "snapshot_day_pnl": snapshot_payload["day_pnl"],
         "snapshot_day_pnl_by_market": snapshot_market_map,
         "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
-        "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
+        "asset_day_breakdowns_by_date": persist_asset_breakdowns_by_date,
     }
     _persist_late_effective_date_settlements(db_obj, logger_obj, persist_stats, user_id)
     return True
@@ -625,9 +691,15 @@ def _persist_ledger_snapshot_stats(
             ledger_id,
             snapshot_date,
         )
+    persist_asset_breakdowns_by_date = _adjust_asset_breakdowns_for_preopen(
+        asset_day_breakdowns_by_date=stats.get("asset_day_breakdowns_by_date") or {},
+        snapshot_date=snapshot_date,
+        now_utc=now_utc,
+        market_statuses=market_statuses,
+    )
     asset_breakdown_ok = db_obj.save_daily_snapshot_asset_breakdowns(
         date_str=snapshot_date,
-        items=(stats.get("asset_day_breakdowns_by_date") or {}).get(snapshot_date, []),
+        items=persist_asset_breakdowns_by_date.get(snapshot_date, []),
         user_id=str(user_id or ""),
         ledger_id=int(ledger_id),
         snapshot_date=snapshot_date,
@@ -648,7 +720,7 @@ def _persist_ledger_snapshot_stats(
         "snapshot_day_pnl": snapshot_day_pnl,
         "snapshot_day_pnl_by_market": snapshot_market_map,
         "day_pnl_breakdowns_by_date": persist_breakdowns_by_date,
-        "asset_day_breakdowns_by_date": stats.get("asset_day_breakdowns_by_date") or {},
+        "asset_day_breakdowns_by_date": persist_asset_breakdowns_by_date,
     }
     handled_dates = _persist_late_effective_date_settlements(
         db_obj,
@@ -927,7 +999,7 @@ def _calculate_portfolio_stats_direct(
                         + (cur_price - effective_avg_price) * effective_buy_qty
                         + (sold_amount - yclose_ref * sold_qty)
                     ) * rate
-                    item_day_base = yclose_ref * (pre_trade_qty + sold_qty) * rate
+                    item_day_base = (yclose_ref * (pre_trade_qty + sold_qty) + effective_avg_price * effective_buy_qty) * rate
                     _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
                     _add_day_pnl_base(day_pnl_bases_by_date, effective_date, item_day_base)
                     _add_asset_day_breakdown(
@@ -1212,9 +1284,21 @@ def take_snapshot(user_id: str = None) -> bool:
                     snapshot_date=snapshot_date,
                     source="recalculated",
                 )
+                db.aggregate_daily_snapshot_asset_breakdown_from_ledgers(
+                    user_id=str(uid or ""),
+                    date_str=snapshot_date,
+                    snapshot_date=snapshot_date,
+                    source="recalculated",
+                )
                 db.sync_daily_snapshot_day_pnl_from_breakdown(snapshot_date, user_id=uid)
                 for effective_date in sorted(date_str for date_str in handled_dates if date_str != snapshot_date):
                     db.aggregate_daily_snapshot_market_breakdown_from_ledgers(
+                        user_id=str(uid or ""),
+                        date_str=effective_date,
+                        snapshot_date=snapshot_date,
+                        source="backfill",
+                    )
+                    db.aggregate_daily_snapshot_asset_breakdown_from_ledgers(
                         user_id=str(uid or ""),
                         date_str=effective_date,
                         snapshot_date=snapshot_date,
