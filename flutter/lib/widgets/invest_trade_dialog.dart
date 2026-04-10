@@ -2882,7 +2882,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
               hint: '0.00',
               keyboardType: TextInputType.numberWithOptions(
                 decimal: true,
-                signed: false,
+                signed: true,
               ),
             ),
           ),
