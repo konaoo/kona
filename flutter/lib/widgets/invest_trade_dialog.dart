@@ -849,7 +849,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   String? _validateAdjustPayload({required double qty, required double value}) {
     if (_adjustType == 'cost_price') {
       if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
-      if (value <= 0) return '目标成本价必须大于 0';
       return null;
     }
     if (_adjustType == 'quantity') {
@@ -867,7 +866,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return null;
     }
     if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
-    if (value <= 0) return '目标成本价必须大于 0';
     return null;
   }
 
@@ -1103,7 +1101,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     }
     if (_isDraftOnly) {
       final price = double.tryParse(_priceController.text.trim());
-      if (price == null || price <= 0) {
+      if (price == null || !price.isFinite) {
         setState(() {
           _errorText = '请输入有效价格';
         });
@@ -1186,13 +1184,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         setState(() {
           _saving = false;
           _errorText = '请输入有效价格';
-        });
-        return;
-      }
-      if (price <= 0) {
-        setState(() {
-          _saving = false;
-          _errorText = '价格必须大于 0';
         });
         return;
       }

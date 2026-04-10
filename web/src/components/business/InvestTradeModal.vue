@@ -302,7 +302,7 @@ function resolveAdjustPayload():
 
   if (adjustType.value === 'costPrice') {
     if (!holdingQty || holdingQty <= 0) return { error: '当前持仓数量无效，不能调整成本价' }
-    if (parsedInput <= 0) return { error: '目标成本价必须大于 0' }
+    if (!Number.isFinite(parsedInput)) return { error: '请输入有效成本价' }
     return {
       qty: holdingQty,
       price: parsedInput + currentAdj / holdingQty,
@@ -609,7 +609,7 @@ async function handleConfirm() {
     if (!isEditMode.value) {
       const p = parseFloat(price.value)
       const q = parseFloat(qty.value)
-      if (!p || !q || p <= 0 || q <= 0) {
+      if (!Number.isFinite(p) || !q || q <= 0) {
         searchError.value = '价格和数量必须填入'
         return
       }

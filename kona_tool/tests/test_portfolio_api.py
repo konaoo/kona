@@ -975,17 +975,35 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(row['note'], '')
 
     def test_add_buy_sell_reject_non_positive_price(self):
-        bad_add = self.client.post('/api/portfolio/add', json={
+        # add 允许负成本和零成本
+        add_zero = self.client.post('/api/portfolio/add', json={
             'code': 'sh600003',
-            'name': '非法新增',
+            'name': '零成本新增',
             'price': 0.0,
             'qty': 1.0,
         })
-        self.assertEqual(bad_add.status_code, 400)
-        self.assertEqual((bad_add.get_json() or {}).get('code'), 'INVALID_VALUE')
+        self.assertEqual(add_zero.status_code, 200)
+
+        add_neg = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600004',
+            'name': '负成本新增',
+            'price': -5.0,
+            'qty': 1.0,
+        })
+        self.assertEqual(add_neg.status_code, 200)
+
+        # add 仍然拒绝非法 qty
+        bad_add_qty = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600005',
+            'name': '非法数量',
+            'price': 10.0,
+            'qty': 0.0,
+        })
+        self.assertEqual(bad_add_qty.status_code, 400)
+        self.assertEqual((bad_add_qty.get_json() or {}).get('code'), 'INVALID_VALUE')
 
         add_ok = self.client.post('/api/portfolio/add', json={
-            'code': 'sh600003',
+            'code': 'sh600006',
             'name': '合法新增',
             'price': 10.0,
             'qty': 2.0,
@@ -993,7 +1011,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(add_ok.status_code, 200)
 
         bad_buy = self.client.post('/api/portfolio/buy', json={
-            'code': 'sh600003',
+            'code': 'sh600006',
             'price': -1.0,
             'qty': 1.0,
         })
@@ -1001,7 +1019,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual((bad_buy.get_json() or {}).get('code'), 'INVALID_VALUE')
 
         bad_sell = self.client.post('/api/portfolio/sell', json={
-            'code': 'sh600003',
+            'code': 'sh600006',
             'price': 0.0,
             'qty': 1.0,
         })

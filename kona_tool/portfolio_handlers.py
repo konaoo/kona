@@ -304,7 +304,7 @@ def create_portfolio_payload_handlers(
                 {"error": "Invalid value", "code": "INVALID_VALUE"},
                 400,
             )
-        if qty <= 0 or price <= 0:
+        if qty <= 0:
             return idempotent_response(
                 'portfolio_add',
                 user_id,
