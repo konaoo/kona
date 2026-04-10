@@ -872,7 +872,7 @@ onUnmounted(() => {
               <div class="num-field">
                 <div class="num-label">{{ isEditMode && actionMode === 'sell' ? '卖出价' : '单价' }}</div>
                 <div class="num-wrap">
-                  <input type="number" class="num-input" v-model="price" placeholder="0.00" min="0" step="0.01" @input="syncAmount" />
+                  <input type="number" class="num-input" v-model="price" placeholder="0.00" step="0.01" @input="syncAmount" />
                 </div>
               </div>
               <div class="num-field">
