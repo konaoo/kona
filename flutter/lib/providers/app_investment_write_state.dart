@@ -99,8 +99,8 @@ class AppInvestmentWriteState {
     required AppInvestmentWriteBindings bindings,
     int? ledgerId,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
+    if (qty <= 0) {
+      return const AssetActionResult.failure('请输入有效数量');
     }
     if (cashAssetId == -999) {
       if (_portfolioIndexByCode(code) >= 0) {
@@ -127,6 +127,9 @@ class AppInvestmentWriteState {
     }
     if (cashAssetId <= 0) {
       return const AssetActionResult.failure('请选择资金来源账户');
+    }
+    if (price <= 0) {
+      return const AssetActionResult.failure('从现金账户买入时，成本价必须大于 0');
     }
 
     final cashIndex = _assetsState.cashAssets.indexWhere(

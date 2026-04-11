@@ -613,6 +613,10 @@ async function handleConfirm() {
         searchError.value = '价格和数量必须填入'
         return
       }
+      if (!isExternal && p <= 0) {
+        searchError.value = '从现金账户买入时，成本价必须大于 0'
+        return
+      }
 
       if (isExternal) {
         await api.post('/api/portfolio/add', {

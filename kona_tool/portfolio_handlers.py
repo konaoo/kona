@@ -826,7 +826,7 @@ def create_portfolio_payload_handlers(
                 400,
             )
 
-        if qty <= 0:
+        if price <= 0 or qty <= 0:
             return idempotent_response(
                 'portfolio_buy_with_cash',
                 user_id,
