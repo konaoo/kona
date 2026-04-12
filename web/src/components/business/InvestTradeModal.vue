@@ -301,7 +301,7 @@ function resolveAdjustPayload():
   }
 
   if (adjustType.value === 'costPrice') {
-    if (!holdingQty || holdingQty <= 0) return { error: '当前持仓数量无效，不能调整成本价' }
+    if (!holdingQty || holdingQty === 0) return { error: '当前持仓数量为 0，不能调整成本价' }
     if (!Number.isFinite(parsedInput)) return { error: '请输入有效成本价' }
     return {
       qty: holdingQty,

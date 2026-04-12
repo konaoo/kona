@@ -848,7 +848,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
 
   String? _validateAdjustPayload({required double qty, required double value}) {
     if (_adjustType == 'cost_price') {
-      if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
+      if (qty == 0) return '当前持仓数量为 0，不能调整成本价';
       return null;
     }
     if (_adjustType == 'quantity') {
@@ -865,7 +865,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       if (value <= 0) return '手续费金额必须大于 0';
       return null;
     }
-    if (qty <= 0) return '当前持仓数量无效，不能调整成本价';
+    if (qty == 0) return '当前持仓数量为 0，不能调整成本价';
     return null;
   }
 
