@@ -252,11 +252,11 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
   static final List<int> _recentCashAssetIds = <int>[];
   static final List<TextInputFormatter> _qtyInputFormatters =
       <TextInputFormatter>[
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}$')),
+        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d{0,2}$')),
       ];
   static final List<TextInputFormatter> _fundQtyInputFormatters =
       <TextInputFormatter>[
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
+        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d{0,4}$')),
       ];
   static const Key _sheetRootKey = Key('invest_sheet_root');
   static const Key _sheetHandleKey = Key('invest_sheet_handle');
@@ -852,7 +852,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return null;
     }
     if (_adjustType == 'quantity') {
-      if (value <= 0) return '目标数量必须大于 0，清仓请用卖出';
+      if (value == 0) return '目标数量不能为 0，清仓请用卖出或删除';
       return null;
     }
     if (_adjustType == 'dividend') {
@@ -1132,9 +1132,15 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         }
       } else {
         qty = double.tryParse(_qtyController.text.trim());
-        if (qty == null || qty <= 0) {
+        if (qty == null || qty == 0) {
           setState(() {
             _errorText = '请输入有效数量';
+          });
+          return;
+        }
+        if (qty < 0 && _selectedCashAssetId != -999) {
+          setState(() {
+            _errorText = '从现金账户买入时，数量必须大于 0';
           });
           return;
         }
@@ -1222,10 +1228,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
           });
           return;
         }
-        if (qty <= 0) {
+        if (qty == 0) {
           setState(() {
             _saving = false;
-            _errorText = '数量必须大于 0';
+            _errorText = '数量不能为 0';
+          });
+          return;
+        }
+        if (qty < 0 && _selectedCashAssetId != -999) {
+          setState(() {
+            _saving = false;
+            _errorText = '从现金账户买入时，数量必须大于 0';
           });
           return;
         }
@@ -2948,7 +2961,7 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
                         hint: '0',
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
-                          signed: false,
+                          signed: true,
                         ),
                         inputFormatters: _isCurrentFundTarget()
                             ? _fundQtyInputFormatters

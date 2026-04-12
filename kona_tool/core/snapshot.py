@@ -987,7 +987,7 @@ def _calculate_portfolio_stats_direct(
                 # 已清仓且当日无买卖，跳过日内收益计算和明细写入
                 has_buy = buy_info and buy_info.get("qty", 0) > 0
                 has_sell = sold_qty > 0
-                if qty <= 0 and not has_buy and not has_sell:
+                if qty == 0 and not has_buy and not has_sell:
                     pass  # 跳过，不写 breakdown / asset / display
                 elif has_buy:
                     buy_qty_total = float(buy_info["qty"])

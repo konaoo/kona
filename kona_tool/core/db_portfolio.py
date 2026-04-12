@@ -1056,7 +1056,7 @@ class PortfolioDatabaseMixin:
 
         user_condition = "user_id = ?" if user_id else "(user_id IS NULL OR user_id = '')"
         user_param = (user_id,) if user_id else ()
-        qty_condition = "" if include_closed else " AND qty > 0"
+        qty_condition = "" if include_closed else " AND qty != 0"
         ledger_condition = " AND ledger_id = ?" if ledger_id is not None else ""
         ledger_param = (ledger_id,) if ledger_id is not None else ()
 
@@ -1149,7 +1149,7 @@ class PortfolioDatabaseMixin:
         """获取全库唯一证券代码列表（用于行情预取）。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        qty_condition = "" if include_closed else " AND qty > 0"
+        qty_condition = "" if include_closed else " AND qty != 0"
         try:
             cursor.execute(
                 f"""

@@ -311,7 +311,7 @@ function resolveAdjustPayload():
   }
 
   if (adjustType.value === 'quantity') {
-    if (parsedInput <= 0) return { error: '目标数量必须大于 0，清仓请用卖出' }
+    if (parsedInput === 0 || !Number.isFinite(parsedInput)) return { error: '目标数量不能为 0，清仓请用卖出或删除' }
     return {
       qty: parsedInput,
       price: rawPrice,
@@ -609,12 +609,12 @@ async function handleConfirm() {
     if (!isEditMode.value) {
       const p = parseFloat(price.value)
       const q = parseFloat(qty.value)
-      if (!Number.isFinite(p) || !q || q <= 0) {
+      if (!Number.isFinite(p) || !Number.isFinite(q) || q === 0) {
         searchError.value = '价格和数量必须填入'
         return
       }
-      if (!isExternal && p <= 0) {
-        searchError.value = '从现金账户买入时，成本价必须大于 0'
+      if (!isExternal && (p <= 0 || q < 0)) {
+        searchError.value = '从现金账户买入时，成本价和数量必须大于 0'
         return
       }
 
@@ -882,7 +882,7 @@ onUnmounted(() => {
               <div class="num-field">
                 <div class="num-label">数量</div>
                 <div class="num-wrap">
-                  <input type="number" class="num-input" v-model="qty" placeholder="0" min="0" step="1" @input="syncAmount" />
+                  <input type="number" class="num-input" v-model="qty" placeholder="0" step="1" @input="syncAmount" />
                 </div>
               </div>
             </div>

@@ -37,8 +37,16 @@ def _compute_day_pnl_metrics(
     today_buy_qty: float = 0.0,
 ) -> tuple[float, float, float]:
     """按记账口径计算当日盈亏：只看昨仓，今天新买不参与。"""
-    if current_price <= 0 or quote_yclose <= 0 or qty <= 0:
+    if current_price <= 0 or quote_yclose <= 0 or qty == 0:
         return 0.0, 0.0, 0.0
+
+    if qty < 0:
+        # 空头持仓：全量参与日内计算，不考虑 today_buy_qty
+        delta = current_price - quote_yclose
+        day_pnl = delta * qty  # qty 为负，跌了赚钱
+        day_base = quote_yclose * abs(qty)
+        day_pnl_rate = (day_pnl / day_base * 100) if day_base > 0 else 0.0
+        return day_pnl, day_pnl_rate, qty
 
     effective_today_buy_qty = min(max(today_buy_qty, 0.0), qty)
     yesterday_qty = max(0.0, qty - effective_today_buy_qty)

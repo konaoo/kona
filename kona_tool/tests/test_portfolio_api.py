@@ -449,6 +449,52 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertAlmostEqual(float(target.get('price') or 0.0), -1.23, places=6)
 
+    def test_portfolio_add_allows_negative_qty_for_short(self):
+        """做空：添加负数量持仓"""
+        resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600099',
+            'name': '做空测试',
+            'price': 50.0,
+            'qty': -100.0,
+        })
+        self.assertEqual(resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        items = list_resp.get_json() or []
+        target = next((it for it in items if it.get('code') == 'sh600099'), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target['qty']), -100.0)
+        self.assertAlmostEqual(float(target['price']), 50.0)
+
+    def test_portfolio_add_rejects_zero_qty(self):
+        resp = self.client.post('/api/portfolio/add', json={
+            'code': 'sh600098',
+            'name': '零数量',
+            'price': 10.0,
+            'qty': 0.0,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_portfolio_modify_allows_negative_qty(self):
+        """调整数量为负（转空头）"""
+        self.client.post('/api/portfolio/add', json={
+            'code': 'sh600097',
+            'name': '调整测试',
+            'price': 10.0,
+            'qty': 5.0,
+        })
+        resp = self.client.post('/api/portfolio/modify', json={
+            'code': 'sh600097',
+            'qty': -10.0,
+            'price': 20.0,
+        })
+        self.assertEqual(resp.status_code, 200)
+
+        list_resp = self.client.get('/api/portfolio')
+        items = list_resp.get_json() or []
+        target = next((it for it in items if it.get('code') == 'sh600097'), None)
+        self.assertAlmostEqual(float(target['qty']), -10.0)
+
     def test_portfolio_modify_without_adjustment_preserves_realized_pnl_total(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600011',

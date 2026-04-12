@@ -304,7 +304,7 @@ def create_portfolio_payload_handlers(
                 {"error": "Invalid value", "code": "INVALID_VALUE"},
                 400,
             )
-        if qty <= 0:
+        if qty == 0:
             return idempotent_response(
                 'portfolio_add',
                 user_id,
@@ -372,7 +372,7 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
-                if field == 'qty' and val <= 0:
+                if field == 'qty' and val == 0:
                     return idempotent_response(
                         'portfolio_update',
                         user_id,
@@ -433,7 +433,7 @@ def create_portfolio_payload_handlers(
                         {"error": "Invalid value", "code": "INVALID_VALUE"},
                         400,
                     )
-                if qty <= 0:
+                if qty == 0:
                     return idempotent_response(
                         'portfolio_modify',
                         user_id,

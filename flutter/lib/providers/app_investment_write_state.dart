@@ -48,8 +48,8 @@ class AppInvestmentWriteState {
     required AppInvestmentWriteBindings bindings,
     int? ledgerId,
   }) async {
-    if (price <= 0 || qty <= 0) {
-      return const AssetActionResult.failure('请输入有效价格和数量');
+    if (qty == 0) {
+      return const AssetActionResult.failure('数量不能为 0');
     }
     final normalizedCurr = bindings.normalizeInvestmentCurrency(
       code: code,
@@ -99,11 +99,14 @@ class AppInvestmentWriteState {
     required AppInvestmentWriteBindings bindings,
     int? ledgerId,
   }) async {
-    if (qty <= 0) {
-      return const AssetActionResult.failure('请输入有效数量');
+    if (qty == 0) {
+      return const AssetActionResult.failure('数量不能为 0');
     }
     if (cashAssetId == -999) {
       if (_portfolioIndexByCode(code) >= 0) {
+        if (qty < 0) {
+          return const AssetActionResult.failure('该资产已有多头持仓，不能直接做空');
+        }
         return buyInvestment(
           code: code,
           price: price,
