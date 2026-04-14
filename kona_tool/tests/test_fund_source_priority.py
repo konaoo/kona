@@ -11,7 +11,8 @@ if str(KONA_TOOL) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
-from core.fund import get_fund_overseas_history_points, get_fund_price
+from core import fund as fund_module
+from core.fund import get_fund_latest_nav_date, get_fund_overseas_history_points, get_fund_price
 
 
 class _JsonResp:
@@ -230,6 +231,17 @@ class TestFundSourcePriority(unittest.TestCase):
                 {"date": "2026-03-25", "value": 9.22},
             ],
         )
+
+    def test_get_fund_latest_nav_date_supports_ft_isin_code(self):
+        fund_module._nav_date_cache.clear()
+        with patch(
+            "core.fund.get_fund_overseas_history_points",
+            return_value=[{"date": "2026-03-25", "value": 9.22}],
+        ) as overseas_mock:
+            nav_date = get_fund_latest_nav_date("ft_LU1116320737")
+
+        self.assertEqual(nav_date, "2026-03-25")
+        overseas_mock.assert_called_once_with("LU1116320737", limit=1)
 
     def test_tencent_jj_parser_reads_latest_confirmed_nav(self):
         from core.fund import get_fund_tencent_jj

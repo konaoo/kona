@@ -605,6 +605,38 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
+    def test_calculate_stats_keeps_zero_row_for_otc_fund_when_nav_date_missing(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'f_110018',
+            'name': '增强回报',
+            'price': 1.2,
+            'qty': 10.0,
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        with patch('core.snapshot.batch_get_prices', return_value={'f_110018': (1.25, 1.24, 0, 0, None)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                with patch('core.snapshot.get_fund_latest_nav_date', return_value=None):
+                    with patch(
+                        'core.snapshot.get_market_statuses',
+                        return_value={
+                            'a': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                            'hk': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                            'us': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                            'fund': {'open': False, 'trading_day': False, 'reason': 'holiday_or_weekend'},
+                        },
+                    ):
+                        stats = app_module.calculate_portfolio_stats(
+                            None,
+                            now_utc=datetime(2026, 3, 23, 2, 0, tzinfo=timezone.utc),
+                        )
+
+        rows = (stats.get('asset_day_breakdowns_by_date') or {}).get('2026-03-23') or []
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get('code'), 'f_110018')
+        self.assertAlmostEqual(float(rows[0].get('day_pnl') or 0.0), 0.0, places=2)
+        self.assertAlmostEqual(float(rows[0].get('day_base') or 0.0), 0.0, places=2)
+
     def test_take_snapshot_updates_prior_day_pnl_when_settling_latest_prior_us_and_fund_breakdowns(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()

@@ -849,6 +849,45 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 0.0)
         self.assertEqual(payload.get('items') or [], [])
 
+    def test_analysis_asset_breakdown_day_keeps_zero_realtime_asset_rows(self):
+        today = datetime.now().date()
+        today_str = today.strftime('%Y-%m-%d')
+
+        fake_stats = {
+            'total_cost': 1000.0,
+            'total_pnl': 88.0,
+            'display_day_pnl': 0.0,
+            'display_day_pnl_base': 0.0,
+            'display_day_pnl_effective_date': today_str,
+            'display_day_pnl_by_market': {'a': 0.0, 'hk': 0.0, 'us': 0.0, 'fund': 0.0},
+            'asset_day_breakdowns_by_date': {
+                today_str: [
+                    {
+                        'code': 'f_110018',
+                        'name': '增强回报',
+                        'market': 'fund',
+                        'curr': 'CNY',
+                        'day_pnl': 0.0,
+                        'day_base': 0.0,
+                    }
+                ],
+            },
+        }
+
+        with patch.object(app_module, 'calculate_portfolio_stats', return_value=fake_stats), patch.object(
+            app_module,
+            'batch_get_prices',
+            side_effect=AssertionError('today 明细不应再自己重算价格'),
+        ):
+            resp = self.client.get(f'/api/analysis/calendar/asset_breakdown?scope=day&date={today_str}')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].get('code'), 'f_110018')
+        self.assertAlmostEqual(float(items[0].get('pnl') or 0.0), 0.0, places=2)
+
     def test_analysis_asset_breakdown_month_matches_month_cell(self):
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
@@ -1113,6 +1152,40 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(payload.get('total_pnl') or 0), 88.0)
         self.assertAlmostEqual(sum(float(item.get('pnl') or 0) for item in items), 88.0)
         self.assertEqual([item.get('code') for item in items], ['sh600001', 'sh600002'])
+
+    def test_analysis_asset_breakdown_historical_day_keeps_zero_persisted_rows(self):
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+            VALUES ('2026-03-06', 1000, 1000, 0, 0, 0, 0, 0, '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO daily_snapshot_asset_breakdowns
+            (date, user_id, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence)
+            VALUES
+            ('2026-03-06', '', 'f_110018', '增强回报', 'fund', 'CNY', 0, 0, '2026-03-06', 'manual_fix', 1.0)
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.analysis_asset_breakdown_service.AnalysisAssetBreakdownService._build_period_context',
+            side_effect=AssertionError('zero persisted rows should not rebuild historical context'),
+        ):
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-06')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        items = payload.get('items') or []
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].get('code'), 'f_110018')
+        self.assertAlmostEqual(float(items[0].get('pnl') or 0.0), 0.0, places=2)
 
     def test_analysis_asset_breakdown_historical_day_allocates_market_residual_to_missing_history_assets(self):
         conn = app_module.db.get_connection()

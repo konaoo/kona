@@ -360,6 +360,56 @@ def _normalize_asset_breakdowns_by_date(
     return normalized
 
 
+def _ensure_snapshot_date_asset_breakdowns(
+    asset_day_breakdowns_by_date: Dict[str, List[Dict[str, Any]]],
+    *,
+    portfolio: List[Dict[str, Any]],
+    snapshot_date: str,
+) -> Dict[str, List[Dict[str, Any]]]:
+    if not snapshot_date:
+        return asset_day_breakdowns_by_date
+
+    normalized: Dict[str, List[Dict[str, Any]]] = {
+        str(date_str): [dict(item or {}) for item in items or []]
+        for date_str, items in (asset_day_breakdowns_by_date or {}).items()
+    }
+    snapshot_items = normalized.setdefault(str(snapshot_date), [])
+    existing_codes = {
+        str((item or {}).get("code") or "").strip()
+        for item in snapshot_items
+        if str((item or {}).get("code") or "").strip()
+    }
+
+    missing_items: List[Dict[str, Any]] = []
+    for asset in portfolio or []:
+        code = str((asset or {}).get("code") or "").strip()
+        qty = float((asset or {}).get("qty") or 0.0)
+        if not code or qty <= 0 or code in existing_codes:
+            continue
+        market = market_from_asset(asset)
+        if market not in DEFAULT_MARKETS:
+            market = "a"
+        missing_items.append(
+            {
+                "code": code,
+                "name": str((asset or {}).get("name") or code),
+                "market": market,
+                "curr": str((asset or {}).get("curr") or "CNY").upper(),
+                "day_pnl": 0.0,
+                "day_base": 0.0,
+            }
+        )
+        existing_codes.add(code)
+
+    if missing_items:
+        snapshot_items.extend(sorted(missing_items, key=lambda item: str(item.get("code") or "")))
+        normalized[str(snapshot_date)] = sorted(
+            snapshot_items,
+            key=lambda item: str((item or {}).get("code") or ""),
+        )
+    return normalized
+
+
 def _round_market_breakdown(data: Dict[str, float] | None) -> Dict[str, float]:
     normalized = _empty_market_breakdown()
     for market in DEFAULT_MARKETS:
@@ -909,7 +959,10 @@ def _calculate_portfolio_stats_direct(
         item_total_pnl = item_float_pnl + (adj * rate)
 
         if nav_update_pending:
-            effective_date = resolve_fund_nav_effective_date(latest_nav_dates.get(code))
+            nav_date = latest_nav_dates.get(code)
+            if not nav_date and len(price_data) >= 5:
+                nav_date = str(price_data[4] or "").strip() or None
+            effective_date = resolve_fund_nav_effective_date(nav_date)
             display_effective_date = _resolve_display_fund_effective_date(
                 now_utc=now_utc,
                 market_statuses=market_statuses,
@@ -1086,6 +1139,13 @@ def _calculate_portfolio_stats_direct(
         for date_str, base in sorted(day_pnl_bases_by_date.items())
     }
     
+    normalized_asset_breakdowns = _normalize_asset_breakdowns_by_date(asset_day_breakdowns_by_date)
+    normalized_asset_breakdowns = _ensure_snapshot_date_asset_breakdowns(
+        normalized_asset_breakdowns,
+        portfolio=portfolio,
+        snapshot_date=snapshot_date,
+    )
+
     return {
         'total_invest': round(invest_mv, 2),
         'total_cost': round(sum(float(asset.get("price") or 0.0) * float(asset.get("qty") or 0.0) * _rate_to_cny(asset.get("curr"), rates) for asset in portfolio), 2),
@@ -1107,7 +1167,7 @@ def _calculate_portfolio_stats_direct(
         'snapshot_day_pnl_by_market': snapshot_day_pnl_by_market,
         'day_pnl_breakdowns_by_date': rounded_breakdowns_by_date,
         'day_pnl_bases_by_date': rounded_bases_by_date,
-        'asset_day_breakdowns_by_date': _normalize_asset_breakdowns_by_date(asset_day_breakdowns_by_date),
+        'asset_day_breakdowns_by_date': normalized_asset_breakdowns,
         'snapshot_date': snapshot_date,
         'now_utc': now_utc,
         'holdings_count': len(portfolio),

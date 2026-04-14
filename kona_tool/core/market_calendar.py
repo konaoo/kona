@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, Optional
 from zoneinfo import ZoneInfo
 
 import config
+from .price import is_exchange_fund_code
 
 try:
     import exchange_calendars as xcals
@@ -439,6 +440,8 @@ def market_from_asset(asset: Any) -> str:
     # 场内 ETF 的 day_pnl，导致日历收益数据丢失。
     if asset_type == "fund":
         c = code.lower()
+        if is_exchange_fund_code(c):
+            return "a"
         if not c.startswith(("f_", "ft_")):
             return "a"
         return "fund"

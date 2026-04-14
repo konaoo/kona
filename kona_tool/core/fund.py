@@ -556,6 +556,14 @@ def get_fund_latest_nav_date(code: str) -> Optional[str]:
 
 def _fetch_fund_latest_nav_date_uncached(code_str: str) -> Optional[str]:
     """不带缓存地获取基金最新净值确认日期（内部实现）。"""
+    normalized_code = str(code_str or "").strip()
+    overseas_code = normalized_code.replace("ft_", "").strip().upper()
+    if is_isin_format(overseas_code):
+        points = get_fund_overseas_history_points(overseas_code, limit=1)
+        if points:
+            return normalize_nav_date(points[-1].get("date"))
+        return None
+
     clean_code = re.sub(r"[^0-9]", "", code_str)
 
     if not clean_code:

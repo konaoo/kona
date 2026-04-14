@@ -194,6 +194,7 @@ class AnalysisAssetBreakdownService:
             row_date = str(row.get("date") or "")
             persisted_items = self._build_persisted_day_items(
                 persisted_by_date.get(row_date) or [],
+                preserve_zero_rows=False,
             )
             if persisted_items:
                 one_day = persisted_items
@@ -379,8 +380,6 @@ class AnalysisAssetBreakdownService:
                 continue
             pnl = _round_amount(row.get("day_pnl"))
             base = _safe_float(row.get("day_base"))
-            if abs(pnl) < 1e-9 and base <= 0:
-                continue
             items.append(
                 {
                     "code": code,
@@ -413,7 +412,8 @@ class AnalysisAssetBreakdownService:
                 date_str=target.strftime("%Y-%m-%d"),
                 user_id=user_id,
                 ledger_id=ledger_id,
-            )
+            ),
+            preserve_zero_rows=True,
         )
 
         items = persisted_items
@@ -539,6 +539,8 @@ class AnalysisAssetBreakdownService:
     def _build_persisted_day_items(
         self,
         rows: List[Dict[str, Any]],
+        *,
+        preserve_zero_rows: bool = False,
     ) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         for row in rows or []:
@@ -547,8 +549,7 @@ class AnalysisAssetBreakdownService:
                 continue
             pnl = _round_amount(row.get("day_pnl"))
             base = _safe_float(row.get("day_base"))
-            # 根据实际数据判断是否有敞口，不硬编码 True
-            has_exposure = abs(pnl) >= 1e-9 or abs(base) >= 1e-9
+            has_exposure = preserve_zero_rows or abs(pnl) >= 1e-9 or abs(base) >= 1e-9
             items.append(
                 {
                     "code": code,

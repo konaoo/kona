@@ -13,6 +13,7 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 
 from core.parser import parse_code
 from core.asset_type import infer_asset_type, infer_category_type
+from core.market_calendar import market_from_asset
 from core.stock import get_sina_stock_price
 
 
@@ -110,6 +111,12 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_infer_asset_type_otc_fund_prefix_remains_fund(self):
         self.assertEqual(infer_asset_type("f_161907", "万家中证红利ETF联接A"), "fund")
+
+    def test_market_from_asset_exchange_etf_with_f_prefix_uses_a_market(self):
+        self.assertEqual(
+            market_from_asset({"code": "f_511360", "asset_type": "fund"}),
+            "a",
+        )
 
     def test_infer_asset_type_invalid_f_prefix_letters_treated_as_us(self):
         self.assertEqual(infer_asset_type("f_NUGT", "Direxion NUGT ETF"), "us")
