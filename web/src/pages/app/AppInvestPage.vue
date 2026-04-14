@@ -174,6 +174,8 @@ const filteredRows = computed(() => {
       !Boolean(row.quotePending) &&
       isPositionDayPnlAggregateEnabled(row)
     const dayPnl = dayPnlVisible ? (Number(row.dayPnlAggregateCny ?? row.dayPnlAggregate ?? 0) || 0) : 0
+    const dayPnlRaw = dayPnlVisible ? (Number(row.dayPnlAggregate ?? 0) || 0) : 0
+    const totalPnlRaw = Number(row.totalPnl) || 0
 
     return {
       ...row,
@@ -186,8 +188,10 @@ const filteredRows = computed(() => {
       mv,
       mvCny: cnyMv,
       dayPnl,
+      dayPnlRaw,
       dayPnlVisible,
       totalPnl: resolvePositionTotalPnlCny(row) ?? 0,
+      totalPnlRaw,
       dayPnlRate: Number(row.dayPnlRateAggregate ?? row.dayPnlRate) || 0,
       totalPnlRate,
       pct,
@@ -222,9 +226,17 @@ function dayPnlRateLabel(row: any): string {
   return formatPct(toNumber(row?.dayPnlRate))
 }
 
+function formatPnlOriginal(value: number, curr?: string): string {
+  if (value === 0) return '--'
+  const sign = value > 0 ? '+' : '-'
+  const sym = getCurrencySymbol(curr)
+  const formatted = Math.round(Math.abs(value)).toLocaleString('zh-CN')
+  return `${sign}${sym}${formatted}`
+}
+
 function dayPnlAmountLabel(row: any): string {
   if (row?.dayPnlVisible === false) return '--'
-  return masked(formatCurrency(toNumber(row?.dayPnl), true))
+  return masked(formatPnlOriginal(toNumber(row?.dayPnlRaw), row?.curr))
 }
 
 function isFundAsset(row: any): boolean {
@@ -742,7 +754,7 @@ const handleTradeSuccess = async () => {
                           font-weight: 600;
                         "
                       >
-                        {{ masked(formatCurrency(row.totalPnl, true)) }}
+                        {{ masked(formatPnlOriginal(row.totalPnlRaw, row.curr)) }}
                       </div>
                     </div>
                     <div>
@@ -958,7 +970,7 @@ const handleTradeSuccess = async () => {
                         font-weight: 600;
                       "
                     >
-                      {{ masked(formatCurrency(row.totalPnl, true)) }}
+                      {{ masked(formatPnlOriginal(row.totalPnlRaw, row.curr)) }}
                     </div>
                     <div
                       style="font-size: 11px; margin-top: 1px"
