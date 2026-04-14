@@ -1160,7 +1160,7 @@ class AnalysisApiTests(unittest.TestCase):
             """
             INSERT INTO daily_snapshots
             (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
-            VALUES ('2026-03-06', 1000, 1000, 0, 0, 0, 0, 0, '')
+            VALUES ('2026-01-06', 1000, 1000, 0, 0, 0, 0, 0, '')
             """
         )
         cursor.execute(
@@ -1168,7 +1168,7 @@ class AnalysisApiTests(unittest.TestCase):
             INSERT INTO daily_snapshot_asset_breakdowns
             (date, user_id, code, name, market, curr, day_pnl, day_base, snapshot_date, source, confidence)
             VALUES
-            ('2026-03-06', '', 'f_110018', '增强回报', 'fund', 'CNY', 0, 0, '2026-03-06', 'manual_fix', 1.0)
+            ('2026-01-06', '', 'f_110018', '增强回报', 'fund', 'CNY', 0, 0, '2026-01-06', 'manual_fix', 1.0)
             """
         )
         conn.commit()
@@ -1178,7 +1178,7 @@ class AnalysisApiTests(unittest.TestCase):
             'core.analysis_asset_breakdown_service.AnalysisAssetBreakdownService._build_period_context',
             side_effect=AssertionError('zero persisted rows should not rebuild historical context'),
         ):
-            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-03-06')
+            resp = self.client.get('/api/analysis/calendar/asset_breakdown?scope=day&date=2026-01-06')
 
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
