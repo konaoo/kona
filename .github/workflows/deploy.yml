@@ -182,7 +182,7 @@ jobs:
       github.event_name != 'pull_request' &&
       needs.backend-gate.result == 'success' &&
       needs.frontend-gate.result == 'success'
-    # 部署链路允许非代码原因失败（网络/SSH抖动），不阻塞代码检查结论。
+    # 部署是否完成要和展示结果一致；部署失败就明确标红，不再假绿。
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -207,8 +207,7 @@ jobs:
 
       - name: Upload Web artifact to server (with retries)
         id: upload_artifact
-        continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 4
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
@@ -224,12 +223,16 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
 
-          SSH_OPTS="-i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          SSH_OPTS="-i $KEY_FILE -o BatchMode=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+
+          run_ssh() {
+            timeout 25 ssh $SSH_OPTS root@"$SSH_HOST" "$@"
+          }
 
           WARMUP_OK=0
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             echo "SSH warmup attempt $attempt ..."
-            if ssh $SSH_OPTS root@"$SSH_HOST" "echo warmup-ok" >/dev/null 2>&1; then
+            if run_ssh "echo warmup-ok" >/dev/null 2>&1; then
               WARMUP_OK=1
               break
             fi
@@ -243,11 +246,11 @@ jobs:
           SCP_OK=0
           LOCAL_SHA="$(sha256sum web-dist.tar.gz | awk '{print $1}')"
           REMOTE_TMP_ARCHIVE="${REMOTE_WEB_ARCHIVE}.part"
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3; do
             echo "SCP attempt $attempt ..."
-            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'" >/dev/null 2>&1 || true
-            if scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":"$REMOTE_TMP_ARCHIVE" && \
-              ssh $SSH_OPTS root@"$SSH_HOST" "set -eu
+            run_ssh "rm -f '$REMOTE_TMP_ARCHIVE' '$REMOTE_WEB_ARCHIVE'" >/dev/null 2>&1 || true
+            if timeout 90 scp $SSH_OPTS web-dist.tar.gz root@"$SSH_HOST":"$REMOTE_TMP_ARCHIVE" && \
+              run_ssh "set -eu
                 actual_sha=\$(sha256sum '$REMOTE_TMP_ARCHIVE' | awk '{print \$1}')
                 [ \"\$actual_sha\" = '$LOCAL_SHA' ]
                 gzip -t '$REMOTE_TMP_ARCHIVE'
@@ -257,7 +260,7 @@ jobs:
               SCP_OK=1
               break
             fi
-            ssh $SSH_OPTS root@"$SSH_HOST" "rm -f '$REMOTE_TMP_ARCHIVE'" >/dev/null 2>&1 || true
+            run_ssh "rm -f '$REMOTE_TMP_ARCHIVE'" >/dev/null 2>&1 || true
             sleep $((attempt * 2))
           done
           if [ "$SCP_OK" -ne 1 ]; then
@@ -268,7 +271,6 @@ jobs:
       - name: SSH and deploy
         id: remote_deploy
         if: steps.upload_artifact.outcome == 'success'
-        continue-on-error: true
         timeout-minutes: 10
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -492,13 +494,13 @@ jobs:
           echo "upload_artifact outcome: ${upload_outcome:-not-run}"
           echo "remote_deploy outcome: ${deploy_outcome:-not-run}"
 
-          if [ "$upload_outcome" != "success" ]; then
-            echo "::warning::生产部署未完成：Web 制品上传阶段失败或超时。代码门禁已通过，可稍后重试部署 workflow。"
+          if [ "$upload_outcome" = "failure" ]; then
+            echo "::error::生产部署失败：Web 制品上传阶段失败或超时。请重试 deploy workflow，或检查腾讯云 SSH / SCP 链路。"
             exit 0
           fi
 
-          if [ "$deploy_outcome" != "success" ]; then
-            echo "::warning::生产部署未完成：远程部署阶段失败或超时。代码门禁已通过，可稍后重试部署 workflow。"
+          if [ "$deploy_outcome" = "failure" ]; then
+            echo "::error::生产部署失败：远程部署阶段失败或超时。请检查服务器日志和健康检查。"
             exit 0
           fi
 
