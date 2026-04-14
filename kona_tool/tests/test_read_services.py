@@ -236,6 +236,17 @@ class ReadServicesTests(unittest.TestCase):
             },
         )
 
+    def test_analysis_asset_breakdown_service_normalizes_f_prefix_exchange_etf_to_a(self):
+        service = AnalysisReadService(
+            db=self.db,
+            price_batch_getter=lambda codes: {},
+        ).asset_breakdown_service
+
+        self.assertEqual(
+            service._normalize_market({"code": "f_511360", "market": "fund", "asset_type": "fund"}),
+            "a",
+        )
+
     def test_analysis_overview_day_uses_stats_getter(self):
         """stats_getter 存在时，day 数据应来自 stats_getter，不走 db.get_pnl_overview"""
         called_with = []

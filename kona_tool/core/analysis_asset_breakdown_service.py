@@ -1017,6 +1017,9 @@ class AnalysisAssetBreakdownService:
         return start_date, end_date
 
     def _normalize_market(self, item: Dict[str, Any]) -> str:
+        code = str(item.get("code") or "").strip()
+        if is_exchange_fund_code(code):
+            return "a"
         market = str(item.get("market") or item.get("asset_type") or "").strip().lower()
         if market in DEFAULT_MARKETS:
             return market
