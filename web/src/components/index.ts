@@ -33,6 +33,7 @@ export { default as PnLBar } from './business/PnLBar.vue'
 export { default as AssetSummary } from './business/AssetSummary.vue'
 export { default as IconButton } from './business/IconButton.vue'
 export { default as InvestTradeModal } from './business/InvestTradeModal.vue'
+export { default as LedgerManageModal } from './business/LedgerManageModal.vue'
 
 // ───────────────────────────────────────────────────────────────
 // TYPE EXPORTS - 类型导出

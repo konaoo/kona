@@ -4,6 +4,7 @@ import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
 import { computeDisplayCostPrice } from '@/shared/costBasis'
 import { resolveErrorMessage } from '@/shared/errorText'
+import { useLedgerScopeStore } from '@/stores/ledgerScope'
 
 type TradeAction = 'add' | 'buy' | 'sell' | 'adjust'
 type AdjustType = 'costPrice' | 'quantity' | 'dividend' | 'fee'
@@ -24,6 +25,7 @@ const internalShow = computed({
   set: (val) => emit('update:show', val)
 })
 
+const ledgerStore = useLedgerScopeStore()
 const isEditMode = computed(() => Boolean(props.asset))
 const actionMode = ref<Exclude<TradeAction, 'add'>>('buy')
 const isAnimating = ref(false)
@@ -619,14 +621,18 @@ async function handleConfirm() {
       }
 
       if (isExternal) {
-        await api.post('/api/portfolio/add', {
+        const addPayload: Record<string, any> = {
           code: selectedStock.value.code,
           market: selectedStock.value.market_type || 'a',
           qty: q,
           price: p,
           name: selectedStock.value.name,
-          curr: selectedStock.value.currency
-        })
+          curr: selectedStock.value.currency,
+        }
+        if (ledgerStore.currentLedgerId != null) {
+          addPayload.ledger_id = ledgerStore.currentLedgerId
+        }
+        await api.post('/api/portfolio/add', addPayload)
       } else {
         await api.post('/api/portfolio/buy_with_cash', {
           code: selectedStock.value.code,

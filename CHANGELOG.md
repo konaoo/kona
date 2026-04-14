@@ -15,6 +15,39 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-14-01
+
+### 这版一句话
+Web 端补齐账本（Ledger）功能，支持账本切换、新增、重命名、删除、排序，与 App 端对齐。
+
+### 主要变化
+- **账本选择器**：投资页顶部新增账本切换下拉菜单，显示所有账本、默认标记、当前选中
+- **切换账本刷新数据**：选择账本后自动刷新持仓、实时盈亏、趋势等数据
+- **账本管理弹窗**：支持新增账本、重命名、删除（默认账本不可删）、上下移排序
+- **添加资产关联账本**：通过 InvestTradeModal 添加资产时自动传入当前账本 ID
+- **登录/启动自动加载**：session bootstrap 和 login 后自动加载账本列表
+
+### 涉及文件
+| 文件 | 改动 |
+|------|------|
+| `web/src/stores/ledgerScope.ts` | 扩展为完整 CRUD store |
+| `web/src/stores/sessionCoordinator.ts` | bootstrap/login 后加载账本 |
+| `web/src/components/business/LedgerManageModal.vue` | 新增账本管理弹窗 |
+| `web/src/components/index.ts` | 注册新组件 |
+| `web/src/components/business/InvestTradeModal.vue` | 添加资产时传 ledger_id |
+| `web/src/pages/app/AppInvestPage.vue` | 账本选择器 UI + 切换刷新逻辑 |
+
+### 影响范围
+- Web：投资页、分析页（已有 ledger_id 透传，无需额外改动）
+- 不改后端，不改数据库
+
+### 验收重点
+- 投资页顶部显示当前账本名，点击可切换
+- 切换账本后持仓列表和盈亏数据刷新
+- "管理账本"弹窗中可新增、重命名、删除、排序
+- 默认账本不可删除
+- 添加新资产归属当前选中账本
+
 ## 2026-04-12-02
 
 ### 这版一句话

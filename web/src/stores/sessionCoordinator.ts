@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { useAuthStore } from './auth'
 import { useRefreshCoordinatorStore } from './refreshCoordinator'
+import { useLedgerScopeStore } from './ledgerScope'
 
 export const useSessionCoordinatorStore = defineStore('sessionCoordinator', () => {
   const authStore = useAuthStore()
@@ -20,12 +21,18 @@ export const useSessionCoordinatorStore = defineStore('sessionCoordinator', () =
   async function bootstrap() {
     const result = await authStore.bootstrap()
     refreshCoordinatorStore.ensureHydrated()
+    if (authStore.isAuthenticated) {
+      const ledgerStore = useLedgerScopeStore()
+      void ledgerStore.loadLedgers()
+    }
     return result
   }
 
   async function login(username: string, password: string) {
     await authStore.login(username, password)
     refreshCoordinatorStore.ensureHydrated()
+    const ledgerStore = useLedgerScopeStore()
+    void ledgerStore.loadLedgers()
   }
 
   async function register(username: string, password: string, inviteCode: string) {
