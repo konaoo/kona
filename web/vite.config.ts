@@ -25,6 +25,7 @@ export default defineConfig(({ command, mode }) => {
     build: isBuild
       ? {
           outDir: resolvePath(isAdminBuild ? './dist/admin' : './dist/app'),
+          emptyOutDir: true,
         }
       : undefined,
     server: {

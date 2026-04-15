@@ -15,6 +15,48 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-15-02
+
+### 这版一句话
+把 GitHub 自动发布从“每次整套重跑”改成“按改动点分流”，拆开 Web / Backend 部署，并复用 Web 构建产物。
+
+### 主要变化
+- 新增改动范围检测：只改 `web/` 时不再跑后端门禁，只改 `kona_tool/` 时不再跑 Web / Flutter 门禁，纯文档提交不再触发整套部署
+- 原来的单个 `Deploy to Production` 拆成 `Deploy Backend` 和 `Deploy Web` 两个 job，分别处理后端发布和静态资源发布
+- Web 发布不再在 deploy 阶段重复 build；改成 `Web Gate` 构建一次后上传 artifact，部署时直接复用这份产物
+- Web-only 发布不再重装 Python 依赖、不再重启 `kona` 服务；只更新静态资源并做页面可用性检查
+
+### 影响范围
+- GitHub Actions：`.github/workflows/deploy.yml`
+- 运维文档：`docs/部署说明.md`
+- 不改业务代码，不改数据库，不改线上数据
+
+### 验收重点
+- 只改 `web/` 推到 `main` 时，应只跑 `Web Gate` 和 `Deploy Web`
+- 只改 `kona_tool/` 推到 `main` 时，应只跑 `Backend Gate` 和 `Deploy Backend`
+- 纯文档提交不应再跑整套前后端门禁和部署
+- `Deploy Web` 应直接复用前面 gate 产物，不再重复 build Web
+
+## 2026-04-15-01
+
+### 这版一句话
+收紧 Web 构建物体积，清掉未使用的大尺寸 logo 资源，并修复双入口构建时 `dist` 旧产物不自动清空的问题。
+
+### 主要变化
+- 排查确认 Web 构建物偏大的主因不是 JS，而是 `public/assets` 里 4 张 `2048x2048` 的 PNG logo 被双入口构建重复复制
+- 把实际在 Web 页面里使用的 `logo.png` 缩到更适合网页展示的尺寸，避免单张图继续保持 4MB 级别
+- 删除当前未被 Web 引用、却会被 `public/` 原样打进产物的 `app-logo-dark.png`、`app-logo-light.png`、`kaka-logo.png`
+- 给 Vite 双入口构建补上 `emptyOutDir: true`，避免 `dist/app`、`dist/admin` 残留旧 hash 文件，导致构建产物越积越大
+
+### 影响范围
+- Web：构建产物体积、部署上传体积、浏览器 favicon 和页面 logo 资源
+- 不改后端、不改数据库、不改页面业务逻辑
+
+### 验收重点
+- `npm run build` 后 `web/dist` 体积应明显下降，不再主要被大 PNG 占满
+- 连续 build 时 `dist/app`、`dist/admin` 不应再残留旧 hash 文件
+- 首页、登录页、业务端侧边栏、管理后台里的 logo 显示应保持正常清晰
+
 ## 2026-04-14-03
 
 ### 这版一句话
