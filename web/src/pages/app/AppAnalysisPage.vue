@@ -151,9 +151,11 @@
                   <div class="asset-core">
                     <div class="asset-name">
                       {{ item.name || item.code }}
+                    </div>
+                    <div class="asset-code">
+                      <span>{{ formatDisplayCode(item.code) }}</span>
                       <span v-if="item.ledger_name" class="ledger-tag">{{ item.ledger_name }}</span>
                     </div>
-                    <div class="asset-code">{{ formatDisplayCode(item.code) }}</div>
                   </div>
                </div>
                <div class="rank-values" :class="valueClass(rankPnlValue(item))">
@@ -1110,25 +1112,36 @@ onBeforeUnmount(() => {
 .asset-name {
   font-size: 14px;
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .ledger-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.14);
+  border: 1px solid rgba(91, 141, 239, 0.22);
+  color: #8bb4ff;
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 99px;
-  background: var(--bg-secondary, rgba(0,0,0,0.05));
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1;
   white-space: nowrap;
+}
+[data-theme="light"] .ledger-tag {
+  background: rgba(91, 141, 239, 0.08);
+  border-color: rgba(91, 141, 239, 0.16);
+  color: #2f6fda;
 }
 
 .asset-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-secondary);
   font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
 }
 
 .rank-values {

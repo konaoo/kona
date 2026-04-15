@@ -75,6 +75,29 @@ function formatHoldingCurrency(cnyValue: number): string {
   return `${currMeta.value.sym}${val.toLocaleString('zh-CN')}`
 }
 
+function isPreopenOffHoursRow(row: any): boolean {
+  const market = String(row?.market || '').trim().toLowerCase()
+  if (market !== 'a' && market !== 'hk' && market !== 'fund') return false
+  if (row?.marketOpen === true) return false
+  if (row?.marketTradingDay !== true) return false
+  if (String(row?.marketStatusReason || '').trim().toLowerCase() !== 'off_hours') return false
+  const now = new Date()
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  return minutes < 9 * 60 + 30
+}
+
+function resolveCurrentDayPnlSortValue(row: any): number | null {
+  if (isPreopenOffHoursRow(row)) return 0
+  if (row?.navUpdatePending === true) return null
+  if (row?.dayPnlAggregateEnabled === false) return null
+  const yclose = Number(row?.yclose) || 0
+  if (yclose <= 0) return null
+  const currentPrice = Number(row?.currentPrice) || 0
+  const qty = Number(row?.qty) || 0
+  const rateToCny = Number(row?.rateToCny) || 1
+  return (currentPrice - yclose) * qty * rateToCny
+}
+
 // Utility
 
 // Data Processing
@@ -199,15 +222,28 @@ const filteredRows = computed(() => {
       pct,
       price: currentPrice || 0,
       curr: String(row.curr || 'CNY'),
+      rateToCny: Number(row.rateToCny) || 1,
       market: String(row.market || ''),
       category: String(row.category || row.market || ''),
       unit: String(row.unit || (isFundAsset(row) ? '份' : '股')),
       quoteReady: Boolean(row.quoteReady),
       quotePending: Boolean(row.quotePending),
       navUpdatePending: Boolean(row.navUpdatePending),
+      marketOpen: Boolean(row.marketOpen),
+      marketTradingDay: Boolean(row.marketTradingDay),
+      marketStatusReason: String(row.marketStatusReason || ''),
+      dayPnlAggregateEnabled: row.dayPnlAggregateEnabled !== false,
+      currentDayPnlSortValue: resolveCurrentDayPnlSortValue(row),
       spark: buildTrendSparklinePath(trendMap.value[String(row.code || '')]?.points || []),
       sparkReady: (trendMap.value[String(row.code || '')]?.points || []).length >= 2
     }
+  }).sort((a: any, b: any) => {
+    const pnlA = a.currentDayPnlSortValue
+    const pnlB = b.currentDayPnlSortValue
+    if (pnlA == null && pnlB == null) return 0
+    if (pnlA == null) return 1
+    if (pnlB == null) return -1
+    return pnlB - pnlA
   })
 })
 
