@@ -14,6 +14,9 @@ describe('portfolio store realtime quotes', () => {
   })
 
   it('只更新 quotes 时 rows 和 summary 也会跟着实时变化', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-15T10:30:00+08:00'))
+
     const portfolioStore = usePortfolioStore()
     const quoteStore = useQuoteStore()
     const marketStore = useMarketStore()
