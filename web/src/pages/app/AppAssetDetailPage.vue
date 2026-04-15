@@ -331,7 +331,7 @@ onMounted(() => {
             <div class="metric-grid">
               <div class="metric-item">
               <div class="metric-label">{{ shouldShowFundNavMeta(row) ? '最新净值' : '最新价格' }}</div>
-              <div class="metric-value">{{ formatPrice(row) }}</div>
+              <div class="metric-value">{{ formatPrice({ ...row, price: row.currentPrice }) }}</div>
               <div v-if="shouldShowFundNavMeta(row)" class="metric-sub">
                 {{ formatLatestNavDateText(readLatestNavDate(row)) ? `最新净值 (${formatLatestNavDateText(readLatestNavDate(row))})` : '最新净值' }}
               </div>
