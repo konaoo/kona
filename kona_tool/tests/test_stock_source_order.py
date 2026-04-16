@@ -123,6 +123,33 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertAlmostEqual(yclose, 263.75, places=2)
         self.assertEqual(calls, ["sina_us_stock", "eastmoney_us_stock"])
 
+    def test_us_stock_prefers_sina_when_sina_returns_valid_yclose(self):
+        calls = []
+
+        def fake_get(source, *args, **kwargs):
+            calls.append(source)
+            if source == "sina_us_stock":
+                return _Resp(
+                    text='var hq_str_gb_goog="谷歌,334.4700,1.18,2026-04-16 09:43:58,3.8900,330.5600,335.0000,328.6600,349.9400,147.5600,15104096,17516204,4046083590000,10.91,30.660000,0.00,0.00,0.21,0.00,12097000000,71,335.1028,0.19,0.63,Apr 15 08:01PM EDT,Apr 15 04:00PM EDT,330.5800,1752241,1,2026,5024015438.0000,335.1200,317.8500,586047366.9510,334.4700,330.5800";',
+                    status_code=200,
+                )
+            raise AssertionError("Eastmoney 和 Nasdaq 不该在新浪已返回有效昨收时继续触发")
+
+        with patch("core.stock.monitored_http_get", side_effect=fake_get), patch(
+            "core.stock._get_nasdaq_quote",
+            side_effect=AssertionError("Nasdaq 不该被调用"),
+        ), patch(
+            "core.stock._get_nasdaq_quote_relaxed",
+            side_effect=AssertionError("宽松 Nasdaq 不该被调用"),
+        ):
+            curr, yclose, amt, pct, _ = get_us_stock_price("gb_goog")
+
+        self.assertAlmostEqual(curr, 334.47, places=2)
+        self.assertAlmostEqual(yclose, 330.58, places=2)
+        self.assertAlmostEqual(amt, 3.89, places=2)
+        self.assertAlmostEqual(pct, 1.18, places=2)
+        self.assertEqual(calls, ["sina_us_stock"])
+
     def test_us_stock_fallbacks_to_nasdaq_when_sina_and_eastmoney_fail(self):
         calls = []
 

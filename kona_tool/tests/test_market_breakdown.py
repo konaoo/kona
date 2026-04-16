@@ -369,6 +369,58 @@ class MarketBreakdownTests(unittest.TestCase):
         # sync_day_pnl_from_breakdown 按实际 breakdown 总和更新 day_pnl
         self.assertAlmostEqual(float(snapshot_row["day_pnl"] or 0.0), 20.0, places=2)
 
+    def test_sync_ledger_daily_snapshot_day_pnl_from_breakdown_uses_created_at_schema(self):
+        user_id = "u_ledger_sync"
+        ledger = app_module.db.create_ledger(user_id, "主账本")
+        ledger_id = int(ledger["ledger_id"])
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (user_id, ledger_id, date, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, holdings_count)
+            VALUES (?, ?, '2026-04-15', 1000, 900, 100, 11.11, 0, 1)
+            """,
+            (user_id, ledger_id),
+        )
+        cursor.executemany(
+            """
+            INSERT INTO ledger_daily_snapshot_market_breakdowns
+            (user_id, ledger_id, date, snapshot_date, market, day_pnl, source, confidence, meta_json, updated_at)
+            VALUES (?, ?, '2026-04-15', '2026-04-15', ?, ?, 'exact', 1.0, NULL, datetime('now','localtime'))
+            """,
+            [
+                (user_id, ledger_id, "a", 12.34),
+                (user_id, ledger_id, "us", 56.78),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        ok = app_module.db.sync_ledger_daily_snapshot_day_pnl_from_breakdown(
+            date_str="2026-04-15",
+            user_id=user_id,
+            ledger_id=ledger_id,
+        )
+        self.assertTrue(ok)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT day_pnl
+            FROM ledger_daily_snapshots
+            WHERE user_id = ? AND ledger_id = ? AND date = ?
+            """,
+            (user_id, ledger_id, "2026-04-15"),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        self.assertIsNotNone(row)
+        self.assertAlmostEqual(float(row["day_pnl"] or 0.0), 69.12, places=2)
+
     def test_save_single_market_breakdown_row_does_not_rebalance_other_markets(self):
         user_id = "u_single_market"
         self._insert_snapshot("2026-03-03", total_pnl=100.0, day_pnl=50.0, user_id=user_id)

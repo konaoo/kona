@@ -626,7 +626,7 @@ def get_us_stock_price(code: str) -> Tuple[float, float, float, float, Optional[
                 if curr > 0:
                     if yclose <= 0:
                         yclose = curr
-                        return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
+                    return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
 
         except Exception as e:
             _log_warn_throttled("sina_us_stock", f"Sina US stock API error: {e}")

@@ -1018,7 +1018,7 @@ class SnapshotDatabaseMixin:
             cursor.execute(
                 """
                 UPDATE ledger_daily_snapshots
-                SET day_pnl = ?, updated_at = datetime('now','localtime')
+                SET day_pnl = ?, created_at = datetime('now','localtime')
                 WHERE date = ? AND user_id = ? AND ledger_id = ?
                 """,
                 (total, str(date_str or ""), uid, int(ledger_id)),
@@ -1382,7 +1382,7 @@ class SnapshotDatabaseMixin:
                 cursor.execute(
                     """
                     UPDATE ledger_daily_snapshots 
-                    SET day_pnl = ?, updated_at = datetime('now','localtime')
+                    SET day_pnl = ?, created_at = datetime('now','localtime')
                     WHERE date = ? AND user_id = ? AND ledger_id = ?
                     """,
                     (round(global_day_pnl, 2), str(date_str or ""), uid, ledgers[0]["ledger_id"])
@@ -1397,7 +1397,7 @@ class SnapshotDatabaseMixin:
                     cursor.execute(
                         """
                         UPDATE ledger_daily_snapshots
-                        SET day_pnl = ?, updated_at = datetime('now','localtime')
+                        SET day_pnl = ?, created_at = datetime('now','localtime')
                         WHERE date = ? AND user_id = ? AND ledger_id = ?
                         """,
                         (allocated_pnl, str(date_str or ""), uid, lid)
