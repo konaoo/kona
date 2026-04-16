@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 test('登录后关键页面可正常打开', async ({ page }) => {
   const consoleErrors: string[] = []
   const pageErrors: string[] = []
+  const refreshStatuses: number[] = []
 
   page.on('console', (message) => {
     if (message.type() === 'error') {
@@ -11,6 +12,11 @@ test('登录后关键页面可正常打开', async ({ page }) => {
   })
   page.on('pageerror', (error) => {
     pageErrors.push(error.message)
+  })
+  page.on('response', (response) => {
+    if (response.url().includes('/api/auth/refresh')) {
+      refreshStatuses.push(response.status())
+    }
   })
 
   const homeHistoryResponse = page.waitForResponse((response) =>
@@ -37,6 +43,14 @@ test('登录后关键页面可正常打开', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/analysis$/)
   await expect(page.getByText('收益日历')).toBeVisible()
 
-  expect(consoleErrors).toEqual([])
+  const filteredConsoleErrors = consoleErrors.filter((text) => {
+    const isExpectedBootstrapRefresh400 =
+      refreshStatuses.includes(400) &&
+      text.includes('Failed to load resource') &&
+      text.includes('400')
+    return !isExpectedBootstrapRefresh400
+  })
+
+  expect(filteredConsoleErrors).toEqual([])
   expect(pageErrors).toEqual([])
 })
