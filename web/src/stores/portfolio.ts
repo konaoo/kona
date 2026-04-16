@@ -236,6 +236,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const cost = pickNumber(item, ['cost']) ?? pickNumber(item, ['raw_cost_total']) ?? 0
       const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
       const staticValue = pickNumber(item, ['value']) ?? 0
+      const adjustmentTotal =
+        pickNumber(item, ['adjustment_total', 'adjustment']) ?? 0
       const staticTotalPnl = pickNumber(item, ['total_pnl']) ?? 0
       const staticTotalPnlBase = pickNumber(item, ['total_pnl_base']) ?? 0
       const staticTotalPnlRate = pickNumber(item, ['total_pnl_rate']) ?? 0
@@ -332,7 +334,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
           : liveDayPnlAggregate != null && liveDayPnlBaseAggregate != null && liveDayPnlBaseAggregate > 0
           ? (liveDayPnlAggregate / liveDayPnlBaseAggregate) * 100
           : staticDayPnlRateAggregate
-      const totalPnl = hasLiveQuotePrice ? value - cost : staticTotalPnl
+      const totalPnl = hasLiveQuotePrice ? value - cost + adjustmentTotal : staticTotalPnl
       const totalPnlBase = Math.abs(cost) || staticTotalPnlBase
       const totalPnlRate =
         totalPnlBase > 0 ? (totalPnl / totalPnlBase) * 100 : staticTotalPnlRate

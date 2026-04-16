@@ -76,6 +76,51 @@ describe('portfolio store realtime quotes', () => {
     expect(summary.totalPnl).toBeCloseTo(736)
   })
 
+  it('有实时行情时累计盈亏也要保留 adjustment_total', () => {
+    const portfolioStore = usePortfolioStore()
+    const quoteStore = useQuoteStore()
+
+    portfolioStore.portfolio = [
+      {
+        code: 'ft_LU1116320737',
+        name: '汇丰贝莱德基金',
+        qty: 3043.93,
+        price: 8.9881863249,
+        display_cost_price: 8.9881863249,
+        cost: 27359.72,
+        raw_cost_total: 27359.72,
+        current_price: 9.52,
+        yclose: 9.5,
+        value: 28978.93,
+        adjustment_total: 2231.28,
+        total_pnl: 3850.49,
+        total_pnl_rate: 14.07,
+        market: 'fund',
+        category_type: 'fund',
+        asset_type: 'fund',
+        curr: 'USD',
+        rate_to_cny: 7.23,
+        value_cny: 209017.66,
+        cost_cny: 197810.78,
+        total_pnl_cny: 27839.02,
+      },
+    ]
+
+    quoteStore.quotes = {
+      ft_LU1116320737: {
+        price: 9.52,
+        yclose: 9.5,
+      },
+    }
+
+    const row = portfolioStore.rows[0]
+    expect(row?.totalPnl).toBeCloseTo(3849.7736, 4)
+    expect(row?.totalPnlCny).toBeCloseTo(27833.8631, 4)
+
+    const summary = portfolioStore.summary
+    expect(summary.totalPnl).toBeCloseTo(27833.8631, 4)
+  })
+
   it('场外基金待净值更新时不应用实时行情覆盖今日盈亏', () => {
     const portfolioStore = usePortfolioStore()
     const quoteStore = useQuoteStore()
