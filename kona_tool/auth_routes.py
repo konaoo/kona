@@ -30,6 +30,41 @@ def _refresh_token_expiry_days() -> int:
     return int(getattr(config, "AUTH_REFRESH_TOKEN_DAYS", 365))
 
 
+def _refresh_cookie_name() -> str:
+    return str(getattr(config, "AUTH_REFRESH_COOKIE_NAME", "kona_refresh_token") or "kona_refresh_token")
+
+
+def _refresh_cookie_path() -> str:
+    return str(getattr(config, "AUTH_REFRESH_COOKIE_PATH", "/api/auth") or "/api/auth")
+
+
+def _refresh_cookie_domain() -> str | None:
+    value = getattr(config, "AUTH_REFRESH_COOKIE_DOMAIN", None)
+    text = str(value or "").strip()
+    return text or None
+
+
+def _refresh_cookie_samesite() -> str:
+    value = str(getattr(config, "AUTH_REFRESH_COOKIE_SAMESITE", "Lax") or "Lax").strip()
+    return value or "Lax"
+
+
+def _is_secure_request() -> bool:
+    if request.is_secure:
+        return True
+    forwarded_proto = str(request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return forwarded_proto == "https"
+
+
+def _refresh_cookie_secure() -> bool:
+    raw = str(getattr(config, "AUTH_REFRESH_COOKIE_SECURE", "auto") or "auto").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return _is_secure_request()
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -79,6 +114,57 @@ def _issue_auth_tokens(db, user_id: str, username: str, device_id: str = "") -> 
         "refresh_token": refresh_token,
         "refresh_expires_at": expires_at.isoformat(),
     }
+
+
+def _apply_refresh_cookie(resp, refresh_token: str, refresh_expires_at: str | datetime | None):
+    expire_dt = _normalize_utc_datetime(refresh_expires_at) or (
+        _utc_now() + timedelta(days=_refresh_token_expiry_days())
+    )
+    max_age = max(0, int((expire_dt - _utc_now()).total_seconds()))
+    resp.set_cookie(
+        _refresh_cookie_name(),
+        refresh_token,
+        max_age=max_age,
+        expires=expire_dt,
+        httponly=True,
+        secure=_refresh_cookie_secure(),
+        samesite=_refresh_cookie_samesite(),
+        path=_refresh_cookie_path(),
+        domain=_refresh_cookie_domain(),
+    )
+    return resp
+
+
+def _clear_refresh_cookie(resp):
+    resp.delete_cookie(
+        _refresh_cookie_name(),
+        path=_refresh_cookie_path(),
+        domain=_refresh_cookie_domain(),
+        secure=_refresh_cookie_secure(),
+        httponly=True,
+        samesite=_refresh_cookie_samesite(),
+    )
+    return resp
+
+
+def _auth_success_response(tokens: dict, profile: dict):
+    resp = jsonify(
+        {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+            "refresh_expires_at": tokens["refresh_expires_at"],
+            "user": profile,
+        }
+    )
+    return _apply_refresh_cookie(resp, str(tokens["refresh_token"] or ""), tokens.get("refresh_expires_at"))
+
+
+def _read_request_refresh_token(data: dict | None) -> str:
+    payload = data or {}
+    body_token = str(payload.get("refresh_token", "")).strip()
+    if body_token:
+        return body_token
+    return str(request.cookies.get(_refresh_cookie_name(), "")).strip()
 
 
 def _request_payload_diagnostics() -> str:
@@ -200,14 +286,7 @@ def create_auth_blueprint(
         with trace_request_stage("auth.login.load_profile"):
             profile = get_user_profile(db, user["id"]) or {}
         auth_audit(event="auth_login", outcome="success", username=username, reason=f"user_id={user['id']}")
-        return jsonify(
-            {
-                "access_token": tokens["access_token"],
-                "refresh_token": tokens["refresh_token"],
-                "refresh_expires_at": tokens["refresh_expires_at"],
-                "user": profile,
-            }
-        )
+        return _auth_success_response(tokens, profile)
 
     @bp.route("/register", methods=["POST"])
     @limiter.limit("10 per 10 minute")
@@ -326,14 +405,7 @@ def create_auth_blueprint(
         with trace_request_stage("auth.register.load_profile"):
             profile = get_user_profile(db, created["id"]) or {}
         auth_audit(event="auth_register", outcome="success", username=username, reason=f"user_id={created['id']}")
-        return jsonify(
-            {
-                "access_token": tokens["access_token"],
-                "refresh_token": tokens["refresh_token"],
-                "refresh_expires_at": tokens["refresh_expires_at"],
-                "user": profile,
-            }
-        )
+        return _auth_success_response(tokens, profile)
 
     @bp.route("/invite/validate", methods=["POST"])
     @limiter.limit("30 per 10 minute")
@@ -454,14 +526,7 @@ def create_auth_blueprint(
         with trace_request_stage("auth.bootstrap.load_profile"):
             profile = get_user_profile(db, g.user_id) or {}
         auth_audit(event="auth_bootstrap", outcome="success", username=username, reason=f"user_id={g.user_id}")
-        return jsonify(
-            {
-                "access_token": tokens["access_token"],
-                "refresh_token": tokens["refresh_token"],
-                "refresh_expires_at": tokens["refresh_expires_at"],
-                "user": profile,
-            }
-        )
+        return _auth_success_response(tokens, profile)
 
     @bp.route("/password/change", methods=["POST"])
     @login_required
@@ -508,16 +573,18 @@ def create_auth_blueprint(
     @limiter.limit("20 per 10 minute")
     def auth_refresh():
         data = request.get_json(silent=True) or {}
-        refresh_token = str(data.get("refresh_token", "")).strip()
+        refresh_token = _read_request_refresh_token(data)
         device_id = str(data.get("device_id", "")).strip()[:128]
         if not refresh_token:
-            return jsonify({"error": "缺少刷新令牌"}), 400
+            resp = jsonify({"error": "缺少刷新令牌"})
+            return _clear_refresh_cookie(resp), 400
         token_hash = hash_refresh_token(refresh_token)
         with trace_request_stage("auth.refresh.lookup_token"):
             token_row = db.get_refresh_token(token_hash)
         if not _is_refresh_token_valid(token_row):
             auth_audit(event="auth_refresh", outcome="failed", reason="invalid_refresh_token", level="warning")
-            return jsonify({"error": "登录状态已过期，请重新登录"}), 401
+            resp = jsonify({"error": "登录状态已过期，请重新登录"})
+            return _clear_refresh_cookie(resp), 401
         with trace_request_stage("auth.refresh.lookup_user"):
             user = db.get_user_by_id(token_row.get("user_id"))
         if not user or str(user.get("status") or "active").lower() != "active":
@@ -527,7 +594,8 @@ def create_auth_blueprint(
                 reason="user_disabled_or_missing",
                 level="warning",
             )
-            return jsonify({"error": "账号不可用，请重新登录"}), 403
+            resp = jsonify({"error": "账号不可用，请重新登录"})
+            return _clear_refresh_cookie(resp), 403
         with trace_request_stage("auth.refresh.revoke_old"):
             db.revoke_refresh_token(token_hash)
             db.touch_refresh_token(token_hash)
@@ -543,20 +611,13 @@ def create_auth_blueprint(
         auth_audit(event="auth_refresh", outcome="success", username=user["username"], reason=f"user_id={user['id']}")
         with trace_request_stage("auth.refresh.load_profile"):
             profile = get_user_profile(db, user["id"]) or {}
-        return jsonify(
-            {
-                "access_token": tokens["access_token"],
-                "refresh_token": tokens["refresh_token"],
-                "refresh_expires_at": tokens["refresh_expires_at"],
-                "user": profile,
-            }
-        )
+        return _auth_success_response(tokens, profile)
 
     @bp.route("/logout", methods=["POST"])
     @login_required
     def auth_logout():
         data = request.get_json(silent=True) or {}
-        refresh_token = str(data.get("refresh_token", "")).strip()
+        refresh_token = _read_request_refresh_token(data)
         revoked = 0
         if refresh_token:
             with trace_request_stage("auth.logout.revoke_refresh"):
@@ -567,7 +628,8 @@ def create_auth_blueprint(
             with trace_request_stage("auth.logout.revoke_refresh"):
                 revoked = db.revoke_all_refresh_tokens(g.user_id)
         auth_audit(event="auth_logout", outcome="success", username=g.username, reason=f"revoked={revoked}")
-        return jsonify({"status": "ok", "revoked_refresh_tokens": revoked})
+        resp = jsonify({"status": "ok", "revoked_refresh_tokens": revoked})
+        return _clear_refresh_cookie(resp)
 
     @bp.route("/send_code", methods=["POST"])
     def auth_send_code():

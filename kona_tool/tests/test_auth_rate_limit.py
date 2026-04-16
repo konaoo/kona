@@ -52,6 +52,8 @@ class AuthV2Tests(unittest.TestCase):
         reg_body = reg.get_json()
         self.assertIsInstance(reg_body.get("access_token"), str)
         self.assertIsInstance(reg_body.get("refresh_token"), str)
+        self.assertIn("kona_refresh_token=", reg.headers.get("Set-Cookie", ""))
+        self.assertIn("HttpOnly", reg.headers.get("Set-Cookie", ""))
         self.assertFalse(bool((reg_body.get("user") or {}).get("must_change_password")))
         refresh_expires_at = datetime.fromisoformat(reg_body.get("refresh_expires_at"))
         self.assertGreater(refresh_expires_at, datetime.now(timezone.utc) + timedelta(days=300))
@@ -75,6 +77,7 @@ class AuthV2Tests(unittest.TestCase):
         )
         self.assertEqual(ok_login.status_code, 200)
         self.assertIsInstance(ok_login.get_json().get("access_token"), str)
+        self.assertIn("kona_refresh_token=", ok_login.headers.get("Set-Cookie", ""))
         self.assertGreater(int(ok_login.headers.get("X-Trace-Stage-Count") or 0), 0)
 
     def test_change_password_revokes_refresh_tokens(self):
@@ -116,6 +119,7 @@ class AuthV2Tests(unittest.TestCase):
         body = reg.get_json()
         access = body.get("access_token")
         refresh = body.get("refresh_token")
+        self.assertIn("kona_refresh_token=", reg.headers.get("Set-Cookie", ""))
 
         refresh_resp = self.client.post(
             "/api/auth/refresh",
@@ -124,14 +128,15 @@ class AuthV2Tests(unittest.TestCase):
         self.assertEqual(refresh_resp.status_code, 200)
         new_refresh = refresh_resp.get_json().get("refresh_token")
         self.assertIsInstance(new_refresh, str)
+        self.assertIn("kona_refresh_token=", refresh_resp.headers.get("Set-Cookie", ""))
         self.assertGreater(int(refresh_resp.headers.get("X-Trace-Stage-Count") or 0), 0)
 
         logout = self.client.post(
             "/api/auth/logout",
             headers={"Authorization": f"Bearer {access}"},
-            json={"refresh_token": new_refresh},
         )
         self.assertEqual(logout.status_code, 200)
+        self.assertIn("kona_refresh_token=", logout.headers.get("Set-Cookie", ""))
         self.assertGreater(int(logout.headers.get("X-Trace-Stage-Count") or 0), 0)
 
         refresh_after_logout = self.client.post(

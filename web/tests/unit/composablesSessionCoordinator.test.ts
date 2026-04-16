@@ -32,9 +32,9 @@ describe('composables session coordinator bridge', () => {
 
     const result = await store.bootstrap()
 
-    expect(result.stage).toBe('skip:no-token')
-    expect(store.lastBootstrapResult.value?.stage).toBe('skip:no-token')
-    expect(sessionCoordinatorStore.bootstrapped).toBe(true)
+    expect(result.stage).toBe('skip:no-session')
+    expect(store.lastBootstrapResult.value?.stage).toBe('skip:no-session')
+    expect(sessionCoordinatorStore.bootstrapped).toBe(false)
     expect(typeof store.login).toBe('function')
     expect(typeof store.register).toBe('function')
     expect(typeof store.logout).toBe('function')

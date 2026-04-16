@@ -19,22 +19,27 @@ async function parseJson(resp: Response): Promise<unknown> {
   }
 }
 
-async function refreshTokenIfNeeded(requestId: string): Promise<boolean> {
+export async function refreshAuthSession(requestId = newRequestId()): Promise<boolean> {
   if (refreshInflight) {
     return refreshInflight
   }
   refreshInflight = (async () => {
     const refreshToken = readRefreshToken()
-    if (!refreshToken) return false
 
-    const resp = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...buildRequestTraceHeaders(requestId),
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
+    let resp: Response
+    try {
+      resp = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildRequestTraceHeaders(requestId),
+        },
+        body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+      })
+    } catch {
+      return false
+    }
 
     if (!resp.ok) {
       clearAuth()
@@ -43,12 +48,11 @@ async function refreshTokenIfNeeded(requestId: string): Promise<boolean> {
 
     const payload = (await parseJson(resp)) as Record<string, unknown>
     const nextAccess = String(payload.access_token || '')
-    const nextRefresh = String(payload.refresh_token || '')
-    if (!nextAccess || !nextRefresh) {
+    if (!nextAccess) {
       clearAuth()
       return false
     }
-    persistAuth(nextAccess, nextRefresh, payload.user)
+    persistAuth(nextAccess, payload.user)
     return true
   })()
   try {
@@ -79,7 +83,7 @@ export async function apiRequest<T>(
 
   let resp: Response
   try {
-    resp = await fetch(path, { ...init, headers })
+    resp = await fetch(path, { credentials: init.credentials ?? 'same-origin', ...init, headers })
   } catch (error) {
     const err = new Error(resolveErrorMessage(error, '网络连接失败，请检查网络后重试')) as ApiError
     err.requestId = requestId
@@ -87,7 +91,7 @@ export async function apiRequest<T>(
   }
   const responseRequestId = getResponseRequestId(resp, requestId)
   if (resp.status === 401 && auth && retry) {
-    const ok = await refreshTokenIfNeeded(requestId)
+    const ok = await refreshAuthSession(requestId)
     if (ok) {
       return apiRequest<T>(path, init, auth, false, requestId)
     }

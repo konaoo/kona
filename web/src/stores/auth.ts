@@ -4,14 +4,13 @@
 
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api } from '@/shared/http'
+import { api, refreshAuthSession } from '@/shared/http'
 import { finishAsyncFlow, startAsyncFlow, type AsyncFlowResult } from '@/shared/asyncFlow'
 import {
   clearAuth,
   persistAuth,
   persistUser,
   readAccessToken,
-  readRefreshToken,
   readStoredUser,
 } from '@/shared/auth'
 import type { User } from './types'
@@ -25,7 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
   const bootstrapped = ref(false)
   const loading = ref(false)
   const token = ref(readAccessToken() || '')
-  const refreshToken = ref(readRefreshToken() || '')
+  const refreshToken = ref('')
   const user = ref<User | null>(readStoredUser<User>() || null)
   const authError = ref('')
   const lastBootstrapResult = ref<AsyncFlowResult | null>(null)
@@ -61,9 +60,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
     bootstrapped.value = true
 
-    if (!token.value || !refreshToken.value) {
-      lastBootstrapResult.value = finishAsyncFlow(flow, 'skip:no-token')
-      return lastBootstrapResult.value
+    if (!token.value) {
+      const restored = await refreshAuthSession()
+      token.value = readAccessToken() || ''
+      user.value = readStoredUser<User>() || null
+      refreshToken.value = ''
+      if (!restored || !token.value) {
+        clearAuthState()
+        lastBootstrapResult.value = finishAsyncFlow(flow, 'skip:no-session')
+        return lastBootstrapResult.value
+      }
     }
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -108,17 +114,15 @@ export const useAuthStore = defineStore('auth', () => {
     }, false)
 
     const accessToken = String(payload.access_token || '')
-    const newRefreshToken = String(payload.refresh_token || '')
-
-    if (!accessToken || !newRefreshToken) {
-      throw new Error('登录返回缺少 token')
+    if (!accessToken) {
+      throw new Error('登录返回缺少 access token')
     }
 
     token.value = accessToken
-    refreshToken.value = newRefreshToken
+    refreshToken.value = ''
     user.value = (payload.user || null) as User | null
 
-    persistAuth(accessToken, newRefreshToken, user.value)
+    persistAuth(accessToken, user.value)
   }
 
   /**
@@ -132,17 +136,15 @@ export const useAuthStore = defineStore('auth', () => {
     }, false)
 
     const accessToken = String(payload.access_token || '')
-    const newRefreshToken = String(payload.refresh_token || '')
-
-    if (!accessToken || !newRefreshToken) {
-      throw new Error('注册返回缺少 token')
+    if (!accessToken) {
+      throw new Error('注册返回缺少 access token')
     }
 
     token.value = accessToken
-    refreshToken.value = newRefreshToken
+    refreshToken.value = ''
     user.value = (payload.user || null) as User | null
 
-    persistAuth(accessToken, newRefreshToken, user.value)
+    persistAuth(accessToken, user.value)
   }
 
   /**
@@ -150,7 +152,7 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function logout() {
     try {
-      await api.post('/api/auth/logout', { refresh_token: refreshToken.value }, true)
+      await api.post('/api/auth/logout', undefined, true)
     } catch {
       // ignore logout errors
     } finally {

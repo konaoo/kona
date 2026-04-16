@@ -1,5 +1,5 @@
 const ACCESS_TOKEN_KEY = 'kona_web_access_token'
-const REFRESH_TOKEN_KEY = 'kona_web_refresh_token'
+const LEGACY_REFRESH_TOKEN_KEY = 'kona_web_refresh_token'
 const USER_KEY = 'kona_web_user'
 
 export function readAccessToken(): string {
@@ -7,7 +7,8 @@ export function readAccessToken(): string {
 }
 
 export function readRefreshToken(): string {
-  return localStorage.getItem(REFRESH_TOKEN_KEY) || ''
+  // 仅用于兼容老版本 Web，把本地 refresh token 迁到服务端 HttpOnly Cookie。
+  return localStorage.getItem(LEGACY_REFRESH_TOKEN_KEY) || ''
 }
 
 export function readStoredUser<T>(): T | null {
@@ -20,9 +21,9 @@ export function readStoredUser<T>(): T | null {
   }
 }
 
-export function persistAuth(accessToken: string, refreshToken: string, user?: unknown) {
+export function persistAuth(accessToken: string, user?: unknown) {
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY)
   if (user !== undefined) {
     localStorage.setItem(USER_KEY, JSON.stringify(user))
   }
@@ -34,6 +35,6 @@ export function persistUser(user: unknown) {
 
 export function clearAuth() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
 }

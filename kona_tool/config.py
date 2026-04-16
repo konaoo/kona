@@ -104,6 +104,11 @@ if not JWT_SECRET:
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "2"))  # access token 默认 2 小时
 AUTH_REFRESH_TOKEN_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_DAYS", "365"))
 AUTH_REFRESH_TOKEN_RETENTION_DAYS = int(os.getenv("AUTH_REFRESH_TOKEN_RETENTION_DAYS", "90"))
+AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "kona_refresh_token").strip() or "kona_refresh_token"
+AUTH_REFRESH_COOKIE_PATH = os.getenv("AUTH_REFRESH_COOKIE_PATH", "/api/auth").strip() or "/api/auth"
+AUTH_REFRESH_COOKIE_DOMAIN = os.getenv("AUTH_REFRESH_COOKIE_DOMAIN", "").strip() or None
+AUTH_REFRESH_COOKIE_SAMESITE = os.getenv("AUTH_REFRESH_COOKIE_SAMESITE", "Lax").strip() or "Lax"
+AUTH_REFRESH_COOKIE_SECURE = os.getenv("AUTH_REFRESH_COOKIE_SECURE", "auto").strip().lower() or "auto"
 
 # API配置
 API_TIMEOUT = 3

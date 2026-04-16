@@ -15,6 +15,27 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-16-04
+
+### 这版一句话
+把 Web 登录态从“前端自己长期保存 refresh token”改成“服务端 HttpOnly Cookie 持久化 refresh token”，修复 iOS 放桌面场景下频繁掉登录的问题。
+
+### 主要变化
+- 后端登录、注册、静默续期、登出接口现在都会维护 `HttpOnly` 的 refresh cookie，并继续兼容旧版 body 里的 `refresh_token`
+- Web 前端不再把 refresh token 长期写进 `localStorage`，只保留 access token 和用户信息
+- Web 启动时即使本地没有 refresh token，也会尝试基于 Cookie 静默续期恢复登录态
+- 新增前后端回归测试，锁住“Cookie 续期”和“老版本本地 refresh token 向 Cookie 平滑迁移”的行为
+
+### 影响范围
+- Web：登录、刷新、登出、启动恢复会话
+- 后端：`/api/auth/login`、`/api/auth/register`、`/api/auth/bootstrap_credentials`、`/api/auth/refresh`、`/api/auth/logout`
+- 不影响 Flutter 现有鉴权接口返回，不改业务数据
+
+### 验收重点
+- iOS 放桌面 Web 在正常使用中不应再因为本地存储波动频繁掉登录
+- 清掉本地 `kona_web_refresh_token` 后，只要服务端 refresh cookie 还在，刷新页面仍应能恢复登录
+- `logout` 后 refresh cookie 应被清掉，随后再静默续期应返回未登录
+
 ## 2026-04-16-03
 
 ### 这版一句话
