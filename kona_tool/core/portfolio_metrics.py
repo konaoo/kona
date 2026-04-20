@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .market_calendar import market_from_asset
 from .price import is_exchange_fund_code
@@ -61,6 +61,32 @@ def _compute_day_pnl_metrics(
     return day_pnl, day_pnl_rate, yesterday_qty
 
 
+def _normalize_us_symbol(code: str) -> str:
+    text = str(code or "").strip()
+    lower = text.lower()
+    if lower.startswith("gb_"):
+        return text[3:].strip().upper()
+    return text.upper()
+
+
+def _is_us_day_pnl_session_active(
+    *,
+    market_open: bool,
+    us_extended_quote: Dict[str, Any] | None,
+) -> bool:
+    if market_open:
+        return True
+    quote = us_extended_quote or {}
+    if bool(quote.get("extended_active")):
+        return True
+    session = str(
+        quote.get("effective_session")
+        or quote.get("session")
+        or ""
+    ).strip().lower()
+    return session in {"pre", "post"}
+
+
 def build_portfolio_items_with_metrics(
     items: List[Dict],
     quotes: Dict[str, Tuple[float, float, float, float, Optional[str]]],
@@ -69,6 +95,7 @@ def build_portfolio_items_with_metrics(
     convert_amount: Callable[[float, str, str, Dict[str, float]], float],
     today_buys: Dict[str, Dict[str, float]] | None = None,
     latest_nav_dates: Dict[str, str | None] | None = None,
+    us_extended_quotes: Dict[str, Dict[str, Any]] | None = None,
 ) -> List[Dict]:
     """为实时持仓补齐统一指标口径。"""
     enriched: List[Dict] = []
@@ -89,6 +116,12 @@ def build_portfolio_items_with_metrics(
         market_open = bool(status.get("open"))
         market_trading_day = bool(status.get("trading_day"))
         market_status_reason = str(status.get("reason") or "")
+        us_day_pnl_session_active = False
+        if market == "us":
+            us_day_pnl_session_active = _is_us_day_pnl_session_active(
+                market_open=market_open,
+                us_extended_quote=(us_extended_quotes or {}).get(_normalize_us_symbol(code)),
+            )
 
         quote = quotes.get(code) or (0.0, 0.0, 0.0, 0.0, None)
         quote_price = _to_float(quote[0])
@@ -127,13 +160,22 @@ def build_portfolio_items_with_metrics(
                 today_buy_qty=_to_float((buy_info or {}).get("qty")),
             )
             day_pnl_display_enabled = yesterday_qty > 0
+            if market == "us":
+                day_pnl_display_enabled = day_pnl_display_enabled and us_day_pnl_session_active
             day_pnl_base_display = quote_yclose * yesterday_qty if yesterday_qty > 0 else 0.0
         else:
             day_pnl_display = 0.0
             day_pnl_rate_display = 0.0
             day_pnl_display_enabled = False
             day_pnl_base_display = 0.0
-        day_pnl_aggregate_enabled = day_pnl_display_enabled and market_trading_day
+        if market == "us" and not day_pnl_display_enabled:
+            day_pnl_display = 0.0
+            day_pnl_rate_display = 0.0
+            day_pnl_base_display = 0.0
+        if market == "us":
+            day_pnl_aggregate_enabled = day_pnl_display_enabled and us_day_pnl_session_active
+        else:
+            day_pnl_aggregate_enabled = day_pnl_display_enabled and market_trading_day
         day_pnl_aggregate = day_pnl_display if day_pnl_aggregate_enabled else 0.0
         day_pnl_rate_aggregate = day_pnl_rate_display if day_pnl_aggregate_enabled else 0.0
         day_pnl_base_aggregate = day_pnl_base_display if day_pnl_aggregate_enabled else 0.0

@@ -19,6 +19,7 @@ class PortfolioReadService:
         *,
         db: Any,
         batch_get_prices_getter: Callable[[List[str]], Dict[str, Tuple[float, float, float, float, Optional[str]]]],
+        us_extended_quotes_getter: Callable[[List[str]], Dict[str, Dict[str, Any]]],
         rates_getter: Callable[[], Dict[str, float]],
         convert_amount: Callable[[float, str, str, Dict[str, float]], float],
         fund_latest_nav_date_getter: Callable[[str], str | None],
@@ -26,6 +27,7 @@ class PortfolioReadService:
     ) -> None:
         self.db = db
         self.batch_get_prices_getter = batch_get_prices_getter
+        self.us_extended_quotes_getter = us_extended_quotes_getter
         self.rates_getter = rates_getter
         self.convert_amount = convert_amount
         self.fund_latest_nav_date_getter = fund_latest_nav_date_getter
@@ -44,6 +46,27 @@ class PortfolioReadService:
         codes = [item.get("code") for item in items if item.get("code")]
         with trace_request_stage("portfolio.quotes", code_count=len(codes)):
             quotes = self.batch_get_prices_getter(codes) if codes else {}
+        us_code_to_symbol: Dict[str, str] = {}
+        for item in items:
+            code = str(item.get("code") or "").strip()
+            if not code:
+                continue
+            if str(item.get("asset_type") or "").strip().lower() != "us":
+                continue
+            if code.lower().startswith("gb_"):
+                us_code_to_symbol[code] = code[3:].strip().upper()
+            else:
+                us_code_to_symbol[code] = code.upper()
+        if us_code_to_symbol:
+            normalized_symbols = list(set(us_code_to_symbol.values()))
+            with trace_request_stage("portfolio.us_extended", symbol_count=len(normalized_symbols)):
+                us_quotes_by_symbol = self.us_extended_quotes_getter(normalized_symbols) or {}
+            us_extended_quotes = {
+                str(symbol or "").strip().upper(): dict(us_quotes_by_symbol.get(symbol) or {})
+                for symbol in normalized_symbols
+            }
+        else:
+            us_extended_quotes = {}
         with trace_request_stage("portfolio.rates"):
             rates = self.rates_getter() or {}
         resolved_now = now_utc or datetime.now(timezone.utc)
@@ -79,6 +102,7 @@ class PortfolioReadService:
                 self.convert_amount,
                 today_buys,
                 latest_nav_dates,
+                us_extended_quotes,
             )
 
     def build_metrics_payload(

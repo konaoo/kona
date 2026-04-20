@@ -204,4 +204,30 @@ void main() {
     expect(state.isAssetTradingDay(hkItem), isTrue);
     expect(state.isAssetDayPnlEnabled(hkItem, priceInfo: hkPrice), isTrue);
   });
+
+  test('美股休市但仍是交易日，且没有扩展时段时，不应计入当日汇总', () async {
+    final state = await buildStateWithCache(
+      openStatus: const {'a': false, 'hk': false, 'us': false, 'fund': false},
+      tradingDayStatus: const {
+        'a': false,
+        'hk': false,
+        'us': true,
+        'fund': false,
+      },
+      changeAmt: 1,
+      usExtendedActive: false,
+      usSession: 'closed',
+      dayPnlAggregateCny: const {'gb_aapl': 2175},
+      dayPnlBaseAggregateCny: const {'gb_aapl': 30000},
+      valueCny: const {'gb_aapl': 30000},
+    );
+
+    expect(state.investDayPnl, closeTo(0, 1e-6));
+    final usItem = state.portfolio.firstWhere((e) => e.code == 'gb_aapl');
+    final usPrice = state.resolvePriceInfoByCode(usItem.code);
+    expect(state.isAssetMarketOpen(usItem), isFalse);
+    expect(state.isAssetTradingDay(usItem), isTrue);
+    expect(state.isAssetDayPnlEnabled(usItem, priceInfo: usPrice), isFalse);
+    expect(state.isAssetDayPnlDisplayEnabled(usItem, priceInfo: usPrice), isFalse);
+  });
 }

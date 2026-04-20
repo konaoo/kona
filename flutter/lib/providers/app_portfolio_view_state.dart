@@ -239,7 +239,13 @@ class AppPortfolioViewState extends ChangeNotifier {
       return false;
     }
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
-    return resolved != null && resolved.yclose > 0;
+    if (resolved == null || resolved.yclose <= 0) {
+      return false;
+    }
+    if (_marketState.normalizeMarketKey(item.marketType) == 'us') {
+      return isAssetMarketOpen(item) || _isUsExtendedSessionActive(item, resolved);
+    }
+    return true;
   }
 
   bool isAssetDayPnlEnabled(PortfolioItem item, {PriceInfo? priceInfo}) {
@@ -255,6 +261,9 @@ class AppPortfolioViewState extends ChangeNotifier {
     final resolved = resolvePriceInfo(item, preferred: priceInfo);
     if (resolved == null || resolved.yclose <= 0) {
       return false;
+    }
+    if (_marketState.normalizeMarketKey(item.marketType) == 'us') {
+      return isAssetMarketOpen(item) || _isUsExtendedSessionActive(item, resolved);
     }
     if (isAssetTradingDay(item)) {
       return true;

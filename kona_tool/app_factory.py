@@ -301,6 +301,7 @@ def create_app_components(
     portfolio_read_service = PortfolioReadService(
         db=db,
         batch_get_prices_getter=wiring.batch_get_prices_getter,
+        us_extended_quotes_getter=wiring.us_extended_quotes_getter,
         rates_getter=wiring.forex_rates_getter,
         convert_amount=portfolio_runtime.convert_amount,
         fund_latest_nav_date_getter=wiring.fund_latest_nav_date_getter,

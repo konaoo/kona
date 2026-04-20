@@ -236,4 +236,113 @@ describe('portfolio store realtime quotes', () => {
     const summary = portfolioStore.summary
     expect(summary.todayPnl).toBe(0)
   })
+
+  it('美股休市但仍是交易日时，不应继续显示今日盈亏', () => {
+    const portfolioStore = usePortfolioStore()
+    const quoteStore = useQuoteStore()
+    const marketStore = useMarketStore()
+
+    marketStore.marketStatus = {
+      a: { open: true, trading_day: true, reason: 'open_session' },
+      hk: { open: true, trading_day: true, reason: 'open_session' },
+      us: { open: false, trading_day: true, reason: 'off_hours' },
+      fund: { open: true, trading_day: true, reason: 'open_session' },
+    }
+
+    portfolioStore.portfolio = [
+      {
+        code: 'gb_goog',
+        name: '谷歌',
+        qty: 10,
+        price: 313,
+        display_cost_price: 313,
+        cost: 3130,
+        raw_cost_total: 3130,
+        current_price: 339.4,
+        yclose: 332.77,
+        value: 3394,
+        total_pnl: 264,
+        total_pnl_rate: 8.43,
+        day_pnl_aggregate: 66.3,
+        day_pnl_base_aggregate: 3327.7,
+        day_pnl_rate_aggregate: 1.99,
+        day_pnl_aggregate_cny: 478.89,
+        day_pnl_base_aggregate_cny: 24057.57,
+        market: 'us',
+        category_type: 'us',
+        asset_type: 'us',
+        curr: 'USD',
+        rate_to_cny: 7.223,
+      },
+    ]
+
+    quoteStore.quotes = {
+      gb_goog: {
+        price: 339.4,
+        yclose: 332.77,
+        session: 'closed',
+        effective_session: 'closed',
+        extended_active: false,
+      },
+    }
+
+    const row = portfolioStore.rows[0]
+    expect(row?.dayPnlAggregateEnabled).toBe(false)
+    expect(row?.dayPnlAggregate).toBe(0)
+    expect(row?.dayPnlAggregateCny).toBe(0)
+    expect(row?.dayPnlDisplayEnabled).toBe(false)
+
+    const summary = portfolioStore.summary
+    expect(summary.todayPnl).toBe(0)
+  })
+
+  it('美股盘前扩展时段仍允许显示今日盈亏', () => {
+    const portfolioStore = usePortfolioStore()
+    const quoteStore = useQuoteStore()
+    const marketStore = useMarketStore()
+
+    marketStore.marketStatus = {
+      a: { open: true, trading_day: true, reason: 'open_session' },
+      hk: { open: true, trading_day: true, reason: 'open_session' },
+      us: { open: false, trading_day: true, reason: 'off_hours' },
+      fund: { open: true, trading_day: true, reason: 'open_session' },
+    }
+
+    portfolioStore.portfolio = [
+      {
+        code: 'gb_goog',
+        name: '谷歌',
+        qty: 10,
+        price: 313,
+        display_cost_price: 313,
+        cost: 3130,
+        raw_cost_total: 3130,
+        current_price: 339.4,
+        yclose: 332.77,
+        value: 3394,
+        total_pnl: 264,
+        total_pnl_rate: 8.43,
+        market: 'us',
+        category_type: 'us',
+        asset_type: 'us',
+        curr: 'USD',
+        rate_to_cny: 7.223,
+      },
+    ]
+
+    quoteStore.quotes = {
+      gb_goog: {
+        price: 339.4,
+        yclose: 332.77,
+        session: 'pre',
+        effective_session: 'pre',
+        extended_active: true,
+      },
+    }
+
+    const row = portfolioStore.rows[0]
+    expect(row?.dayPnlAggregateEnabled).toBe(true)
+    expect(row?.dayPnlAggregate).toBeCloseTo(66.3)
+    expect(row?.dayPnlDisplayEnabled).toBe(true)
+  })
 })

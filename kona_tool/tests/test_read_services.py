@@ -74,6 +74,7 @@ class ReadServicesTests(unittest.TestCase):
         service = PortfolioReadService(
             db=self.db,
             batch_get_prices_getter=lambda codes: {"AAPL": (12.0, 11.0, 1.0, 9.09, None)},
+            us_extended_quotes_getter=lambda symbols: {},
             rates_getter=lambda: {"USD": 7.2, "CNY": 1.0},
             convert_amount=lambda amount, from_curr, to_curr, rates: rates.get(from_curr, 1.0) if to_curr == "CNY" else amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -98,6 +99,7 @@ class ReadServicesTests(unittest.TestCase):
             [
                 "portfolio.db",
                 "portfolio.quotes",
+                "portfolio.us_extended",
                 "portfolio.rates",
                 "portfolio.market",
                 "portfolio.today_buys",
@@ -489,6 +491,7 @@ class ReadServicesTests(unittest.TestCase):
         service = PortfolioReadService(
             db=db,
             batch_get_prices_getter=lambda codes: {"sh600001": (12.0, 11.0, 1.0, 0.1, None)},
+            us_extended_quotes_getter=lambda symbols: {},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -515,6 +518,7 @@ class ReadServicesTests(unittest.TestCase):
         service = PortfolioReadService(
             db=db,
             batch_get_prices_getter=lambda codes: {"sh600002": (12.0, 11.0, 1.0, 0.1, None)},
+            us_extended_quotes_getter=lambda symbols: {},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: None,
@@ -545,6 +549,7 @@ class ReadServicesTests(unittest.TestCase):
         service = PortfolioReadService(
             db=db,
             batch_get_prices_getter=lambda codes: {"f_110017": (1.25, 1.24, 0.01, 0.8, None)},
+            us_extended_quotes_getter=lambda symbols: {},
             rates_getter=lambda: {},
             convert_amount=lambda amount, f, t, rates: amount,
             fund_latest_nav_date_getter=lambda code: "2026-03-19" if code == "f_110017" else None,
@@ -558,6 +563,82 @@ class ReadServicesTests(unittest.TestCase):
 
         self.assertEqual(result[0]["latest_nav_date"], "2026-03-19")
         self.assertTrue(result[0]["nav_update_pending"])
+
+    def test_us_off_hours_trading_day_does_not_enable_day_pnl_without_extended_session(self):
+        db = _FakeDb()
+        db.portfolio_items = [
+            {
+                "code": "gb_aapl",
+                "name": "Apple",
+                "qty": 10,
+                "price": 10,
+                "adjustment": 0,
+                "curr": "USD",
+                "asset_type": "us",
+            }
+        ]
+        service = PortfolioReadService(
+            db=db,
+            batch_get_prices_getter=lambda codes: {"gb_aapl": (12.0, 11.0, 1.0, 9.09, None)},
+            us_extended_quotes_getter=lambda symbols: {},
+            rates_getter=lambda: {"USD": 7.2, "CNY": 1.0},
+            convert_amount=lambda amount, from_curr, to_curr, rates: rates.get(from_curr, 1.0) if to_curr == "CNY" else amount,
+            fund_latest_nav_date_getter=lambda code: None,
+            market_status_getter=lambda now_utc, force_refresh=False: {
+                "markets": {"us": {"open": False, "trading_day": True, "reason": "off_hours"}}
+            },
+        )
+
+        with self.app.test_request_context("/api/portfolio?with_metrics=1"):
+            result = service.build_metrics_payload(
+                user_id="u_1",
+                now_utc=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(len(result), 1)
+        self.assertFalse(result[0]["day_pnl_display_enabled"])
+        self.assertFalse(result[0]["day_pnl_aggregate_enabled"])
+        self.assertAlmostEqual(result[0]["day_pnl"], 0.0)
+        self.assertAlmostEqual(result[0]["day_pnl_aggregate"], 0.0)
+
+    def test_us_extended_session_still_enables_day_pnl(self):
+        db = _FakeDb()
+        db.portfolio_items = [
+            {
+                "code": "gb_aapl",
+                "name": "Apple",
+                "qty": 10,
+                "price": 10,
+                "adjustment": 0,
+                "curr": "USD",
+                "asset_type": "us",
+            }
+        ]
+        service = PortfolioReadService(
+            db=db,
+            batch_get_prices_getter=lambda codes: {"gb_aapl": (12.5, 11.0, 1.5, 13.64, None)},
+            us_extended_quotes_getter=lambda symbols: {
+                "AAPL": {"price": 12.5, "yclose": 11.0, "effective_session": "pre", "extended_active": True}
+            },
+            rates_getter=lambda: {"USD": 7.2, "CNY": 1.0},
+            convert_amount=lambda amount, from_curr, to_curr, rates: rates.get(from_curr, 1.0) if to_curr == "CNY" else amount,
+            fund_latest_nav_date_getter=lambda code: None,
+            market_status_getter=lambda now_utc, force_refresh=False: {
+                "markets": {"us": {"open": False, "trading_day": True, "reason": "off_hours"}}
+            },
+        )
+
+        with self.app.test_request_context("/api/portfolio?with_metrics=1"):
+            result = service.build_metrics_payload(
+                user_id="u_1",
+                now_utc=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0]["day_pnl_display_enabled"])
+        self.assertTrue(result[0]["day_pnl_aggregate_enabled"])
+        self.assertAlmostEqual(result[0]["day_pnl"], 15.0)
+        self.assertAlmostEqual(result[0]["day_pnl_aggregate"], 15.0)
 
 
 if __name__ == "__main__":

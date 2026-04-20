@@ -111,19 +111,28 @@ function isUsExtendedSessionActive(
 
 function resolveDayPnlDisplayEnabled(params: {
   explicitEnabled: boolean | null
+  market: MarketCode
+  marketOpen: boolean
   navUpdatePending: boolean
   suppressPreopen: boolean
   hasResolvedYclose: boolean
+  usExtendedActive: boolean
 }): boolean {
-  const { explicitEnabled, navUpdatePending, suppressPreopen, hasResolvedYclose } = params
+  const { explicitEnabled, market, marketOpen, navUpdatePending, suppressPreopen, hasResolvedYclose, usExtendedActive } = params
   if (suppressPreopen) return false
   if (explicitEnabled != null) return explicitEnabled
   if (navUpdatePending) return false
-  return hasResolvedYclose
+  if (!hasResolvedYclose) return false
+  if (market === 'us') {
+    return marketOpen || usExtendedActive
+  }
+  return true
 }
 
 function resolveDayPnlAggregateEnabled(params: {
   explicitEnabled: boolean | null
+  market: MarketCode
+  marketOpen: boolean
   navUpdatePending: boolean
   suppressPreopen: boolean
   hasResolvedYclose: boolean
@@ -132,6 +141,8 @@ function resolveDayPnlAggregateEnabled(params: {
 }): boolean {
   const {
     explicitEnabled,
+    market,
+    marketOpen,
     navUpdatePending,
     suppressPreopen,
     hasResolvedYclose,
@@ -142,6 +153,7 @@ function resolveDayPnlAggregateEnabled(params: {
   if (explicitEnabled != null) return explicitEnabled
   if (navUpdatePending) return false
   if (!hasResolvedYclose) return false
+  if (market === 'us') return marketOpen || usExtendedActive
   if (marketTradingDay) return true
   return usExtendedActive
 }
@@ -294,12 +306,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const valueCny = rateToCny != null ? value * rateToCny : pickNumber(item, ['value_cny']) ?? undefined
       const dayPnlDisplayEnabled = resolveDayPnlDisplayEnabled({
         explicitEnabled: staticDayPnlDisplayEnabledRaw,
+        market,
+        marketOpen,
         navUpdatePending,
         suppressPreopen: suppressDayPnlForPreopen,
         hasResolvedYclose,
+        usExtendedActive,
       })
       const dayPnlAggregateEnabled = resolveDayPnlAggregateEnabled({
         explicitEnabled: staticDayPnlAggregateEnabledRaw,
+        market,
+        marketOpen,
         navUpdatePending,
         suppressPreopen: suppressDayPnlForPreopen,
         hasResolvedYclose,
