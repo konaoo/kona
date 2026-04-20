@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -41,7 +42,31 @@ def _refresh_cookie_path() -> str:
 def _refresh_cookie_domain() -> str | None:
     value = getattr(config, "AUTH_REFRESH_COOKIE_DOMAIN", None)
     text = str(value or "").strip()
-    return text or None
+    if text:
+        return text
+
+    raw_host = str(request.host or "").strip().strip(".")
+    if not raw_host:
+        return None
+    if raw_host.startswith("[") and "]" in raw_host:
+        host = raw_host[1:raw_host.index("]")]
+    else:
+        host = raw_host.split(":", 1)[0]
+    host = host.strip().strip(".").lower()
+    if not host or host == "localhost" or host.endswith(".local"):
+        return None
+
+    try:
+        ipaddress.ip_address(host)
+        return None
+    except ValueError:
+        pass
+
+    if host.startswith("www."):
+        host = host[4:]
+    if "." not in host:
+        return None
+    return host
 
 
 def _refresh_cookie_samesite() -> str:

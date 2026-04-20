@@ -15,6 +15,25 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-20-01
+
+### 这版一句话
+修复 Web 管理后台在手机书签场景下因为 `www` 和裸域不共用 refresh cookie，导致反复要求重新登录的问题。
+
+### 主要变化
+- 后端 refresh cookie 在未显式配置域名时，会按当前请求 host 自动推导可共享的域名
+- `www.kakalog.fun` 和 `kakalog.fun` 现在会共用一套 refresh cookie，不再各自一份登录态
+- 本地开发和 IP 访问继续保持 host-only，不会把 cookie 域名硬套到 `127.0.0.1` 或服务器 IP 上
+- 新增后端回归测试，锁住“生产域名共享 cookie、本地/IP 不共享 cookie”的行为
+
+### 影响范围
+- Web：手机书签、管理后台、业务端在 `www` 和裸域之间切换时的登录恢复
+- 后端：`/api/auth/login`、`/api/auth/register`、`/api/auth/bootstrap_credentials`、`/api/auth/refresh`、`/api/auth/logout`
+
+### 验收重点
+- 在 `https://www.kakalog.fun/admin/login` 登录后，再打开 `https://kakalog.fun/admin/login` 不应再被当成全新未登录状态
+- 手机端书签如果之前混用了 `www` 和裸域，重新登录一次后应明显减少反复登录
+- 本地 `127.0.0.1` 和服务器 IP 访问不应因为 cookie 域名推导而报错
 ## 2026-04-16-04
 
 ### 这版一句话

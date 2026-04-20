@@ -145,6 +145,31 @@ class AuthV2Tests(unittest.TestCase):
         )
         self.assertEqual(refresh_after_logout.status_code, 401)
 
+    def test_refresh_cookie_domain_shares_root_and_www(self):
+        code = self._seed_invite("INVITE2026D")
+        reg = self.client.post(
+            "/api/auth/register",
+            json={"username": "domain_user", "password": "Abcd1234", "invite_code": code},
+            base_url="https://www.kakalog.fun",
+        )
+        self.assertEqual(reg.status_code, 200)
+        cookie = reg.headers.get("Set-Cookie", "")
+        self.assertIn("kona_refresh_token=", cookie)
+        self.assertIn("Domain=kakalog.fun", cookie)
+        self.assertIn("Secure", cookie)
+
+    def test_refresh_cookie_domain_keeps_localhost_host_only(self):
+        code = self._seed_invite("INVITE2026E")
+        reg = self.client.post(
+            "/api/auth/register",
+            json={"username": "local_user", "password": "Abcd1234", "invite_code": code},
+            base_url="http://127.0.0.1:52345",
+        )
+        self.assertEqual(reg.status_code, 200)
+        cookie = reg.headers.get("Set-Cookie", "")
+        self.assertIn("kona_refresh_token=", cookie)
+        self.assertNotIn("Domain=", cookie)
+
 
 if __name__ == "__main__":
     unittest.main()
