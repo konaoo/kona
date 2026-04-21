@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../config/theme.dart';
 import '../models/portfolio.dart';
 import '../providers/app_state.dart';
+import '../services/portfolio_metrics_service.dart';
 import '../widgets/invest_trade_dialog.dart';
 
 /// 投资持仓详情页
@@ -419,11 +420,17 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
 
   // ── Hero 卡片 ──
   Widget _buildHeroCard(BuildContext context, PortfolioItem item) {
+    final appState = context.watch<AppState>();
+    final priceInfo = appState.resolvePriceInfo(item);
     final isLight = AppTheme.isLight;
     final sym = _currencySymbol(item.curr);
-    final marketValue = item.value ?? 0;
+    final marketValue =
+        PortfolioMetricsService.resolveLiveValue(item, priceInfo: priceInfo);
     final costPrice = item.displayCostPrice ?? item.price;
-    final currentPrice = item.currentPrice ?? 0;
+    final currentPrice = PortfolioMetricsService.resolveCurrentPrice(
+      item,
+      priceInfo: priceInfo,
+    );
     final typeStyle = _assetTypeStyle(item.assetType);
     final displayCode = _formatDisplayCode(item.code);
     final displayQty = _formatDisplayQty(item.qty);

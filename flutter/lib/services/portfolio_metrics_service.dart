@@ -85,6 +85,12 @@ class PortfolioMetricsService {
     if ((item.currentPrice ?? 0) > 0) {
       return item.currentPrice!;
     }
+    if ((item.quotePrice ?? 0) > 0) {
+      return item.quotePrice!;
+    }
+    if ((item.value ?? 0) > 0 && item.qty > 0) {
+      return item.value! / item.qty;
+    }
     if (priceInfo != null && priceInfo.yclose > 0) {
       return priceInfo.yclose;
     }

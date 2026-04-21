@@ -126,6 +126,32 @@ void main() {
     );
   });
 
+  test('缺少 currentPrice 时会回退到 quotePrice 或 value/qty', () {
+    final fromQuotePrice = PortfolioItem(
+      code: '00700.HK',
+      name: '腾讯控股',
+      qty: 100,
+      price: 500,
+      curr: 'HKD',
+      quotePrice: 520,
+      value: 52000,
+    );
+    final fromValue = PortfolioItem(
+      code: '00175.HK',
+      name: '吉利汽车',
+      qty: 1000,
+      price: 15,
+      curr: 'HKD',
+      value: 23920,
+    );
+
+    expect(PortfolioMetricsService.resolveCurrentPrice(fromQuotePrice), 520);
+    expect(
+      PortfolioMetricsService.resolveCurrentPrice(fromValue),
+      closeTo(23.92, 1e-6),
+    );
+  });
+
   test('sumMetricWhenAny 会忽略缺失项，只在全空时返回空', () {
     final items = <PortfolioItem>[
       buildItem(dayPnlAggregateCny: 12),

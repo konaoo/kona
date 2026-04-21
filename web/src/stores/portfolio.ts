@@ -241,13 +241,17 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const open = Boolean(marketStatus?.open)
       const marketTradingDay = Boolean(marketStatus?.trading_day)
 
-      const staticCurrentPrice = pickNumber(item, ['current_price', 'currentPrice']) ?? 0
+      const staticValue = pickNumber(item, ['value']) ?? 0
+      const staticQuotePrice = pickNumber(item, ['quote_price', 'quotePrice'])
+      const staticCurrentPrice =
+        pickNumber(item, ['current_price', 'currentPrice']) ??
+        staticQuotePrice ??
+        (qty > 0 && staticValue > 0 ? staticValue / qty : 0)
       const staticYclose = pickNumber(item, ['yclose']) ?? 0
       const displayCostPrice =
         pickNumber(item, ['display_cost_price', 'displayCostPrice']) ?? rawCostPrice
       const cost = pickNumber(item, ['cost']) ?? pickNumber(item, ['raw_cost_total']) ?? 0
       const rawCostTotal = pickNumber(item, ['raw_cost_total']) ?? cost
-      const staticValue = pickNumber(item, ['value']) ?? 0
       const adjustmentTotal =
         pickNumber(item, ['adjustment_total', 'adjustment']) ?? 0
       const staticTotalPnl = pickNumber(item, ['total_pnl']) ?? 0
@@ -271,7 +275,6 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         pickBool(item, ['day_pnl_display_enabled'])
       const staticDayPnlAggregateEnabledRaw =
         pickBool(item, ['day_pnl_aggregate_enabled'])
-      const staticQuotePrice = pickNumber(item, ['quote_price'])
       const rateToCny = pickNumber(item, ['rate_to_cny']) ?? undefined
       const costCny = pickNumber(item, ['cost_cny']) ?? undefined
       const marketOpen = pickBool(item, ['market_open']) ?? open

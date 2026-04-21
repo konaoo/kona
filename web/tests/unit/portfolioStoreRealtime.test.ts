@@ -76,6 +76,50 @@ describe('portfolio store realtime quotes', () => {
     expect(summary.totalPnl).toBeCloseTo(736)
   })
 
+  it('缺少 current_price 时，港股现价仍可回退到 quote_price 或 value/qty', () => {
+    const portfolioStore = usePortfolioStore()
+
+    portfolioStore.portfolio = [
+      {
+        code: '00175.HK',
+        name: '吉利汽车',
+        qty: 1000,
+        price: 15,
+        display_cost_price: 15,
+        cost: 15000,
+        raw_cost_total: 15000,
+        quote_price: 23.92,
+        yclose: 24.1,
+        value: 23920,
+        market: 'hk',
+        category_type: 'hk',
+        asset_type: 'hk',
+        curr: 'HKD',
+      },
+      {
+        code: '00700.HK',
+        name: '腾讯控股',
+        qty: 100,
+        price: 500,
+        display_cost_price: 500,
+        cost: 50000,
+        raw_cost_total: 50000,
+        yclose: 522.5,
+        value: 52000,
+        market: 'hk',
+        category_type: 'hk',
+        asset_type: 'hk',
+        curr: 'HKD',
+      },
+    ]
+
+    const geely = portfolioStore.rows.find(item => item.code === '00175.HK')
+    const tencent = portfolioStore.rows.find(item => item.code === '00700.HK')
+
+    expect(geely?.currentPrice).toBeCloseTo(23.92)
+    expect(tencent?.currentPrice).toBeCloseTo(520)
+  })
+
   it('有实时行情时累计盈亏也要保留 adjustment_total', () => {
     const portfolioStore = usePortfolioStore()
     const quoteStore = useQuoteStore()
