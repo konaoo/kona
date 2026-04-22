@@ -68,7 +68,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('添加失败，请稍后重试');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.addPortfolioAsset(
       code,
@@ -214,7 +217,10 @@ class AppInvestmentWriteState {
       );
       return const AssetActionResult.failure('买入失败，请稍后重试');
     }
-    _recalculateHomeTotals(bindings.notifyListeners);
+    _applyOptimisticHomeTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.buyPortfolioAssetWithCash(
       code,
@@ -347,7 +353,10 @@ class AppInvestmentWriteState {
       );
       return const AssetActionResult.failure('卖出失败，请稍后重试');
     }
-    _recalculateHomeTotals(bindings.notifyListeners);
+    _applyOptimisticHomeTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.sellPortfolioAssetToCash(
       code,
@@ -413,7 +422,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('买入失败，请稍后重试');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.buyPortfolioAsset(code, price, qty, ledgerId: ledgerId);
     if (!result.ok) {
@@ -452,7 +464,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('卖出失败，请稍后重试');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.sellPortfolioAsset(code, price, qty, ledgerId: ledgerId);
     if (!result.ok) {
@@ -488,7 +503,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('调整失败，请稍后重试');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.modifyPortfolioAsset(
       code,
@@ -542,7 +560,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('保存失败，请稍后重试');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     final result = await _api.addPortfolioAdjustmentEvent(
       code,
@@ -589,7 +610,10 @@ class AppInvestmentWriteState {
     if (!changed) {
       return const AssetActionResult.failure('未找到该持仓');
     }
-    _recalculatePortfolioTotals(bindings.notifyListeners);
+    _applyOptimisticPortfolioTotals(
+      awaitRefresh: awaitRefresh,
+      notify: bindings.notifyListeners,
+    );
 
     var result = corrective
         ? await _api.deletePortfolioAssetCorrective(code)
@@ -629,13 +653,23 @@ class AppInvestmentWriteState {
     notify();
   }
 
-  void _recalculatePortfolioTotals(void Function() notify) {
+  void _applyOptimisticPortfolioTotals({
+    required bool awaitRefresh,
+    required void Function() notify,
+  }) {
     _homeTotalsState.recalculatePortfolioTotals(notify: false);
-    notify();
+    if (awaitRefresh) {
+      notify();
+    }
   }
 
-  void _recalculateHomeTotals(void Function() notify) {
+  void _applyOptimisticHomeTotals({
+    required bool awaitRefresh,
+    required void Function() notify,
+  }) {
     _homeTotalsState.recalculateHomeTotals(notify: false);
-    notify();
+    if (awaitRefresh) {
+      notify();
+    }
   }
 }
