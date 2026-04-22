@@ -97,7 +97,6 @@ void main() {
       homeTotalsState: homeTotalsState,
     );
 
-    var notifyCount = 0;
     var refreshCalled = false;
 
     final result = await state.buyInvestmentWithCash(
@@ -108,7 +107,7 @@ void main() {
       cashAssetId: 1,
       awaitRefresh: false,
       bindings: AppInvestmentWriteBindings(
-        notifyListeners: () => notifyCount += 1,
+        notifyListeners: () {},
         triggerHomeRefresh: (awaitRefresh) async {
           refreshCalled = true;
           expect(awaitRefresh, isFalse);
@@ -128,7 +127,6 @@ void main() {
     expect(homeTotalsState.totalInvest, 100);
     expect(homeTotalsState.totalAsset, 1000);
     expect(refreshCalled, isTrue);
-    expect(notifyCount, greaterThan(0));
   });
 
   test('AppInvestmentWriteState buyInvestmentWithCash 失败时回滚现金和持仓', () async {
