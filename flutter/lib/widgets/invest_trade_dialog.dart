@@ -1430,8 +1430,6 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
       return;
     }
 
-    await _notifyPortfolioChanged();
-    if (!mounted || !toastContext.mounted) return;
     Map<String, dynamic>? closeResult;
     if (_isAdd) {
       closeResult = {
@@ -1445,36 +1443,42 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
         'amount': double.tryParse(_amountController.text.trim()),
       };
     }
+    final undoToken = result.data?['undo_token']?.toString();
     _closeDialog(result: closeResult);
 
-    final undoToken = result.data?['undo_token']?.toString();
-    if (undoToken != null && undoToken.isNotEmpty) {
-      TopToast.showAction(
-        toastContext,
-        message: '已保存',
-        actionLabel: '撤销',
-        placement: TopToastPlacement.bottom,
-        onAction: () {
-          unawaited(() async {
-            final undoResult = await appState.undoInvestmentOperation(
-              undoToken,
-            );
-            if (!toastContext.mounted) return;
-            if (undoResult.ok) {
-              await _notifyPortfolioChanged();
-              if (!toastContext.mounted) return;
-              TopToast.showInfo(toastContext, '已撤销');
-            } else {
-              TopToast.showError(toastContext, undoResult.message ?? '撤销失败');
-            }
-          }());
-        },
-        duration: const Duration(seconds: 5),
-      );
-      return;
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(() async {
+        await _notifyPortfolioChanged();
+        if (!toastContext.mounted) return;
+        if (undoToken != null && undoToken.isNotEmpty) {
+          TopToast.showAction(
+            toastContext,
+            message: '已保存',
+            actionLabel: '撤销',
+            placement: TopToastPlacement.bottom,
+            onAction: () {
+              unawaited(() async {
+                final undoResult = await appState.undoInvestmentOperation(
+                  undoToken,
+                );
+                if (!toastContext.mounted) return;
+                if (undoResult.ok) {
+                  await _notifyPortfolioChanged();
+                  if (!toastContext.mounted) return;
+                  TopToast.showInfo(toastContext, '已撤销');
+                } else {
+                  TopToast.showError(toastContext, undoResult.message ?? '撤销失败');
+                }
+              }());
+            },
+            duration: const Duration(seconds: 5),
+          );
+          return;
+        }
 
-    TopToast.showSuccess(toastContext, '已保存');
+        TopToast.showSuccess(toastContext, '已保存');
+      }());
+    });
   }
 
   void _markOverlaysNeedsBuild() {
