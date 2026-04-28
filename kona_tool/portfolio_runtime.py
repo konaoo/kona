@@ -61,7 +61,7 @@ class PortfolioRuntime:
             return []
         if suffix.startswith("11") and not suffix.startswith(("511",)):
             return []
-        if suffix.startswith(("15", "18")):
+        if suffix.startswith(("15", "16", "18")):
             return [f"sz{suffix}"]
         if suffix.startswith(("50", "51", "52", "56", "58", "511")):
             return [f"sh{suffix}"]

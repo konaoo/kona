@@ -191,6 +191,31 @@ class SearchTimeoutTests(unittest.TestCase):
         self.assertTrue(results)
         self.assertEqual(results[0].get("code"), "sz159687")
 
+    def test_search_fund_maps_sz16_lof_to_sz_code(self):
+        class _Resp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    "Datas": [
+                        {
+                            "CODE": "161128",
+                            "NAME": "易方达标普信息科技指数(QDII-LOF)A(人民币)",
+                        }
+                    ]
+                }
+
+        with mock.patch.object(price_module, "monitored_http_get", return_value=_Resp()), mock.patch.object(
+            price_module,
+            "get_stock_price",
+            side_effect=lambda code: (6.257, 6.204, 0.053, 0.85) if code == "sz161128" else (0.0, 0.0, 0.0, 0.0),
+        ):
+            results = price_module._search_fund("161128")
+
+        self.assertTrue(results)
+        self.assertEqual(results[0].get("code"), "sz161128")
+
     def test_search_enriches_quote_fields(self):
         def fake_search_sina(query, type_code):
             if type_code == "31":

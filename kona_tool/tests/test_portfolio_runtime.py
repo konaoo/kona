@@ -42,7 +42,10 @@ class PortfolioRuntimeTests(unittest.TestCase):
         self.runtime = create_portfolio_runtime(
             parse_code=_fake_parse_code,
             infer_asset_type=_fake_infer_asset_type,
-            batch_get_prices_getter=lambda codes: {"sz159687": (1.7, 1.6, 0.1, 6.2)},
+            batch_get_prices_getter=lambda codes: {
+                "sz159687": (1.7, 1.6, 0.1, 6.2),
+                "sz161128": (6.257, 6.204, 0.053, 0.85),
+            },
             time_getter=lambda: self.now,
             token_factory=lambda length: "undo-fixed-token",
         )
@@ -55,6 +58,11 @@ class PortfolioRuntimeTests(unittest.TestCase):
     def test_normalize_portfolio_identity_converts_exchange_fund_code(self):
         normalized = self.runtime.normalize_portfolio_identity("f_159687", "CNY", "测试 ETF")
         self.assertEqual(normalized["code"], "sz159687")
+        self.assertEqual(normalized["curr"], "CNY")
+
+    def test_normalize_portfolio_identity_converts_sz16_exchange_fund_code(self):
+        normalized = self.runtime.normalize_portfolio_identity("f_161128", "CNY", "测试 LOF")
+        self.assertEqual(normalized["code"], "sz161128")
         self.assertEqual(normalized["curr"], "CNY")
 
     def test_idempotency_begin_returns_inflight_then_done_payload(self):
