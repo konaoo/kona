@@ -206,9 +206,14 @@ class ApiService {
     String? webOriginOverride,
     String? webApiBaseOverride,
     String? mobileBaseUrlOverride,
+    bool? allowInsecureHttpOverride,
   }) {
+    final allowInsecureHttp =
+        allowInsecureHttpOverride ?? ApiConfig.allowInsecureHttp;
     if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
-      return Uri.parse(endpoint);
+      final uri = Uri.parse(endpoint);
+      validateApiUriTransport(uri, allowInsecureHttp: allowInsecureHttp);
+      return uri;
     }
     final normalizedEndpoint = endpoint.startsWith('/')
         ? endpoint
@@ -221,19 +226,38 @@ class ApiService {
               .trim();
       if (rawWebApiBase.isNotEmpty) {
         final webBase = rawWebApiBase.replaceFirst(RegExp(r'/$'), '');
-        return Uri.parse('$webBase$normalizedEndpoint');
+        final uri = Uri.parse('$webBase$normalizedEndpoint');
+        validateApiUriTransport(uri, allowInsecureHttp: allowInsecureHttp);
+        return uri;
       }
       final rawOrigin =
           (webOriginOverride != null && webOriginOverride.trim().isNotEmpty)
           ? webOriginOverride.trim()
           : Uri.base.origin;
       final origin = rawOrigin.replaceFirst(RegExp(r'/$'), '');
-      return Uri.parse('$origin$normalizedEndpoint');
+      final uri = Uri.parse('$origin$normalizedEndpoint');
+      validateApiUriTransport(uri, allowInsecureHttp: allowInsecureHttp);
+      return uri;
     }
     final base = (mobileBaseUrlOverride ?? ApiConfig.baseUrl)
         .trim()
         .replaceFirst(RegExp(r'/$'), '');
-    return Uri.parse('$base$normalizedEndpoint');
+    final uri = Uri.parse('$base$normalizedEndpoint');
+    validateApiUriTransport(uri, allowInsecureHttp: allowInsecureHttp);
+    return uri;
+  }
+
+  @visibleForTesting
+  static void validateApiUriTransport(
+    Uri uri, {
+    required bool allowInsecureHttp,
+  }) {
+    if (!uri.hasAuthority || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw StateError('Invalid API URL: $uri');
+    }
+    if (uri.scheme == 'http' && !allowInsecureHttp) {
+      throw StateError('Insecure HTTP API URL is disabled: $uri');
+    }
   }
 
   String _extractErrorMessage(http.Response response) {

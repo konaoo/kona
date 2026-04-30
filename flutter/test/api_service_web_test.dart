@@ -16,6 +16,27 @@ void main() {
     expect(uri.toString(), 'http://114.132.238.12/api/health');
   });
 
+  test('ApiService rejects insecure http when disabled', () {
+    expect(
+      () => ApiService.buildApiUri(
+        '/api/health',
+        isWebOverride: false,
+        allowInsecureHttpOverride: false,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('ApiService accepts https when insecure http is disabled', () {
+    final uri = ApiService.buildApiUri(
+      '/api/health',
+      isWebOverride: false,
+      mobileBaseUrlOverride: 'https://api.example.com',
+      allowInsecureHttpOverride: false,
+    );
+    expect(uri.toString(), 'https://api.example.com/api/health');
+  });
+
   test('ApiException toString returns readable message', () {
     final e = ApiException('登录响应异常，请稍后重试');
     expect(e.toString(), '登录响应异常，请稍后重试');

@@ -1,12 +1,62 @@
 /// API 配置
 class ApiConfig {
+  /// 客户端环境标识，仅用于配置和排障。
+  static const String appEnv = String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: 'production',
+  );
+
   /// API 基础地址
   /// 当前生产仅保留 IP 入口，域名备案完成后再评估恢复域名访问。
   static const String baseUrl = String.fromEnvironment(
     'MOBILE_API_BASE_URL',
     defaultValue: 'http://114.132.238.12',
   );
-  static const List<String> loginBaseUrlCandidates = <String>[baseUrl];
+
+  /// 生产 HTTP 迁移 HTTPS 前保留 true；切到 HTTPS 后发版时改成 false。
+  static const bool allowInsecureHttp = bool.fromEnvironment(
+    'ALLOW_INSECURE_HTTP',
+    defaultValue: true,
+  );
+
+  /// 多个备用登录入口用逗号分隔，例如：
+  /// --dart-define=MOBILE_LOGIN_FALLBACK_BASE_URLS=https://a.example.com,https://b.example.com
+  static const String loginFallbackBaseUrls = String.fromEnvironment(
+    'MOBILE_LOGIN_FALLBACK_BASE_URLS',
+  );
+
+  static List<String> get loginBaseUrlCandidates => normalizeBaseUrls(<String>[
+    baseUrl,
+    ...splitBaseUrlList(loginFallbackBaseUrls),
+  ]);
+
+  static List<String> splitBaseUrlList(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return const <String>[];
+    return trimmed
+        .split(',')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static List<String> normalizeBaseUrls(Iterable<String> rawUrls) {
+    final normalized = <String>[];
+    final seen = <String>{};
+    for (final raw in rawUrls) {
+      final base = raw.trim().replaceFirst(RegExp(r'/$'), '');
+      if (base.isEmpty || seen.contains(base)) continue;
+      final uri = Uri.tryParse(base);
+      if (uri == null ||
+          !uri.hasAuthority ||
+          (uri.scheme != 'http' && uri.scheme != 'https')) {
+        throw FormatException('Invalid API base URL: $raw');
+      }
+      seen.add(base);
+      normalized.add(base);
+    }
+    return List<String>.unmodifiable(normalized);
+  }
 
   /// 请求超时时间（秒）
   static const int timeout = 30;

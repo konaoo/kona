@@ -33,6 +33,14 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# OpenAPI generator scaffolding kept out of the Flutter app source tree.
+/lib/generated/openapi/.dart_tool/
+/lib/generated/openapi/.openapi-generator/
+/lib/generated/openapi/doc/
+/lib/generated/openapi/test/
+/lib/generated/openapi/.travis.yml
+/lib/generated/openapi/git_push.sh
+
 # Symbolication related
 app.*.symbols
 
