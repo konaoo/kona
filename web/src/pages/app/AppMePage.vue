@@ -117,7 +117,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import * as XLSX from 'xlsx'
 import { resolveErrorMessage } from '../../shared/errorText'
 import AppShell from '../../layouts/AppShell.vue'
 import { api } from '../../shared/http'
@@ -265,7 +264,8 @@ function handleCurrencyClick() {
 async function exportData() {
   exporting.value = true
   try {
-    const [cashAssets, portfolio] = await Promise.all([
+    const [XLSX, cashAssets, portfolio] = await Promise.all([
+      import('xlsx'),
       api.get<AssetRow[]>('/api/cash_assets'),
       api.get<AssetRow[]>('/api/portfolio?type=all'),
     ])

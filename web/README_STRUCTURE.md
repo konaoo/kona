@@ -40,6 +40,23 @@ web/
 - `styles/`
 - `types/`
 
+已清理的历史内容：
+
+- `src/examples/ComponentExample.vue`：无入口引用的组件示例页，已移出源码目录
+- `src/pages/portal/PortalPage.vue`：未接入路由的旧门户页，已移出源码目录
+- `src/pages/app/AppProfilePage.vue`：旧个人资料页，路由已重定向到 `/app/me`，已移出源码目录
+- `src/pages/admin/AdminDataPage.vue`：旧数据管理页，路由已重定向到 `/admin/overview`，已移出源码目录
+- `src/layouts/LegacyAppShell.vue` / `src/layouts/LegacyAdminShell.vue`：旧页面壳，已无真实页面引用，已移出源码目录
+- `src/layouts/AdminShell.vue`：旧管理壳，已无真实页面引用，已移出源码目录
+- `src/components/admin/ui/*`：旧管理壳专用组件，已无真实页面引用，已移出源码目录
+- `src/styles/legacy.css`：旧页面壳样式，入口已不再加载，已移出源码目录
+- `src/components/base` / `src/components/business` 中未被真实页面引用的组件：已移出源码目录
+- `src/types/ui.ts`：旧组件库配套类型，组件已归档且无真实引用，已移出源码目录
+- `src/types/api.ts` / `portfolio.ts` / `quote.ts` / `user.ts`：旧手写类型层，真实 store 已有自己的边界类型，已移出源码目录
+- `src/styles/design-test.css`：设计系统测试样式，无入口引用，已移出源码目录
+- `src/shared/store.ts`：旧状态兼容入口，页面已统一走 `stores/composables.ts`，已移出源码目录
+- `tests/unit/legacyStoreShim.test.ts`：旧状态兼容入口测试，随兼容入口一起归档
+
 ---
 
 ## 3. 应该放什么
@@ -92,6 +109,8 @@ web/
 - `components/`：复用组件
 - `styles/`：样式和设计 token
 
+组件目录现在只保留真实页面会加载的组件；未接入页面的旧组件库文件已经归档，避免 barrel 导出把无用组件重新带回构建图。
+
 从业务角度看，它和 Flutter 端共享很多同一套后端口径，但表现层不同。
 
 所以这个目录后续治理的核心不是“把页面拆更碎”，而是：
@@ -138,7 +157,26 @@ npm run build
 1. `node_modules.old.*` 这类历史备份目录混在工程里
 2. `dist/` 这类生成物容易被误当作源码结构的一部分
 
+当前已处理：
+
+- `dist/` 和 `test-results/` 按生成物清理
+- 无引用示例页和旧门户页已移到项目外归档目录
+
 如果不在认知上切开，后面 Web 目录会越来越像仓库垃圾场。
+
+### 6.4 包体积规则
+
+Web 端现在按页面做路由级懒加载。
+
+后续新增页面或低频功能时，默认遵守两条规则：
+
+- 路由页面不要在路由文件顶部静态导入，使用 `component: () => import(...)`
+- 重依赖不要挂在全局壳层或首屏页面里，优先在用户触发功能时动态导入
+
+当前已按需加载的重依赖包括：
+
+- `xlsx`：个人中心导出 Excel 时加载
+- `html2canvas`：触发截图保存时加载
 
 ---
 
@@ -153,17 +191,17 @@ npm run build
 3. 清理依赖和构建历史垃圾
 4. 把共享业务口径单独沉淀出来
 
-### 7.2 Legacy 冻结规则
+### 7.2 Legacy 归档规则
 
-下面这些遗留壳现在属于：
+旧 App / Admin 页面壳已经没有真实页面引用，已移出源码目录：
 
-`只保稳定，不再新增职责`
+- `src/layouts/LegacyAppShell.vue`
+- `src/layouts/LegacyAdminShell.vue`
+- `src/layouts/AdminShell.vue`
+- `src/components/admin/ui/*`
+- `src/styles/legacy.css`
 
-- [LegacyAppShell.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/layouts/LegacyAppShell.vue)
-- [LegacyAdminShell.vue](/Users/kona/Desktop/kaka/kona_repo/web/src/layouts/LegacyAdminShell.vue)
-- [legacy.css](/Users/kona/Desktop/kaka/kona_repo/web/src/styles/legacy.css)
-
-以后如果要补新页面能力、新状态入口、新布局规范，默认不要继续加在这层里，而是优先补到正式结构里。
+当前 `main_app.ts` 和 `main_admin.ts` 只加载正式设计系统样式，不再加载 legacy 样式。
 
 ### 7.3 测试目录规则
 

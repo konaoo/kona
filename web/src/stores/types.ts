@@ -2,7 +2,6 @@
  * Pinia Stores 共享类型定义
  */
 
-import type { MarketCode } from '@/types'
 import {
   GENERATED_AUTH_BOOTSTRAP_TIMEOUT_MS,
   GENERATED_QUOTE_POLICY_DEFAULT,
@@ -12,7 +11,7 @@ import {
   type GeneratedSyncDomain
 } from './generated_sync_contract'
 
-export type { MarketCode }
+export type MarketCode = 'a' | 'hk' | 'us' | 'fund'
 
 /** 同步域名 */
 export const ALL_SYNC_DOMAINS = GENERATED_SYNC_BOOTSTRAP_DOMAINS

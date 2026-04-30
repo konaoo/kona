@@ -71,10 +71,4 @@ export type PaginationResponse<T> = {
   has_more: boolean
 }
 
-// 导出所有类型
-export * from './api'
-export * from './portfolio'
-export * from './quote'
-export * from './user'
-export * from './ui'
 export * from './openapi.generated'

@@ -8,9 +8,6 @@ import './styles/mixins.css'
 import './styles/animations.css'
 import './styles/shared.css'
 
-// Legacy Styles - 保留旧样式，逐步迁移
-import './styles/legacy.css'
-
 const path = window.location.pathname || '/'
 const bootMode = path === '/' || path === '/index.html' ? 'portal' : 'app'
 

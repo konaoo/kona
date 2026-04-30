@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useKonaStore } from '../stores/composables'
-import html2canvas from 'html2canvas'
 
 import { toAvatarSrc } from '../shared/avatar'
 import { useWebTheme } from '../shared/webTheme'
@@ -53,6 +52,7 @@ function navigate(path: string) {
 async function saveAsImage() {
   const area = document.getElementById('capture-area') || document.body
   try {
+    const { default: html2canvas } = await import('html2canvas')
     const canvas = await html2canvas(area, {
       backgroundColor: theme.value === 'dark' ? '#0a0b0e' : '#ffffff',
       scale: 2,

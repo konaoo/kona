@@ -102,9 +102,9 @@ test.describe('登录测试', () => {
     console.log(`页面 HTML 长度: ${content.length}`)
 
     // 检查关键元素
-    const shell = await page.locator('.legacy-shell').count()
-    const sidebar = await page.locator('.legacy-sidebar').count()
-    const mainContent = await page.locator('.legacy-main-content').count()
+    const shell = await page.locator('.layout').count()
+    const sidebar = await page.locator('.sidebar').count()
+    const mainContent = await page.locator('.main').count()
 
     console.log(`Shell 元素: ${shell > 0 ? '✅ 存在' : '❌ 缺失'}`)
     console.log(`Sidebar 元素: ${sidebar > 0 ? '✅ 存在' : '❌ 缺失'}`)

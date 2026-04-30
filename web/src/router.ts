@@ -1,26 +1,18 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import LandingPage from './views/Landing.vue'
-import AppLoginPage from './pages/app/AppLoginPage.vue'
-import AppHomePage from './pages/app/AppHomePage.vue'
-import AppInvestPage from './pages/app/AppInvestPage.vue'
-import AppAnalysisPage from './pages/app/AppAnalysisPage.vue'
-import AppNewsPage from './pages/app/AppNewsPage.vue'
-import AppMePage from './pages/app/AppMePage.vue'
-import AppAssetDetailPage from './pages/app/AppAssetDetailPage.vue'
 import { useSessionCoordinatorStore } from './stores/sessionCoordinator'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', component: LandingPage },
+  { path: '/', component: () => import('./views/Landing.vue') },
   { path: '/app', redirect: '/app/home' },
-  { path: '/app/login', component: AppLoginPage },
-  { path: '/app/register', component: AppLoginPage },
-  { path: '/app/home', component: AppHomePage, meta: { requiresAuth: true } },
-  { path: '/app/invest', component: AppInvestPage, meta: { requiresAuth: true } },
-  { path: '/app/analysis', component: AppAnalysisPage, meta: { requiresAuth: true } },
-  { path: '/app/news', component: AppNewsPage, meta: { requiresAuth: true } },
-  { path: '/app/me', component: AppMePage, meta: { requiresAuth: true } },
+  { path: '/app/login', component: () => import('./pages/app/AppLoginPage.vue') },
+  { path: '/app/register', component: () => import('./pages/app/AppLoginPage.vue') },
+  { path: '/app/home', component: () => import('./pages/app/AppHomePage.vue'), meta: { requiresAuth: true } },
+  { path: '/app/invest', component: () => import('./pages/app/AppInvestPage.vue'), meta: { requiresAuth: true } },
+  { path: '/app/analysis', component: () => import('./pages/app/AppAnalysisPage.vue'), meta: { requiresAuth: true } },
+  { path: '/app/news', component: () => import('./pages/app/AppNewsPage.vue'), meta: { requiresAuth: true } },
+  { path: '/app/me', component: () => import('./pages/app/AppMePage.vue'), meta: { requiresAuth: true } },
   { path: '/app/profile', redirect: '/app/me' },
-  { path: '/app/asset/:code', component: AppAssetDetailPage, meta: { requiresAuth: true } },
+  { path: '/app/asset/:code', component: () => import('./pages/app/AppAssetDetailPage.vue'), meta: { requiresAuth: true } },
 
 ]
 

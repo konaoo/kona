@@ -8,8 +8,6 @@ import './styles/mixins.css'
 import './styles/animations.css'
 import './styles/shared.css'
 
-// Legacy Styles - 保留旧样式，逐步迁移
-import './styles/legacy.css'
 import './styles/admin-console.css'
 
 bootApp(router, 'admin')
