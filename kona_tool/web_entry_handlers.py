@@ -9,6 +9,24 @@ from typing import Callable
 from flask import jsonify, make_response, redirect, send_from_directory
 
 
+_LONG_CACHE_SUFFIXES = {
+    ".js",
+    ".css",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".svg",
+    ".webp",
+    ".ico",
+    ".map",
+    ".woff",
+    ".woff2",
+    ".ttf",
+}
+
+_NO_CACHE_FILENAMES = {"index.html", "manifest.json"}
+
+
 def create_web_entry_handlers(
     *,
     web_app_dist_dir_getter: Callable[[], Path],
@@ -20,13 +38,19 @@ def create_web_entry_handlers(
         if not normalized:
             return False
 
-        if normalized in {"index.html", "manifest.json"}:
+        if normalized in _NO_CACHE_FILENAMES:
             return False
 
         suffix = Path(normalized).suffix.lower()
         if suffix in {".html", ".json"}:
             return False
-        return suffix in {".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico", ".map", ".woff", ".woff2", ".ttf"}
+        return suffix in _LONG_CACHE_SUFFIXES
+
+    def _is_static_asset_request(path: str) -> bool:
+        normalized = (path or "").strip().lower()
+        if not normalized:
+            return False
+        return Path(normalized).suffix.lower() != ""
 
     def _serve_web_asset(web_dir: Path, asset_path: str = ""):
         index_file = web_dir / "index.html"
@@ -45,6 +69,9 @@ def create_web_entry_handlers(
                 response.headers["Pragma"] = "no-cache"
                 response.headers["Expires"] = "0"
             return response
+
+        if _is_static_asset_request(normalized_path):
+            return jsonify({"error": "Web asset not found"}), 404
 
         response = make_response(send_from_directory(str(web_dir), "index.html"))
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

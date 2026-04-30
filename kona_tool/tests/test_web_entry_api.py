@@ -109,6 +109,41 @@ class WebEntryApiTests(unittest.TestCase):
             finally:
                 app_module.WEB_APP_DIST_DIR = old_app_dir
 
+    def test_missing_static_asset_returns_404_instead_of_spa_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
+                "<!doctype html><html><body>spa-entry</body></html>",
+                encoding="utf-8",
+            )
+            old_app_dir = app_module.WEB_APP_DIST_DIR
+            app_module.WEB_APP_DIST_DIR = web_dir
+            try:
+                resp = self.client.get('/assets/missing.123.js')
+                self.assertEqual(resp.status_code, 404)
+                self.assertIn("Web asset not found", resp.get_data(as_text=True))
+                self.assertNotIn("spa-entry", resp.get_data(as_text=True))
+                resp.close()
+            finally:
+                app_module.WEB_APP_DIST_DIR = old_app_dir
+
+    def test_spa_route_without_file_extension_still_falls_back_to_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            web_dir = Path(tmp)
+            (web_dir / "index.html").write_text(
+                "<!doctype html><html><body>spa-entry</body></html>",
+                encoding="utf-8",
+            )
+            old_app_dir = app_module.WEB_APP_DIST_DIR
+            app_module.WEB_APP_DIST_DIR = web_dir
+            try:
+                resp = self.client.get('/app/analysis')
+                self.assertEqual(resp.status_code, 200)
+                self.assertIn("spa-entry", resp.get_data(as_text=True))
+                resp.close()
+            finally:
+                app_module.WEB_APP_DIST_DIR = old_app_dir
+
     def test_legacy_template_routes_redirect_to_new_spa_paths(self):
         assets = self.client.get('/assets', follow_redirects=False)
         self.assertEqual(assets.status_code, 302)
