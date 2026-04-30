@@ -15,6 +15,34 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-30-02
+
+### 这版一句话
+完成项目体检后的第一批工程收敛：清理 Web 死代码、拆分投资页状态与展示、收紧后端静态资源返回，并统一 Flutter 品牌资源和启动图链路。
+
+### 主要变化
+- Web 投资页拆出汇总卡片、市场分组、持仓列表和账本选择逻辑，资产展示口径统一到共享工具和专门测试
+- Web 删除未接入路由或已废弃的示例页、旧布局、旧类型和旧样式，并把主要路由与重型导出依赖改为懒加载
+- 后端静态入口修复缺失资源返回：带扩展名的静态文件不存在时返回 `404`，不再误回 SPA 首页
+- Flutter API 地址统一从 `ApiConfig` 管理，补充 HTTP/HTTPS 传输校验和备用登录地址解析测试
+- Flutter OpenAPI 生成器自带的文档、空测试壳、CI 样板和 push 脚本移出源码树，只保留客户端主体
+- Flutter 新 Logo 同步到关于页、Android/iOS AppIcon，并为 Android 12+ 增加专门启屏配置，避免冷启动时系统抓 launcher 图标闪出居中方形 Logo
+- Android Manifest 移除旧的 `requestLegacyExternalStorage`，保留当前生产 HTTP 后端所需的明文网络开关
+- 新增 Flutter 品牌资源生成脚本，固定 Logo、AppIcon 和 Android 12+ 启屏资源的维护入口
+
+### 影响范围
+- Web：投资页、资产详情页、首页资产展示、业务端和管理端路由加载
+- 后端：Web 静态资源入口、SPA 路由兜底行为
+- Flutter：API 地址配置、登录备用地址、Android 启屏、桌面图标、关于页 Logo、OpenAPI 生成物管理
+- 部署：Web、后端、Flutter 三条 CI gate 都会被这次改动触发
+
+### 验收重点
+- Web 投资页、首页和资产详情页的金额、市场、持仓展示口径应保持一致
+- 访问不存在的 `.js/.css/.png` 等静态资源应返回 `404`，访问 `/app/login`、`/admin/login` 这类 SPA 路由仍应正常返回页面
+- Flutter 冷启动不应再出现 Android 12+ 系统强制展示的居中方形 launcher 图标
+- Flutter 在 `ALLOW_INSECURE_HTTP=false` 时应拒绝 HTTP API 地址，HTTPS 地址仍可正常构建 URI
+- `npm test`、`npm run build`、后端 Web 静态入口测试、`flutter analyze`、`flutter test`、`flutter build apk --debug` 应保持通过
+
 ## 2026-04-30-01
 
 ### 这版一句话
