@@ -85,3 +85,8 @@ kona_tool/static/app/
 
 # Generated reports
 flutter/android/build/reports/problems/
+
+# Android signing
+flutter/android/key.properties
+flutter/android/*.jks
+flutter/android/*.keystore

@@ -1,4 +1,4 @@
-package com.example.tool
+package com.kaka.invest
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

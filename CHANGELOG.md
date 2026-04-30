@@ -15,6 +15,31 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-04-30-01
+
+### 这版一句话
+更新 App Logo 试用版，同时补齐 Android 发版配置、隐私政策页和无用 Web 默认图标清理。
+
+### 主要变化
+- Flutter 主 Logo 和 macOS App 图标切换为新的亮色豆芽形象，方便先在 macOS App 里看实际效果
+- Android 包名从 `com.example.tool` 调整为 `com.kaka.invest`，入口 `MainActivity` 同步迁移到新包名目录
+- Android release 构建新增签名配置读取、代码混淆和资源压缩规则，并把签名文件加入 `.gitignore`
+- Flutter 客户端版本号提升到 `1.0.29`
+- 后端静态资源新增隐私政策页面
+- Web 公共目录删除未被引用的 Vite 默认图标 `vite.svg`
+
+### 影响范围
+- Flutter：App 内 Logo、macOS Dock / 应用图标、客户端版本号
+- Android：包名、release 构建、签名文件管理、混淆与资源压缩
+- 后端：静态隐私政策页面
+- Web：公共静态资源清理，不影响当前页面 Logo 引用
+
+### 验收重点
+- macOS App 构建后应显示新版 Logo 图标
+- Android release 构建应能在无正式签名文件时继续回退 debug 签名完成构建
+- Web 构建不应再依赖 `vite.svg`
+- 隐私政策页面内容应能作为静态页面访问
+
 ## 2026-04-28-01
 
 ### 这版一句话
