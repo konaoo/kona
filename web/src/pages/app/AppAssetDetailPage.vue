@@ -3,6 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
+import {
+  formatLatestNavDateText,
+  isFundAsset,
+  isStaleFund,
+  readLatestNavDate,
+  shouldShowFundNavMeta
+} from '@/shared/assetDisplay'
 import { useKonaStore } from '@/stores/composables'
 import AppShell from '@/layouts/AppShell.vue'
 import AssetLogo from '@/components/base/AssetLogo.vue'
@@ -37,8 +44,12 @@ const row = computed(() => {
   const target = code.value.trim().toLowerCase()
   if (!target) return null
   return (
-    store.rows.value.find((item) => String(item.code || '').trim().toLowerCase() === target) ||
-    null
+    store.rows.value.find(
+      item =>
+        String(item.code || '')
+          .trim()
+          .toLowerCase() === target
+    ) || null
   )
 })
 
@@ -50,54 +61,6 @@ const marketLabel = computed(() => {
   return 'A股'
 })
 
-function isFundAsset(item: any): boolean {
-  const market = String(item?.category || item?.market || '').toLowerCase()
-  if (market === 'fund') return true
-  const assetType = String(item?.asset_type || '').toLowerCase()
-  if (assetType === 'fund') return true
-  const codeText = String(item?.code || '').toLowerCase()
-  return codeText.startsWith('f_') || codeText.startsWith('ft_')
-}
-
-function shouldShowFundNavMeta(item: any): boolean {
-  // 对齐 App：只有“场外基金净值待更新”才显示“最新净值(日期)”提示。
-  return isFundAsset(item) && Boolean(item?.navUpdatePending)
-}
-
-function isStaleFund(item: any): boolean {
-  if (!isFundAsset(item)) return false
-  // 对齐 App：只有“场外基金净值待更新”才需要用 latest_nav_date 判断 stale。
-  // 场内 ETF（navUpdatePending=false）即使没有 latest_nav_date，也不应隐藏当日盈亏/涨幅。
-  if (!Boolean(item?.navUpdatePending)) return false
-  const latestNavDate = readLatestNavDate(item)
-  if (!latestNavDate) return true
-  return !isDateToday(latestNavDate)
-}
-
-function isDateToday(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim())
-  if (!match) return false
-  const y = Number(match[1])
-  const m = Number(match[2])
-  const d = Number(match[3])
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false
-  const now = new Date()
-  return now.getFullYear() === y && now.getMonth() + 1 === m && now.getDate() === d
-}
-
-function readLatestNavDate(item: any): string | null {
-  const raw = String(item?.latest_nav_date ?? item?.latestNavDate ?? '').trim()
-  return raw || null
-}
-
-function formatLatestNavDateText(value: string | null): string | null {
-  const text = String(value || '').trim()
-  if (!text) return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text)
-  if (!match) return text
-  return `${match[2]}-${match[3]}`
-}
-
 function formatDisplayCode(raw: unknown): string {
   const codeText = String(raw || '').trim()
   if (!codeText) return '--'
@@ -105,7 +68,11 @@ function formatDisplayCode(raw: unknown): string {
   if (codeText.toLowerCase().startsWith('gb_')) return codeText.slice(3).toUpperCase()
   if (codeText.toLowerCase().startsWith('f_')) return codeText.slice(2)
   if (codeText.toLowerCase().startsWith('ft_')) return codeText.slice(3)
-  if (codeText.toLowerCase().startsWith('sh') || codeText.toLowerCase().startsWith('sz') || codeText.toLowerCase().startsWith('bj')) {
+  if (
+    codeText.toLowerCase().startsWith('sh') ||
+    codeText.toLowerCase().startsWith('sz') ||
+    codeText.toLowerCase().startsWith('bj')
+  ) {
     return codeText.slice(2)
   }
   return codeText.toUpperCase()
@@ -154,7 +121,7 @@ function formatPrice(item: any): string {
   const digits = isFundAsset(item) ? 4 : 2
   return `${getCurrencySymbol(item?.curr)}${value.toLocaleString('zh-CN', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
+    maximumFractionDigits: digits
   })}`
 }
 
@@ -172,7 +139,9 @@ function formatDateTime(raw: unknown): string {
 }
 
 function tradeTypeLabel(item: Record<string, any>): string {
-  const text = String(item.type || item.action || '').trim().toLowerCase()
+  const text = String(item.type || item.action || '')
+    .trim()
+    .toLowerCase()
   if (text === 'buy') return '买入'
   if (text === 'sell') return '卖出'
   if (text === 'modify') return '修正'
@@ -206,7 +175,12 @@ async function loadTransactions() {
     const payload = await api.get<Record<string, any>[]>('/api/transactions?days=3650')
     const target = code.value.trim().toLowerCase()
     const list = (Array.isArray(payload) ? payload : [])
-      .filter((item) => String(item.code || '').trim().toLowerCase() === target)
+      .filter(
+        item =>
+          String(item.code || '')
+            .trim()
+            .toLowerCase() === target
+      )
       .sort((a, b) => {
         const at = new Date(String(a.time || a.date || a.created_at || '')).getTime()
         const bt = new Date(String(b.time || b.date || b.created_at || '')).getTime()
@@ -250,7 +224,7 @@ async function confirmDeleteAction() {
     const ledgerId = row.value.ledger_id
     await api.post('/api/portfolio/delete', {
       code: assetCode,
-      ledger_id: ledgerId,
+      ledger_id: ledgerId
     })
     // 刷新全局状态并返回
     await store.refreshAll()
@@ -288,7 +262,9 @@ onMounted(() => {
     <div class="asset-detail-page">
       <div class="detail-header-row">
         <button class="back-btn" type="button" @click="router.back()">返回</button>
-        <button class="delete-btn" type="button" :disabled="loading" @click="handleDeleteHolding">删除</button>
+        <button class="delete-btn" type="button" :disabled="loading" @click="handleDeleteHolding">
+          删除
+        </button>
       </div>
 
       <div v-if="pageError" class="detail-error">{{ pageError }}</div>
@@ -323,17 +299,24 @@ onMounted(() => {
             <div class="asset-right-info">
               <div class="asset-mv">{{ formatMoney(row.mv ?? row.value, row.curr) }}</div>
               <div class="asset-qty-right">
-                {{ Number(row.qty || 0).toLocaleString('zh-CN') }}{{ row.unit || (isFundAsset(row) ? '份' : '股') }}
+                {{ Number(row.qty || 0).toLocaleString('zh-CN')
+                }}{{ row.unit || (isFundAsset(row) ? '份' : '股') }}
               </div>
             </div>
           </div>
 
-            <div class="metric-grid">
-              <div class="metric-item">
-              <div class="metric-label">{{ shouldShowFundNavMeta(row) ? '最新净值' : '最新价格' }}</div>
+          <div class="metric-grid">
+            <div class="metric-item">
+              <div class="metric-label">
+                {{ shouldShowFundNavMeta(row) ? '最新净值' : '最新价格' }}
+              </div>
               <div class="metric-value">{{ formatPrice({ ...row, price: row.currentPrice }) }}</div>
               <div v-if="shouldShowFundNavMeta(row)" class="metric-sub">
-                {{ formatLatestNavDateText(readLatestNavDate(row)) ? `最新净值 (${formatLatestNavDateText(readLatestNavDate(row))})` : '最新净值' }}
+                {{
+                  formatLatestNavDateText(readLatestNavDate(row))
+                    ? `最新净值 (${formatLatestNavDateText(readLatestNavDate(row))})`
+                    : '最新净值'
+                }}
               </div>
             </div>
 
@@ -344,14 +327,28 @@ onMounted(() => {
 
             <div class="metric-item">
               <div class="metric-label">当日盈亏</div>
-              <div class="metric-value" :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnl)">{{ isStaleFund(row) ? '--' : formatSignedMoney(row.dayPnl, row.curr) }}</div>
-              <div class="metric-sub" :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnlRate)">{{ isStaleFund(row) ? '--' : formatPct(row.dayPnlRate) }}</div>
+              <div
+                class="metric-value"
+                :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnl)"
+              >
+                {{ isStaleFund(row) ? '--' : formatSignedMoney(row.dayPnl, row.curr) }}
+              </div>
+              <div
+                class="metric-sub"
+                :class="isStaleFund(row) ? 'text-muted' : valueClass(row.dayPnlRate)"
+              >
+                {{ isStaleFund(row) ? '--' : formatPct(row.dayPnlRate) }}
+              </div>
             </div>
 
             <div class="metric-item">
               <div class="metric-label">累计盈亏</div>
-              <div class="metric-value" :class="valueClass(row.totalPnl)">{{ formatSignedMoney(row.totalPnl, row.curr) }}</div>
-              <div class="metric-sub" :class="valueClass(row.totalPnlRate)">{{ formatPct(row.totalPnlRate) }}</div>
+              <div class="metric-value" :class="valueClass(row.totalPnl)">
+                {{ formatSignedMoney(row.totalPnl, row.curr) }}
+              </div>
+              <div class="metric-sub" :class="valueClass(row.totalPnlRate)">
+                {{ formatPct(row.totalPnlRate) }}
+              </div>
             </div>
           </div>
         </div>
@@ -375,12 +372,20 @@ onMounted(() => {
               <div class="tx-col tx-col-head price">单价</div>
               <div class="tx-col tx-col-head pnl">盈亏</div>
             </div>
-            <div v-for="item in txList" :key="String(item.id || `${item.time || item.date}-${item.type}-${item.qty}`)" class="tx-row">
-              <div class="tx-col time">{{ formatDateTime(item.time || item.date || item.created_at) }}</div>
+            <div
+              v-for="item in txList"
+              :key="String(item.id || `${item.time || item.date}-${item.type}-${item.qty}`)"
+              class="tx-row"
+            >
+              <div class="tx-col time">
+                {{ formatDateTime(item.time || item.date || item.created_at) }}
+              </div>
               <div class="tx-col type">{{ tradeTypeLabel(item) }}</div>
               <div class="tx-col qty">{{ tradeQtyLabel(item) }}</div>
               <div class="tx-col price">{{ tradePriceLabel(item) }}</div>
-              <div class="tx-col pnl" :class="valueClass(item.pnl)">{{ item.pnl == null ? '-' : formatSignedMoney(item.pnl, row.curr) }}</div>
+              <div class="tx-col pnl" :class="valueClass(item.pnl)">
+                {{ item.pnl == null ? '-' : formatSignedMoney(item.pnl, row.curr) }}
+              </div>
             </div>
           </div>
         </div>
@@ -394,14 +399,14 @@ onMounted(() => {
       />
 
       <!-- 自定义风格的删除确认弹窗 -->
-      <Modal
-        v-model:show="showDeleteModal"
-        title="确认删除持仓"
-        :width="400"
-      >
+      <Modal v-model:show="showDeleteModal" title="确认删除持仓" :width="400">
         <div class="delete-confirm-content">
           <div class="confirm-icon">⚠️</div>
-          <p>确定要彻底删除 <strong>{{ row?.name || formatDisplayCode(row?.code) }}</strong> 的全部持仓和历史记录吗？</p>
+          <p>
+            确定要彻底删除
+            <strong>{{ row?.name || formatDisplayCode(row?.code) }}</strong>
+            的全部持仓和历史记录吗？
+          </p>
           <span class="confirm-hint">此操作将同时删除相关的交易流水，且不可撤销。</span>
         </div>
         <template #footer>

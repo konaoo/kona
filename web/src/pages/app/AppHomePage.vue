@@ -10,6 +10,14 @@ import { useRouter } from 'vue-router'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
 import { buildTrendSparklinePath } from '@/shared/assetTrend'
+import {
+  formatLatestNavDateText,
+  isDateToday,
+  isFundAsset,
+  isStaleFund,
+  readLatestNavDate,
+  shouldShowFundNavMeta
+} from '@/shared/assetDisplay'
 import { useKonaStore } from '@/stores/composables'
 import { useHomeStore } from '@/stores/home'
 import { usePrivacyMode } from '@/shared/privacyMode'
@@ -90,6 +98,16 @@ function defaultAssetIcon(type: AssetType): string {
   if (type === 'cash') return '🏦'
   if (type === 'other') return '📦'
   return '💳'
+}
+
+function setCurrentCurrency(currency: 'CNY' | 'USD' | 'HKD') {
+  currentCurrency.value = currency
+  currencyOpen.value = false
+}
+
+function setFormCurrency(currency: 'CNY' | 'USD' | 'HKD') {
+  form.curr = currency
+  assetCurrencyOpen.value = false
 }
 
 let chartSwitchTimer: number | null = null
@@ -516,58 +534,20 @@ function quoteLabel(row: any): string {
 
 function dayPnlRateLabel(row: any): string {
   const latestNavDate = readLatestNavDate(row)
-  const shouldHoldFundDayPnl = isFundAsset(row) && latestNavDate != null && !isDateToday(latestNavDate)
-  if (shouldHoldFundDayPnl || row?.navUpdatePending || row?.quotePending || row?.dayPnlDisplayEnabled === false) return '--'
+  const shouldHoldFundDayPnl =
+    isFundAsset(row) && latestNavDate != null && !isDateToday(latestNavDate)
+  if (
+    shouldHoldFundDayPnl ||
+    row?.navUpdatePending ||
+    row?.quotePending ||
+    row?.dayPnlDisplayEnabled === false
+  )
+    return '--'
   return formatPct(toNumber(row?.dayPnlRate))
 }
 
-function isFundAsset(row: any): boolean {
-  const market = String(row?.category || row?.market || '').toLowerCase()
-  if (market === 'fund') return true
-  const assetType = String(row?.asset_type || '').toLowerCase()
-  if (assetType === 'fund') return true
-  const code = String(row?.code || '').toLowerCase()
-  return code.startsWith('f_') || code.startsWith('ft_')
-}
-
-function isStaleFund(row: any): boolean {
-  if (!isFundAsset(row)) return false
-  // 对齐 App：只有“场外基金净值待更新”才需要用 latest_nav_date 判断 stale。
-  // 场内 ETF（navUpdatePending=false）即使没有 latest_nav_date，也不应隐藏当日盈亏/涨幅。
-  if (!Boolean(row?.navUpdatePending)) return false
-  const latestNavDate = readLatestNavDate(row)
-  if (!latestNavDate) return true
-  return !isDateToday(latestNavDate)
-}
-
-function readLatestNavDate(row: any): string | null {
-  const raw = String(row?.latest_nav_date ?? row?.latestNavDate ?? '').trim()
-  return raw || null
-}
-
-function formatLatestNavDateText(value: string | null): string | null {
-  const text = String(value || '').trim()
-  if (!text) return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text)
-  if (!match) return text
-  return `${match[2]}-${match[3]}`
-}
-
-function isDateToday(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '').trim())
-  if (!match) return false
-  const y = Number(match[1])
-  const m = Number(match[2])
-  const d = Number(match[3])
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false
-  const now = new Date()
-  return now.getFullYear() === y && now.getMonth() + 1 === m && now.getDate() === d
-}
-
 function quoteMetaLabel(row: any): string {
-  // 对齐 App：只有“场外基金净值待更新”才展示“最新净值(日期)”提示。
-  // 场内 ETF 虽然统计上仍可能归为基金，但展示应按“价格口径”走，避免误导。
-  if (!isFundAsset(row) || !row?.navUpdatePending) return ''
+  if (!shouldShowFundNavMeta(row)) return ''
   const dateText = formatLatestNavDateText(readLatestNavDate(row))
   return dateText ? `最新净值 (${dateText})` : '最新净值'
 }
@@ -651,12 +631,9 @@ watch(chartPeriod, () => {
   }, 180)
 })
 
-watch(
-  rowTrendSignature,
-  () => {
-    void homeStore.loadAssetTrends()
-  }
-)
+watch(rowTrendSignature, () => {
+  void homeStore.loadAssetTrends()
+})
 
 function formatLocal(v: any) {
   return Number(v || 0).toLocaleString()
@@ -907,7 +884,7 @@ onBeforeUnmount(() => {
                 <div
                   class="ccy-option"
                   :class="{ active: currentCurrency === 'CNY' }"
-                  @click.stop="currentCurrency = 'CNY'; currencyOpen = false"
+                  @click.stop="setCurrentCurrency('CNY')"
                 >
                   <span
                     style="
@@ -922,7 +899,7 @@ onBeforeUnmount(() => {
                 <div
                   class="ccy-option"
                   :class="{ active: currentCurrency === 'USD' }"
-                  @click.stop="currentCurrency = 'USD'; currencyOpen = false"
+                  @click.stop="setCurrentCurrency('USD')"
                 >
                   <span
                     style="
@@ -937,7 +914,7 @@ onBeforeUnmount(() => {
                 <div
                   class="ccy-option"
                   :class="{ active: currentCurrency === 'HKD' }"
-                  @click.stop="currentCurrency = 'HKD'; currencyOpen = false"
+                  @click.stop="setCurrentCurrency('HKD')"
                 >
                   <span
                     style="
@@ -954,7 +931,14 @@ onBeforeUnmount(() => {
             <button
               class="hero-privacy-btn"
               @click.stop="togglePrivacy"
-              style="background: none; border: none; font-size: 16px; cursor: pointer; opacity: 0.6; padding: 0 4px;"
+              style="
+                background: none;
+                border: none;
+                font-size: 16px;
+                cursor: pointer;
+                opacity: 0.6;
+                padding: 0 4px;
+              "
             >
               {{ isPrivacyMode ? '🙈' : '👁️' }}
             </button>
@@ -1367,7 +1351,9 @@ onBeforeUnmount(() => {
             <div class="h-price-row">
               <div class="h-price-main">
                 <span class="h-price-val">{{ quoteLabel(row) }}</span>
-                <span v-if="quoteMetaLabel(row)" class="h-price-meta">{{ quoteMetaLabel(row) }}</span>
+                <span v-if="quoteMetaLabel(row)" class="h-price-meta">{{
+                  quoteMetaLabel(row)
+                }}</span>
               </div>
               <div
                 class="h-price-tag badge"
@@ -1404,14 +1390,22 @@ onBeforeUnmount(() => {
                     当日盈亏
                   </div>
                   <div
-                    :class="[isStaleFund(row) ? 'text-muted' : (toNumber(row?.dayPnl) >= 0 ? 'text-up' : 'text-dn')]"
+                    :class="[
+                      isStaleFund(row)
+                        ? 'text-muted'
+                        : toNumber(row?.dayPnl) >= 0
+                          ? 'text-up'
+                          : 'text-dn'
+                    ]"
                     style="
                       font-family: 'JetBrains Mono', monospace;
                       font-size: 12.5px;
                       font-weight: 600;
                     "
                   >
-                    {{ isStaleFund(row) ? '--' : masked(formatCurrency(toNumber(row?.dayPnl), true)) }}
+                    {{
+                      isStaleFund(row) ? '--' : masked(formatCurrency(toNumber(row?.dayPnl), true))
+                    }}
                   </div>
                 </div>
                 <div>
@@ -1566,7 +1560,9 @@ onBeforeUnmount(() => {
                 >
                   {{ quoteLabel(row) }}
                 </div>
-                <div v-if="quoteMetaLabel(row)" class="h-price-cell-meta">{{ quoteMetaLabel(row) }}</div>
+                <div v-if="quoteMetaLabel(row)" class="h-price-cell-meta">
+                  {{ quoteMetaLabel(row) }}
+                </div>
               </div>
               <div style="padding: 0 12px; border-right: 1px solid var(--surface-divider)">
                 <div style="font-size: 10px; color: var(--muted); margin-bottom: 3px">成本价</div>
@@ -1604,7 +1600,11 @@ onBeforeUnmount(() => {
                   "
                   :class="isStaleFund(row) ? 'text-muted' : valueClass(toNumber(row?.dayPnl))"
                 >
-                  {{ isStaleFund(row) ? '--' : masked(formatValue(toNumber(row?.dayPnl), row?.curr as any)) }}
+                  {{
+                    isStaleFund(row)
+                      ? '--'
+                      : masked(formatValue(toNumber(row?.dayPnl), row?.curr as any))
+                  }}
                 </div>
                 <div
                   style="font-size: 11px; margin-top: 1px"
@@ -2042,7 +2042,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="asset-currency-option"
                   :class="{ active: form.curr === 'CNY' }"
-                  @click.stop="form.curr = 'CNY'; assetCurrencyOpen = false"
+                  @click.stop="setFormCurrency('CNY')"
                 >
                   <span class="asset-currency-code">CNY</span>
                   <span class="asset-currency-name">人民币</span>
@@ -2051,7 +2051,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="asset-currency-option"
                   :class="{ active: form.curr === 'USD' }"
-                  @click.stop="form.curr = 'USD'; assetCurrencyOpen = false"
+                  @click.stop="setFormCurrency('USD')"
                 >
                   <span class="asset-currency-code">USD</span>
                   <span class="asset-currency-name">美元</span>
@@ -2060,7 +2060,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="asset-currency-option"
                   :class="{ active: form.curr === 'HKD' }"
-                  @click.stop="form.curr = 'HKD'; assetCurrencyOpen = false"
+                  @click.stop="setFormCurrency('HKD')"
                 >
                   <span class="asset-currency-code">HKD</span>
                   <span class="asset-currency-name">港币</span>
