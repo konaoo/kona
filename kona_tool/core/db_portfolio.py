@@ -2304,6 +2304,27 @@ class PortfolioDatabaseMixin:
                 conn.rollback()
                 return {"ok": False, "code": "CASH_ASSET_UPDATE_FAILED", "error": "Failed to update cash asset"}
 
+            before_asset = sell_detail.get("before_asset") or {}
+            asset_name = str(before_asset.get("name") or code)
+            asset_curr = str(before_asset.get("curr") or "")
+            sell_amount = float(price) * float(qty)
+            cash_curr = str(cash_row["curr"] or "")
+            if asset_curr and asset_curr.upper() != cash_curr.upper():
+                note = (
+                    f"卖出 {asset_name}({code}) 回款 "
+                    f"{sell_amount:.2f} {asset_curr}，入账 {float(cash_add_amount):.2f} {cash_curr}"
+                )
+            else:
+                note = f"卖出 {asset_name}({code}) 回款 {float(cash_add_amount):.2f} {cash_curr}"
+            cursor.execute(
+                """
+                INSERT INTO asset_adjustments
+                    (asset_type, asset_id, mode, delta, note, balance_after, user_id)
+                VALUES ('cash', ?, 'add', ?, ?, ?, ?)
+                """,
+                (cash_asset_id, float(cash_add_amount), note, cash_after, user_id),
+            )
+
             conn.commit()
             return {
                 "ok": True,

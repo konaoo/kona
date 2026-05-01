@@ -59,6 +59,7 @@ class PortfolioApiTests(unittest.TestCase):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM portfolio_correction_logs")
         cursor.execute("DELETE FROM portfolio_adjustment_ledger")
+        cursor.execute("DELETE FROM asset_adjustments")
         cursor.execute("DELETE FROM cash_assets")
         cursor.execute("DELETE FROM other_assets")
         cursor.execute("DELETE FROM liabilities")
@@ -1200,6 +1201,52 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(second_items[0].get('ledger_adjustment') or 0.0), 0.0, places=6)
         self.assertAlmostEqual(float(second_items[0].get('realized_pnl_adjustment') or 0.0), 6.0, places=6)
         self.assertAlmostEqual(float(second_items[0].get('adjustment_total') or 0.0), 6.0, places=6)
+
+    def test_sell_asset_to_cash_records_cash_adjustment_entry(self):
+        ledger_id = app_module.db.get_default_ledger_id('')
+        self.assertTrue(app_module.db.add_cash_asset('富途', 95000.0, curr='CNY', user_id=''))
+        cash_asset = next(item for item in app_module.db.get_cash_assets(user_id='') if item['name'] == '富途')
+
+        self.assertTrue(
+            app_module.db.add_asset(
+                {
+                    'code': 'gb_goog',
+                    'name': '谷歌',
+                    'qty': 10.0,
+                    'price': 313.0,
+                    'curr': 'USD',
+                    'asset_type': 'us',
+                    'adjustment': 0.0,
+                },
+                user_id='',
+                ledger_id=ledger_id,
+            )
+        )
+
+        detail = app_module.db.sell_asset_to_cash(
+            code='gb_goog',
+            price=370.0,
+            qty=10.0,
+            cash_asset_id=int(cash_asset['id']),
+            cash_add_amount=25311.33,
+            user_id='',
+            return_detail=True,
+            ledger_id=ledger_id,
+        )
+
+        self.assertTrue(detail.get('ok'))
+        adjustments = app_module.db.get_asset_adjustments(
+            asset_type='cash',
+            asset_id=int(cash_asset['id']),
+            user_id='',
+        )
+        self.assertEqual(len(adjustments), 1)
+        record = adjustments[0]
+        self.assertEqual(record['mode'], 'add')
+        self.assertAlmostEqual(float(record['delta']), 25311.33, places=2)
+        self.assertAlmostEqual(float(record['balance_after']), 120311.33, places=2)
+        self.assertIn('gb_goog', record['note'])
+        self.assertIn('回款', record['note'])
 
     def test_delete_corrective_removes_target_ledger_snapshots_only(self):
         default_ledger_id = app_module.db.get_default_ledger_id('')
