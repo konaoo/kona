@@ -2306,16 +2306,7 @@ class PortfolioDatabaseMixin:
 
             before_asset = sell_detail.get("before_asset") or {}
             asset_name = str(before_asset.get("name") or code)
-            asset_curr = str(before_asset.get("curr") or "")
-            sell_amount = float(price) * float(qty)
-            cash_curr = str(cash_row["curr"] or "")
-            if asset_curr and asset_curr.upper() != cash_curr.upper():
-                note = (
-                    f"卖出 {asset_name}({code}) 回款 "
-                    f"{sell_amount:.2f} {asset_curr}，入账 {float(cash_add_amount):.2f} {cash_curr}"
-                )
-            else:
-                note = f"卖出 {asset_name}({code}) 回款 {float(cash_add_amount):.2f} {cash_curr}"
+            note = f"卖出 {asset_name} 回款"
             cursor.execute(
                 """
                 INSERT INTO asset_adjustments

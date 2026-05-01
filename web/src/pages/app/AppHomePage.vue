@@ -11,6 +11,11 @@ import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
 import { buildTrendSparklinePath } from '@/shared/assetTrend'
 import {
+  type AssetAdjustmentRecord,
+  fetchAssetAdjustments,
+  formatAdjustmentAmount
+} from '@/shared/assetAdjustments'
+import {
   formatLatestNavDateText,
   isDateToday,
   isFundAsset,
@@ -66,6 +71,9 @@ const selectedTab = ref('all')
 const holdingsView = ref<'card' | 'row'>('card')
 const activeSegment = ref<AssetType | null>(null)
 const chartContainer = ref<HTMLElement | null>(null)
+const adjustmentRecords = ref<AssetAdjustmentRecord[]>([])
+const adjustmentLoading = ref(false)
+const adjustmentError = ref('')
 
 const chartPeriodOptions: Array<{ label: string; value: ChartPeriod }> = [
   { label: '近1月', value: '1m' },
@@ -681,7 +689,28 @@ function closeModal() {
   modalVisible.value = false
 }
 
+function resetAdjustmentRecords() {
+  adjustmentRecords.value = []
+  adjustmentError.value = ''
+  adjustmentLoading.value = false
+}
+
+async function loadAdjustmentRecords(type: AssetType, assetId: number) {
+  adjustmentLoading.value = true
+  adjustmentError.value = ''
+  try {
+    adjustmentRecords.value = await fetchAssetAdjustments(api.get, type, assetId)
+  } catch (error) {
+    console.error('Failed to load asset adjustments', error)
+    adjustmentRecords.value = []
+    adjustmentError.value = '调整记录加载失败'
+  } finally {
+    adjustmentLoading.value = false
+  }
+}
+
 function openFormModal(item?: any) {
+  resetAdjustmentRecords()
   if (item?.type && item.type !== 'invest') {
     modalType.value = item.type
   } else if (activeSegment.value) {
@@ -695,12 +724,16 @@ function openFormModal(item?: any) {
   form.amount = toNumber(item?.amount, 0)
   form.curr = item?.curr || 'CNY'
   isFormModalVisible.value = true
+  if (modalMode.value === 'edit' && form.id) {
+    void loadAdjustmentRecords(modalType.value, form.id)
+  }
 }
 
 function closeFormModal() {
   isFormModalVisible.value = false
   isDeleteConfirmVisible.value = false
   assetCurrencyOpen.value = false
+  resetAdjustmentRecords()
 }
 
 async function submitModal() {
@@ -754,6 +787,12 @@ async function removeAssetFromForm() {
 function handleGlobalClick() {
   if (currencyOpen.value) currencyOpen.value = false
   if (assetCurrencyOpen.value) assetCurrencyOpen.value = false
+}
+
+function formatAdjustmentTime(raw: unknown): string {
+  const text = String(raw || '').trim()
+  if (!text) return '-'
+  return text.length >= 16 ? text.slice(0, 16) : text
 }
 
 // Lifecycle
@@ -2067,6 +2106,113 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+        <div v-if="modalMode === 'edit' && form.id" style="margin-top: 16px">
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 8px;
+            "
+          >
+            <div style="font-size: 11px; font-weight: 700; color: var(--sub)">调整记录</div>
+            <button
+              type="button"
+              @click="loadAdjustmentRecords(modalType, form.id as number)"
+              style="
+                border: none;
+                background: transparent;
+                color: var(--blue);
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                padding: 0;
+              "
+            >
+              刷新
+            </button>
+          </div>
+          <div
+            style="
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              background: var(--surface-faint);
+              max-height: 168px;
+              overflow-y: auto;
+            "
+          >
+            <div
+              v-if="adjustmentLoading"
+              style="padding: 14px; color: var(--muted); font-size: 12px"
+            >
+              加载中...
+            </div>
+            <div
+              v-else-if="adjustmentError"
+              style="padding: 14px; color: var(--red); font-size: 12px"
+            >
+              {{ adjustmentError }}
+            </div>
+            <div
+              v-else-if="!adjustmentRecords.length"
+              style="padding: 14px; color: var(--muted); font-size: 12px"
+            >
+              暂无调整记录
+            </div>
+            <template v-else>
+              <div
+                v-for="record in adjustmentRecords"
+                :key="record.id || `${record.created_at}-${record.delta}`"
+                style="
+                  display: grid;
+                  grid-template-columns: minmax(0, 1fr) auto;
+                  gap: 8px;
+                  padding: 12px 14px;
+                  border-bottom: 1px solid var(--border);
+                "
+              >
+                <div style="min-width: 0">
+                  <div
+                    style="
+                      font-size: 13px;
+                      font-weight: 700;
+                      color: var(--text);
+                      white-space: nowrap;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                    "
+                  >
+                    {{ record.note || '手动调整' }}
+                  </div>
+                  <div style="font-size: 11px; color: var(--muted); margin-top: 4px">
+                    {{ formatAdjustmentTime(record.created_at) }}
+                  </div>
+                </div>
+                <div style="text-align: right">
+                  <div
+                    style="
+                      font-family: 'JetBrains Mono', monospace;
+                      font-size: 13px;
+                      font-weight: 700;
+                    "
+                    :style="{ color: record.mode === 'sub' ? 'var(--red)' : 'var(--green)' }"
+                  >
+                    {{ formatAdjustmentAmount(record, form.curr) }}
+                  </div>
+                  <div style="font-size: 10px; color: var(--muted); margin-top: 4px">
+                    余额
+                    {{
+                      Math.abs(record.balance_after).toLocaleString('zh-CN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })
+                    }}
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
         <div style="display: flex; gap: 8px; margin-top: 8px">

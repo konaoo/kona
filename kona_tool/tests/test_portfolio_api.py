@@ -1245,8 +1245,7 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertEqual(record['mode'], 'add')
         self.assertAlmostEqual(float(record['delta']), 25311.33, places=2)
         self.assertAlmostEqual(float(record['balance_after']), 120311.33, places=2)
-        self.assertIn('gb_goog', record['note'])
-        self.assertIn('回款', record['note'])
+        self.assertEqual(record['note'], '卖出 谷歌 回款')
 
     def test_delete_corrective_removes_target_ledger_snapshots_only(self):
         default_ledger_id = app_module.db.get_default_ledger_id('')
