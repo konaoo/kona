@@ -235,7 +235,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.backend == 'true') &&
       needs.backend_gate.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Deploy backend via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -271,7 +271,7 @@ jobs:
               fetch_log="/tmp/kona_deploy_git_fetch_${attempt}.log"
               rm -f "$fetch_log"
               echo "git fetch attempt $attempt ..."
-              if timeout 45 git -c http.version=HTTP/1.1 fetch --depth=1 origin main >"$fetch_log" 2>&1; then
+              if timeout 300 git -c http.version=HTTP/1.1 fetch origin main >"$fetch_log" 2>&1; then
                 cat "$fetch_log" || true
                 rm -f "$fetch_log"
                 return 0
@@ -288,7 +288,7 @@ jobs:
               FETCH_OK=1
               echo "Server already at target sha, skip git fetch."
             else
-              for attempt in 1 2 3 4 5; do
+              for attempt in 1 2 3; do
                 if fetch_main_with_timeout "$attempt"; then
                   REMOTE_SHA="$(git rev-parse origin/main)"
                   echo "Fetched origin/main sha: $REMOTE_SHA"
@@ -306,7 +306,7 @@ jobs:
               echo "ERROR: git fetch origin main failed or target sha not reached."
               git remote -v || true
               git branch -vv || true
-              git status --short --branch || true
+              git status --short --branch --untracked-files=no || true
               timeout 15 git ls-remote origin refs/heads/main || true
               timeout 15 curl -I https://github.com || true
               exit 1
