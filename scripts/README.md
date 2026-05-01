@@ -41,6 +41,9 @@
 - `check_calendar2_output.txt`
 - `ci/check_repo_hygiene.sh`
 - `ci/check_changelog_guard.sh`
+- `deploy/deploy_backend.sh`
+- `deploy/upload_web_artifact.sh`
+- `deploy/apply_web_artifact.sh`
 
 ---
 
@@ -93,7 +96,20 @@
 
 这类脚本符合 `scripts/` 的定位，属于仓库级 CI / 发布守门脚本。
 
-### 3.4 临时排障类
+### 3.4 部署类
+
+- `deploy/deploy_backend.sh`
+  用途：线上后端部署脚本，负责拉取目标提交、安装依赖、重启服务和后端 smoke check。
+
+- `deploy/upload_web_artifact.sh`
+  用途：GitHub Actions runner 侧 Web 产物上传脚本，负责 SSH 预热、SCP 上传、sha256 和 gzip 校验。
+
+- `deploy/apply_web_artifact.sh`
+  用途：线上 Web 静态产物应用脚本，负责备份当前静态目录、替换产物和页面 smoke check。
+
+这类脚本是生产部署链路的一部分，放在仓库里可以避免把大量 shell 逻辑散落在 workflow YAML 中。
+
+### 3.5 临时排障类
 
 - `check_calendar.py`
 - `check_calendar2.py`
@@ -107,7 +123,7 @@
 
 它们更像“调试工具”或“临时排障脚本”，不适合长期作为仓库骨架的一部分。
 
-### 3.5 脚本输出产物
+### 3.6 脚本输出产物
 
 - `check_calendar2_output.txt`
 

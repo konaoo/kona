@@ -15,6 +15,26 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-05-01-02
+
+### 这版一句话
+收敛 CI 和部署维护链路：部署脚本从 GitHub Actions YAML 中拆出，并减少非 Flutter 改动触发 APK 构建的耗时。
+
+### 主要变化
+- 后端部署逻辑迁移到 `scripts/deploy/deploy_backend.sh`，workflow 只负责 SSH 执行入口
+- Web 部署拆成 `scripts/deploy/upload_web_artifact.sh` 和 `scripts/deploy/apply_web_artifact.sh`，上传、校验、应用和 smoke check 职责更清楚
+- `Detect Changes` 不再因为 `.github/workflows/deploy.yml` 改动自动触发 Flutter Gate，只有 `flutter/**` 改动才跑完整 `flutter build apk --debug`
+- 部署脚本路径纳入 backend/web 变更检测，后续改部署逻辑仍会触发对应门禁
+
+### 影响范围
+- GitHub Actions：`Deploy to Production` 的变更检测、后端部署、Web 部署
+- 线上部署：部署行为保持一致，但脚本从 YAML 内联改为仓库脚本，后续更容易本地审查和语法检查
+
+### 验收重点
+- 后端部署仍应完成拉取目标 SHA、安装依赖、重启 `kona` 并通过 health / smoke check
+- Web 部署仍应上传构建产物、校验 gzip 和 sha256、更新静态目录并通过页面 smoke check
+- 只改部署脚本时不应再触发 Flutter APK debug 构建
+
 ## 2026-05-01-01
 
 ### 这版一句话
