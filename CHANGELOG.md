@@ -15,6 +15,26 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-05-01-03
+
+### 这版一句话
+补齐部署备份自动归档和部署脚本门禁，避免 Web 备份再次堆积，并让部署脚本问题更早在 Repo Guard 暴露。
+
+### 主要变化
+- Web 静态资源部署成功后自动保留最近 5 个 `web.bak.*`，更旧备份移动到 `/opt/kaka/deploy-archives/web-bak-*`
+- 新增 `scripts/ci/check_deploy_scripts.sh`，检查部署脚本语法、关键环境变量缺失时的失败行为，以及 Web 备份归档行为
+- Repo Guard 接入部署脚本检查，脚本语法或基础行为错误会在部署前失败
+- `Detect Changes` 不再因为 `.github/workflows/deploy.yml` 改动同时触发 backend/web gate；部署脚本按各自路径触发对应 gate
+
+### 影响范围
+- GitHub Actions：Repo Guard、Detect Changes、Deploy Web
+- 线上部署：Web 部署成功后会自动归档旧备份，不删除备份内容
+
+### 验收重点
+- `bash scripts/ci/check_deploy_scripts.sh` 应通过
+- 只改 workflow 时不应自动触发 backend/web/flutter gate；只改 Web 部署脚本时只触发 Web Gate
+- Web 部署成功后线上 `kona_tool/static` 下应只保留最近 5 个 `web.bak.*`
+
 ## 2026-05-01-02
 
 ### 这版一句话

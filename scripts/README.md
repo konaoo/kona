@@ -41,6 +41,7 @@
 - `check_calendar2_output.txt`
 - `ci/check_repo_hygiene.sh`
 - `ci/check_changelog_guard.sh`
+- `ci/check_deploy_scripts.sh`
 - `deploy/deploy_backend.sh`
 - `deploy/upload_web_artifact.sh`
 - `deploy/apply_web_artifact.sh`
@@ -93,6 +94,9 @@
 
 - `ci/check_changelog_guard.sh`
   用途：检查重要工程或业务改动是否同步补了 `CHANGELOG.md`。
+
+- `ci/check_deploy_scripts.sh`
+  用途：检查部署脚本语法、关键环境变量缺失时的失败行为，以及 Web 备份归档行为。
 
 这类脚本符合 `scripts/` 的定位，属于仓库级 CI / 发布守门脚本。
 

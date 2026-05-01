@@ -28,6 +28,9 @@ jobs:
       - name: Repo hygiene guard
         run: bash scripts/ci/check_repo_hygiene.sh
 
+      - name: Deploy scripts guard
+        run: bash scripts/ci/check_deploy_scripts.sh
+
       - name: Sync contract guard
         run: bash scripts/ci/check_sync_contract_generated.sh
 
@@ -69,11 +72,9 @@ jobs:
           filters: |
             backend:
               - 'kona_tool/**'
-              - '.github/workflows/deploy.yml'
               - 'scripts/deploy/deploy_backend.sh'
             web:
               - 'web/**'
-              - '.github/workflows/deploy.yml'
               - 'scripts/deploy/upload_web_artifact.sh'
               - 'scripts/deploy/apply_web_artifact.sh'
             flutter:

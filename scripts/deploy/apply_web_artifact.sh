@@ -4,6 +4,8 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-}"
 REMOTE_WEB_ARCHIVE="${REMOTE_WEB_ARCHIVE:-}"
+WEB_BACKUP_KEEP="${WEB_BACKUP_KEEP:-5}"
+WEB_BACKUP_ARCHIVE_ROOT="${WEB_BACKUP_ARCHIVE_ROOT:-/opt/kaka/deploy-archives}"
 
 if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
   echo "Invalid APP_DIR: $APP_DIR"
@@ -48,6 +50,40 @@ rollback_web() {
   fi
 }
 
+archive_old_web_backups() {
+  backup_parent="$(dirname "$WEB_DIR")"
+  archive_dir="$WEB_BACKUP_ARCHIVE_ROOT/web-bak-$(date +%Y%m%d-%H%M%S)"
+  backup_list="/tmp/kona_web_backups_to_archive.$$"
+
+  {
+    find "$backup_parent" -maxdepth 1 -type d -name 'web.bak.*' | while IFS= read -r backup_path; do
+      if mtime="$(stat -c %Y "$backup_path" 2>/dev/null)"; then
+        :
+      else
+        mtime="$(stat -f %m "$backup_path")"
+      fi
+      printf '%s %s\n' "$mtime" "$backup_path"
+    done
+  } | sort -rn | awk -v keep="$WEB_BACKUP_KEEP" 'NR > keep {print $2}' > "$backup_list"
+
+  if [ ! -s "$backup_list" ]; then
+    rm -f "$backup_list"
+    echo "No old web backups to archive."
+    return 0
+  fi
+
+  mkdir -p "$archive_dir"
+  archived_count=0
+  while IFS= read -r backup_path; do
+    [ -n "$backup_path" ] || continue
+    mv "$backup_path" "$archive_dir"/
+    archived_count=$((archived_count + 1))
+  done < "$backup_list"
+  rm -f "$backup_list"
+
+  echo "Archived $archived_count old web backup(s) to $archive_dir."
+}
+
 rm -rf "$WEB_DIR"
 mkdir -p "$WEB_DIR"
 cp -a "$TMP_WEB_DIR"/. "$WEB_DIR"/
@@ -67,4 +103,5 @@ if [ "$web_root" != "200" ] || [ "$app_login" != "200" ] || [ "$admin_login" != 
   exit 1
 fi
 
+archive_old_web_backups
 echo "Web deploy smoke checks passed."
