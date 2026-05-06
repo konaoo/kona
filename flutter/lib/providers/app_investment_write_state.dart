@@ -306,21 +306,6 @@ class AppInvestmentWriteState {
       return const AssetActionResult.failure('未找到回款账户');
     }
     final cashAsset = _assetsState.cashAssets[cashIndex];
-    final normalizedAssetCurr = _assetsState.normalizeAssetCurrency(
-      current.curr,
-    );
-    final normalizedCashCurr = _assetsState.normalizeAssetCurrency(
-      cashAsset.curr,
-    );
-    if (normalizedAssetCurr != normalizedCashCurr) {
-      return AssetActionResult.failure(
-        '回款账户币种不匹配：需要$normalizedAssetCurr账户',
-        data: {
-          'asset_curr': normalizedAssetCurr,
-          'cash_curr': normalizedCashCurr,
-        },
-      );
-    }
     final sellAmount = price * qty;
     final cashCreditAmount = _tradeState.convertAmountByCurrency(
       amount: sellAmount,

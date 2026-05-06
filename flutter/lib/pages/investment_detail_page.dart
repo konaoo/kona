@@ -83,6 +83,21 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
     );
   }
 
+  bool get _currentAssetExists {
+    final appState = context.read<AppState>();
+    return appState.portfolio.any((p) => p.code == widget.item.code);
+  }
+
+  void _popIfCurrentAssetMissing() {
+    if (!mounted || _deleting || _currentAssetExists) return;
+    final route = ModalRoute.of(context);
+    if (route?.isCurrent != true) return;
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
+  }
+
   // ── 金额格式化（千分位）──
   String _formatAmount(
     double amount, {
@@ -732,6 +747,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 onPortfolioChanged: _refreshData,
                 presentation: InvestTradeDialogPresentation.centered,
               );
+              _popIfCurrentAssetMissing();
             },
           ),
         ),
@@ -749,6 +765,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 onPortfolioChanged: _refreshData,
                 presentation: InvestTradeDialogPresentation.centered,
               );
+              _popIfCurrentAssetMissing();
             },
           ),
         ),
@@ -767,6 +784,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                 initialTradeMode: 'adjust',
                 presentation: InvestTradeDialogPresentation.centered,
               );
+              _popIfCurrentAssetMissing();
             },
           ),
         ),
@@ -1167,7 +1185,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
               if (item == null) {
                 if (!_deleting) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (context.mounted) Navigator.of(context).pop();
+                    _popIfCurrentAssetMissing();
                   });
                 }
                 return const SizedBox.shrink();

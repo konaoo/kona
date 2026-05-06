@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tool/models/asset.dart';
 import 'package:tool/models/asset_action_result.dart';
+import 'package:tool/models/portfolio.dart';
 import 'package:tool/providers/app_assets_state.dart';
 import 'package:tool/providers/app_home_totals_state.dart';
 import 'package:tool/providers/app_investment_write_state.dart';
@@ -17,6 +18,7 @@ class _FakeInvestmentApiService implements ApiService {
   _FakeInvestmentApiService({this.failBuyWithCash = false});
 
   final bool failBuyWithCash;
+  int? lastSellCashAssetId;
 
   @override
   Future<AssetActionResult> buyPortfolioAssetWithCash(
@@ -35,6 +37,21 @@ class _FakeInvestmentApiService implements ApiService {
     }
     return const AssetActionResult.success(
       data: {'undo_token': 'undo-1', 'undo_expire_at': '2099-01-01T00:00:00Z'},
+    );
+  }
+
+  @override
+  Future<AssetActionResult> sellPortfolioAssetToCash(
+    String code,
+    double price,
+    double qty, {
+    required int cashAssetId,
+    String? requestId,
+    int? ledgerId,
+  }) async {
+    lastSellCashAssetId = cashAssetId;
+    return const AssetActionResult.success(
+      data: {'undo_token': 'undo-sell', 'undo_expire_at': '2099-01-01T00:00:00Z'},
     );
   }
 
@@ -170,5 +187,57 @@ void main() {
     expect(homeTotalsState.totalInvest, 0);
     expect(homeTotalsState.totalAsset, 1000);
     expect(refreshCalled, isFalse);
+  });
+
+  test('AppInvestmentWriteState sellInvestmentToCash 支持卖出到不同币种现金账户', () async {
+    final api = _FakeInvestmentApiService();
+    final assetsState = AppAssetsState();
+    assetsState.replacePortfolio([
+      PortfolioItem(
+        code: 'gb_goog',
+        name: '谷歌',
+        qty: 1,
+        price: 100,
+        curr: 'USD',
+        assetType: 'us',
+      ),
+    ], notify: false);
+    assetsState.replaceCashAssets([
+      Asset(id: 1, name: '富途 CNY', amount: 1000, curr: 'CNY'),
+    ], notify: false);
+    final homeTotalsState = buildHomeTotals(api: api, assetsState: assetsState);
+    homeTotalsState.recalculateHomeTotals(notify: false);
+    final state = buildState(
+      api: api,
+      assetsState: assetsState,
+      homeTotalsState: homeTotalsState,
+    );
+
+    var refreshCalled = false;
+
+    final result = await state.sellInvestmentToCash(
+      code: 'gb_goog',
+      price: 100,
+      qty: 1,
+      cashAssetId: 1,
+      awaitRefresh: false,
+      bindings: AppInvestmentWriteBindings(
+        notifyListeners: () {},
+        triggerHomeRefresh: (awaitRefresh) async {
+          refreshCalled = true;
+          expect(awaitRefresh, isFalse);
+        },
+        normalizeInvestmentCurrency: ({required code, String? curr}) =>
+            curr ?? 'CNY',
+        rateForCurrency: (curr) => curr.toUpperCase() == 'USD' ? 7.2 : 1,
+      ),
+    );
+
+    expect(result.ok, isTrue);
+    expect(result.data?['undo_token'], 'undo-sell');
+    expect(api.lastSellCashAssetId, 1);
+    expect(assetsState.portfolio, isEmpty);
+    expect(assetsState.cashAssets.first.amount, 1720);
+    expect(refreshCalled, isTrue);
   });
 }

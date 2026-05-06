@@ -592,6 +592,41 @@ void main() {
     expect(find.textContaining('美元回款账户'), findsOneWidget);
   });
 
+  testWidgets('sell mode can use cash account in different currency', (
+    WidgetTester tester,
+  ) async {
+    final appState = _CashAccountStateAppState(
+      result: const AssetActionResult.success(),
+      cashAssets: <Asset>[
+        Asset(id: 1, name: '富途 CNY', amount: 1000, curr: 'CNY'),
+      ],
+    );
+    final item = PortfolioItem(
+      code: 'gb_goog',
+      name: '谷歌',
+      qty: 1,
+      price: 100,
+      curr: 'USD',
+      assetType: 'us',
+    );
+    await pumpDialog(tester, appState, mode: 'sell', item: item);
+
+    expect(find.text('未找到 USD 资金账户'), findsNothing);
+    expect(find.textContaining('富途 CNY'), findsOneWidget);
+
+    final qtyField = keyFinder('invest_qty_field');
+    await tester.ensureVisible(qtyField);
+    await tester.enterText(qtyField, '1');
+    final submitButton = keyFinder('invest_submit_button');
+    await tester.ensureVisible(submitButton);
+    await tester.pump();
+    await tester.tap(submitButton);
+    await tester.pumpAndSettle();
+
+    expect(appState.sellWithCashCalls, 1);
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('fund add defaults to amount mode and submits derived qty', (
     WidgetTester tester,
   ) async {

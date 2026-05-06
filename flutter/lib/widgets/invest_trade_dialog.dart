@@ -985,10 +985,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final appState = context.read<AppState>();
     final actionMode = _currentActionMode();
     final targetCurrency = _targetCashCurrency(appState, actionMode);
-    final cashOptions = appState.cashAssets
+    final realCashOptions = appState.cashAssets
         .where((asset) => (asset.id ?? 0) > 0)
-        .where((asset) => _normalizeCurrencyCode(asset.curr) == targetCurrency)
         .toList();
+    final cashOptions = actionMode == 'sell'
+        ? realCashOptions
+        : realCashOptions
+              .where(
+                (asset) =>
+                    _normalizeCurrencyCode(asset.curr) == targetCurrency,
+              )
+              .toList();
     if (actionMode != 'sell') {
       cashOptions.insert(
         0,
@@ -3158,12 +3165,17 @@ class _InvestTradeDialogState extends State<InvestTradeDialog> {
     final appState = context.watch<AppState>();
     final actionMode = _currentActionMode();
     final targetCashCurrency = _targetCashCurrency(appState, actionMode);
-    final matchedCashOptions = appState.cashAssets
+    final realCashOptions = appState.cashAssets
         .where((asset) => (asset.id ?? 0) > 0)
-        .where(
-          (asset) => _normalizeCurrencyCode(asset.curr) == targetCashCurrency,
-        )
         .toList();
+    final matchedCashOptions = actionMode == 'sell'
+        ? realCashOptions
+        : realCashOptions
+              .where(
+                (asset) =>
+                    _normalizeCurrencyCode(asset.curr) == targetCashCurrency,
+              )
+              .toList();
     final cashOptions = <Asset>[...matchedCashOptions];
     if (actionMode != 'sell') {
       cashOptions.insert(
