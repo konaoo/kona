@@ -15,6 +15,23 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-05-06-02
+
+### 这版一句话
+同步 Web 端品牌 logo，让官网、Web App、后台和 favicon 使用最新 App Logo。
+
+### 主要变化
+- 将 Web 源资源 `web/public/assets/logo.png` 替换为 Flutter 端最新 `logo.png`
+- 重新构建后，Web App 和 Admin 静态产物会自动带上同一张 logo
+
+### 影响范围
+- Web：官网顶部和底部 logo、登录页 logo、Web App 侧边栏 logo、Admin 导航 logo
+- 浏览器：官网、Web App、Admin 的 favicon
+
+### 验收重点
+- `web/public/assets/logo.png` 与 `flutter/assets/images/logo.png` 的哈希应一致
+- 线上官网、Web App 登录页和 Admin 登录页应展示最新 logo
+
 ## 2026-05-06-01
 
 ### 这版一句话
