@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: deploy-main-${{ github.ref }}
   cancel-in-progress: true
@@ -185,7 +188,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install Web dependencies
         working-directory: web

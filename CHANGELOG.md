@@ -15,6 +15,24 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-05-06-03
+
+### 这版一句话
+升级 GitHub Actions 的 Node 运行环境，提前处理 Node.js 20 actions deprecation 提醒。
+
+### 主要变化
+- Web Gate 的 `actions/setup-node` 从 Node.js 20 升级到 Node.js 24
+- 在部署 workflow 顶层启用 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`，让官方 JavaScript actions 使用 Node.js 24 runtime
+
+### 影响范围
+- GitHub Actions：`Deploy to Production`
+- Web CI：依赖安装、单元测试、构建、e2e smoke
+
+### 验收重点
+- `Deploy to Production` 应通过 Repo Guard
+- Web Gate 在 Node.js 24 下应能完成测试、构建和 e2e smoke
+- 后续 Actions 不应再出现 Node.js 20 deprecation 提醒
+
 ## 2026-05-06-02
 
 ### 这版一句话
