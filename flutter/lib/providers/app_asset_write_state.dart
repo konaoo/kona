@@ -63,7 +63,7 @@ class AppAssetWriteState {
       return result;
     }
     await bindings.triggerHomeRefresh(awaitRefresh);
-    
+
     // 捕获新创建的资产 ID：返回后由前端弹窗立即应用（避免 awaitRefresh 带来的延时等待）
     int? createdId;
     if (result.data != null) {
@@ -74,7 +74,7 @@ class AppAssetWriteState {
         createdId = int.tryParse(rawId.toString());
       }
     }
-    
+
     return AssetActionResult.success(data: {'id': createdId});
   }
 
@@ -191,13 +191,16 @@ class AppAssetWriteState {
     required double delta,
     required String note,
     String? curr,
+    double? targetAmount,
     bool awaitRefresh = false,
     required AppAssetWriteBindings bindings,
   }) async {
     if (id <= 0) {
       return const AssetActionResult.failure('操作失败，请稍后重试');
     }
-    final updatedAmount = mode == 'add' ? currentAmount + delta : currentAmount - delta;
+    final updatedAmount = mode == 'correct'
+        ? (targetAmount ?? currentAmount)
+        : (mode == 'add' ? currentAmount + delta : currentAmount - delta);
     final normalizedCurr = _assetsState.normalizeAssetCurrency(curr);
     final snapshot = _assetsState.captureAssetSnapshot();
     final changed = _assetsState.optimisticUpdateAsset(
@@ -219,6 +222,7 @@ class AppAssetWriteState {
       mode: mode,
       delta: delta,
       note: note,
+      targetAmount: targetAmount,
     );
     if (!result.ok) {
       if (changed) {

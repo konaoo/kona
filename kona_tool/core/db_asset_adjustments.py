@@ -29,6 +29,7 @@ class AssetAdjustmentDatabaseMixin:
         note: str,
         name: Optional[str] = None,
         user_id: Optional[str] = None,
+        target_amount: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         在一个事务内同时更新资产余额（和名称）、写入调整记录。
@@ -66,7 +67,32 @@ class AssetAdjustmentDatabaseMixin:
 
             # 2. 服务端计算新余额
             current_amount = float(row['amount'])
-            balance_after = current_amount + delta if mode == 'add' else current_amount - delta
+            stored_mode = mode
+            stored_delta = float(delta)
+            stored_note = note or ''
+            if mode == 'correct':
+                if target_amount is None:
+                    logger.warning(
+                        "[asset_adjustment] missing correction target type=%s id=%s",
+                        asset_type,
+                        asset_id,
+                    )
+                    return None
+                balance_after = float(target_amount)
+                diff = balance_after - current_amount
+                if abs(diff) <= 1e-9:
+                    logger.warning(
+                        "[asset_adjustment] unchanged correction type=%s id=%s amount=%s",
+                        asset_type,
+                        asset_id,
+                        balance_after,
+                    )
+                    return None
+                stored_mode = 'add' if diff > 0 else 'sub'
+                stored_delta = abs(diff)
+                stored_note = f"修正余额：{current_amount:.2f} → {balance_after:.2f}"
+            else:
+                balance_after = current_amount + stored_delta if mode == 'add' else current_amount - stored_delta
 
             # 3. 更新资产（余额 + 可选名称）
             if name:
@@ -89,7 +115,7 @@ class AssetAdjustmentDatabaseMixin:
                     (asset_type, asset_id, mode, delta, note, balance_after, user_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (asset_type, asset_id, mode, delta, note or '', balance_after, user_id),
+                (asset_type, asset_id, stored_mode, stored_delta, stored_note, balance_after, user_id),
             )
             adjustment_id = cursor.lastrowid
             conn.commit()

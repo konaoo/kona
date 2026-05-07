@@ -1359,14 +1359,22 @@ class ApiService {
     required String mode,
     required double delta,
     required String note,
+    double? targetAmount,
   }) async {
     try {
-      final data = await _post('/api/assets/$assetType/$assetId/adjustments', {
+      final payload = <String, dynamic>{
         'name': name,
         'mode': mode,
         'delta': delta,
         'note': note,
-      });
+      };
+      if (targetAmount != null) {
+        payload['target_amount'] = targetAmount;
+      }
+      final data = await _post(
+        '/api/assets/$assetType/$assetId/adjustments',
+        payload,
+      );
       final map = (data is Map)
           ? Map<String, dynamic>.from(data)
           : <String, dynamic>{};

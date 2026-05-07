@@ -282,9 +282,7 @@ class AppState extends ChangeNotifier {
   int? get currentLedgerId => _currentLedgerId;
   Map<String, dynamic> get realtimeToday => _realtimeToday;
 
-  List<Map<String, dynamic>> _cloneLedgers(
-    List<Map<String, dynamic>> source,
-  ) {
+  List<Map<String, dynamic>> _cloneLedgers(List<Map<String, dynamic>> source) {
     return source
         .map((ledger) => Map<String, dynamic>.from(ledger))
         .toList(growable: false);
@@ -301,7 +299,9 @@ class AppState extends ChangeNotifier {
   }) {
     if (ledgers.isEmpty) return null;
     if (preferredLedgerId != null &&
-        ledgers.any((ledger) => _coerceLedgerId(ledger['id']) == preferredLedgerId)) {
+        ledgers.any(
+          (ledger) => _coerceLedgerId(ledger['id']) == preferredLedgerId,
+        )) {
       return preferredLedgerId;
     }
     final defaultLedger = ledgers.firstWhere(
@@ -357,16 +357,14 @@ class AppState extends ChangeNotifier {
     final previousLedgers = _cloneLedgers(_ledgers);
     final previousCurrentLedgerId = _currentLedgerId;
     final tempId = -DateTime.now().microsecondsSinceEpoch;
-    final nextSortOrder = _ledgers.fold<int>(
-      -1,
-      (maxValue, ledger) {
-        final sortOrder = ledger['sort_order'];
-        final parsed = sortOrder is int
-            ? sortOrder
-            : int.tryParse(sortOrder?.toString() ?? '') ?? -1;
-        return parsed > maxValue ? parsed : maxValue;
-      },
-    ) +
+    final nextSortOrder =
+        _ledgers.fold<int>(-1, (maxValue, ledger) {
+          final sortOrder = ledger['sort_order'];
+          final parsed = sortOrder is int
+              ? sortOrder
+              : int.tryParse(sortOrder?.toString() ?? '') ?? -1;
+          return parsed > maxValue ? parsed : maxValue;
+        }) +
         1;
     final optimisticLedgers = [
       ...previousLedgers,
@@ -396,14 +394,16 @@ class AppState extends ChangeNotifier {
 
     final createdLedgerId = _coerceLedgerId(result.data?['ledger_id']);
     if (createdLedgerId != null) {
-      final settledLedgers = _cloneLedgers(_ledgers).map((ledger) {
-        if (_coerceLedgerId(ledger['id']) != tempId) return ledger;
-        return <String, dynamic>{
-          ...ledger,
-          'id': createdLedgerId,
-          'pending': false,
-        };
-      }).toList(growable: false);
+      final settledLedgers = _cloneLedgers(_ledgers)
+          .map((ledger) {
+            if (_coerceLedgerId(ledger['id']) != tempId) return ledger;
+            return <String, dynamic>{
+              ...ledger,
+              'id': createdLedgerId,
+              'pending': false,
+            };
+          })
+          .toList(growable: false);
       _replaceLedgers(
         settledLedgers,
         preferredLedgerId: previousCurrentLedgerId,
@@ -1011,6 +1011,7 @@ class AppState extends ChangeNotifier {
     required double delta,
     required String note,
     String? curr,
+    double? targetAmount,
   }) async {
     return _assetWriteState.adjustAsset(
       type: type,
@@ -1021,6 +1022,7 @@ class AppState extends ChangeNotifier {
       delta: delta,
       note: note,
       curr: curr,
+      targetAmount: targetAmount,
       awaitRefresh: false,
       bindings: _assetWriteBindings,
     );

@@ -93,12 +93,14 @@ const form = reactive<{
   icon: string
   name: string
   amount: number
+  originalAmount: number
   curr: string
 }>({
   id: null,
   icon: '🏦',
   name: '',
   amount: 0,
+  originalAmount: 0,
   curr: 'CNY'
 })
 
@@ -722,6 +724,7 @@ function openFormModal(item?: any) {
   form.icon = item?.icon ?? defaultAssetIcon(modalType.value)
   form.name = item?.name ?? ''
   form.amount = toNumber(item?.amount, 0)
+  form.originalAmount = form.amount
   form.curr = item?.curr || 'CNY'
   isFormModalVisible.value = true
   if (modalMode.value === 'edit' && form.id) {
@@ -737,11 +740,12 @@ function closeFormModal() {
 }
 
 async function submitModal() {
+  const nextAmount = toNumber(form.amount, 0)
   const payload = {
     id: form.id,
     icon: form.icon,
     name: form.name,
-    amount: form.amount,
+    amount: nextAmount,
     curr: form.curr
   }
   const map = {
@@ -751,7 +755,23 @@ async function submitModal() {
   } as const
   const route = modalMode.value === 'add' ? map[modalType.value].add : map[modalType.value].update
 
-  await api.post(route, payload)
+  if (modalMode.value === 'edit' && form.id) {
+    if (Math.abs(nextAmount - form.originalAmount) <= 1e-9) {
+      await api.post(route, payload)
+    } else {
+      await api.post(route, {
+        ...payload,
+        amount: form.originalAmount
+      })
+      await api.post(`/api/assets/${modalType.value}/${form.id}/adjustments`, {
+        name: form.name,
+        mode: 'correct',
+        target_amount: nextAmount
+      })
+    }
+  } else {
+    await api.post(route, payload)
+  }
   closeFormModal()
   await homeStore.loadAssetLists()
 }
@@ -2043,7 +2063,7 @@ onBeforeUnmount(() => {
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
           <div class="form-group">
-            <label class="form-label">金额</label>
+            <label class="form-label">{{ modalMode === 'edit' ? '修正余额' : '金额' }}</label>
             <input class="form-inp" type="number" v-model="form.amount" placeholder="0.00" />
           </div>
           <div class="form-group">

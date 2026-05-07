@@ -908,6 +908,7 @@ def create_portfolio_payload_handlers(
                 'tx_id': detail.get('tx_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
                 'cash_before_amount': detail.get('cash_before_amount'),
+                'cash_adjustment_id': detail.get('cash_adjustment_id'),
                 'ledger_id': bwc_ledger_id,
             }
             payload = undo_decorator(
@@ -1136,6 +1137,7 @@ def create_portfolio_payload_handlers(
                 'ledger_event_id': detail.get('ledger_event_id'),
                 'cash_asset_id': detail.get('cash_asset_id'),
                 'cash_before_amount': detail.get('cash_before_amount'),
+                'cash_adjustment_id': detail.get('cash_adjustment_id'),
                 'ledger_id': stc_ledger_id,
             }
             payload = undo_decorator(

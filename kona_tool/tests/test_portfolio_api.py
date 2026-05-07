@@ -1247,6 +1247,96 @@ class PortfolioApiTests(unittest.TestCase):
         self.assertAlmostEqual(float(record['balance_after']), 120311.33, places=2)
         self.assertEqual(record['note'], '卖出 谷歌 回款')
 
+    def test_buy_asset_with_cash_records_cash_adjustment_entry(self):
+        ledger_id = app_module.db.get_default_ledger_id('')
+        self.assertTrue(app_module.db.add_cash_asset('招商银行', 5000.0, curr='CNY', user_id=''))
+        cash_asset = next(item for item in app_module.db.get_cash_assets(user_id='') if item['name'] == '招商银行')
+
+        detail = app_module.db.buy_asset_with_cash(
+            code='sh600000',
+            name='浦发银行',
+            price=10.0,
+            qty=100.0,
+            curr='CNY',
+            asset_type='a',
+            cash_asset_id=int(cash_asset['id']),
+            cash_deduct_amount=1000.0,
+            user_id='',
+            ledger_id=ledger_id,
+        )
+
+        self.assertTrue(detail.get('ok'))
+        adjustments = app_module.db.get_asset_adjustments(
+            asset_type='cash',
+            asset_id=int(cash_asset['id']),
+            user_id='',
+        )
+        self.assertEqual(len(adjustments), 1)
+        record = adjustments[0]
+        self.assertEqual(record['mode'], 'sub')
+        self.assertAlmostEqual(float(record['delta']), 1000.0, places=2)
+        self.assertAlmostEqual(float(record['balance_after']), 4000.0, places=2)
+        self.assertEqual(record['note'], '买入 浦发银行 扣款')
+
+    def test_correct_cash_balance_records_adjustment_delta(self):
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '现金账户',
+            'amount': 1000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+        cash_assets = self.client.get('/api/cash_assets').get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        correct_resp = self.client.post(f'/api/assets/cash/{cash_id}/adjustments', json={
+            'name': '现金账户',
+            'mode': 'correct',
+            'target_amount': 1288.5,
+        })
+
+        self.assertEqual(correct_resp.status_code, 200)
+        payload = correct_resp.get_json() or {}
+        self.assertEqual(payload.get('status'), 'ok')
+        self.assertAlmostEqual(float(payload.get('balance_after')), 1288.5, places=2)
+
+        adjustments = app_module.db.get_asset_adjustments(
+            asset_type='cash',
+            asset_id=int(cash_id),
+            user_id='',
+        )
+        self.assertEqual(len(adjustments), 1)
+        record = adjustments[0]
+        self.assertEqual(record['mode'], 'add')
+        self.assertAlmostEqual(float(record['delta']), 288.5, places=2)
+        self.assertAlmostEqual(float(record['balance_after']), 1288.5, places=2)
+        self.assertEqual(record['note'], '修正余额：1000.00 → 1288.50')
+
+    def test_correct_other_asset_rejects_zero_balance(self):
+        add_other_resp = self.client.post('/api/other_assets/add', json={
+            'name': '房产',
+            'amount': 1000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_other_resp.status_code, 200)
+        other_assets = self.client.get('/api/other_assets').get_json() or []
+        other_id = other_assets[-1]['id']
+
+        correct_resp = self.client.post(f'/api/assets/other/{other_id}/adjustments', json={
+            'name': '房产',
+            'mode': 'correct',
+            'target_amount': 0,
+        })
+
+        self.assertEqual(correct_resp.status_code, 400)
+        payload = correct_resp.get_json() or {}
+        self.assertEqual(payload.get('code'), 'INVALID_TARGET_AMOUNT')
+        adjustments = app_module.db.get_asset_adjustments(
+            asset_type='other',
+            asset_id=int(other_id),
+            user_id='',
+        )
+        self.assertEqual(adjustments, [])
+
     def test_delete_corrective_removes_target_ledger_snapshots_only(self):
         default_ledger_id = app_module.db.get_default_ledger_id('')
         second_ledger = app_module.db.create_ledger('', '保留账本')
@@ -1702,6 +1792,12 @@ class PortfolioApiTests(unittest.TestCase):
         undo_cash_item = next((item for item in cash_after_undo if item.get('id') == cash_id), None)
         self.assertIsNotNone(undo_cash_item)
         self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 20000.0)
+        adjustments_after_undo = app_module.db.get_asset_adjustments(
+            asset_type='cash',
+            asset_id=int(cash_id),
+            user_id='',
+        )
+        self.assertEqual(adjustments_after_undo, [])
 
     def test_sell_to_cash_and_undo_restores_cash_and_portfolio(self):
         add_resp = self.client.post('/api/portfolio/add', json={
@@ -1770,6 +1866,12 @@ class PortfolioApiTests(unittest.TestCase):
         undo_cash_item = next((item for item in cash_after_undo if item.get('id') == cash_id), None)
         self.assertIsNotNone(undo_cash_item)
         self.assertAlmostEqual(float(undo_cash_item.get('amount', 0)), 2000.0)
+        adjustments_after_undo = app_module.db.get_asset_adjustments(
+            asset_type='cash',
+            asset_id=int(cash_id),
+            user_id='',
+        )
+        self.assertEqual(adjustments_after_undo, [])
 
     def test_buy_with_cash_undo_only_removes_target_ledger_position(self):
         user_id = 'u_buy_with_cash_undo_ledger'

@@ -2315,6 +2315,7 @@ class PortfolioDatabaseMixin:
                 """,
                 (cash_asset_id, float(cash_add_amount), note, cash_after, user_id),
             )
+            cash_adjustment_id = int(cursor.lastrowid or 0)
 
             conn.commit()
             return {
@@ -2327,6 +2328,7 @@ class PortfolioDatabaseMixin:
                 "cash_before_amount": cash_before,
                 "cash_after_amount": cash_after,
                 "cash_add_amount": float(cash_add_amount),
+                "cash_adjustment_id": cash_adjustment_id,
             }
         except Exception as exc:
             logger.error(
@@ -2536,6 +2538,21 @@ class PortfolioDatabaseMixin:
                 ),
             )
             tx_id = int(cursor.lastrowid or 0)
+            cursor.execute(
+                """
+                INSERT INTO asset_adjustments
+                    (asset_type, asset_id, mode, delta, note, balance_after, user_id)
+                VALUES ('cash', ?, 'sub', ?, ?, ?, ?)
+                """,
+                (
+                    cash_asset_id,
+                    float(cash_deduct_amount),
+                    f"买入 {tx_name} 扣款",
+                    cash_after,
+                    user_id,
+                ),
+            )
+            cash_adjustment_id = int(cursor.lastrowid or 0)
 
             conn.commit()
             return {
@@ -2548,6 +2565,7 @@ class PortfolioDatabaseMixin:
                 "cash_before_amount": cash_before,
                 "cash_after_amount": cash_after,
                 "cash_deduct_amount": float(cash_deduct_amount),
+                "cash_adjustment_id": cash_adjustment_id,
             }
         except Exception as exc:
             logger.error(
@@ -2577,6 +2595,7 @@ class PortfolioDatabaseMixin:
         correction_log_id = operation.get("correction_log_id")
         cash_asset_id = operation.get("cash_asset_id")
         cash_before_amount = operation.get("cash_before_amount")
+        cash_adjustment_id = operation.get("cash_adjustment_id")
         raw_ledger_id = operation.get("ledger_id")
         try:
             ledger_id = int(raw_ledger_id) if raw_ledger_id is not None else None
@@ -2731,6 +2750,23 @@ class PortfolioDatabaseMixin:
                     )
                 if cursor.rowcount <= 0:
                     return {"ok": False, "code": "CASH_ASSET_NOT_FOUND", "error": "Cash account not found"}
+
+            if cash_adjustment_id is not None:
+                try:
+                    cash_adjustment_id_int = int(cash_adjustment_id)
+                except (TypeError, ValueError):
+                    cash_adjustment_id_int = 0
+                if cash_adjustment_id_int > 0:
+                    if user_id:
+                        cursor.execute(
+                            "DELETE FROM asset_adjustments WHERE id = ? AND asset_type = 'cash' AND user_id = ?",
+                            (cash_adjustment_id_int, user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            "DELETE FROM asset_adjustments WHERE id = ? AND asset_type = 'cash' AND (user_id IS NULL OR user_id = '')",
+                            (cash_adjustment_id_int,),
+                        )
 
             conn.commit()
             return {"ok": True}

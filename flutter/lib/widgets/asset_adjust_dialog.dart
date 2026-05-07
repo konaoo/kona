@@ -9,7 +9,7 @@ import '../providers/app_state.dart';
 import '../config/theme.dart';
 import 'top_toast.dart';
 
-/// 资产调整弹窗 - 增加/减少 tab + 名称 + 金额 + 备注 + 删除
+/// 资产调整弹窗 - 增加/减少/修正余额 + 名称 + 金额 + 备注 + 删除
 class AssetAdjustDialog extends StatefulWidget {
   final Asset asset;
   final String assetType; // cash | other | liability
@@ -35,7 +35,7 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
   final _nameFocusNode = FocusNode();
   final _amountFocusNode = FocusNode();
 
-  String _mode = 'add'; // 'add' | 'sub'
+  String _mode = 'add'; // 'add' | 'sub' | 'correct'
   bool _saving = false;
   String? _nameError;
   String? _amountError;
@@ -112,22 +112,24 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
           width: 1,
         ),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(7),
-        child: child,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(7), child: child),
     );
   }
 
-  /// 增加/减少 segmented tab
+  /// 增加/减少/修正余额 segmented tab
   Widget _buildSegmentedTab() {
     final isAdd = _mode == 'add';
+    final isSub = _mode == 'sub';
+    final isCorrect = _mode == 'correct';
     final addActiveBg = AppTheme.isLight
         ? const Color(0x1416A34A)
         : const Color(0x262ECC8A);
     final subActiveBg = AppTheme.isLight
         ? const Color(0x14E45656)
         : const Color(0x1EF05A55);
+    final correctActiveBg = AppTheme.isLight
+        ? const Color(0x145B8DEF)
+        : const Color(0x245B8DEF);
     final lightShadow = BoxShadow(
       color: const Color(0x12222C40),
       blurRadius: 10,
@@ -185,17 +187,17 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 decoration: BoxDecoration(
-                  color: !isAdd ? subActiveBg : Colors.transparent,
+                  color: isSub ? subActiveBg : Colors.transparent,
                   borderRadius: BorderRadius.circular(7),
                   border: Border.all(
-                    color: !isAdd
+                    color: isSub
                         ? (AppTheme.isLight
                               ? const Color(0x33E45656)
                               : Colors.transparent)
                         : Colors.transparent,
                     width: 0.8,
                   ),
-                  boxShadow: !isAdd
+                  boxShadow: isSub
                       ? (AppTheme.isLight ? [lightShadow] : <BoxShadow>[])
                       : [],
                 ),
@@ -205,9 +207,44 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                   style: _dm(
                     size: 13,
                     weight: FontWeight.w500,
-                    color: !isAdd ? _kRed : _kTextMuted,
+                    color: isSub ? _kRed : _kTextMuted,
                   ),
                   child: const Text('减少'),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 3),
+          // ─ 修正余额 ─
+          Expanded(
+            child: GestureDetector(
+              onTap: _saving ? null : () => setState(() => _mode = 'correct'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                decoration: BoxDecoration(
+                  color: isCorrect ? correctActiveBg : Colors.transparent,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isCorrect
+                        ? (AppTheme.isLight
+                              ? const Color(0x335B8DEF)
+                              : Colors.transparent)
+                        : Colors.transparent,
+                    width: 0.8,
+                  ),
+                  boxShadow: isCorrect
+                      ? (AppTheme.isLight ? [lightShadow] : <BoxShadow>[])
+                      : [],
+                ),
+                alignment: Alignment.center,
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 150),
+                  style: _dm(
+                    size: 13,
+                    weight: FontWeight.w500,
+                    color: isCorrect ? AppTheme.accent : _kTextMuted,
+                  ),
+                  child: const Text('修正余额'),
                 ),
               ),
             ),
@@ -227,9 +264,9 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
     }
 
     // 验证金额
-    final deltaStr = _amountController.text.trim();
-    final delta = double.tryParse(deltaStr);
-    if (delta == null || delta <= 0) {
+    final amountStr = _amountController.text.trim();
+    final amount = double.tryParse(amountStr);
+    if (amount == null || amount < 0 || (_mode != 'correct' && amount <= 0)) {
       setState(() => _amountError = '请输入有效金额');
       _amountFocusNode.requestFocus();
       return;
@@ -237,14 +274,21 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
 
     // 减少时不能超过余额
     final currentAmount = widget.asset.amount;
-    if (_mode == 'sub' && delta > currentAmount.abs()) {
+    if (_mode == 'sub' && amount > currentAmount.abs()) {
       setState(() => _amountError = '减少金额不能超过当前余额');
       return;
     }
 
-    final newAmount = _mode == 'add'
-        ? currentAmount + delta
-        : currentAmount - delta;
+    final newAmount = _mode == 'correct'
+        ? amount
+        : (_mode == 'add' ? currentAmount + amount : currentAmount - amount);
+    final delta = (_mode == 'correct')
+        ? (newAmount - currentAmount).abs()
+        : amount;
+    if (_mode == 'correct' && delta <= 1e-9) {
+      setState(() => _amountError = '余额没有变化');
+      return;
+    }
 
     // 乐观成功：立即关闭弹窗，API 后台执行
     final note = _noteController.text.trim();
@@ -267,23 +311,23 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
 
     // 后台调用 API，失败时补一条错误 toast
     unawaited(
-      appState.adjustAsset(
-        type: assetType,
-        id: assetId,
-        name: name,
-        currentAmount: currentAmount,
-        mode: mode,
-        delta: delta,
-        note: note,
-        curr: assetCurr,
-      ).then((result) {
-        if (!result.ok && hostContext.mounted) {
-          TopToast.showError(
-            hostContext,
-            result.message ?? '保存失败，请稍后重试',
-          );
-        }
-      }),
+      appState
+          .adjustAsset(
+            type: assetType,
+            id: assetId,
+            name: name,
+            currentAmount: currentAmount,
+            mode: mode,
+            delta: delta,
+            note: note,
+            curr: assetCurr,
+            targetAmount: _mode == 'correct' ? newAmount : null,
+          )
+          .then((result) {
+            if (!result.ok && hostContext.mounted) {
+              TopToast.showError(hostContext, result.message ?? '保存失败，请稍后重试');
+            }
+          }),
     );
   }
 
@@ -460,10 +504,7 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
         _errorText = result.message ?? '删除失败，请稍后重试';
       });
       if (widget.hostContext.mounted) {
-        TopToast.showError(
-          widget.hostContext,
-          result.message ?? '删除失败，请稍后重试',
-        );
+        TopToast.showError(widget.hostContext, result.message ?? '删除失败，请稍后重试');
       }
       return;
     }
@@ -480,7 +521,8 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
     context.watch<AppState>();
 
     final isAdd = _mode == 'add';
-    final okColor = isAdd ? _kGreen : _kRed;
+    final isCorrect = _mode == 'correct';
+    final okColor = isCorrect ? AppTheme.accent : (isAdd ? _kGreen : _kRed);
     final sym = _currencySymbol();
     final localTheme = AppTheme.isLight
         ? Theme.of(context).copyWith(
@@ -530,345 +572,348 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                  // ── 标题行 ──
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '编辑资产',
+                    // ── 标题行 ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '编辑资产',
+                                  style: _dm(
+                                    size: 14,
+                                    weight: FontWeight.w600,
+                                    color: _kText,
+                                  ),
+                                ),
+                                Text(
+                                  '账户名称和金额为必填项',
+                                  style: _dm(size: 11, color: _kTextMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // ··· 删除菜单
+                          PopupMenuButton<String>(
+                            enabled: !_saving,
+                            color: _kSurface2,
+                            elevation: 10,
+                            tooltip: '更多操作',
+                            offset: const Offset(0, 28),
+                            constraints: const BoxConstraints(
+                              minWidth: 116,
+                              maxWidth: 116,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: _kBorderActive, width: 1),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'delete') _confirmAndDelete();
+                            },
+                            itemBuilder: (ctx) => [
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                height: 34,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  '删除资产',
+                                  style: _dm(
+                                    size: 12,
+                                    weight: FontWeight.w600,
+                                    color: _kRed,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: _kSurface2,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: _kBorder),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '···',
                                 style: _dm(
                                   size: 14,
                                   weight: FontWeight.w600,
-                                  color: _kText,
+                                  color: _kTextMuted,
                                 ),
                               ),
-                              Text(
-                                '账户名称和金额为必填项',
-                                style: _dm(size: 11, color: _kTextMuted),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                        // ··· 删除菜单
-                        PopupMenuButton<String>(
-                          enabled: !_saving,
-                          color: _kSurface2,
-                          elevation: 10,
-                          tooltip: '更多操作',
-                          offset: const Offset(0, 28),
-                          constraints: const BoxConstraints(
-                            minWidth: 116,
-                            maxWidth: 116,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: BorderSide(color: _kBorderActive, width: 1),
-                          ),
-                          onSelected: (value) {
-                            if (value == 'delete') _confirmAndDelete();
-                          },
-                          itemBuilder: (ctx) => [
-                            PopupMenuItem<String>(
-                              value: 'delete',
-                              height: 34,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              child: Text(
-                                '删除资产',
-                                style: _dm(
-                                  size: 12,
-                                  weight: FontWeight.w600,
-                                  color: _kRed,
+                        ],
+                      ),
+                    ),
+
+                    // ── 表单区 ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 账户名称
+                          _buildFieldContainer(
+                            active: _nameFocusNode.hasFocus,
+                            hasError: _nameError != null,
+                            child: TextField(
+                              controller: _nameController,
+                              focusNode: _nameFocusNode,
+                              enabled: !_saving,
+                              maxLines: 1,
+                              textAlignVertical: TextAlignVertical.center,
+                              style: _dm(size: 13, color: _kText),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.transparent,
+                                hintText: '账户名称',
+                                hintStyle: _dm(size: 12, color: _kTextMuted),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 11,
+                                  vertical: 10,
                                 ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                focusedErrorBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
                               ),
+                              onChanged: (_) {
+                                if (_nameError != null) {
+                                  setState(() => _nameError = null);
+                                }
+                              },
+                            ),
+                          ),
+                          if (_nameError != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              _nameError!,
+                              style: _dm(size: 10, color: _kRed),
                             ),
                           ],
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: _kSurface2,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: _kBorder),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              '···',
-                              style: _dm(
-                                size: 14,
-                                weight: FontWeight.w600,
-                                color: _kTextMuted,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                          const SizedBox(height: 10),
 
-                  // ── 表单区 ──
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 账户名称
-                        _buildFieldContainer(
-                          active: _nameFocusNode.hasFocus,
-                          hasError: _nameError != null,
-                          child: TextField(
-                            controller: _nameController,
-                            focusNode: _nameFocusNode,
-                            enabled: !_saving,
-                            maxLines: 1,
-                            textAlignVertical: TextAlignVertical.center,
-                            style: _dm(size: 13, color: _kText),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.transparent,
-                              hintText: '账户名称',
-                              hintStyle: _dm(size: 12, color: _kTextMuted),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 11,
-                                vertical: 10,
-                              ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              focusedErrorBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                            ),
-                            onChanged: (_) {
-                              if (_nameError != null) {
-                                setState(() => _nameError = null);
-                              }
-                            },
-                          ),
-                        ),
-                        if (_nameError != null) ...[
-                          const SizedBox(height: 4),
-                          Text(_nameError!, style: _dm(size: 10, color: _kRed)),
-                        ],
-                        const SizedBox(height: 10),
+                          // 增加/减少/修正余额 tab
+                          _buildSegmentedTab(),
+                          const SizedBox(height: 10),
 
-                        // 增加/减少 tab
-                        _buildSegmentedTab(),
-                        const SizedBox(height: 10),
-
-                        // 金额输入
-                        _buildFieldContainer(
-                          active: _amountFocusNode.hasFocus,
-                          hasError: _amountError != null,
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 12),
-                              Text(
-                                sym,
-                                style: _dm(
-                                  size: 16,
-                                  weight: FontWeight.w500,
-                                  color: _kTextMuted,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: TextField(
-                                  controller: _amountController,
-                                  focusNode: _amountFocusNode,
-                                  enabled: !_saving,
-                                  maxLines: 1,
-                                  textAlignVertical: TextAlignVertical.center,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  style: _mono(
-                                    size: 18,
+                          // 金额输入
+                          _buildFieldContainer(
+                            active: _amountFocusNode.hasFocus,
+                            hasError: _amountError != null,
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 12),
+                                Text(
+                                  sym,
+                                  style: _dm(
+                                    size: 16,
                                     weight: FontWeight.w500,
-                                    color: _kText,
+                                    color: _kTextMuted,
                                   ),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    filled: true,
-                                    fillColor: Colors.transparent,
-                                    hintText: '0.00',
-                                    hintStyle: _dm(
-                                      size: 15,
-                                      color: _kTextMuted,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _amountController,
+                                    focusNode: _amountFocusNode,
+                                    enabled: !_saving,
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    style: _mono(
+                                      size: 18,
+                                      weight: FontWeight.w500,
+                                      color: _kText,
                                     ),
-                                    contentPadding: EdgeInsets.zero,
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    errorBorder: InputBorder.none,
-                                    focusedErrorBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
-                                  ),
-                                  onChanged: (_) {
-                                    if (_amountError != null) {
-                                      setState(() => _amountError = null);
-                                    }
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
-                          ),
-                        ),
-                        if (_amountError != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            _amountError!,
-                            style: _dm(size: 10, color: _kRed),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-
-                        // 备注
-                        _buildFieldContainer(
-                          active: false,
-                          hasError: false,
-                          height: 36,
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 12),
-                              Icon(
-                                Icons.edit_note_outlined,
-                                size: 14,
-                                color: _kTextMuted,
-                              ),
-                              const SizedBox(width: 7),
-                              Expanded(
-                                child: TextField(
-                                  controller: _noteController,
-                                  enabled: !_saving,
-                                  maxLines: 1,
-                                  textAlignVertical: TextAlignVertical.center,
-                                  style: _dm(size: 13, color: _kText),
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    filled: true,
-                                    fillColor: Colors.transparent,
-                                    hintText: '备注（可选）',
-                                    hintStyle: _dm(
-                                      size: 12,
-                                      color: _kTextMuted,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: Colors.transparent,
+                                      hintText: '0.00',
+                                      hintStyle: _dm(
+                                        size: 15,
+                                        color: _kTextMuted,
+                                      ),
+                                      contentPadding: EdgeInsets.zero,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      focusedErrorBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
                                     ),
-                                    contentPadding: EdgeInsets.zero,
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    errorBorder: InputBorder.none,
-                                    focusedErrorBorder: InputBorder.none,
-                                    disabledBorder: InputBorder.none,
+                                    onChanged: (_) {
+                                      if (_amountError != null) {
+                                        setState(() => _amountError = null);
+                                      }
+                                    },
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                            ],
+                                const SizedBox(width: 12),
+                              ],
+                            ),
                           ),
-                        ),
+                          if (_amountError != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              _amountError!,
+                              style: _dm(size: 10, color: _kRed),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
 
-                        if (_errorText != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            _errorText!,
-                            style: _dm(size: 11, color: _kRed),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  // ── 底部按钮 ──
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Row(
-                      children: [
-                        // 取消 (flex 1)
-                        Expanded(
-                          child: SizedBox(
-                            height: 42,
-                            child: OutlinedButton(
-                              onPressed: _saving
-                                  ? null
-                                  : () => Navigator.of(context).pop(),
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: _kSurface2,
-                                side: BorderSide(color: _kBorder, width: 1),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: Text(
-                                '取消',
-                                style: _dm(
-                                  size: 13,
-                                  weight: FontWeight.w600,
+                          // 备注
+                          _buildFieldContainer(
+                            active: false,
+                            hasError: false,
+                            height: 36,
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 12),
+                                Icon(
+                                  Icons.edit_note_outlined,
+                                  size: 14,
                                   color: _kTextMuted,
                                 ),
-                              ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _noteController,
+                                    enabled: !_saving,
+                                    maxLines: 1,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: _dm(size: 13, color: _kText),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      filled: true,
+                                      fillColor: Colors.transparent,
+                                      hintText: '备注（可选）',
+                                      hintStyle: _dm(
+                                        size: 12,
+                                        color: _kTextMuted,
+                                      ),
+                                      contentPadding: EdgeInsets.zero,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      focusedErrorBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        // 确认 (flex 2, 颜色跟随 tab)
-                        Expanded(
-                          flex: 2,
-                          child: SizedBox(
-                            height: 42,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: _saving ? _kSurface3 : okColor,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(8),
-                                  onTap: _saving ? null : _submit,
-                                  child: Center(
-                                    child: _saving
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Colors.white,
-                                                  ),
-                                            ),
-                                          )
-                                        : Text(
-                                            '确认',
-                                            style: _dm(
-                                              size: 13,
-                                              weight: FontWeight.w600,
-                                              color: Colors.white,
-                                            ),
-                                          ),
+
+                          if (_errorText != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _errorText!,
+                              style: _dm(size: 11, color: _kRed),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // ── 底部按钮 ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Row(
+                        children: [
+                          // 取消 (flex 1)
+                          Expanded(
+                            child: SizedBox(
+                              height: 42,
+                              child: OutlinedButton(
+                                onPressed: _saving
+                                    ? null
+                                    : () => Navigator.of(context).pop(),
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: _kSurface2,
+                                  side: BorderSide(color: _kBorder, width: 1),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: Text(
+                                  '取消',
+                                  style: _dm(
+                                    size: 13,
+                                    weight: FontWeight.w600,
+                                    color: _kTextMuted,
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          // 确认 (flex 2, 颜色跟随 tab)
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: 42,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                decoration: BoxDecoration(
+                                  color: _saving ? _kSurface3 : okColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: _saving ? null : _submit,
+                                    child: Center(
+                                      child: _saving
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                      Color
+                                                    >(Colors.white),
+                                              ),
+                                            )
+                                          : Text(
+                                              '确认',
+                                              style: _dm(
+                                                size: 13,
+                                                weight: FontWeight.w600,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                   ],
                 ),
               ),

@@ -9,7 +9,7 @@ from flask import g, jsonify, request
 from core.request_trace import trace_request_stage
 
 _VALID_ASSET_TYPES = {'cash', 'other', 'liability'}
-_VALID_MODES = {'add', 'sub'}
+_VALID_MODES = {'add', 'sub', 'correct'}
 
 
 def create_asset_adjustment_handlers(
@@ -31,12 +31,23 @@ def create_asset_adjustment_handlers(
 
         mode = data.get("mode")
         if mode not in _VALID_MODES:
-            return jsonify({"error": "mode must be 'add' or 'sub'", "code": "INVALID_MODE"}), 400
+            return jsonify({"error": "mode must be 'add', 'sub' or 'correct'", "code": "INVALID_MODE"}), 400
 
-        try:
-            delta = float(data["delta"])
-        except (KeyError, ValueError, TypeError):
-            return jsonify({"error": "Invalid delta", "code": "INVALID_DELTA"}), 400
+        target_amount = None
+        if mode == "correct":
+            try:
+                target_amount = float(data["target_amount"])
+            except (KeyError, ValueError, TypeError):
+                return jsonify({"error": "Invalid target amount", "code": "INVALID_TARGET_AMOUNT"}), 400
+            allow_zero = asset_type == "cash"
+            if target_amount < 0 or (not allow_zero and target_amount <= 0):
+                return jsonify({"error": "Invalid target amount", "code": "INVALID_TARGET_AMOUNT"}), 400
+            delta = 1.0
+        else:
+            try:
+                delta = float(data["delta"])
+            except (KeyError, ValueError, TypeError):
+                return jsonify({"error": "Invalid delta", "code": "INVALID_DELTA"}), 400
 
         if delta <= 0:
             return jsonify({"error": "delta must be positive", "code": "INVALID_DELTA"}), 400
@@ -54,6 +65,7 @@ def create_asset_adjustment_handlers(
                 note=note,
                 name=name,
                 user_id=user_id,
+                target_amount=target_amount,
             )
 
         if result is None:
