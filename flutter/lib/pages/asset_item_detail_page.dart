@@ -605,7 +605,11 @@ class _AssetItemDetailPageState extends State<AssetItemDetailPage> {
               // 资产被删除时自动返回
               if (asset == null) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (context.mounted) Navigator.of(context).pop();
+                  if (!context.mounted) return;
+                  final route = ModalRoute.of(context);
+                  if (route?.isCurrent == true) {
+                    Navigator.of(context).pop();
+                  }
                 });
                 return const SizedBox.shrink();
               }
