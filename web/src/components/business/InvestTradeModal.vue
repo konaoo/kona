@@ -172,6 +172,13 @@ function normalizeAsset(item: Record<string, any>) {
   }
 }
 
+function resolveSelectedLedgerId(): number | null {
+  const rawLedgerId = selectedStock.value?.ledger_id ?? ledgerStore.currentLedgerId
+  if (rawLedgerId == null || rawLedgerId === '') return null
+  const ledgerId = Number(rawLedgerId)
+  return Number.isFinite(ledgerId) ? ledgerId : null
+}
+
 function initializeForAsset(item: Record<string, any> | null | undefined) {
   if (!item) return
   selectedStock.value = normalizeAsset(item)
@@ -657,18 +664,28 @@ async function handleConfirm() {
 
       if (adjustType.value === 'dividend' || adjustType.value === 'fee') {
         const amountValue = parseFloat(adjustValue.value)
-        await api.post('/api/portfolio/adjustment_event', {
+        const adjustmentPayload: Record<string, any> = {
           code: selectedStock.value.code,
           event_type: adjustType.value,
           amount: amountValue,
           curr: selectedStock.value.currency,
-        })
+        }
+        const ledgerId = resolveSelectedLedgerId()
+        if (ledgerId != null) {
+          adjustmentPayload.ledger_id = ledgerId
+        }
+        await api.post('/api/portfolio/adjustment_event', adjustmentPayload)
       } else {
-        await api.post('/api/portfolio/modify', {
+        const modifyPayload: Record<string, any> = {
           code: selectedStock.value.code,
           qty: payload.qty,
           price: payload.price,
-        })
+        }
+        const ledgerId = resolveSelectedLedgerId()
+        if (ledgerId != null) {
+          modifyPayload.ledger_id = ledgerId
+        }
+        await api.post('/api/portfolio/modify', modifyPayload)
       }
       await submitSuccess('✓ 已调整')
       return
