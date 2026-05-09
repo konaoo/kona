@@ -2058,6 +2058,7 @@ class PortfolioDatabaseMixin:
         user_id: str = None,
         return_detail: bool = False,
         ledger_id: int | None = None,
+        close_value_to_cny_rate: float = 1.0,
     ):
         """减仓。"""
         conn = self.get_connection()
@@ -2131,7 +2132,10 @@ class PortfolioDatabaseMixin:
 
             pnl = (price - old_price) * qty
             new_qty = old_qty - qty
-            if new_qty < 0.001:
+            close_rate = float(close_value_to_cny_rate or 1.0)
+            residual_value_cny = abs(new_qty * price * close_rate)
+            should_close_position = new_qty <= 0 or residual_value_cny < 1.0
+            if should_close_position:
                 if user_id:
                     cursor.execute(
                         f"""
@@ -2215,7 +2219,15 @@ class PortfolioDatabaseMixin:
             tx_id = int(cursor.lastrowid or 0)
 
             conn.commit()
-            logger.info("Sell: %s, qty=%s, price=%s, pnl=%s", code, qty, price, pnl)
+            logger.info(
+                "Sell: %s, qty=%s, price=%s, pnl=%s, residual_qty=%s, residual_value_cny=%s",
+                code,
+                qty,
+                price,
+                pnl,
+                new_qty,
+                residual_value_cny,
+            )
             if return_detail:
                 return {
                     "ok": True,
@@ -2243,6 +2255,7 @@ class PortfolioDatabaseMixin:
         user_id: str = None,
         return_detail: bool = False,
         ledger_id: int | None = None,
+        close_value_to_cny_rate: float = 1.0,
     ) -> Dict[str, Any]:
         """减仓并回款到现金账户。"""
         conn = self.get_connection()
@@ -2276,7 +2289,15 @@ class PortfolioDatabaseMixin:
             if not cash_row:
                 return {"ok": False, "code": "CASH_ASSET_NOT_FOUND", "error": "Cash account not found"}
 
-            sell_detail = self.sell_asset(code, price, qty, user_id=user_id, return_detail=True, ledger_id=ledger_id)
+            sell_detail = self.sell_asset(
+                code,
+                price,
+                qty,
+                user_id=user_id,
+                return_detail=True,
+                ledger_id=ledger_id,
+                close_value_to_cny_rate=close_value_to_cny_rate,
+            )
             if not sell_detail or not sell_detail.get("ok"):
                 return sell_detail or {"ok": False, "code": "ASSET_SELL_FAILED", "error": "Failed to sell asset"}
 

@@ -85,6 +85,16 @@ def create_portfolio_payload_handlers(
     def _invalid_ledger_response():
         return jsonify({"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}), 400
 
+    def _rate_to_cny(curr: str, rates: dict | None) -> float:
+        currency = str(curr or "CNY").strip().upper() or "CNY"
+        if currency == "CNY":
+            return 1.0
+        try:
+            rate = float((rates or {}).get(currency) or 0.0)
+        except (TypeError, ValueError):
+            rate = 0.0
+        return rate if rate > 0 else 1.0
+
     def handle_ledgers_list():
         user_id = g.user_id
         if not user_id:
@@ -983,8 +993,30 @@ def create_portfolio_payload_handlers(
             if sell_ledger_id is None and user_id:
                 sell_ledger_id = db.get_default_ledger_id(user_id)
 
+            asset = db.get_asset(str(data.get('code') or '').strip(), user_id, ledger_id=sell_ledger_id)
+            if not asset:
+                return idempotent_response(
+                    'portfolio_sell',
+                    user_id,
+                    request_id,
+                    {"error": "Asset not found", "code": "ASSET_NOT_FOUND"},
+                    404,
+                )
+            asset_curr = str(asset.get('curr') or 'CNY')
+            with trace_request_stage("portfolio.sell.rates"):
+                rates = rates_getter() if asset_curr.upper() != 'CNY' else {}
+                close_value_to_cny_rate = _rate_to_cny(asset_curr, rates)
+
             with trace_request_stage("portfolio.sell.write"):
-                detail = db.sell_asset(data['code'], price, qty, user_id, return_detail=True, ledger_id=sell_ledger_id)
+                detail = db.sell_asset(
+                    data['code'],
+                    price,
+                    qty,
+                    user_id,
+                    return_detail=True,
+                    ledger_id=sell_ledger_id,
+                    close_value_to_cny_rate=close_value_to_cny_rate,
+                )
 
             if detail and detail.get('ok'):
                 operation = {
@@ -1102,12 +1134,17 @@ def create_portfolio_payload_handlers(
         sell_amount = price * qty
         asset_curr = str(asset.get('curr') or 'CNY')
         cash_curr = str(cash_asset.get('curr') or 'CNY')
+        rates = {}
         if asset_curr.upper() == cash_curr.upper():
             cash_add_amount = sell_amount
         else:
             with trace_request_stage("portfolio.sell_to_cash.rates"):
                 rates = rates_getter()
                 cash_add_amount = convert_amount(sell_amount, asset_curr, cash_curr, rates)
+        if asset_curr.upper() != 'CNY' and not rates:
+            with trace_request_stage("portfolio.sell_to_cash.rates"):
+                rates = rates_getter()
+        close_value_to_cny_rate = _rate_to_cny(asset_curr, rates)
         if cash_add_amount <= 0:
             return idempotent_response(
                 'portfolio_sell_to_cash',
@@ -1127,6 +1164,7 @@ def create_portfolio_payload_handlers(
                 user_id=user_id,
                 return_detail=True,
                 ledger_id=stc_ledger_id,
+                close_value_to_cny_rate=close_value_to_cny_rate,
             )
         if detail and detail.get('ok'):
             operation = {

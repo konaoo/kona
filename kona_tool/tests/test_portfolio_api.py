@@ -1873,6 +1873,42 @@ class PortfolioApiTests(unittest.TestCase):
         )
         self.assertEqual(adjustments_after_undo, [])
 
+    def test_sell_to_cash_closes_tiny_residual_value_position(self):
+        add_resp = self.client.post('/api/portfolio/add', json={
+            'code': 'f_006479',
+            'name': '广发纳斯达克100ETF联接人民币(QDII)C',
+            'price': 5.99,
+            'qty': 2662.1037,
+            'asset_type': 'fund',
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+
+        add_cash_resp = self.client.post('/api/cash_assets/add', json={
+            'name': '同花顺',
+            'amount': 0.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_cash_resp.status_code, 200)
+
+        cash_assets = self.client.get('/api/cash_assets').get_json() or []
+        cash_id = cash_assets[-1]['id']
+
+        sell_resp = self.client.post('/api/portfolio/sell_to_cash', json={
+            'code': 'f_006479',
+            'price': 7.9065,
+            'qty': 2662.1,
+            'cash_asset_id': cash_id,
+            'request_id': 'req-sell-to-cash-tiny-residual',
+        })
+        self.assertEqual(sell_resp.status_code, 200)
+
+        portfolio_resp = self.client.get('/api/portfolio')
+        self.assertEqual(portfolio_resp.status_code, 200)
+        portfolio_items = portfolio_resp.get_json() or []
+        target = next((item for item in portfolio_items if item.get('code') == 'f_006479'), None)
+        self.assertIsNone(target)
+
     def test_buy_with_cash_undo_only_removes_target_ledger_position(self):
         user_id = 'u_buy_with_cash_undo_ledger'
         username = 'buy_with_cash_undo_ledger_user'
