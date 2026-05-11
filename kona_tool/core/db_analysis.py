@@ -188,13 +188,28 @@ class AnalysisDatabaseMixin:
                     return {"pnl": pnl, "pnl_rate": round(pnl / base * 100, 2) if base else 0, "base_value": base}
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
 
-            # month/year/all: sum day_pnl over period
+            # month/year: sum day_pnl over period. all: latest cumulative total_pnl.
             if period == "month":
                 start = today.strftime("%Y-%m-01")
             elif period == "year":
                 start = today.strftime("%Y-01-01")
             else:
-                start = "0001-01-01"
+                cursor.execute(
+                    """SELECT total_pnl, total_cost FROM ledger_daily_snapshots
+                       WHERE date <= ? AND user_id = ? AND ledger_id = ?
+                       ORDER BY date DESC LIMIT 1""",
+                    (today_str, user_id, ledger_id),
+                )
+                latest = cursor.fetchone()
+                if latest:
+                    pnl = _round_pnl(latest["total_pnl"] or 0)
+                    base = float(latest["total_cost"] or 0)
+                    return {
+                        "pnl": pnl,
+                        "pnl_rate": round(pnl / base * 100, 2) if base else 0,
+                        "base_value": base,
+                    }
+                return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
 
             cursor.execute(
                 """SELECT COALESCE(SUM(day_pnl), 0) as total_pnl FROM ledger_daily_snapshots
@@ -326,16 +341,20 @@ class AnalysisDatabaseMixin:
                     }
                 return {"pnl": 0, "pnl_rate": 0, "base_value": 0}
 
-            normalized_rows = self._build_effective_pnl_series(
-                cursor,
-                user_condition=user_condition,
-                user_param=user_param,
-                start_date="0001-01-01",
-                end_date=today_str,
+            cursor.execute(
+                f"""
+                SELECT date, total_pnl, total_invest
+                FROM daily_snapshots
+                WHERE date <= ? AND {user_condition}
+                ORDER BY date DESC
+                LIMIT 1
+                """,
+                (today_str,) + user_param,
             )
-            if normalized_rows:
-                pnl = _round_pnl(sum(float(row["pnl"] or 0.0) for row in normalized_rows))
-                base = self._resolve_period_start_base(normalized_rows, 0.0) or 1
+            latest = cursor.fetchone()
+            if latest:
+                pnl = _round_pnl(latest["total_pnl"] or 0)
+                base = float(latest["total_invest"] or 0)
                 return {
                     "pnl": pnl,
                     "pnl_rate": round(pnl / base * 100, 2) if base else 0,

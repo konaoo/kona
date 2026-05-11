@@ -103,7 +103,7 @@ class AnalysisApiTests(unittest.TestCase):
         payload = resp.get_json()
         self.assertEqual(payload.get('code'), 'INVALID_CALENDAR_PERIOD')
 
-    def test_analysis_overview_month_year_all_uses_snapshot_day_pnl_sum(self):
+    def test_analysis_overview_month_year_use_day_pnl_sum_all_uses_latest_total_pnl(self):
         fixed_now = datetime(2026, 2, 13, 14, 0, 0)
         today = fixed_now.date()
         today_str = today.strftime('%Y-%m-%d')
@@ -168,13 +168,13 @@ class AnalysisApiTests(unittest.TestCase):
         expected = anchor_day_pnl + today_day_pnl
         self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl', 0)), expected)
         self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl', 0)), expected)
-        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl', 0)), expected)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl', 0)), -999.0)
         self.assertAlmostEqual(float((payload.get('month') or {}).get('base_value', 0)), 1000.0)
         self.assertAlmostEqual(float((payload.get('year') or {}).get('base_value', 0)), 1000.0)
-        self.assertAlmostEqual(float((payload.get('all') or {}).get('base_value', 0)), 1000.0)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('base_value', 0)), today_invest)
         self.assertAlmostEqual(float((payload.get('month') or {}).get('pnl_rate', 0)), 12.5)
         self.assertAlmostEqual(float((payload.get('year') or {}).get('pnl_rate', 0)), 12.5)
-        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl_rate', 0)), 12.5)
+        self.assertAlmostEqual(float((payload.get('all') or {}).get('pnl_rate', 0)), -83.25)
 
     def test_analysis_calendar_today_item_keeps_snapshot_value(self):
         fixed_now = datetime(2026, 2, 12, 14, 0, 0)
@@ -395,7 +395,7 @@ class AnalysisApiTests(unittest.TestCase):
         all_pnl = float((payload.get('all') or {}).get('pnl', 0))
         self.assertAlmostEqual(all_pnl, 21000.0)
 
-    def test_analysis_overview_all_matches_calendar_when_first_snapshot_nonzero(self):
+    def test_analysis_overview_all_uses_latest_total_pnl_when_first_snapshot_nonzero(self):
         fixed_now = datetime(2026, 2, 13, 14, 0, 0)
         today = fixed_now.date()
         first_in_period = datetime(today.year, today.month, 2).date()
@@ -422,10 +422,10 @@ class AnalysisApiTests(unittest.TestCase):
         calendar_payload = calendar_resp.get_json() or {}
         all_pnl = float((overview.get('all') or {}).get('pnl', 0))
         calendar_total = float(calendar_payload.get('total_pnl', 0))
-        self.assertAlmostEqual(all_pnl, 123.45)
-        self.assertAlmostEqual(all_pnl, calendar_total)
+        self.assertAlmostEqual(all_pnl, 21361.58)
+        self.assertAlmostEqual(calendar_total, 123.45)
 
-    def test_analysis_overview_all_returns_snapshot_day_pnl_sum_not_latest_total(self):
+    def test_analysis_overview_all_returns_latest_total_pnl_not_snapshot_day_pnl_sum(self):
         fixed_now = datetime(2026, 2, 13, 14, 0, 0)
         today = fixed_now.date()
         prev_year = datetime(today.year, 1, 1).date() - timedelta(days=1)
@@ -456,7 +456,35 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertEqual(overview_resp.status_code, 200)
         overview = overview_resp.get_json() or {}
         all_pnl = float((overview.get('all') or {}).get('pnl', 0))
-        self.assertAlmostEqual(all_pnl, 55.0)
+        self.assertAlmostEqual(all_pnl, 21361.58)
+
+    def test_analysis_overview_ledger_all_uses_latest_total_pnl(self):
+        fixed_now = datetime(2026, 2, 13, 14, 0, 0)
+        ledger_id = app_module.db.get_default_ledger_id('')
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ledger_daily_snapshots
+            (date, user_id, ledger_id, total_market_value, total_cost, total_pnl, total_pnl_rate, day_pnl, source, holdings_count)
+            VALUES
+            ('2026-02-12', '', ?, 1100, 1000, 100, 10, 10, 'test', 1),
+            ('2026-02-13', '', ?, 1120, 1000, 120, 12, 20, 'test', 1)
+            """,
+            (ledger_id, ledger_id),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            overview_resp = self.client.get(f'/api/analysis/overview?period=all&ledger_id={ledger_id}')
+        self.assertEqual(overview_resp.status_code, 200)
+        overview = overview_resp.get_json() or {}
+        all_pnl = float((overview.get('all') or {}).get('pnl', 0))
+        all_rate = float((overview.get('all') or {}).get('pnl_rate', 0))
+        self.assertAlmostEqual(all_pnl, 120.0)
+        self.assertAlmostEqual(all_rate, 12.0)
 
     def test_analysis_baseline_route_removed_returns_404(self):
         resp = self.client.get('/api/analysis/baseline')
