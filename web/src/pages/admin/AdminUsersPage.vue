@@ -68,6 +68,13 @@
                 <td>{{ shortDateTime(u.last_active_at || u.last_login) }}</td>
                 <td class="actions">
                   <button class="action-btn-sm secondary" @click="openDetail(u)">详情</button>
+                  <button
+                    class="action-btn-sm warning"
+                    :disabled="resetPassword.submitting"
+                    @click="resetUserPassword(u)"
+                  >
+                    重置密码
+                  </button>
                   <button 
                     class="action-btn-sm" 
                     :class="u.status === 'disabled' ? 'secondary' : 'danger'"
@@ -124,6 +131,13 @@
 
             <div class="mobile-user-actions">
               <button class="action-btn-sm secondary" @click="openDetail(u)">查看详情</button>
+              <button
+                class="action-btn-sm warning"
+                :disabled="resetPassword.submitting"
+                @click="resetUserPassword(u)"
+              >
+                重置密码
+              </button>
               <button
                 class="action-btn-sm"
                 :class="u.status === 'disabled' ? 'secondary' : 'danger'"
@@ -303,6 +317,30 @@
         </template>
       </div>
     </div>
+
+    <div v-if="resetPassword.visible" class="detail-mask" @click.self="closeResetPasswordModal">
+      <div class="password-reset-panel">
+        <div class="detail-head">
+          <div class="head-info">
+            <h3>临时密码</h3>
+            <p>{{ resetPassword.username }}</p>
+          </div>
+          <button class="close-btn" @click="closeResetPasswordModal">✕</button>
+        </div>
+
+        <div class="password-reset-body">
+          <div class="password-reset-tip">
+            用户下次登录必须修改密码，旧登录状态已失效。关闭后本页面不再保留这次临时密码。
+          </div>
+          <div class="password-value-row">
+            <code>{{ resetPassword.tempPassword }}</code>
+            <button class="action-btn-sm dark" @click="copyTempPassword">
+              {{ resetPassword.copied ? '已复制' : '复制密码' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -344,6 +382,14 @@ const users = computed(() => usersState.value)
 const message = ref('')
 const ok = ref(true)
 const pageSizeOptions = [10, 20, 50, 100]
+
+const resetPassword = reactive({
+  visible: false,
+  submitting: false,
+  username: '',
+  tempPassword: '',
+  copied: false,
+})
 
 const totalRows = computed(() => Number(users.value.total || 0))
 const totalPages = computed(() => {
@@ -435,6 +481,49 @@ async function toggleStatus(user: Record<string, any>) {
   } catch (e) {
     flash(e instanceof Error ? e.message : '更新失败', false)
   }
+}
+
+async function resetUserPassword(user: Record<string, any>) {
+  const userId = String(user.id || '')
+  const username = String(user.username || '')
+  if (!userId || resetPassword.submitting) return
+  if (!window.confirm(`确认重置用户 ${username} 的密码吗？用户当前登录状态将失效，下次登录必须修改密码。`)) return
+
+  resetPassword.submitting = true
+  try {
+    const payload = await api.post<Record<string, any>>('/api/admin/users/password/reset', {
+      user_id: userId,
+      force_change: true,
+    })
+    resetPassword.username = username
+    resetPassword.tempPassword = String(payload?.temp_password || '')
+    resetPassword.copied = false
+    resetPassword.visible = true
+    flash('密码已重置', true)
+    await load({ force: true })
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '重置密码失败', false)
+  } finally {
+    resetPassword.submitting = false
+  }
+}
+
+async function copyTempPassword() {
+  if (!resetPassword.tempPassword) return
+  try {
+    await navigator.clipboard.writeText(resetPassword.tempPassword)
+    resetPassword.copied = true
+  } catch (e) {
+    console.error('Failed to copy temp password', e)
+    flash('复制失败，请手动复制', false)
+  }
+}
+
+function closeResetPasswordModal() {
+  resetPassword.visible = false
+  resetPassword.username = ''
+  resetPassword.tempPassword = ''
+  resetPassword.copied = false
 }
 
 async function openDetail(user: Record<string, any>) {
@@ -737,11 +826,14 @@ onMounted(() => {
   padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;
 }
 .action-btn-sm.secondary { background: #f8f9fa; color: #666; }
+.action-btn-sm.warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
 .action-btn-sm.danger { background: #fff5f5; color: #fa5252; border-color: #ffe3e3; }
 .action-btn-sm.dark { background: #111827; color: #fff; border-color: #111827; }
 .action-btn-sm:hover { border-color: #000; transform: translateY(-1px); }
+.action-btn-sm.warning:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
 .action-btn-sm.danger:hover { background: #fa5252; color: white; border-color: #fa5252; }
 .action-btn-sm.dark:hover { background: #000; color: #fff; border-color: #000; }
+.action-btn-sm:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
 /* Table Footer Sync */
 .table-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 5px 0; }
@@ -778,6 +870,15 @@ onMounted(() => {
   overflow: hidden; display: flex; flex-direction: column;
 }
 
+.password-reset-panel {
+  background: white;
+  width: 100%;
+  max-width: 520px;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
 .detail-head {
   padding: 24px 30px; border-bottom: 1px solid #f0f0f0; display: flex;
   justify-content: space-between; align-items: center; background: #fff;
@@ -792,6 +893,44 @@ onMounted(() => {
 .close-btn:hover { background: #000; color: #fff; transform: rotate(90deg); }
 
 .detail-loading { padding: 60px; text-align: center; color: #999; font-weight: 600; }
+
+.password-reset-body {
+  padding: 24px 30px 30px;
+}
+
+.password-reset-tip {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 700;
+}
+
+.password-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.password-value-row code {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 0 14px;
+  background: #f9fafb;
+  color: #111827;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
 
 .summary-grid-simple {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 24px 30px; background: #fafafa;
@@ -1049,7 +1188,7 @@ onMounted(() => {
   }
   .mobile-user-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
     margin-top: 14px;
   }
