@@ -22,6 +22,9 @@ if [ ! -d "$APP_DIR/kona_tool" ]; then
 fi
 echo "Static web target: $WEB_DIR"
 
+WEB_SMOKE_ATTEMPTS="${WEB_SMOKE_ATTEMPTS:-10}"
+WEB_SMOKE_SLEEP_SECONDS="${WEB_SMOKE_SLEEP_SECONDS:-2}"
+
 if [ ! -f "$REMOTE_WEB_ARCHIVE" ]; then
   echo "Missing $REMOTE_WEB_ARCHIVE"
   exit 1
@@ -90,14 +93,26 @@ cp -a "$TMP_WEB_DIR"/. "$WEB_DIR"/
 rm -rf "$TMP_WEB_DIR"
 echo "Frontend assets updated in $WEB_DIR"
 
-web_root=$(curl -sS -o /tmp/kona_web_root.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/ || true)
-app_login=$(curl -sS -o /tmp/kona_app_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/app/login || true)
-admin_login=$(curl -sS -o /tmp/kona_admin_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/admin/login || true)
-echo "web root -> $web_root"
-echo "app login -> $app_login"
-echo "admin login -> $admin_login"
+smoke_ok=0
+attempt=1
+while [ "$attempt" -le "$WEB_SMOKE_ATTEMPTS" ]; do
+  web_root=$(curl -sS -o /tmp/kona_web_root.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/ || true)
+  app_login=$(curl -sS -o /tmp/kona_app_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/app/login || true)
+  admin_login=$(curl -sS -o /tmp/kona_admin_login.html -w "%{http_code}" --max-time 3 http://127.0.0.1:5003/admin/login || true)
+  echo "web smoke attempt $attempt/$WEB_SMOKE_ATTEMPTS: web root -> $web_root, app login -> $app_login, admin login -> $admin_login"
 
-if [ "$web_root" != "200" ] || [ "$app_login" != "200" ] || [ "$admin_login" != "200" ]; then
+  if [ "$web_root" = "200" ] && [ "$app_login" = "200" ] && [ "$admin_login" = "200" ]; then
+    smoke_ok=1
+    break
+  fi
+
+  if [ "$attempt" -lt "$WEB_SMOKE_ATTEMPTS" ]; then
+    sleep "$WEB_SMOKE_SLEEP_SECONDS"
+  fi
+  attempt=$((attempt + 1))
+done
+
+if [ "$smoke_ok" != "1" ]; then
   echo "ERROR: web deploy smoke failed."
   rollback_web
   exit 1
