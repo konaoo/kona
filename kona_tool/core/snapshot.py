@@ -1022,6 +1022,10 @@ def _calculate_portfolio_stats_direct(
                 yclose=yclose_ref,
                 market_statuses=market_statuses,
             )
+            if not effective_date and yclose > 0:
+                market_date = _market_local_date(market, now_utc).strftime("%Y-%m-%d")
+                if (today_sells_by_effective_date.get(market_date) or {}).get(code):
+                    effective_date = market_date
             display_effective_date = _resolve_display_exchange_effective_date(
                 market=market,
                 now_utc=now_utc,

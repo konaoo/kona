@@ -37,7 +37,14 @@ export function shortDateTime(value: unknown): string {
   const raw = String(value).trim()
   if (!raw) return '-'
   const hasTimezone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw)
-  const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`
+  if (!hasTimezone) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(raw)
+    if (match) {
+      return `${match[1]}/${match[2]}/${match[3]} ${match[4]}:${match[5]}:${match[6] || '00'}`
+    }
+  }
+  const normalized = raw.replace(' ', 'T')
+  // 后端存储的是 Asia/Shanghai 本地时间；无时区字符串不能按 UTC 解析。
   const d = new Date(normalized)
   if (Number.isNaN(d.getTime())) return String(value)
   const parts = new Intl.DateTimeFormat('zh-CN', {

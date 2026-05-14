@@ -500,6 +500,42 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
         self.assertEqual(stats.get('day_pnl_effective_date'), '2026-03-26')
 
+    def test_calculate_stats_counts_same_day_closed_sell_when_price_is_flat(self):
+        fixed_now = datetime(2026, 3, 26, 3, 0, tzinfo=timezone.utc)
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO portfolio (code, name, qty, price, curr, adjustment, asset_type, user_id)
+            VALUES ('sh600010', '包钢股份', 0, 10, 'CNY', 0, 'a', '')
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO transactions
+                (time, code, name, type, price, qty, amount, pnl, curr, market, effective_date, user_id)
+            VALUES
+                ('2026-03-26 10:00:00', 'sh600010', '包钢股份', '减仓', 15, 100, 1500, 500, 'CNY', 'a', '2026-03-26', '')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch('core.snapshot.batch_get_prices', return_value={'sh600010': (10.0, 10.0, 0, 0)}):
+            with patch('core.snapshot.get_forex_rates', return_value={'CNY': 1.0}):
+                with patch(
+                    'core.snapshot.get_market_statuses',
+                    return_value={'a': {'open': True, 'trading_day': True, 'reason': 'open_session'}},
+                ):
+                    stats = app_module.calculate_portfolio_stats(None, now_utc=fixed_now)
+
+        self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 500.0, places=2)
+        self.assertAlmostEqual(
+            float((stats.get('day_pnl_breakdowns_by_date') or {}).get('2026-03-26', {}).get('a') or 0.0),
+            500.0,
+            places=2,
+        )
+
     def test_calculate_stats_zero_day_pnl_on_non_trading_day(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'sh600001',
