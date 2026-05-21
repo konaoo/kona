@@ -16,9 +16,9 @@ void main() {
       ApiConfig.normalizeBaseUrls(const <String>[
         'https://api.example.com/',
         'https://api.example.com',
-        'http://114.132.238.12',
+        'http://114.132.246.156',
       ]),
-      <String>['https://api.example.com', 'http://114.132.238.12'],
+      <String>['https://api.example.com', 'http://114.132.246.156'],
     );
   });
 

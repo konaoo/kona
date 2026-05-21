@@ -215,7 +215,7 @@ Flutter API 地址统一从 [lib/config/api_config.dart](/Users/kona/Desktop/kak
 ```bash
 flutter build apk --release \
   --dart-define=APP_ENV=production \
-  --dart-define=MOBILE_API_BASE_URL=http://114.132.238.12 \
+  --dart-define=MOBILE_API_BASE_URL=http://114.132.246.156 \
   --dart-define=ALLOW_INSECURE_HTTP=true
 ```
 

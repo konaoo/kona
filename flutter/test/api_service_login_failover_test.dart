@@ -18,12 +18,12 @@ void main() {
   test('resolveLoginBaseUrls removes duplicates and keeps primary first', () {
     final resolved = ApiService.resolveLoginBaseUrls(
       candidatesOverride: <String>[
-        'http://114.132.238.12/',
-        'http://114.132.238.12',
+        'http://114.132.246.156/',
+        'http://114.132.246.156',
       ],
     );
     expect(resolved.first, ApiConfig.baseUrl);
-    expect(resolved, <String>['http://114.132.238.12']);
+    expect(resolved, <String>['http://114.132.246.156']);
     // baseUrl + deduplicated same ip = 1 entry
     expect(resolved.length, 1);
   });
@@ -52,17 +52,17 @@ void main() {
         username: 'konae',
         password: 'pw',
         baseUrlCandidatesOverride: const <String>[
-          'http://114.132.238.12',
-          'http://114.132.238.12:80',
-          'http://114.132.238.12:52345',
+          'http://114.132.246.156',
+          'http://114.132.246.156:80',
+          'http://114.132.246.156:52345',
         ],
       );
 
       expect(result?['access_token'], 'access-ok');
       expect(calledEndpoints, <String>[
         ApiConfig.login,
-        'http://114.132.238.12:80${ApiConfig.login}',
-        'http://114.132.238.12:52345${ApiConfig.login}',
+        'http://114.132.246.156:80${ApiConfig.login}',
+        'http://114.132.246.156:52345${ApiConfig.login}',
       ]);
     },
   );
@@ -84,8 +84,8 @@ void main() {
         username: 'konae',
         password: 'bad',
         baseUrlCandidatesOverride: const <String>[
-          'http://114.132.238.12',
-          'http://114.132.238.12:80',
+          'http://114.132.246.156',
+          'http://114.132.246.156:80',
         ],
       ),
       throwsA(isA<ApiException>()),

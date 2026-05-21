@@ -13,7 +13,7 @@ void main() {
 
   test('ApiService buildApiUri uses mobile base url when not web', () {
     final uri = ApiService.buildApiUri('/api/health', isWebOverride: false);
-    expect(uri.toString(), 'http://114.132.238.12/api/health');
+    expect(uri.toString(), 'http://114.132.246.156/api/health');
   });
 
   test('ApiService rejects insecure http when disabled', () {
