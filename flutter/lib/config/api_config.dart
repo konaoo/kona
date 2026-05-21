@@ -10,7 +10,7 @@ class ApiConfig {
   /// 当前生产仅保留 IP 入口，域名备案完成后再评估恢复域名访问。
   static const String baseUrl = String.fromEnvironment(
     'MOBILE_API_BASE_URL',
-    defaultValue: 'http://114.132.238.12',
+    defaultValue: 'http://114.132.246.156',
   );
 
   /// 生产 HTTP 迁移 HTTPS 前保留 true；切到 HTTPS 后发版时改成 false。

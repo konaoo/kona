@@ -4,7 +4,7 @@ info:
   version: "v12.0.0"
   description: API for the Kaka portfolio management system
 servers:
-  - url: http://114.132.238.12
+  - url: http://114.132.246.156
   - url: http://127.0.0.1:5003
 components:
   securitySchemes:
