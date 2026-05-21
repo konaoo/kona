@@ -187,7 +187,7 @@ npm install && npm run dev
 
 ## 📈 版本历史
 
-当前 Flutter 客户端版本：`1.0.28`
+当前 Flutter 客户端版本：`1.0.33`
 
 说明：
 
