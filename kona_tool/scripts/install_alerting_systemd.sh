@@ -88,7 +88,7 @@ sudo tee /etc/systemd/system/kona-snapshot-verify.timer >/dev/null <<'EOF'
 Description=Verify snapshot at 07:05 Beijing every day
 
 [Timer]
-OnCalendar=*-*-* 23:05:00
+OnCalendar=*-*-* 07:05:00
 Persistent=true
 Unit=kona-snapshot-verify.service
 

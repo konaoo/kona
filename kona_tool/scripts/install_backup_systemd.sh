@@ -36,7 +36,7 @@ sudo tee /etc/systemd/system/kona-db-backup.timer >/dev/null <<'EOF'
 Description=Run Kona DB backup daily at 07:20 Beijing
 
 [Timer]
-OnCalendar=*-*-* 23:20:00
+OnCalendar=*-*-* 07:20:00
 Persistent=true
 Unit=kona-db-backup.service
 
