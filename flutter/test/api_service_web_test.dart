@@ -13,7 +13,7 @@ void main() {
 
   test('ApiService buildApiUri uses mobile base url when not web', () {
     final uri = ApiService.buildApiUri('/api/health', isWebOverride: false);
-    expect(uri.toString(), 'http://114.132.246.156/api/health');
+    expect(uri.toString(), 'https://kakalog.fun/api/health');
   });
 
   test('ApiService rejects insecure http when disabled', () {
@@ -21,6 +21,7 @@ void main() {
       () => ApiService.buildApiUri(
         '/api/health',
         isWebOverride: false,
+        mobileBaseUrlOverride: 'http://114.132.246.156',
         allowInsecureHttpOverride: false,
       ),
       throwsA(isA<StateError>()),

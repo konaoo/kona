@@ -23,9 +23,10 @@ void main() {
       ],
     );
     expect(resolved.first, ApiConfig.baseUrl);
-    expect(resolved, <String>['http://114.132.246.156']);
-    // baseUrl + deduplicated same ip = 1 entry
-    expect(resolved.length, 1);
+    expect(resolved, <String>[
+      'https://kakalog.fun',
+      'http://114.132.246.156',
+    ]);
   });
 
   test(
@@ -61,8 +62,8 @@ void main() {
       expect(result?['access_token'], 'access-ok');
       expect(calledEndpoints, <String>[
         ApiConfig.login,
+        'http://114.132.246.156${ApiConfig.login}',
         'http://114.132.246.156:80${ApiConfig.login}',
-        'http://114.132.246.156:52345${ApiConfig.login}',
       ]);
     },
   );

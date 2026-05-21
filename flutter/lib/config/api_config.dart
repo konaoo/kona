@@ -7,16 +7,16 @@ class ApiConfig {
   );
 
   /// API 基础地址
-  /// 当前生产仅保留 IP 入口，域名备案完成后再评估恢复域名访问。
+  /// 生产默认走 HTTPS 域名，避免后续服务器换 IP 时必须重新发包。
   static const String baseUrl = String.fromEnvironment(
     'MOBILE_API_BASE_URL',
-    defaultValue: 'http://114.132.246.156',
+    defaultValue: 'https://kakalog.fun',
   );
 
-  /// 生产 HTTP 迁移 HTTPS 前保留 true；切到 HTTPS 后发版时改成 false。
+  /// 生产已切到 HTTPS；本地或临时 IP 调试可用 dart-define 打开。
   static const bool allowInsecureHttp = bool.fromEnvironment(
     'ALLOW_INSECURE_HTTP',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   /// 多个备用登录入口用逗号分隔，例如：

@@ -121,7 +121,8 @@ npm install && npm run dev
 ## 🛠 运维与部署
 
 ### 生产入口
-- **IP 直连**: `http://114.132.246.156/`
+- **域名入口**: `https://kakalog.fun/`
+- **IP 直连**: `http://114.132.246.156/`（仅作迁移兜底）
 - **业务端**: `/app/login`
 - **管理端**: `/admin/login`
 
@@ -132,7 +133,7 @@ npm install && npm run dev
   ```bash
   cd flutter && flutter build apk --release && scp ...
   ```
-  下载地址：`http://114.132.246.156/download/apk`
+  下载地址：`https://kakalog.fun/download/apk`
 
 ### 发布规则
 
@@ -187,7 +188,7 @@ npm install && npm run dev
 
 ## 📈 版本历史
 
-当前 Flutter 客户端版本：`1.0.33`
+当前 Flutter 客户端版本：`1.0.34`
 
 说明：
 
