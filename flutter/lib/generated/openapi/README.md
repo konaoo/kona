@@ -61,7 +61,7 @@ try {
 
 ## Documentation for API Endpoints
 
-All URIs are relative to *http://114.132.246.156*
+All URIs are relative to *https://kakalog.fun*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------

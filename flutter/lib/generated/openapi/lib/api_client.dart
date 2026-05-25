@@ -11,7 +11,7 @@
 part of openapi.api;
 
 class ApiClient {
-  ApiClient({this.basePath = 'http://114.132.246.156', this.authentication,});
+  ApiClient({this.basePath = 'https://kakalog.fun', this.authentication,});
 
   final String basePath;
   final Authentication? authentication;

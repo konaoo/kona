@@ -15,6 +15,26 @@
 
 历史里已经出现的 `v1.0.x / v1.4.x` 条目先保留，不回头重写；但从规则上说，以后不再把 `CHANGELOG` 当客户端版本号来用。
 
+## 2026-05-25-01
+
+### 这版一句话
+把迁移后的生产入口文档和 OpenAPI 生成客户端统一切到 `kakalog.fun`。
+
+### 主要变化
+- 清理 AGENTS 和 Web/运维文档里的旧服务器入口、旧域名说明和 IP 直连主入口表述
+- `docs/openapi.yaml` 的生产 server 改为 `https://kakalog.fun`
+- 重新生成 Web / Flutter OpenAPI 类型，Flutter 生成客户端默认 base path 改为 `https://kakalog.fun`
+
+### 影响范围
+- 项目文档
+- OpenAPI 导入和类型生成结果
+- 后续 AI / 开发者读取生产入口时的默认判断
+
+### 验收重点
+- 文档里不应再把旧服务器或旧域名当成生产入口
+- OpenAPI 生成客户端不应再默认使用服务器 IP
+- Web / Flutter 最小构建检查应通过
+
 ## 2026-05-21-03
 
 ### 这版一句话

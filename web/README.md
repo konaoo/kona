@@ -1,7 +1,7 @@
 # 咔咔记账 Web（Vue3 + Vite）
 
 本目录是咔咔记账独立 Web 前端工程，包含三部分：
-> 当前生产入口仅 IP：`http://114.132.238.12`；域名 `kakawallet.fun` / `www.kakawallet.fun` 已临时禁用。
+> 当前生产入口：`https://kakalog.fun`。
 
 - 门户页：`/`（公开主页）
 - 业务端：`/app/*`
@@ -9,11 +9,11 @@
 
 后端 API 协议保持不变，统一走 Flask 的 `/api/*`。
 
-当前生产入口（2026-03）：
+当前生产入口：
 
-- 门户：`http://114.132.238.12/`
-- 业务端：`http://114.132.238.12/app/login`
-- 管理端：`http://114.132.238.12/admin/login`
+- 门户：`https://kakalog.fun/`
+- 业务端：`https://kakalog.fun/app/login`
+- 管理端：`https://kakalog.fun/admin/login`
 
 ---
 
@@ -169,25 +169,25 @@ web/
 APK 覆盖发布（固定命令，推荐）：
 
 ```bash
-scp -i ~/.ssh/tencent_kona_key \
+scp \
   /Users/kona/Desktop/kaka/kona_repo/flutter/build/app/outputs/flutter-apk/app-release.apk \
-  root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
+  tx:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
 ```
 
 本地构建 + 上传一键命令（固定）：
 
 ```bash
 cd /Users/kona/Desktop/kaka/kona_repo/flutter && flutter build apk --release && \
-scp -i ~/.ssh/tencent_kona_key \
+scp \
   /Users/kona/Desktop/kaka/kona_repo/flutter/build/app/outputs/flutter-apk/app-release.apk \
-  root@114.132.238.12:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
+  tx:/opt/kaka/portfolio/kona_tool/static/downloads/kaka-latest-release.apk
 ```
 
 验证：
 
 ```bash
-curl -I http://114.132.238.12/download/apk
-curl http://114.132.238.12/api/web/config
+curl -I https://kakalog.fun/download/apk
+curl https://kakalog.fun/api/web/config
 ```
 
 ### 6.2 管理端（`/admin/*`）
