@@ -10,7 +10,7 @@ import type { TrendItem } from '@/shared/assetTrend'
 import { usePortfolioStore } from './portfolio'
 import { useRefreshCoordinatorStore } from './refreshCoordinator'
 import { useSessionCoordinatorStore } from './sessionCoordinator'
-import type { PositionRow } from './types'
+import type { BootstrapPayload, PositionRow } from './types'
 
 export type SimpleAsset = {
   id: number
@@ -28,6 +28,7 @@ export type SnapshotPoint = {
 
 const MARKET_INDICES_CACHE_KEY = 'kaka:web:market-indices'
 const HISTORY_POINTS_CACHE_KEY = 'kaka:web:home-history'
+const HOME_BOOTSTRAP_INCLUDE = ['cash_assets', 'other_assets', 'liabilities', 'history'] as const
 
 let staticRefreshTimer: number | null = null
 
@@ -95,6 +96,36 @@ export const useHomeStore = defineStore('home', () => {
       liabilities.value = liabilityRes || []
     } catch (error) {
       console.error('Failed to load home asset lists:', error)
+    }
+  }
+
+  async function loadHomeSnapshot() {
+    try {
+      const payload = await api.post<BootstrapPayload>(
+        '/api/sync/bootstrap',
+        {
+          include: [...HOME_BOOTSTRAP_INCLUDE],
+          client_versions: {},
+        },
+        true,
+      )
+      const data = payload?.data || {}
+      cashAssets.value = Array.isArray(data.cash_assets) ? data.cash_assets as SimpleAsset[] : []
+      otherAssets.value = Array.isArray(data.other_assets) ? data.other_assets as SimpleAsset[] : []
+      liabilities.value = Array.isArray(data.liabilities) ? data.liabilities as SimpleAsset[] : []
+      const points = normalizeHistoryPoints(data.history)
+      historyPoints.value = points
+      try {
+        localStorage.setItem(HISTORY_POINTS_CACHE_KEY, JSON.stringify(points))
+      } catch (cacheError) {
+        console.warn('Failed to persist home history cache:', cacheError)
+      }
+    } catch (error) {
+      console.error('Failed to load home snapshot:', error)
+      await Promise.all([
+        loadAssetLists(),
+        loadHistory(),
+      ])
     }
   }
 
@@ -175,8 +206,7 @@ export const useHomeStore = defineStore('home', () => {
     try {
       await Promise.all([
         refreshCoordinatorStore.refreshStaticOnly(),
-        loadAssetLists(),
-        loadHistory(),
+        loadHomeSnapshot(),
       ])
       await loadAssetTrends()
       void Promise.all([
@@ -232,6 +262,7 @@ export const useHomeStore = defineStore('home', () => {
     rowTrendSignature,
     restoreMarketIndicesCache,
     loadAssetLists,
+    loadHomeSnapshot,
     loadMarketIndices,
     loadHistory,
     loadAssetTrends,

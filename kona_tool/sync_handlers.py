@@ -68,7 +68,7 @@ def create_sync_payload_handlers(
             if domain == "liabilities":
                 return db.get_liabilities(user_id=user_id)
             if domain == "history":
-                return db.get_history(365, user_id=user_id)
+                return db.get_history(5000, user_id=user_id)
             if domain == "overview_all":
                 return {
                     "day": db.get_pnl_overview("day", user_id),

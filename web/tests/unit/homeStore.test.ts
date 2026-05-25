@@ -90,24 +90,26 @@ describe('home store', () => {
     }) as any
 
     apiGet.mockImplementation(async (path: string) => {
-      if (path === '/api/cash_assets') {
-        return [{ id: 1, name: '招行活期', amount: 1000, curr: 'CNY' }]
-      }
-      if (path === '/api/other_assets') {
-        return [{ id: 2, name: '黄金', amount: 200, curr: 'CNY' }]
-      }
-      if (path === '/api/liabilities') {
-        return [{ id: 3, name: '信用卡', amount: 300, curr: 'CNY' }]
-      }
-      if (path === '/api/history?days=5000') {
-        return [{ date: '2026-03-15', total_asset: 12345, day_pnl: 80 }]
-      }
       if (path === '/api/market/indices') {
         return [{ name: '上证指数', value: 3210.12, change_pct: 0.56 }]
       }
       throw new Error(`Unexpected GET ${path}`)
     })
-    apiPost.mockImplementation(async (path: string) => {
+    apiPost.mockImplementation(async (path: string, body?: unknown) => {
+      if (path === '/api/sync/bootstrap') {
+        expect(body).toMatchObject({
+          include: ['cash_assets', 'other_assets', 'liabilities', 'history'],
+          client_versions: {},
+        })
+        return {
+          data: {
+            cash_assets: [{ id: 1, name: '招行活期', amount: 1000, curr: 'CNY' }],
+            other_assets: [{ id: 2, name: '黄金', amount: 200, curr: 'CNY' }],
+            liabilities: [{ id: 3, name: '信用卡', amount: 300, curr: 'CNY' }],
+            history: [{ date: '2026-03-15', total_asset: 12345, day_pnl: 80 }],
+          },
+        }
+      }
       if (path === '/api/asset/trends') {
         return {
           items: {

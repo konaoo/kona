@@ -88,6 +88,46 @@ class SyncBootstrapApiTests(unittest.TestCase):
             self.assertEqual(second_payload.get('changed'), [])
             self.assertEqual(second_payload.get('data'), {})
 
+    def test_sync_bootstrap_history_keeps_more_than_one_year(self):
+        user_id = "u_sync_history"
+        created = app_module.db.create_user(
+            username="sync_history_user",
+            password_hash=app_module.hash_password("Abcd1234"),
+            user_id=user_id,
+        )
+        self.assertEqual(created.get("id"), user_id)
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        for idx in range(420):
+            cursor.execute(
+                """
+                INSERT INTO daily_snapshots (
+                    date, total_asset, total_invest, total_cash, total_other,
+                    total_liability, total_pnl, day_pnl, user_id
+                )
+                VALUES (date('2025-01-01', ?), ?, 0, 0, 0, 0, 0, 0, ?)
+                """,
+                (f"+{idx} day", 1000 + idx, user_id),
+            )
+        conn.commit()
+        conn.close()
+
+        access_token = app_module._issue_auth_tokens(user_id, "sync_history_user")["access_token"]
+        resp = self.client.post(
+            "/api/sync/bootstrap",
+            json={
+                "include": ["history"],
+                "client_versions": {},
+            },
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        history = ((payload.get("data") or {}).get("history") or [])
+        self.assertGreater(len(history), 365)
+
 
 if __name__ == '__main__':
     unittest.main()
