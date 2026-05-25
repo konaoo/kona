@@ -19,9 +19,18 @@ test('登录后关键页面可正常打开', async ({ page }) => {
     }
   })
 
-  const homeHistoryResponse = page.waitForResponse((response) =>
-    response.url().includes('/api/history?days=5000'),
-  )
+  const homeSnapshotResponse = page.waitForResponse(async (response) => {
+    if (!response.url().includes('/api/sync/bootstrap')) return false
+    try {
+      const requestBody = response.request().postDataJSON() as { include?: unknown[] }
+      const include = Array.isArray(requestBody?.include) ? requestBody.include : []
+      return ['cash_assets', 'other_assets', 'liabilities', 'history'].every((domain) =>
+        include.includes(domain),
+      )
+    } catch {
+      return false
+    }
+  })
 
   await page.goto('/app/login')
   await page.getByPlaceholder('请输入用户名').fill('konae')
@@ -32,8 +41,8 @@ test('登录后关键页面可正常打开', async ({ page }) => {
   await expect(page.getByText('总资产').first()).toBeVisible()
   await expect(page.locator('.market-strip')).toBeVisible()
 
-  const historyResponse = await homeHistoryResponse
-  expect(historyResponse.headers()['x-request-id']).toBeTruthy()
+  const snapshotResponse = await homeSnapshotResponse
+  expect(snapshotResponse.headers()['x-request-id']).toBeTruthy()
 
   await page.getByRole('navigation').locator('.nav-item').filter({ hasText: '投资' }).first().click()
   await expect(page).toHaveURL(/\/app\/invest$/)
