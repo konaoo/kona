@@ -21,7 +21,7 @@ def create_misc_payload_handlers(
     request_runtime_metrics_getter: Callable[[], Dict[str, Any]],
 ):
     def build_history_payload():
-        days = request.args.get('days', 365, type=int)
+        days = request.args.get('days', 5000, type=int)
         user_id = g.user_id
         return history_read_service.get_history(days=days, user_id=user_id)
 

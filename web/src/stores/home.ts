@@ -27,6 +27,7 @@ export type SnapshotPoint = {
 }
 
 const MARKET_INDICES_CACHE_KEY = 'kaka:web:market-indices'
+const HISTORY_POINTS_CACHE_KEY = 'kaka:web:home-history'
 
 let staticRefreshTimer: number | null = null
 
@@ -35,6 +36,17 @@ function clearStaticRefreshTimer() {
     window.clearInterval(staticRefreshTimer)
     staticRefreshTimer = null
   }
+}
+
+function normalizeHistoryPoints(raw: unknown): SnapshotPoint[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => ({
+      date: String(item?.date || ''),
+      total_asset: toNumber(item?.total_asset, 0),
+      day_pnl: toNumber(item?.day_pnl, 0),
+    }))
+    .filter((item) => item.date)
 }
 
 export const useHomeStore = defineStore('home', () => {
@@ -105,16 +117,28 @@ export const useHomeStore = defineStore('home', () => {
     chartError.value = ''
     try {
       const response = await api.get<SnapshotPoint[]>('/api/history?days=5000')
-      historyPoints.value = Array.isArray(response)
-        ? response.map((item) => ({
-            date: String(item?.date || ''),
-            total_asset: toNumber(item?.total_asset, 0),
-            day_pnl: toNumber(item?.day_pnl, 0),
-          }))
-        : []
+      const points = normalizeHistoryPoints(response)
+      historyPoints.value = points
+      try {
+        localStorage.setItem(HISTORY_POINTS_CACHE_KEY, JSON.stringify(points))
+      } catch (cacheError) {
+        console.warn('Failed to persist home history cache:', cacheError)
+      }
     } catch (error) {
-      chartError.value = error instanceof Error ? error.message : '历史快照加载失败'
-      historyPoints.value = []
+      let cachedPoints: SnapshotPoint[] = []
+      try {
+        const cachedRaw = localStorage.getItem(HISTORY_POINTS_CACHE_KEY) || '[]'
+        cachedPoints = normalizeHistoryPoints(JSON.parse(cachedRaw))
+      } catch (cacheError) {
+        console.warn('Failed to restore home history cache:', cacheError)
+      }
+      if (cachedPoints.length) {
+        historyPoints.value = cachedPoints
+        chartError.value = ''
+      } else {
+        chartError.value = error instanceof Error ? error.message : '历史快照加载失败'
+        historyPoints.value = []
+      }
       console.error('Failed to load home history:', error)
     } finally {
       chartLoading.value = false

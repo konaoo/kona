@@ -87,6 +87,40 @@ class MiscApiTests(unittest.TestCase):
         payload = resp.get_json() or []
         self.assertEqual([item.get("date") for item in payload], ["2026-02-12", "2026-02-13"])
 
+    def test_history_default_limit_keeps_more_than_one_year_for_old_clients(self):
+        created = app_module.db.create_user(
+            username="history_old_client",
+            password_hash=app_module.hash_password("Abcd1234"),
+            user_id="u_history_old_client",
+        )
+        self.assertEqual(created.get("id"), "u_history_old_client")
+
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        for day in range(370):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO daily_snapshots
+                (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id)
+                VALUES (date('2025-01-01', ?), ?, 0, 0, 0, 0, 0, 0, 'u_history_old_client')
+                """,
+                (f"+{day} day", 1000 + day),
+            )
+        conn.commit()
+        conn.close()
+
+        access_token = app_module._issue_auth_tokens(
+            "u_history_old_client",
+            "history_old_client",
+        )["access_token"]
+        resp = self.client.get(
+            "/api/history",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or []
+        self.assertEqual(len(payload), 370)
+
     def test_asset_trends_endpoint_normalizes_items_and_points(self):
         mocked_trends = [{"code": "sh600000", "points": [1, 2, 3]}]
         with patch.object(app_module, "batch_get_asset_trends", return_value=mocked_trends) as mocked:

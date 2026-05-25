@@ -28,4 +28,8 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test('history endpoint requests full chart range', () {
+    expect(ApiConfig.history, '/api/history?days=5000');
+  });
 }
