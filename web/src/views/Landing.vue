@@ -21,7 +21,7 @@ import MarketsSection from '../components/landing/MarketsSection.vue'
 import DownloadSection from '../components/landing/DownloadSection.vue'
 import Footer from '../components/landing/Footer.vue'
 
-const apkUrl = ref('https://www.pgyer.com/kakawallet')
+const apkUrl = ref('/download/apk')
 const iosQrText = ref('扫码下载苹果版')
 const iosQrImageUrl = ref('')
 

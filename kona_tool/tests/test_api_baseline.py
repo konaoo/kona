@@ -46,7 +46,7 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json() or {}
         self.assertIn('portal_title', data)
-        self.assertIn('apk_download_url', data)
+        self.assertEqual(data.get('apk_download_url'), '/download/apk')
         self.assertIn('invite_acquire_text', data)
         self.assertIn('invite_acquire_image_url', data)
         self.assertIn('user_group_text', data)
@@ -115,6 +115,12 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertIn("version", data)
         self.assertIn("buildNumber", data)
         self.assertIn("forceUpdate", data)
+
+    def test_app_version_defaults_to_domain_apk_download_url(self):
+        resp = self.client.get('/api/app/version')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertEqual(data.get("downloadUrl"), "https://kakalog.fun/download/apk")
 
     def test_download_apk_not_found(self):
         with tempfile.TemporaryDirectory() as tmp:

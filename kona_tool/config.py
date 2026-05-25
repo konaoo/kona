@@ -58,14 +58,14 @@ CLIENT_APP_RELEASE_NOTES = os.getenv(
 ).strip()
 CLIENT_APP_DOWNLOAD_URL = os.getenv(
     "CLIENT_APP_DOWNLOAD_URL",
-    "https://kaka-1402418961.cos.ap-guangzhou.myqcloud.com/kaka-latest.apk"
+    "https://kakalog.fun/download/apk"
 ).strip()
 CLIENT_APP_FORCE_UPDATE = os.getenv("CLIENT_APP_FORCE_UPDATE", "false").lower() == "true"
 
 # 新 Web 门户配置（独立 H5）
 WEB_APK_DOWNLOAD_URL = os.getenv(
     "WEB_APK_DOWNLOAD_URL",
-    "https://www.pgyer.com/kakawallet",
+    "/download/apk",
 ).strip()
 WEB_APK_FILENAME = os.getenv("WEB_APK_FILENAME", "kaka-latest-release.apk").strip() or "kaka-latest-release.apk"
 WEB_APK_LOCAL_PATH = BASE_DIR / "static" / "downloads" / WEB_APK_FILENAME

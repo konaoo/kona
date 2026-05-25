@@ -18,21 +18,26 @@
 ## 2026-05-25-01
 
 ### 这版一句话
-把迁移后的生产入口文档和 OpenAPI 生成客户端统一切到 `kakalog.fun`。
+把迁移后的生产入口、下载入口和 OpenAPI 生成客户端统一切到 `kakalog.fun`。
 
 ### 主要变化
 - 清理 AGENTS 和 Web/运维文档里的旧服务器入口、旧域名说明和 IP 直连主入口表述
 - `docs/openapi.yaml` 的生产 server 改为 `https://kakalog.fun`
 - 重新生成 Web / Flutter OpenAPI 类型，Flutter 生成客户端默认 base path 改为 `https://kakalog.fun`
+- App 检查更新默认下载地址改为 `https://kakalog.fun/download/apk`
+- Web 门户 APK 下载默认入口改为站内 `/download/apk`
 
 ### 影响范围
 - 项目文档
 - OpenAPI 导入和类型生成结果
+- App 检查更新默认下载地址
+- Web 门户 APK 下载按钮默认地址
 - 后续 AI / 开发者读取生产入口时的默认判断
 
 ### 验收重点
 - 文档里不应再把旧服务器或旧域名当成生产入口
 - OpenAPI 生成客户端不应再默认使用服务器 IP
+- 检查更新和 Web 门户默认下载地址不应再指向蒲公英或旧下载入口
 - Web / Flutter 最小构建检查应通过
 
 ## 2026-05-21-03
