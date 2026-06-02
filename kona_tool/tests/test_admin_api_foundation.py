@@ -291,6 +291,27 @@ class AdminApiFoundationTests(unittest.TestCase):
         self.assertEqual(resp.get_json(), fake_payload)
         mock_probe.assert_called_once_with("00700")
 
+    def test_price_probe_accepts_five_value_quote_tuple(self):
+        with patch.object(admin_monitoring, "get_price", return_value=(10.0, 9.8, 0.2, 2.04, "2026-06-02")), patch.object(
+            admin_monitoring,
+            "get_tencent_stock_price",
+            return_value=(10.0, 9.8, 0.2, 2.04, "2026-06-02"),
+        ), patch.object(
+            admin_monitoring,
+            "get_sina_direct_stock_price",
+            return_value=(9.99, 9.8, 0.19, 1.94, "2026-06-02"),
+        ), patch.object(
+            admin_monitoring,
+            "get_eastmoney_stock_price",
+            return_value=(10.01, 9.8, 0.21, 2.14, "2026-06-02"),
+        ):
+            payload = admin_monitoring.build_price_probe_payload("sh600000")
+
+        self.assertEqual(payload["current"]["price"], 10.0)
+        sources = payload.get("sources") or []
+        self.assertEqual(len(sources), 3)
+        self.assertEqual(sources[0].get("date"), "2026-06-02")
+
     def test_market_provider_test_excludes_fund_for_stock_only_sources(self):
         payload = admin_routes._run_market_provider_test("sina_quote")
         codes = {str(item.get("code")) for item in (payload.get("items") or [])}

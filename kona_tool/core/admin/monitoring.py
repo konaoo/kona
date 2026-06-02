@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from flask import current_app
 
@@ -53,6 +53,19 @@ _ADMIN_LOGGER = logging.getLogger(__name__)
 def set_admin_db(db) -> None:
     global _ADMIN_DB
     _ADMIN_DB = db
+
+
+def normalize_price_alert_quote(quote: Sequence[Any]) -> Tuple[float, float, float, float, Optional[str]]:
+    values = list(quote or [])
+    padded = [*values[:5], *([None] * max(0, 5 - len(values)))]
+    price, yclose, amt, chg, quote_date = padded[:5]
+    return (
+        float(price or 0.0),
+        float(yclose or 0.0),
+        float(amt or 0.0),
+        float(chg or 0.0),
+        str(quote_date).strip() if quote_date else None,
+    )
 
 
 def price_alert_exchange_candidates(code: str) -> List[str]:
@@ -127,21 +140,22 @@ def load_price_alert_holdings() -> List[Dict[str, Any]]:
     return list(grouped.values())
 
 
-def probe_price_alert_sources(code: str) -> Tuple[Tuple[float, float, float, float], List[Dict[str, Any]]]:
+def probe_price_alert_sources(code: str) -> Tuple[Tuple[float, float, float, float, Optional[str]], List[Dict[str, Any]]]:
     current = get_price(code, use_cache=False)
     sources: List[Dict[str, Any]] = []
     lower = str(code or "").strip().lower()
 
-    def add_source(source_key: str, source_label: str, quote: Tuple[float, float, float, float]) -> None:
-        price, yclose, amt, chg = quote
+    def add_source(source_key: str, source_label: str, quote: Sequence[Any]) -> None:
+        price, yclose, amt, chg, quote_date = normalize_price_alert_quote(quote)
         sources.append(
             {
                 "source_key": source_key,
                 "source_label": source_label,
-                "price": float(price or 0.0),
-                "yclose": float(yclose or 0.0),
-                "amt": float(amt or 0.0),
-                "chg": float(chg or 0.0),
+                "price": price,
+                "yclose": yclose,
+                "amt": amt,
+                "chg": chg,
+                "date": quote_date,
             }
         )
 
