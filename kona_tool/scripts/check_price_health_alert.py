@@ -5,7 +5,7 @@ Check /api/system/price_health and alert when thresholds are exceeded.
 Rules:
 - network_fail delta in 5-minute window >= threshold
 - stale_hits delta in 5-minute window >= threshold
-- any source has consecutive_fail >= threshold or circuit_open=true
+- critical source has consecutive_fail >= threshold or circuit_open=true
 """
 import json
 import os
@@ -37,7 +37,6 @@ DEFAULT_CRITICAL_SOURCE_NAMES = {
     "overseas_fund_html",
     "sina_us_stock",
     "tencent_stock",
-    "tiantian_fund",
 }
 
 

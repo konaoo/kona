@@ -91,6 +91,10 @@ class PriceHealthAlertScriptTests(unittest.TestCase):
                     "consecutive_fail": 2,
                     "circuit_open": True,
                 },
+                "tiantian_fund": {
+                    "consecutive_fail": 999,
+                    "circuit_open": True,
+                },
             },
         }
         previous = {
