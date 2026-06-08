@@ -52,11 +52,11 @@ class PriceHealthAlertScriptTests(unittest.TestCase):
                 "stale_hits": 0,
             },
             "sources": {
-                "sina_stock": {
+                "sina_us_stock": {
                     "consecutive_fail": 5,
                     "circuit_open": False,
                 },
-                "eastmoney_fund": {
+                "tencent_stock": {
                     "consecutive_fail": 2,
                     "circuit_open": True,
                 },
@@ -70,10 +70,37 @@ class PriceHealthAlertScriptTests(unittest.TestCase):
         }
         alerts = module.build_alert_messages(current, previous)
         merged = "\n".join(alerts)
-        self.assertIn("sina_stock", merged)
-        self.assertIn("eastmoney_fund", merged)
+        self.assertIn("sina_us_stock", merged)
+        self.assertIn("tencent_stock", merged)
         self.assertIn("consecutive_fail", merged)
         self.assertIn("circuit_open", merged)
+
+    def test_non_critical_source_failures_do_not_alert(self):
+        module = _load_module()
+        current = {
+            "runtime": {
+                "network_fail": 0,
+                "stale_hits": 0,
+            },
+            "sources": {
+                "yahoo_us_history": {
+                    "consecutive_fail": 999,
+                    "circuit_open": True,
+                },
+                "nasdaq_quote": {
+                    "consecutive_fail": 2,
+                    "circuit_open": True,
+                },
+            },
+        }
+        previous = {
+            "runtime": {
+                "network_fail": 0,
+                "stale_hits": 0,
+            }
+        }
+        alerts = module.build_alert_messages(current, previous)
+        self.assertEqual(alerts, [])
 
     def test_no_alert_when_below_threshold(self):
         module = _load_module()
@@ -106,7 +133,7 @@ class PriceHealthAlertScriptTests(unittest.TestCase):
                 "stale_hits": 0,
             },
             "sources": {
-                "nasdaq_quote": {
+                "tencent_stock": {
                     "consecutive_fail": 2,
                     "circuit_open": True,
                 }

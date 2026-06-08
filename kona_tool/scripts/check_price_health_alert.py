@@ -31,6 +31,22 @@ STATE_FILE = os.getenv("PRICE_HEALTH_STATE_FILE", "/tmp/kona_price_health_state.
 NETWORK_FAIL_DELTA_THRESHOLD = int(os.getenv("PRICE_HEALTH_NETWORK_FAIL_DELTA_THRESHOLD", "20"))
 STALE_HITS_DELTA_THRESHOLD = int(os.getenv("PRICE_HEALTH_STALE_HITS_DELTA_THRESHOLD", "30"))
 SOURCE_CONSEC_FAIL_THRESHOLD = int(os.getenv("PRICE_HEALTH_SOURCE_CONSEC_FAIL_THRESHOLD", "5"))
+DEFAULT_CRITICAL_SOURCE_NAMES = {
+    "eastmoney_fund_f10",
+    "exchangerate_api",
+    "overseas_fund_html",
+    "sina_us_stock",
+    "tencent_stock",
+    "tiantian_fund",
+}
+
+
+def _parse_source_names(raw: str) -> set[str]:
+    names = {item.strip() for item in str(raw or "").split(",") if item.strip()}
+    return names or set(DEFAULT_CRITICAL_SOURCE_NAMES)
+
+
+CRITICAL_SOURCE_NAMES = _parse_source_names(os.getenv("PRICE_HEALTH_CRITICAL_SOURCES", ""))
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -87,6 +103,8 @@ def build_alert_messages(current: Dict[str, Any], previous: Dict[str, Any]) -> L
 
     sources = current.get("sources") or {}
     for source_name, source_info in sources.items():
+        if source_name not in CRITICAL_SOURCE_NAMES:
+            continue
         consecutive_fail = _safe_int((source_info or {}).get("consecutive_fail"), 0)
         circuit_open = bool((source_info or {}).get("circuit_open", False))
         if consecutive_fail >= SOURCE_CONSEC_FAIL_THRESHOLD:
