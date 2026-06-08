@@ -29,6 +29,7 @@
 - 后端部署 bundle 上传增加 SSH 预热、sha256 校验和重试，避免一次 SSH 抖动导致部署失败
 - 后端部署脚本改为从 bundle 的 `HEAD` 引用取目标提交，兼容增量 bundle 的真实引用格式
 - 后端远程部署执行增加重试，降低最后一次 SSH 抖动导致整次发布失败的概率
+- 后端部署 bundle 远端校验改为在项目目录下执行，避免 `git bundle verify` 找不到仓库
 - Web 端 Playwright 浏览器安装增加超时，避免手动全量流水线长期卡住
 
 ### 影响范围
@@ -45,6 +46,7 @@
 - GitHub Actions 后端部署应能在服务器拉不动 GitHub 时继续完成
 - 后端部署 bundle 上传不应长时间卡住
 - 后端部署脚本应能正确读取增量 bundle 里的目标提交
+- 后端部署 bundle 远端校验应通过
 - GitHub Actions Web 验收不应长期卡在 Playwright 浏览器安装
 
 ## 2026-06-02-01

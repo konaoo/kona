@@ -303,7 +303,7 @@ jobs:
               run_ssh "set -eu
                 actual_sha=\$(sha256sum '$REMOTE_TMP_DEPLOY_BUNDLE' | awk '{print \$1}')
                 [ \"\$actual_sha\" = '$LOCAL_BUNDLE_SHA' ]
-                git bundle verify '$REMOTE_TMP_DEPLOY_BUNDLE'
+                git -C '$APP_DIR' bundle verify '$REMOTE_TMP_DEPLOY_BUNDLE'
                 mv '$REMOTE_TMP_DEPLOY_BUNDLE' '$REMOTE_DEPLOY_BUNDLE'
               "; then
               UPLOAD_OK=1
