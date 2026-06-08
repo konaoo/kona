@@ -267,7 +267,7 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
 
-          SSH_OPTS="-i $KEY_FILE -o BatchMode=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          SSH_OPTS="-i $KEY_FILE -o BatchMode=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 
           DEPLOY_BUNDLE="$RUNNER_TEMP/kona-backend-${TARGET_SHA}.bundle"
           REMOTE_DEPLOY_BUNDLE="/tmp/kona-backend-${TARGET_SHA}.bundle"
@@ -281,13 +281,13 @@ jobs:
           }
 
           WARMUP_OK=0
-          for attempt in 1 2; do
+          for attempt in 1 2 3 4 5; do
             echo "SSH warmup attempt $attempt ..."
-            if run_ssh "echo warmup-ok" >/dev/null 2>&1; then
+            if run_ssh "echo warmup-ok"; then
               WARMUP_OK=1
               break
             fi
-            sleep 2
+            sleep $((attempt * 2))
           done
           if [ "$WARMUP_OK" -ne 1 ]; then
             echo "SSH warmup failed after retries."
@@ -317,7 +317,19 @@ jobs:
             exit 1
           fi
 
-          ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' DEPLOY_BUNDLE='$REMOTE_DEPLOY_BUNDLE' bash -s" < scripts/deploy/deploy_backend.sh
+          DEPLOY_OK=0
+          for attempt in 1 2 3; do
+            echo "Remote deploy attempt $attempt ..."
+            if ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' DEPLOY_BUNDLE='$REMOTE_DEPLOY_BUNDLE' bash -s" < scripts/deploy/deploy_backend.sh; then
+              DEPLOY_OK=1
+              break
+            fi
+            sleep $((attempt * 3))
+          done
+          if [ "$DEPLOY_OK" -ne 1 ]; then
+            echo "Remote deploy failed after retries."
+            exit 1
+          fi
 
   deploy_web:
     name: Deploy Web

@@ -52,7 +52,7 @@ if [ "$CURRENT_SHA" = "$TARGET_SHA" ]; then
 else
   if [ -n "$DEPLOY_BUNDLE" ] && [ -f "$DEPLOY_BUNDLE" ]; then
     echo "Using deploy bundle: $DEPLOY_BUNDLE"
-    if git fetch "$DEPLOY_BUNDLE" main:refs/remotes/bundle/main; then
+    if git fetch "$DEPLOY_BUNDLE" HEAD:refs/remotes/bundle/main; then
       BUNDLE_SHA="$(git rev-parse refs/remotes/bundle/main)"
       echo "Fetched bundle/main sha: $BUNDLE_SHA"
       if git cat-file -e "$TARGET_SHA^{commit}"; then
