@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-}"
 TARGET_SHA="${TARGET_SHA:-}"
+DEPLOY_BUNDLE="${DEPLOY_BUNDLE:-}"
 
 if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
   echo "Invalid APP_DIR: $APP_DIR"
@@ -49,18 +50,33 @@ if [ "$CURRENT_SHA" = "$TARGET_SHA" ]; then
   FETCH_OK=1
   echo "Server already at target sha, skip git fetch."
 else
-  for attempt in 1 2 3; do
-    if fetch_main_with_timeout "$attempt"; then
-      REMOTE_SHA="$(git rev-parse origin/main)"
-      echo "Fetched origin/main sha: $REMOTE_SHA"
-      if [ "$REMOTE_SHA" = "$TARGET_SHA" ]; then
+  if [ -n "$DEPLOY_BUNDLE" ] && [ -f "$DEPLOY_BUNDLE" ]; then
+    echo "Using deploy bundle: $DEPLOY_BUNDLE"
+    if git fetch "$DEPLOY_BUNDLE" main:refs/remotes/bundle/main; then
+      BUNDLE_SHA="$(git rev-parse refs/remotes/bundle/main)"
+      echo "Fetched bundle/main sha: $BUNDLE_SHA"
+      if git cat-file -e "$TARGET_SHA^{commit}"; then
         FETCH_OK=1
-        break
+      else
+        echo "Bundle does not contain target sha."
       fi
-      echo "Fetched sha does not match target sha yet, wait and retry."
     fi
-    sleep $((attempt * 2))
-  done
+  fi
+
+  if [ "$FETCH_OK" -ne 1 ]; then
+    for attempt in 1 2 3; do
+      if fetch_main_with_timeout "$attempt"; then
+        REMOTE_SHA="$(git rev-parse origin/main)"
+        echo "Fetched origin/main sha: $REMOTE_SHA"
+        if [ "$REMOTE_SHA" = "$TARGET_SHA" ]; then
+          FETCH_OK=1
+          break
+        fi
+        echo "Fetched sha does not match target sha yet, wait and retry."
+      fi
+      sleep $((attempt * 2))
+    done
+  fi
 fi
 
 if [ "$FETCH_OK" -ne 1 ]; then

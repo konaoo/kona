@@ -76,6 +76,7 @@ jobs:
             backend:
               - 'kona_tool/**'
               - 'scripts/deploy/deploy_backend.sh'
+              - '.github/workflows/deploy.yml'
             web:
               - 'web/**'
               - 'scripts/deploy/upload_web_artifact.sh'
@@ -266,7 +267,12 @@ jobs:
 
           SSH_OPTS="-i $KEY_FILE -o BatchMode=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ConnectionAttempts=2 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 
-          ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' bash -s" < scripts/deploy/deploy_backend.sh
+          DEPLOY_BUNDLE="$RUNNER_TEMP/kona-backend-${TARGET_SHA}.bundle"
+          REMOTE_DEPLOY_BUNDLE="/tmp/kona-backend-${TARGET_SHA}.bundle"
+          git bundle create "$DEPLOY_BUNDLE" HEAD
+          scp $SSH_OPTS "$DEPLOY_BUNDLE" root@"$SSH_HOST":"$REMOTE_DEPLOY_BUNDLE"
+
+          ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' DEPLOY_BUNDLE='$REMOTE_DEPLOY_BUNDLE' bash -s" < scripts/deploy/deploy_backend.sh
 
   deploy_web:
     name: Deploy Web
