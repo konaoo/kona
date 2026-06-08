@@ -246,6 +246,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 50
 
       - name: Deploy backend via SSH
         env:
@@ -269,8 +271,10 @@ jobs:
 
           DEPLOY_BUNDLE="$RUNNER_TEMP/kona-backend-${TARGET_SHA}.bundle"
           REMOTE_DEPLOY_BUNDLE="/tmp/kona-backend-${TARGET_SHA}.bundle"
-          git bundle create "$DEPLOY_BUNDLE" HEAD
-          scp $SSH_OPTS "$DEPLOY_BUNDLE" root@"$SSH_HOST":"$REMOTE_DEPLOY_BUNDLE"
+          BASE_SHA="$(git rev-list --max-count=20 HEAD | tail -n 1)"
+          git bundle create "$DEPLOY_BUNDLE" "$BASE_SHA"..HEAD
+          ls -lh "$DEPLOY_BUNDLE"
+          timeout 120 scp $SSH_OPTS "$DEPLOY_BUNDLE" root@"$SSH_HOST":"$REMOTE_DEPLOY_BUNDLE"
 
           ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' DEPLOY_BUNDLE='$REMOTE_DEPLOY_BUNDLE' bash -s" < scripts/deploy/deploy_backend.sh
 
