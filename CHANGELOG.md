@@ -26,11 +26,14 @@
 - 补充价格健康告警脚本测试，覆盖关键源报警和非关键源不报警
 - 后端自动部署增加 Git bundle 兜底，避免新服务器直连 GitHub 不稳定时部署失败
 - 部署 bundle 改为最近提交增量包，并限制上传耗时，避免全仓库包过大导致 Actions 卡住
+- 后端部署 bundle 上传增加 SSH 预热、sha256 校验和重试，避免一次 SSH 抖动导致部署失败
+- Web 端 Playwright 浏览器安装增加超时，避免手动全量流水线长期卡住
 
 ### 影响范围
 - `kona-price-health-alert.timer`
 - `/api/system/price_health` 告警邮件和告警日志
 - GitHub Actions 后端自动部署
+- GitHub Actions Web 验收
 - 不改变实际行情取价、页面价格和用户资产数据
 
 ### 验收重点
@@ -39,6 +42,7 @@
 - 价格健康告警脚本测试应通过
 - GitHub Actions 后端部署应能在服务器拉不动 GitHub 时继续完成
 - 后端部署 bundle 上传不应长时间卡住
+- GitHub Actions Web 验收不应长期卡在 Playwright 浏览器安装
 
 ## 2026-06-02-01
 

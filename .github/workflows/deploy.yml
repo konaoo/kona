@@ -226,7 +226,7 @@ jobs:
 
       - name: Install Playwright browser
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: timeout 300 npx playwright install --with-deps chromium
 
       - name: Run Web e2e smoke
         working-directory: web
@@ -271,10 +271,51 @@ jobs:
 
           DEPLOY_BUNDLE="$RUNNER_TEMP/kona-backend-${TARGET_SHA}.bundle"
           REMOTE_DEPLOY_BUNDLE="/tmp/kona-backend-${TARGET_SHA}.bundle"
+          REMOTE_TMP_DEPLOY_BUNDLE="${REMOTE_DEPLOY_BUNDLE}.part"
           BASE_SHA="$(git rev-list --max-count=20 HEAD | tail -n 1)"
           git bundle create "$DEPLOY_BUNDLE" "$BASE_SHA"..HEAD
           ls -lh "$DEPLOY_BUNDLE"
-          timeout 120 scp $SSH_OPTS "$DEPLOY_BUNDLE" root@"$SSH_HOST":"$REMOTE_DEPLOY_BUNDLE"
+
+          run_ssh() {
+            timeout 25 ssh $SSH_OPTS root@"$SSH_HOST" "$@"
+          }
+
+          WARMUP_OK=0
+          for attempt in 1 2; do
+            echo "SSH warmup attempt $attempt ..."
+            if run_ssh "echo warmup-ok" >/dev/null 2>&1; then
+              WARMUP_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$WARMUP_OK" -ne 1 ]; then
+            echo "SSH warmup failed after retries."
+            exit 1
+          fi
+
+          LOCAL_BUNDLE_SHA="$(sha256sum "$DEPLOY_BUNDLE" | awk '{print $1}')"
+          UPLOAD_OK=0
+          for attempt in 1 2 3; do
+            echo "Deploy bundle upload attempt $attempt ..."
+            run_ssh "rm -f '$REMOTE_TMP_DEPLOY_BUNDLE' '$REMOTE_DEPLOY_BUNDLE'" >/dev/null 2>&1 || true
+            if timeout 120 scp $SSH_OPTS "$DEPLOY_BUNDLE" root@"$SSH_HOST":"$REMOTE_TMP_DEPLOY_BUNDLE" && \
+              run_ssh "set -eu
+                actual_sha=\$(sha256sum '$REMOTE_TMP_DEPLOY_BUNDLE' | awk '{print \$1}')
+                [ \"\$actual_sha\" = '$LOCAL_BUNDLE_SHA' ]
+                git bundle verify '$REMOTE_TMP_DEPLOY_BUNDLE'
+                mv '$REMOTE_TMP_DEPLOY_BUNDLE' '$REMOTE_DEPLOY_BUNDLE'
+              "; then
+              UPLOAD_OK=1
+              break
+            fi
+            run_ssh "rm -f '$REMOTE_TMP_DEPLOY_BUNDLE'" >/dev/null 2>&1 || true
+            sleep $((attempt * 2))
+          done
+          if [ "$UPLOAD_OK" -ne 1 ]; then
+            echo "Deploy bundle upload failed after retries."
+            exit 1
+          fi
 
           ssh $SSH_OPTS root@"$SSH_HOST" "APP_DIR='$APP_DIR' TARGET_SHA='$TARGET_SHA' DEPLOY_BUNDLE='$REMOTE_DEPLOY_BUNDLE' bash -s" < scripts/deploy/deploy_backend.sh
 
