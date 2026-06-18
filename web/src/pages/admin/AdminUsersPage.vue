@@ -73,7 +73,7 @@
                     :disabled="resetPassword.submitting"
                     @click="resetUserPassword(u)"
                   >
-                    重置密码
+                    {{ resetPassword.submitting ? '重置中' : '重置密码' }}
                   </button>
                   <button 
                     class="action-btn-sm" 
@@ -136,7 +136,7 @@
                 :disabled="resetPassword.submitting"
                 @click="resetUserPassword(u)"
               >
-                重置密码
+                {{ resetPassword.submitting ? '重置中' : '重置密码' }}
               </button>
               <button
                 class="action-btn-sm"
@@ -318,6 +318,32 @@
       </div>
     </div>
 
+    <div v-if="resetPassword.confirmVisible" class="detail-mask" @click.self="closeResetPasswordConfirm">
+      <div class="password-reset-panel">
+        <div class="detail-head">
+          <div class="head-info">
+            <h3>确认重置密码</h3>
+            <p>{{ resetPassword.pendingUsername }}</p>
+          </div>
+          <button class="close-btn" :disabled="resetPassword.submitting" @click="closeResetPasswordConfirm">✕</button>
+        </div>
+
+        <div class="password-reset-body">
+          <div class="password-reset-tip">
+            重置后会生成临时密码，用户当前登录状态将失效，下次登录必须修改密码。
+          </div>
+          <div class="password-reset-actions">
+            <button class="action-btn-sm secondary" :disabled="resetPassword.submitting" @click="closeResetPasswordConfirm">
+              取消
+            </button>
+            <button class="action-btn-sm warning" :disabled="resetPassword.submitting" @click="confirmResetUserPassword">
+              {{ resetPassword.submitting ? '重置中' : '确认重置' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="resetPassword.visible" class="detail-mask" @click.self="closeResetPasswordModal">
       <div class="password-reset-panel">
         <div class="detail-head">
@@ -384,8 +410,11 @@ const ok = ref(true)
 const pageSizeOptions = [10, 20, 50, 100]
 
 const resetPassword = reactive({
+  confirmVisible: false,
   visible: false,
   submitting: false,
+  pendingUserId: '',
+  pendingUsername: '',
   username: '',
   tempPassword: '',
   copied: false,
@@ -483,18 +512,35 @@ async function toggleStatus(user: Record<string, any>) {
   }
 }
 
-async function resetUserPassword(user: Record<string, any>) {
+function resetUserPassword(user: Record<string, any>) {
   const userId = String(user.id || '')
   const username = String(user.username || '')
   if (!userId || resetPassword.submitting) return
-  if (!window.confirm(`确认重置用户 ${username} 的密码吗？用户当前登录状态将失效，下次登录必须修改密码。`)) return
+  resetPassword.pendingUserId = userId
+  resetPassword.pendingUsername = username
+  resetPassword.confirmVisible = true
+}
 
+function closeResetPasswordConfirm() {
+  if (resetPassword.submitting) return
+  resetPassword.confirmVisible = false
+  resetPassword.pendingUserId = ''
+  resetPassword.pendingUsername = ''
+}
+
+async function confirmResetUserPassword() {
+  const userId = resetPassword.pendingUserId
+  const username = resetPassword.pendingUsername
+  if (!userId || resetPassword.submitting) return
   resetPassword.submitting = true
   try {
     const payload = await api.post<Record<string, any>>('/api/admin/users/password/reset', {
       user_id: userId,
       force_change: true,
     })
+    resetPassword.confirmVisible = false
+    resetPassword.pendingUserId = ''
+    resetPassword.pendingUsername = ''
     resetPassword.username = username
     resetPassword.tempPassword = String(payload?.temp_password || '')
     resetPassword.copied = false
@@ -930,6 +976,13 @@ onMounted(() => {
   font-weight: 800;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;
+}
+
+.password-reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .summary-grid-simple {
