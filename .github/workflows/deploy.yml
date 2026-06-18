@@ -226,7 +226,7 @@ jobs:
 
       - name: Install Playwright browser
         working-directory: web
-        run: timeout 300 npx playwright install --with-deps chromium
+        run: timeout 600 npx playwright install --with-deps chromium
 
       - name: Run Web e2e smoke
         working-directory: web
