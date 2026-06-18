@@ -24,7 +24,7 @@
 - 用户管理的重置密码从浏览器原生确认框改为页面内确认弹窗
 - 点击“重置密码”后先明确展示目标用户和风险说明
 - 确认提交期间按钮显示“重置中”，避免重复点击和误判无响应
-- Web 自动部署里 Playwright 只安装 Chromium 本体，不再每次通过 `--with-deps` 下载系统依赖，避免 GitHub runner 的 apt 下载卡住
+- Web 自动部署的 e2e 冒烟测试改用 GitHub runner 预装 Chrome，不再发布时下载 Playwright 浏览器，避免外部下载卡住
 
 ### 影响范围
 - 管理后台用户管理页
@@ -36,7 +36,7 @@
 - 点击“重置密码”应立即出现页面内确认弹窗
 - 点击“确认重置”后应展示临时密码
 - 取消或关闭确认弹窗不应调用重置密码接口
-- GitHub Actions Web Gate 不应再因为 Playwright 系统依赖下载卡住而失败
+- GitHub Actions Web Gate 不应再因为 Playwright 浏览器下载卡住而失败
 
 ## 2026-06-08-01
 

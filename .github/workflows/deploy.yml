@@ -224,9 +224,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r kona_tool/requirements.txt
 
-      - name: Install Playwright browser
+      - name: Check Chrome browser
         working-directory: web
-        run: timeout 300 npx playwright install chromium
+        run: google-chrome --version
 
       - name: Run Web e2e smoke
         working-directory: web
