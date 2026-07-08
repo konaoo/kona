@@ -24,11 +24,13 @@ class PortfolioUserScopeTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
+        app_module.request_runtime.reset_transient_state()
         conn = app_module.db.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM transactions")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
+        cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
         conn.close()
 

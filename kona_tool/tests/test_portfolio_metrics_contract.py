@@ -92,6 +92,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         cls.client = app_module.app.test_client()
 
     def setUp(self):
+        app_module.request_runtime.reset_transient_state()
         with app_module.market_runtime._market_status_lock:
             app_module.market_runtime._market_status_cache.clear()
         conn = app_module.db.get_connection()
@@ -99,6 +100,7 @@ class PortfolioMetricsContractTests(unittest.TestCase):
         cursor.execute("DELETE FROM portfolio_adjustment_ledger")
         cursor.execute("DELETE FROM portfolio")
         cursor.execute("DELETE FROM users")
+        cursor.execute("DELETE FROM runtime_configs")
         conn.commit()
         conn.close()
 
