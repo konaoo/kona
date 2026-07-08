@@ -386,13 +386,18 @@ class AssetAccountDatabaseMixin:
                     f'DELETE FROM {table} WHERE id = ? AND (user_id IS NULL OR user_id = "")',
                     (asset_id,),
                 )
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                logger.warning("%s delete skipped, asset not found: %s", label, asset_id)
+                return False
+
             conn.commit()
             logger.info(f"{label} deleted: {asset_id}")
             return True
         except Exception as exc:
             logger.error(f"Failed to delete {label.lower()}: {exc}")
             conn.rollback()
-            return False
+            return None
         finally:
             conn.close()
 
@@ -439,12 +444,17 @@ class AssetAccountDatabaseMixin:
                     (name, amount, asset_id),
                 )
 
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                logger.warning("%s update skipped, asset not found: %s", label, asset_id)
+                return False
+
             conn.commit()
             logger.info(f"{label} updated: {asset_id}")
             return True
         except Exception as exc:
             logger.error(f"Failed to update {label.lower()}: {exc}")
             conn.rollback()
-            return False
+            return None
         finally:
             conn.close()

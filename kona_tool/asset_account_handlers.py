@@ -110,7 +110,7 @@ def create_asset_account_payload_handlers(
             )
             with trace_request_stage("asset.delete.write", asset_type=asset_type):
                 success = delete_func(asset_id, user_id)
-            if success:
+            if success is True:
                 _save_snapshot_async(user_id, "asset.delete")
                 logger.info(
                     "[asset_delete_success] type=%s user_id=%s id=%s",
@@ -119,6 +119,14 @@ def create_asset_account_payload_handlers(
                     asset_id,
                 )
                 return jsonify({"status": "ok"})
+            if success is False:
+                logger.warning(
+                    "[asset_delete_not_found] type=%s user_id=%s id=%s",
+                    asset_type,
+                    user_id,
+                    asset_id,
+                )
+                return jsonify({"error": f"{asset_type} not found", "code": "ASSET_NOT_FOUND"}), 404
             logger.error(
                 "[asset_delete_failed] type=%s user_id=%s id=%s",
                 asset_type,
@@ -188,7 +196,7 @@ def create_asset_account_payload_handlers(
                     user_id,
                     str(data.get('icon', '') or '').strip(),
                 )
-            if success:
+            if success is True:
                 _save_snapshot_async(user_id, "asset.update")
                 logger.info(
                     "[asset_update_success] type=%s user_id=%s id=%s",
@@ -197,6 +205,14 @@ def create_asset_account_payload_handlers(
                     asset_id,
                 )
                 return jsonify({"status": "ok"})
+            if success is False:
+                logger.warning(
+                    "[asset_update_not_found] type=%s user_id=%s id=%s",
+                    asset_type,
+                    user_id,
+                    asset_id,
+                )
+                return jsonify({"error": f"{asset_type} not found", "code": "ASSET_NOT_FOUND"}), 404
             logger.error(
                 "[asset_update_failed] type=%s user_id=%s id=%s",
                 asset_type,

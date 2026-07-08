@@ -131,6 +131,21 @@ class AssetAccountApiTests(unittest.TestCase):
         self.assertEqual(data.get('error'), 'Missing required fields')
         self.assertEqual(data.get('code'), 'MISSING_REQUIRED_FIELDS')
 
+    def test_other_asset_update_missing_record_returns_not_found(self):
+        resp = self.client.post('/api/other_assets/update', json={
+            'id': 999999,
+            'name': '不存在的资产',
+            'amount': 100,
+            'curr': 'CNY',
+        })
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual((resp.get_json() or {}).get('code'), 'ASSET_NOT_FOUND')
+
+    def test_other_asset_delete_missing_record_returns_not_found(self):
+        resp = self.client.post('/api/other_assets/delete', json={'id': 999999})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual((resp.get_json() or {}).get('code'), 'ASSET_NOT_FOUND')
+
     def test_liability_invalid_amount_has_code(self):
         resp = self.client.post('/api/liabilities/add', json={
             'name': '测试负债',

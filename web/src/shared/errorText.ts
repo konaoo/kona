@@ -13,6 +13,7 @@ const CODE_TEXT_MAP: Record<string, string> = {
   MISSING_CODE: '缺少资产代码',
   MISSING_REQUIRED_FIELDS: '缺少必填参数',
   ASSET_ADD_FAILED: '添加资产失败，请稍后重试',
+  ASSET_NOT_FOUND: '这条资产不存在或已被删除，请刷新后重试',
   ASSET_BUY_FAILED: '买入失败，请稍后重试',
   ASSET_BUY_WITH_CASH_FAILED: '现金买入失败，请稍后重试',
   ASSET_SELL_FAILED: '卖出失败，请稍后重试',

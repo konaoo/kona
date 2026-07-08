@@ -74,6 +74,8 @@ const chartContainer = ref<HTMLElement | null>(null)
 const adjustmentRecords = ref<AssetAdjustmentRecord[]>([])
 const adjustmentLoading = ref(false)
 const adjustmentError = ref('')
+const assetSubmitting = ref(false)
+const deletingAssetKey = ref('')
 
 const chartPeriodOptions: Array<{ label: string; value: ChartPeriod }> = [
   { label: '近1月', value: '1m' },
@@ -740,6 +742,7 @@ function closeFormModal() {
 }
 
 async function submitModal() {
+  if (assetSubmitting.value) return
   const rawAmountText = String(form.amount ?? '').trim()
   const nextAmount = Number(rawAmountText)
   const name = form.name.trim()
@@ -765,32 +768,57 @@ async function submitModal() {
   } as const
   const route = modalMode.value === 'add' ? map[modalType.value].add : map[modalType.value].update
 
-  if (modalMode.value === 'edit' && form.id) {
-    if (Math.abs(nextAmount - form.originalAmount) <= 1e-9) {
-      await api.post(route, payload)
+  assetSubmitting.value = true
+  try {
+    if (modalMode.value === 'edit' && form.id) {
+      if (Math.abs(nextAmount - form.originalAmount) <= 1e-9) {
+        await api.post(route, payload)
+      } else {
+        await api.post(`/api/assets/${modalType.value}/${form.id}/adjustments`, {
+          name,
+          curr: form.curr,
+          mode: 'correct',
+          target_amount: nextAmount
+        })
+      }
     } else {
-      await api.post(`/api/assets/${modalType.value}/${form.id}/adjustments`, {
-        name,
-        curr: form.curr,
-        mode: 'correct',
-        target_amount: nextAmount
-      })
+      await api.post(route, payload)
     }
-  } else {
-    await api.post(route, payload)
+    closeFormModal()
+    await homeStore.loadAssetLists()
+  } catch (error) {
+    window.alert(readActionError(error, '保存失败，请稍后重试'))
+  } finally {
+    assetSubmitting.value = false
   }
-  closeFormModal()
-  await homeStore.loadAssetLists()
 }
 
-async function removeAsset(type: AssetType, id: number) {
+function readActionError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return fallback
+}
+
+async function removeAsset(type: AssetType, id: number): Promise<boolean> {
+  const deleteKey = `${type}:${id}`
+  if (deletingAssetKey.value) return false
   const map = {
     cash: '/api/cash_assets/delete',
     other: '/api/other_assets/delete',
     liability: '/api/liabilities/delete'
   } as const
-  await api.post(map[type], { id })
-  await homeStore.loadAssetLists()
+  deletingAssetKey.value = deleteKey
+  try {
+    await api.post(map[type], { id })
+    await homeStore.loadAssetLists()
+    return true
+  } catch (error) {
+    window.alert(readActionError(error, '删除失败，请稍后重试'))
+    return false
+  } finally {
+    deletingAssetKey.value = ''
+  }
 }
 
 function openDeleteConfirm() {
@@ -803,11 +831,13 @@ function closeDeleteConfirm() {
 }
 
 async function removeAssetFromForm() {
-  if (!form.id) return
+  if (!form.id || deletingAssetKey.value) return
   const assetId = form.id
-  closeDeleteConfirm()
-  closeFormModal()
-  await removeAsset(modalType.value, assetId)
+  const ok = await removeAsset(modalType.value, assetId)
+  if (ok) {
+    closeDeleteConfirm()
+    closeFormModal()
+  }
 }
 
 // Global click handler to close currency menu
@@ -1910,6 +1940,7 @@ onBeforeUnmount(() => {
                 </button>
                 <button
                   @click="removeAsset(modalType, item.id as number)"
+                  :disabled="Boolean(deletingAssetKey)"
                   style="
                     width: 32px;
                     height: 32px;
@@ -1923,6 +1954,7 @@ onBeforeUnmount(() => {
                     color: var(--red);
                     flex-shrink: 0;
                   "
+                  :style="{ opacity: deletingAssetKey === `${modalType}:${item.id}` ? 0.55 : 1 }"
                 >
                   <svg
                     width="14"
@@ -2262,7 +2294,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             @click="submitModal"
-            :disabled="!form.name"
+            :disabled="!form.name || assetSubmitting"
             style="
               flex: 2;
               height: 42px;
@@ -2276,9 +2308,9 @@ onBeforeUnmount(() => {
               cursor: pointer;
               box-shadow: 0 4px 14px rgba(74, 123, 224, 0.25);
             "
-            :style="{ opacity: !form.name ? 0.5 : 1 }"
+            :style="{ opacity: !form.name || assetSubmitting ? 0.5 : 1 }"
           >
-            保存
+            {{ assetSubmitting ? '保存中' : '保存' }}
           </button>
         </div>
       </div>
@@ -2348,6 +2380,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             @click="removeAssetFromForm"
+            :disabled="Boolean(deletingAssetKey)"
             style="
               flex: 1;
               height: 42px;
@@ -2361,8 +2394,9 @@ onBeforeUnmount(() => {
               cursor: pointer;
               box-shadow: 0 4px 14px rgba(240, 90, 85, 0.22);
             "
+            :style="{ opacity: deletingAssetKey ? 0.55 : 1 }"
           >
-            确认删除
+            {{ deletingAssetKey ? '删除中' : '确认删除' }}
           </button>
         </div>
       </div>
