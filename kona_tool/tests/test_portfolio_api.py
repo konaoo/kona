@@ -1337,6 +1337,64 @@ class PortfolioApiTests(unittest.TestCase):
         )
         self.assertEqual(adjustments, [])
 
+    def test_subtract_liability_to_zero_deletes_record_and_keeps_adjustment(self):
+        add_resp = self.client.post('/api/liabilities/add', json={
+            'name': '测试房贷',
+            'amount': 1000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        liabilities = self.client.get('/api/liabilities').get_json() or []
+        liability_id = liabilities[-1]['id']
+
+        adjust_resp = self.client.post(f'/api/assets/liability/{liability_id}/adjustments', json={
+            'mode': 'sub',
+            'delta': 1000.0,
+            'note': '还清负债',
+        })
+
+        self.assertEqual(adjust_resp.status_code, 200)
+        payload = adjust_resp.get_json() or {}
+        self.assertEqual(payload.get('status'), 'ok')
+        self.assertAlmostEqual(float(payload.get('balance_after')), 0.0, places=2)
+
+        liabilities_after = self.client.get('/api/liabilities').get_json() or []
+        self.assertFalse(any(int(item['id']) == int(liability_id) for item in liabilities_after))
+
+        adjustments = app_module.db.get_asset_adjustments(
+            asset_type='liability',
+            asset_id=int(liability_id),
+            user_id='',
+        )
+        self.assertEqual(len(adjustments), 1)
+        self.assertEqual(adjustments[0]['mode'], 'sub')
+        self.assertAlmostEqual(float(adjustments[0]['delta']), 1000.0, places=2)
+        self.assertAlmostEqual(float(adjustments[0]['balance_after']), 0.0, places=2)
+
+    def test_subtract_liability_below_zero_is_rejected(self):
+        add_resp = self.client.post('/api/liabilities/add', json={
+            'name': '测试房贷',
+            'amount': 1000.0,
+            'curr': 'CNY',
+        })
+        self.assertEqual(add_resp.status_code, 200)
+        liabilities = self.client.get('/api/liabilities').get_json() or []
+        liability_id = liabilities[-1]['id']
+
+        adjust_resp = self.client.post(f'/api/assets/liability/{liability_id}/adjustments', json={
+            'mode': 'sub',
+            'delta': 1000.01,
+            'note': '错误扣减',
+        })
+
+        self.assertEqual(adjust_resp.status_code, 500)
+        self.assertEqual((adjust_resp.get_json() or {}).get('code'), 'ADJUSTMENT_FAILED')
+
+        liabilities_after = self.client.get('/api/liabilities').get_json() or []
+        target = next((item for item in liabilities_after if int(item['id']) == int(liability_id)), None)
+        self.assertIsNotNone(target)
+        self.assertAlmostEqual(float(target['amount']), 1000.0, places=2)
+
     def test_delete_corrective_removes_target_ledger_snapshots_only(self):
         default_ledger_id = app_module.db.get_default_ledger_id('')
         second_ledger = app_module.db.create_ledger('', '保留账本')

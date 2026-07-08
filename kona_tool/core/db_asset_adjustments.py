@@ -94,8 +94,24 @@ class AssetAdjustmentDatabaseMixin:
             else:
                 balance_after = current_amount + stored_delta if mode == 'add' else current_amount - stored_delta
 
+            should_delete_zero_asset = asset_type != 'cash' and abs(balance_after) <= 1e-9
+            if asset_type != 'cash' and balance_after < -1e-9:
+                logger.warning(
+                    "[asset_adjustment] non-cash balance below zero type=%s id=%s amount=%s",
+                    asset_type,
+                    asset_id,
+                    balance_after,
+                )
+                return None
+
             # 3. 更新资产（余额 + 可选名称）
-            if name:
+            if should_delete_zero_asset:
+                cursor.execute(
+                    f"UPDATE {table} SET amount = 0, updated_at = datetime('now','localtime')"
+                    f" WHERE id = ?",
+                    (asset_id,),
+                )
+            elif name:
                 cursor.execute(
                     f"UPDATE {table} SET amount = ?, name = ?, updated_at = datetime('now','localtime')"
                     f" WHERE id = ?",
@@ -118,6 +134,10 @@ class AssetAdjustmentDatabaseMixin:
                 (asset_type, asset_id, stored_mode, stored_delta, stored_note, balance_after, user_id),
             )
             adjustment_id = cursor.lastrowid
+
+            if should_delete_zero_asset:
+                cursor.execute(f"DELETE FROM {table} WHERE id = ?", (asset_id,))
+
             conn.commit()
 
             logger.info(
