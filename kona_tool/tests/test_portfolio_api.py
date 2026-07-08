@@ -1289,7 +1289,8 @@ class PortfolioApiTests(unittest.TestCase):
         cash_id = cash_assets[-1]['id']
 
         correct_resp = self.client.post(f'/api/assets/cash/{cash_id}/adjustments', json={
-            'name': '现金账户',
+            'name': '现金账户2',
+            'curr': 'HKD',
             'mode': 'correct',
             'target_amount': 1288.5,
         })
@@ -1298,6 +1299,13 @@ class PortfolioApiTests(unittest.TestCase):
         payload = correct_resp.get_json() or {}
         self.assertEqual(payload.get('status'), 'ok')
         self.assertAlmostEqual(float(payload.get('balance_after')), 1288.5, places=2)
+
+        cash_assets_after = self.client.get('/api/cash_assets').get_json() or []
+        cash_after = next((item for item in cash_assets_after if int(item['id']) == int(cash_id)), None)
+        self.assertIsNotNone(cash_after)
+        self.assertEqual(cash_after['name'], '现金账户2')
+        self.assertEqual(cash_after['curr'], 'HKD')
+        self.assertAlmostEqual(float(cash_after['amount']), 1288.5, places=2)
 
         adjustments = app_module.db.get_asset_adjustments(
             asset_type='cash',
@@ -1387,7 +1395,7 @@ class PortfolioApiTests(unittest.TestCase):
             'note': '错误扣减',
         })
 
-        self.assertEqual(adjust_resp.status_code, 500)
+        self.assertEqual(adjust_resp.status_code, 400)
         self.assertEqual((adjust_resp.get_json() or {}).get('code'), 'ADJUSTMENT_FAILED')
 
         liabilities_after = self.client.get('/api/liabilities').get_json() or []

@@ -740,11 +740,21 @@ function closeFormModal() {
 }
 
 async function submitModal() {
-  const nextAmount = toNumber(form.amount, 0)
+  const rawAmountText = String(form.amount ?? '').trim()
+  const nextAmount = Number(rawAmountText)
+  const name = form.name.trim()
+  if (!name) {
+    window.alert('请输入名称')
+    return
+  }
+  if (!rawAmountText || !Number.isFinite(nextAmount) || nextAmount < 0 || (modalType.value !== 'cash' && nextAmount <= 0)) {
+    window.alert('请输入有效金额')
+    return
+  }
   const payload = {
     id: form.id,
     icon: form.icon,
-    name: form.name,
+    name,
     amount: nextAmount,
     curr: form.curr
   }
@@ -759,12 +769,9 @@ async function submitModal() {
     if (Math.abs(nextAmount - form.originalAmount) <= 1e-9) {
       await api.post(route, payload)
     } else {
-      await api.post(route, {
-        ...payload,
-        amount: form.originalAmount
-      })
       await api.post(`/api/assets/${modalType.value}/${form.id}/adjustments`, {
-        name: form.name,
+        name,
+        curr: form.curr,
         mode: 'correct',
         target_amount: nextAmount
       })

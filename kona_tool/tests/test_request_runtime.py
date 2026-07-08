@@ -128,6 +128,23 @@ class RequestRuntimeTests(unittest.TestCase):
 
         self.assertEqual(len(self.db.last_active_calls), 2)
 
+    def test_reset_transient_state_clears_in_memory_rate_and_activity_buckets(self):
+        self.assertTrue(self.runtime.apply_policy_rate_limit("api.news", 1))
+        self.assertFalse(self.runtime.apply_policy_rate_limit("api.news", 1))
+
+        with self.app.test_request_context("/api/portfolio"):
+            g.user_id = "u_1"
+            self.runtime.mark_user_recent_activity(self.app.response_class("ok"))
+        self.assertEqual(len(self.db.last_active_calls), 1)
+
+        self.runtime.reset_transient_state()
+
+        self.assertTrue(self.runtime.apply_policy_rate_limit("api.news", 1))
+        with self.app.test_request_context("/api/portfolio"):
+            g.user_id = "u_1"
+            self.runtime.mark_user_recent_activity(self.app.response_class("ok"))
+        self.assertEqual(len(self.db.last_active_calls), 2)
+
     def test_admin_write_audit_records_failed_response(self):
         @self.runtime.admin_write_audit(action="admin.users.update", target_type="user")
         def _handler():

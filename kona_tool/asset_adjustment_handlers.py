@@ -53,6 +53,8 @@ def create_asset_adjustment_handlers(
             return jsonify({"error": "delta must be positive", "code": "INVALID_DELTA"}), 400
 
         name = str(data.get("name") or "").strip() or None
+        raw_curr = str(data.get("curr") or "").strip().upper()
+        curr = raw_curr if raw_curr in {"CNY", "USD", "HKD"} else None
         note = str(data.get("note") or "").strip()
         user_id = _current_user_id()
 
@@ -64,16 +66,17 @@ def create_asset_adjustment_handlers(
                 delta=delta,
                 note=note,
                 name=name,
+                curr=curr,
                 user_id=user_id,
                 target_amount=target_amount,
             )
 
         if result is None:
-            logger.error(
+            logger.warning(
                 "[asset_adjustment_add_failed] type=%s id=%s user=%s",
                 asset_type, asset_id, user_id,
             )
-            return jsonify({"error": "Failed to save adjustment", "code": "ADJUSTMENT_FAILED"}), 500
+            return jsonify({"error": "Failed to save adjustment", "code": "ADJUSTMENT_FAILED"}), 400
 
         snapshot_saver_async(user_id)
 

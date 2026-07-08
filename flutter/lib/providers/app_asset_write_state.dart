@@ -198,23 +198,7 @@ class AppAssetWriteState {
     if (id <= 0) {
       return const AssetActionResult.failure('操作失败，请稍后重试');
     }
-    final updatedAmount = mode == 'correct'
-        ? (targetAmount ?? currentAmount)
-        : (mode == 'add' ? currentAmount + delta : currentAmount - delta);
     final normalizedCurr = _assetsState.normalizeAssetCurrency(curr);
-    final snapshot = _assetsState.captureAssetSnapshot();
-    final changed = _assetsState.optimisticUpdateAsset(
-      type: type,
-      id: id,
-      name: name,
-      amount: updatedAmount,
-      curr: normalizedCurr,
-      notify: false,
-    );
-    if (changed) {
-      _recalculateAssetTotals(bindings.notifyListeners);
-    }
-
     final result = await _api.adjustAsset(
       assetType: type,
       assetId: id,
@@ -222,13 +206,34 @@ class AppAssetWriteState {
       mode: mode,
       delta: delta,
       note: note,
+      curr: normalizedCurr,
       targetAmount: targetAmount,
     );
     if (!result.ok) {
-      if (changed) {
-        _restoreAssetSnapshot(snapshot, bindings.notifyListeners);
-      }
       return result;
+    }
+
+    final rawBalanceAfter = result.data?['balance_after'];
+    final balanceAfter = rawBalanceAfter is num
+        ? rawBalanceAfter.toDouble()
+        : double.tryParse('${rawBalanceAfter ?? ''}') ??
+              (mode == 'correct'
+                  ? (targetAmount ?? currentAmount)
+                  : (mode == 'add'
+                        ? currentAmount + delta
+                        : currentAmount - delta));
+    final changed = type != 'cash' && balanceAfter.abs() <= 1e-9
+        ? _assetsState.optimisticDeleteAsset(type: type, id: id, notify: false)
+        : _assetsState.optimisticUpdateAsset(
+            type: type,
+            id: id,
+            name: name,
+            amount: balanceAfter,
+            curr: normalizedCurr,
+            notify: false,
+          );
+    if (changed) {
+      _recalculateAssetTotals(bindings.notifyListeners);
     }
     await bindings.triggerHomeRefresh(awaitRefresh);
     return result;

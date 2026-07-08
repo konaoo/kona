@@ -203,6 +203,13 @@ class RequestRuntime:
         metrics["policy_rate_ttl_seconds"] = _POLICY_RATE_TTL_SECONDS
         return metrics
 
+    def reset_transient_state(self) -> None:
+        """清理内存态运行时数据，供测试和本地排障使用。"""
+        with self._policy_rate_lock:
+            self._policy_rate_counters.clear()
+        with self._activity_touch_lock:
+            self._activity_touch_last_ts.clear()
+
     def mask_username(self, username: str) -> str:
         """用户名脱敏，避免日志暴露完整标识。"""
         value = (username or "").strip().lower()

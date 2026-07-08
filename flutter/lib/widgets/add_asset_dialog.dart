@@ -391,7 +391,8 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
       _nameError = '请输入账户名称';
       valid = false;
     }
-    if (amount == null || amount <= 0) {
+    final allowZero = _assetType == 'cash';
+    if (amount == null || amount < 0 || (!allowZero && amount <= 0)) {
       _amountError = '请输入有效金额';
       valid = false;
     }
@@ -456,7 +457,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           createdId = int.tryParse(idVal.toString());
         }
       }
-      
+
       if (createdId == null || createdId <= 0) {
         final afterAssets = _assetsByType(
           appState,
@@ -884,10 +885,7 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
           width: 1,
         ),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(7),
-        child: child,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(7), child: child),
     );
   }
 
@@ -1187,8 +1185,12 @@ class _AddAssetDialogState extends State<AddAssetDialog> {
                             height: 42,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: (canSubmit || _saving) ? null : _kSurface3,
-                                gradient: (canSubmit || _saving) ? _blueGrad : null,
+                                color: (canSubmit || _saving)
+                                    ? null
+                                    : _kSurface3,
+                                gradient: (canSubmit || _saving)
+                                    ? _blueGrad
+                                    : null,
                                 borderRadius: BorderRadius.circular(8),
                                 border: (canSubmit || _saving)
                                     ? null

@@ -28,6 +28,7 @@ class AssetAdjustmentDatabaseMixin:
         delta: float,
         note: str,
         name: Optional[str] = None,
+        curr: Optional[str] = None,
         user_id: Optional[str] = None,
         target_amount: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
@@ -104,25 +105,25 @@ class AssetAdjustmentDatabaseMixin:
                 )
                 return None
 
-            # 3. 更新资产（余额 + 可选名称）
-            if should_delete_zero_asset:
-                cursor.execute(
-                    f"UPDATE {table} SET amount = 0, updated_at = datetime('now','localtime')"
-                    f" WHERE id = ?",
-                    (asset_id,),
-                )
-            elif name:
-                cursor.execute(
-                    f"UPDATE {table} SET amount = ?, name = ?, updated_at = datetime('now','localtime')"
-                    f" WHERE id = ?",
-                    (balance_after, name, asset_id),
-                )
-            else:
-                cursor.execute(
-                    f"UPDATE {table} SET amount = ?, updated_at = datetime('now','localtime')"
-                    f" WHERE id = ?",
-                    (balance_after, asset_id),
-                )
+            # 3. 更新资产（余额 + 可选名称/币种）
+            update_parts = ["amount = ?"]
+            update_params: List[Any] = [0 if should_delete_zero_asset else balance_after]
+            if name:
+                update_parts.append("name = ?")
+                update_params.append(name)
+            if curr:
+                update_parts.append("curr = ?")
+                update_params.append(curr)
+            update_parts.append("updated_at = datetime('now','localtime')")
+            update_params.append(asset_id)
+            where_clause = "id = ?"
+            if user_id is not None:
+                where_clause += " AND user_id = ?"
+                update_params.append(user_id)
+            cursor.execute(
+                f"UPDATE {table} SET {', '.join(update_parts)} WHERE {where_clause}",
+                tuple(update_params),
+            )
 
             # 4. 写入调整记录
             cursor.execute(
@@ -136,7 +137,12 @@ class AssetAdjustmentDatabaseMixin:
             adjustment_id = cursor.lastrowid
 
             if should_delete_zero_asset:
-                cursor.execute(f"DELETE FROM {table} WHERE id = ?", (asset_id,))
+                delete_params: List[Any] = [asset_id]
+                delete_where = "id = ?"
+                if user_id is not None:
+                    delete_where += " AND user_id = ?"
+                    delete_params.append(user_id)
+                cursor.execute(f"DELETE FROM {table} WHERE {delete_where}", tuple(delete_params))
 
             conn.commit()
 

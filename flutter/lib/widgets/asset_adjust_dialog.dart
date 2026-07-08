@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -255,6 +253,14 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
+
+    setState(() {
+      _nameError = null;
+      _amountError = null;
+      _errorText = null;
+    });
+
     // 验证名称
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -266,7 +272,12 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
     // 验证金额
     final amountStr = _amountController.text.trim();
     final amount = double.tryParse(amountStr);
-    if (amount == null || amount < 0 || (_mode != 'correct' && amount <= 0)) {
+    final allowZeroTarget = widget.assetType == 'cash';
+    final invalidAmount =
+        amount == null ||
+        amount < 0 ||
+        (_mode == 'correct' ? (!allowZeroTarget && amount <= 0) : amount <= 0);
+    if (invalidAmount) {
       setState(() => _amountError = '请输入有效金额');
       _amountFocusNode.requestFocus();
       return;
@@ -290,7 +301,6 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
       return;
     }
 
-    // 乐观成功：立即关闭弹窗，API 后台执行
     final note = _noteController.text.trim();
     final mode = _mode;
     final assetType = widget.assetType;
@@ -298,6 +308,28 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
     final assetCurr = widget.asset.curr;
     final hostContext = widget.hostContext;
     final appState = context.read<AppState>();
+
+    setState(() => _saving = true);
+    final result = await appState.adjustAsset(
+      type: assetType,
+      id: assetId,
+      name: name,
+      currentAmount: currentAmount,
+      mode: mode,
+      delta: delta,
+      note: note,
+      curr: assetCurr,
+      targetAmount: mode == 'correct' ? newAmount : null,
+    );
+
+    if (!mounted) return;
+    if (!result.ok) {
+      setState(() {
+        _saving = false;
+        _errorText = result.message ?? '保存失败，请稍后重试';
+      });
+      return;
+    }
 
     if (hostContext.mounted) {
       TopToast.showSuccess(hostContext, '已记录');
@@ -308,27 +340,6 @@ class _AssetAdjustDialogState extends State<AssetAdjustDialog> {
       'note': note,
       'balanceAfter': newAmount,
     });
-
-    // 后台调用 API，失败时补一条错误 toast
-    unawaited(
-      appState
-          .adjustAsset(
-            type: assetType,
-            id: assetId,
-            name: name,
-            currentAmount: currentAmount,
-            mode: mode,
-            delta: delta,
-            note: note,
-            curr: assetCurr,
-            targetAmount: _mode == 'correct' ? newAmount : null,
-          )
-          .then((result) {
-            if (!result.ok && hostContext.mounted) {
-              TopToast.showError(hostContext, result.message ?? '保存失败，请稍后重试');
-            }
-          }),
-    );
   }
 
   Future<void> _confirmAndDelete() async {

@@ -1359,6 +1359,7 @@ class ApiService {
     required String mode,
     required double delta,
     required String note,
+    String? curr,
     double? targetAmount,
   }) async {
     try {
@@ -1368,6 +1369,10 @@ class ApiService {
         'delta': delta,
         'note': note,
       };
+      final normalizedCurr = (curr ?? '').trim().toUpperCase();
+      if (normalizedCurr.isNotEmpty) {
+        payload['curr'] = normalizedCurr;
+      }
       if (targetAmount != null) {
         payload['target_amount'] = targetAmount;
       }
