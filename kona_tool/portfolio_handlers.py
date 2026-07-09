@@ -26,7 +26,10 @@ def _normalize_ocr_candidate_code(value: str) -> str:
         return ""
     upper = code.upper()
     if upper.endswith(".HK"):
-        return f"hk{upper[:-3]}".lower()
+        symbol = upper[:-3]
+        if symbol.isdigit():
+            symbol = symbol.zfill(5)
+        return f"hk{symbol}".lower()
     lower = code.lower()
     if lower.startswith(("sh", "sz", "bj", "hk", "gb_", "f_", "ft_")):
         return lower

@@ -82,8 +82,11 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     
     # 港股
     elif '.HK' in code.upper():
-        # 保持 00175.HK 格式
+        # 港股代码统一补齐为 5 位，避免 700.HK / 0700.HK / 00700.HK 分叉。
         code = code.upper()
+        symbol = code.replace('.HK', '')
+        if symbol.isdigit():
+            code = f"{symbol.zfill(5)}.HK"
         if not curr:
             curr = 'HKD'
     

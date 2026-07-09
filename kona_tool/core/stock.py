@@ -7,6 +7,7 @@ import logging
 import time
 import threading
 import requests
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Tuple, Optional, Dict, Any, List
 from bs4 import BeautifulSoup
@@ -44,7 +45,10 @@ def _normalize_quote_code(code: str) -> str:
     if s.isdigit() and len(s) == 5:
         return 'hk' + s
     if '.hk' in s:
-        return 'hk' + s.replace('.hk', '')
+        digits = s.replace('.hk', '')
+        if digits.isdigit():
+            return 'hk' + digits.zfill(5)
+        return 'hk' + digits
     if s.startswith("hk"):
         digits = re.sub(r"\D", "", s)
         if digits:
@@ -69,6 +73,33 @@ def _parse_locale_decimal(value: Any) -> float:
     return safe_float(text)
 
 
+def _is_hk_regular_session(now: Optional[datetime] = None) -> bool:
+    current = now or datetime.now()
+    minutes = current.hour * 60 + current.minute
+    return (9 * 60 + 30 <= minutes < 12 * 60) or (13 * 60 <= minutes < 16 * 60)
+
+
+def _is_hk_quote_stale(
+    quote_time_text: str,
+    *,
+    max_age_seconds: int = 300,
+    now: Optional[datetime] = None,
+) -> bool:
+    """
+    港股开盘时，免费源可能返回十几分钟前的旧行情。
+    只有交易时段内才按时间戳判旧，避免收盘后正常静止行情被误伤。
+    """
+    current = now or datetime.now()
+    if not _is_hk_regular_session(current):
+        return False
+    try:
+        quote_time = datetime.strptime(str(quote_time_text or "").strip(), "%Y/%m/%d %H:%M:%S")
+    except Exception:
+        return False
+    age_seconds = (current - quote_time).total_seconds()
+    return age_seconds > max_age_seconds
+
+
 def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float, Optional[str]]:
     """
     东财 A/HK 行情（本地市场回退链路）。
@@ -88,13 +119,16 @@ def _get_eastmoney_cn_hk_price(code: str) -> Tuple[float, float, float, float, O
 
     try:
         url = (
-            "https://push2.eastmoney.com/api/qt/stock/get"
+            "http://push2.eastmoney.com/api/qt/stock/get"
             f"?invt=2&fltt=2&fields=f43,f60&secid={secid}"
         )
         r = monitored_http_get(
             "eastmoney_cn_hk_stock",
             url,
-            headers={"User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0")},
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://quote.eastmoney.com/",
+            },
             timeout=config.API_TIMEOUT,
         )
         data = (r.json() or {}).get("data") or {}
@@ -1003,20 +1037,24 @@ def get_sina_stock_price(code: str) -> Tuple[float, float, float, float, Optiona
         is_a = s.startswith("sh") or s.startswith("sz")
         is_index = s.startswith("s_")
 
+        if is_hk:
+            # 港股：东财 -> 腾讯 -> 新浪。腾讯/新浪免费源盘中可能明显滞后，东财优先。
+            east = get_eastmoney_stock_price(s)
+            if east[0] > 0:
+                return east
+            tencent = get_tencent_stock_price(s)
+            if tencent[0] > 0:
+                return tencent
+            sina = get_sina_direct_stock_price(s)
+            if sina[0] > 0:
+                return sina
+
         tencent = get_tencent_stock_price(s)
         if tencent[0] > 0:
             return tencent
 
         # 第二步及后续：按市场顺序回退
-        if is_hk:
-            # 港股：腾讯 -> 东财 -> 新浪
-            east = get_eastmoney_stock_price(s)
-            if east[0] > 0:
-                return east
-            sina = get_sina_direct_stock_price(s)
-            if sina[0] > 0:
-                return sina
-        elif is_a:
+        if is_a:
             # A股：腾讯 -> 新浪 -> 东财
             sina = get_sina_direct_stock_price(s)
             if sina[0] > 0:
@@ -1056,6 +1094,9 @@ def get_tencent_stock_price(code: str) -> Tuple[float, float, float, float, Opti
             curr = safe_float(data[3])
             yclose = safe_float(data[4])
             if curr > 0:
+                if s.startswith("hk") and len(data) > 30 and _is_hk_quote_stale(data[30]):
+                    logger.info("Tencent HK quote stale code=%s quote_time=%s", s, data[30])
+                    return 0.0, 0.0, 0.0, 0.0, None
                 return curr, yclose, curr - yclose, (curr - yclose) / yclose * 100, None
     except Exception as e:
         logger.debug(f"Tencent API error for {code}: {e}")

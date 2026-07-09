@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -14,18 +15,28 @@ os.environ.setdefault("JWT_SECRET", "ci_test_jwt_secret")
 from core.parser import parse_code
 from core.asset_type import infer_asset_type, infer_category_type
 from core.market_calendar import market_from_asset
-from core.stock import get_sina_stock_price
+from core.price import get_price, price_cache
+from core.stock import get_sina_stock_price, _is_hk_quote_stale
 
 
 class _MockResp:
-    def __init__(self, text: str, status_code: int = 200):
+    def __init__(self, text: str = "", status_code: int = 200, json_data=None):
         self.text = text
         self.status_code = status_code
+        self._json_data = json_data
+
+    def json(self):
+        return self._json_data or {}
 
 
 class TestMarketCodeNormalization(unittest.TestCase):
     def test_parse_code_numeric_5_defaults_to_hk(self):
         parsed = parse_code("00700", "")
+        self.assertEqual(parsed["code"], "00700.HK")
+        self.assertEqual(parsed["curr"], "HKD")
+
+    def test_parse_code_hk_suffix_pads_to_5_digits(self):
+        parsed = parse_code("0700.HK", "")
         self.assertEqual(parsed["code"], "00700.HK")
         self.assertEqual(parsed["curr"], "HKD")
 
@@ -69,9 +80,9 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_get_sina_stock_price_numeric_5_uses_hk_route(self):
         def _fake_http_get(source, url, **kwargs):
-            if source == "tencent_stock":
-                self.assertIn("hk00700", url)
-                return _MockResp('v_hk00700="x~x~x~533.000~532.000~";')
+            if source == "eastmoney_cn_hk_stock":
+                self.assertIn("secid=116.00700", url)
+                return _MockResp(json_data={"data": {"f43": 533.0, "f60": 532.0}})
             raise AssertionError(f"unexpected source={source}, url={url}")
 
         with patch("core.stock.monitored_http_get", side_effect=_fake_http_get):
@@ -84,6 +95,8 @@ class TestMarketCodeNormalization(unittest.TestCase):
 
     def test_get_sina_stock_price_hk_falls_back_to_sina_when_tencent_fails(self):
         def _fake_http_get(source, url, **kwargs):
+            if source == "eastmoney_cn_hk_stock":
+                raise RuntimeError("eastmoney timeout")
             if source == "tencent_stock":
                 raise RuntimeError("tencent timeout")
             if source == "sina_stock":
@@ -99,6 +112,56 @@ class TestMarketCodeNormalization(unittest.TestCase):
         self.assertEqual(yclose, 532.0)
         self.assertAlmostEqual(amt, 1.0)
         self.assertAlmostEqual(chg, (1.0 / 532.0) * 100)
+
+    def test_get_sina_stock_price_hk_suffix_4_digit_uses_hk_5_digit_route(self):
+        def _fake_http_get(source, url, **kwargs):
+            if source == "eastmoney_cn_hk_stock":
+                self.assertIn("secid=116.00700", url)
+                return _MockResp(json_data={"data": {"f43": 533.0, "f60": 532.0}})
+            raise AssertionError(f"unexpected source={source}, url={url}")
+
+        with patch("core.stock.monitored_http_get", side_effect=_fake_http_get):
+            price, yclose, amt, chg, nav_date = get_sina_stock_price("0700.HK")
+
+        self.assertEqual(price, 533.0)
+        self.assertEqual(yclose, 532.0)
+        self.assertAlmostEqual(amt, 1.0)
+        self.assertAlmostEqual(chg, (1.0 / 532.0) * 100)
+
+    def test_hk_quote_stale_only_during_regular_session(self):
+        self.assertTrue(
+            _is_hk_quote_stale(
+                "2026/07/09 09:52:05",
+                now=datetime(2026, 7, 9, 10, 6, 25),
+            )
+        )
+        self.assertFalse(
+            _is_hk_quote_stale(
+                "2026/07/09 10:04:30",
+                now=datetime(2026, 7, 9, 10, 6, 25),
+            )
+        )
+        self.assertFalse(
+            _is_hk_quote_stale(
+                "2026/07/09 09:52:05",
+                now=datetime(2026, 7, 9, 12, 30, 0),
+            )
+        )
+
+    def test_price_cache_unifies_hk_aliases(self):
+        price_cache.clear()
+        try:
+            with patch("core.price.get_stock_price", return_value=(533.0, 532.0, 1.0, 0.188, None)) as first_fetch:
+                first = get_price("hk00700")
+            self.assertEqual(first[0], 533.0)
+            first_fetch.assert_called_once()
+
+            with patch("core.price.get_stock_price", return_value=(400.0, 399.0, 1.0, 0.25, None)) as second_fetch:
+                second = get_price("0700.HK")
+            self.assertEqual(second[0], 533.0)
+            second_fetch.assert_not_called()
+        finally:
+            price_cache.clear()
 
     def test_infer_asset_type_us_etf_remains_us(self):
         self.assertEqual(infer_asset_type("gb_qqq", "Invesco QQQ ETF"), "us")

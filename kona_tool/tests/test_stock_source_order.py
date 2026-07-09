@@ -87,23 +87,21 @@ class TestStockSourceOrder(unittest.TestCase):
         self.assertAlmostEqual(yclose, 9.60, places=2)
         self.assertEqual(calls, ["tencent_stock", "sina_stock", "eastmoney_cn_hk_stock"])
 
-    def test_hk_fallbacks_to_eastmoney_before_sina(self):
+    def test_hk_prefers_eastmoney_before_tencent_and_sina(self):
         calls = []
 
         def fake_get(source, *args, **kwargs):
             calls.append(source)
-            if source == "tencent_stock":
-                return _Resp(text='v_hk01810="";', status_code=200)
             if source == "eastmoney_cn_hk_stock":
                 return _Resp(status_code=200, json_data={"data": {"f43": 32.74, "f60": 32.00}})
-            raise AssertionError("Sina should not be called when Eastmoney already returns valid quote")
+            raise AssertionError("Tencent/Sina should not be called when Eastmoney already returns valid quote")
 
         with patch("core.stock.monitored_http_get", side_effect=fake_get):
             curr, yclose, *_ = get_sina_stock_price("HK1810")
 
         self.assertAlmostEqual(curr, 32.74, places=2)
         self.assertAlmostEqual(yclose, 32.00, places=2)
-        self.assertEqual(calls, ["tencent_stock", "eastmoney_cn_hk_stock"])
+        self.assertEqual(calls, ["eastmoney_cn_hk_stock"])
 
     def test_us_stock_fallbacks_to_eastmoney_when_sina_fails(self):
         calls = []

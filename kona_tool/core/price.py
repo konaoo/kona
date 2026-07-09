@@ -11,7 +11,7 @@ from typing import Dict, Tuple, Optional, List, Any
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 
 import config
-from .stock import get_stock_price, get_isin_metadata
+from .stock import get_stock_price, get_isin_metadata, _normalize_quote_code
 from .fund import get_fund_price, is_isin_format
 from .source_health import source_health
 from .utils import monitored_http_get
@@ -30,6 +30,16 @@ def _sina_headers() -> Dict[str, Any]:
     headers = dict(config.HEADERS)
     headers.setdefault("Referer", "https://finance.sina.com.cn")
     return headers
+
+
+def _normalize_price_cache_key(code: str) -> str:
+    raw = str(code or "").strip()
+    lower = raw.lower()
+    if not raw:
+        return ""
+    if lower.startswith(("f_", "ft_", "of")) or is_isin_format(raw):
+        return raw
+    return _normalize_quote_code(raw)
 
 
 class PriceCache:
@@ -59,28 +69,30 @@ class PriceCache:
         Returns:
             (价格, 昨收, 涨跌额, 涨跌幅%) 或 None
         """
-        if code in self.cache:
-            price_data, timestamp = self.cache[code]
+        cache_key = _normalize_price_cache_key(code)
+        if cache_key in self.cache:
+            price_data, timestamp = self.cache[cache_key]
             effective_ttl = ttl_override if ttl_override is not None else self.ttl
             if time.time() - timestamp < effective_ttl:
-                logger.debug(f"Cache hit for {code}")
+                logger.debug(f"Cache hit for {code} ({cache_key})")
                 return price_data
             else:
-                del self.cache[code]
-                logger.debug(f"Cache expired for {code}")
+                del self.cache[cache_key]
+                logger.debug(f"Cache expired for {code} ({cache_key})")
         return None
 
     def get_stale(self, code: str) -> Optional[Tuple[float, float, float, float, Optional[str]]]:
         """
         获取过期但仍可回退使用的缓存值（stale-while-revalidate）。
         """
-        if code not in self.cache:
+        cache_key = _normalize_price_cache_key(code)
+        if cache_key not in self.cache:
             return None
-        price_data, timestamp = self.cache[code]
+        price_data, timestamp = self.cache[cache_key]
         age = time.time() - timestamp
         if age <= self.stale_ttl:
             return price_data
-        del self.cache[code]
+        del self.cache[cache_key]
         return None
     
     def set(self, code: str, price_data: Tuple[float, float, float, float, Optional[str]]):
@@ -91,9 +103,10 @@ class PriceCache:
             code: 证券代码
             price_data: 价格数据
         """
-        self.cache[code] = (price_data, time.time())
+        cache_key = _normalize_price_cache_key(code)
+        self.cache[cache_key] = (price_data, time.time())
         self._evict_if_needed()
-        logger.debug(f"Cache set for {code}")
+        logger.debug(f"Cache set for {code} ({cache_key})")
 
     def _evict_if_needed(self) -> None:
         if self.max_size <= 0:
