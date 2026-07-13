@@ -128,8 +128,16 @@ function withRequestId(body: unknown, requestId: string): unknown {
   }
 }
 
+function addCacheBuster(url: string): string {
+  const t = Date.now()
+  if (url.includes('?')) {
+    return `${url}&_t=${t}`
+  }
+  return `${url}?_t=${t}`
+}
+
 export const api = {
-  get: <T>(path: string, auth = true) => apiRequest<T>(path, { method: 'GET' }, auth),
+  get: <T>(path: string, auth = true) => apiRequest<T>(addCacheBuster(path), { method: 'GET' }, auth),
   post: <T>(path: string, body?: unknown, auth = true) => {
     const requestId = newRequestId()
     return apiRequest<T>(

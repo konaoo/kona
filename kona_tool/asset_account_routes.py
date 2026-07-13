@@ -8,13 +8,23 @@ from flask import Blueprint, Response, jsonify
 
 def _jsonify_result(result):
     if isinstance(result, Response):
-        return result
-    if isinstance(result, tuple) and len(result) == 2:
+        response = result
+    elif isinstance(result, tuple) and len(result) == 2:
         payload, status = result
         if isinstance(payload, Response):
-            return payload, status
-        return jsonify(payload), status
-    return jsonify(result)
+            response = payload
+        else:
+            response = jsonify(payload)
+    else:
+        response = jsonify(result)
+        
+    # 统一注入禁止强缓存的头部，保证接口数据实时正确
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0, private'
+    response.headers['Pragma'] = 'no-cache'
+    
+    if isinstance(result, tuple) and len(result) == 2:
+        return response, result[1]
+    return response
 
 
 def create_asset_account_blueprint(

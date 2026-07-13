@@ -18,16 +18,18 @@
 ## 2026-07-13-02
 
 ### 这版一句话
-修复 Web 资产详情页加仓时资金账户列表为空，以及交易记录接口 ledger_id=0 报错 400 的 Bug。
+修复 Web 资产详情页加仓时资金账户列表为空，以及交易记录接口 ledger_id=0 报错 400 的 Bug（追加防浏览器 GET 接口强缓存优化）。
 
 ### 主要变化
 - 缓存重构：在全局 Pinia portfolio store 里面为资金账户建立 `cashAssets` 缓存和加载逻辑，在静态刷新阶段预先加载，避免在详情页首次打开交易弹窗时的加载竞态条件。
 - 弹窗防护：优化 `InvestTradeModal` 中的 `loadAccounts` 逻辑，优先从 Pinia 全局状态库读取缓存。添加 `try-catch` 容错和兜底逻辑，确保在接口超时或无凭证报错等异常情况下，仍能展示 `-999` (外部资金/初始转入) 的退路选项，避免下拉框完全为空。
+- 缓存破除 (Cache Buster)：前端在 `api.get` 发起 GET 请求时，自动在 URL 尾部注入微秒级随机时间戳 Query 参数（`_t=timestamp`）；后端在 `asset_account_routes.py` 响应转换辅助函数 `_jsonify_result` 中显式添加 `Cache-Control` 防缓存响应头，双向彻底解决一切因为浏览器对 `/api/cash_assets` 返回空数据进行强缓存的问题。
 - 后端容错：修改 `_resolve_ledger_id`，放行 `ledger_id == 0`，使其直接返回 `None` (表示不加过滤条件或默认全部)，彻底解决了在默认账本 (ledger_id=0) 下访问交易记录接口 `/api/portfolio/transactions` 报错 400 的问题。
 
 ### 影响范围
 - Web 端资产交易弹窗的资金账户列表。
 - 后端账本 ID 解析辅助函数。
+- 所有的 api.get 方式发起的前端 GET 网络请求。
 - Web 资产详情页的交易记录加载稳定性。
 - 不影响收益快照和持仓成本价格等核心计算口径。
 
