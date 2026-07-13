@@ -81,9 +81,9 @@ def create_portfolio_payload_handlers(
             ledger_id = int(raw_value)
         except (TypeError, ValueError):
             raise InvalidLedgerIdError("INVALID_LEDGER_ID")
-        if ledger_id <= 0:
+        if ledger_id < 0:
             raise InvalidLedgerIdError("INVALID_LEDGER_ID")
-        return ledger_id
+        return ledger_id if ledger_id > 0 else None
 
     def _invalid_ledger_response():
         return jsonify({"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}), 400

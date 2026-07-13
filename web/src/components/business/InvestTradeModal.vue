@@ -5,6 +5,7 @@ import { toNumber } from '@/shared/format'
 import { computeDisplayCostPrice } from '@/shared/costBasis'
 import { resolveErrorMessage } from '@/shared/errorText'
 import { useLedgerScopeStore } from '@/stores/ledgerScope'
+import { usePortfolioStore } from '@/stores/portfolio'
 
 type TradeAction = 'add' | 'buy' | 'sell' | 'adjust'
 type AdjustType = 'costPrice' | 'quantity' | 'dividend' | 'fee'
@@ -64,19 +65,35 @@ const accounts = ref<any[]>([])
 const selectedAccount = ref<any>(null)
 
 async function loadAccounts() {
-  try {
-    const res = await api.get('/api/cash_assets')
-    const realAccounts = Array.isArray(res) ? res : []
-    accounts.value = [
-      ...realAccounts,
-      { id: -999, name: '外部资金/初始转入', amount: null, curr: '', icon: '↗', iconBg: 'rgba(91,141,239,0.12)' }
-    ]
-    if (accounts.value.length > 0 && (!selectedAccount.value || !accounts.value.find(a => a.id === selectedAccount.value?.id))) {
-      selectedAccount.value = accounts.value[0]
+  console.log('[DEBUG Modal] loadAccounts called')
+  const portfolioStore = usePortfolioStore()
+  
+  // 优先从缓存获取
+  let realAccounts = portfolioStore.cashAssets && portfolioStore.cashAssets.length > 0
+    ? portfolioStore.cashAssets
+    : []
+
+  // 如果缓存为空，则异步发起一次加载
+  if (realAccounts.length === 0) {
+    try {
+      console.log('[DEBUG Modal] Cache empty, loading from API...')
+      await portfolioStore.loadCashAssets()
+      realAccounts = portfolioStore.cashAssets || []
+    } catch (err) {
+      console.error('[DEBUG Modal] Failed to load accounts via store:', err)
     }
-  } catch (err) {
-    console.error('Failed to load accounts:', err)
   }
+
+  // 无论如何都要有兜底的外部资金选项，防止下拉框完全为空
+  accounts.value = [
+    ...realAccounts,
+    { id: -999, name: '外部资金/初始转入', amount: null, curr: '', icon: '↗', iconBg: 'rgba(91,141,239,0.12)' }
+  ]
+
+  if (accounts.value.length > 0 && (!selectedAccount.value || !accounts.value.find(a => a.id === selectedAccount.value?.id))) {
+    selectedAccount.value = accounts.value[0]
+  }
+  console.log('[DEBUG Modal] loadAccounts finished, accounts count:', accounts.value.length)
 }
 const isAcctDropdownOpen = ref(false)
 const isCreateSheetOpen = ref(false)
@@ -234,6 +251,7 @@ function resetForm() {
 }
 
 watch(() => props.show, (val) => {
+  console.log('[DEBUG Modal] watch props.show triggered, val:', val)
   if (val) {
     loadAccounts()
     modalVisible.value = true

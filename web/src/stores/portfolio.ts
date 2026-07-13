@@ -509,6 +509,20 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   // Actions
   // ───────────────────────────────────────────────────────────────
 
+  const cashAssets = ref<any[]>([])
+
+  /**
+   * LoadCashAssets - 加载现金资产缓存
+   */
+  async function loadCashAssets() {
+    try {
+      const data = await api.get<any[]>('/api/cash_assets', true)
+      cashAssets.value = Array.isArray(data) ? data : []
+    } catch (e) {
+      console.error('Failed to load cash assets:', e)
+    }
+  }
+
   /**
    * LoadPortfolio - 加载投资组合
    */
@@ -576,6 +590,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // State
     portfolio,
     loading,
+    cashAssets,
 
     // Computed
     rows,
@@ -584,6 +599,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     // Actions
     loadPortfolio,
+    loadCashAssets,
     updatePortfolioItem,
     removePortfolioItem,
     addPortfolioItem,

@@ -97,6 +97,7 @@ export const useRefreshCoordinatorStore = defineStore('refreshCoordinator', () =
       if (!Object.keys(marketStore.rates || {}).length) {
         await marketStore.loadRates()
       }
+      await portfolioStore.loadCashAssets()
       syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
       lastRefreshResult.value = finishAsyncFlow(flow, 'bootstrap-hit')
       return lastRefreshResult.value
@@ -105,6 +106,7 @@ export const useRefreshCoordinatorStore = defineStore('refreshCoordinator', () =
         portfolioStore.loadPortfolio(),
         marketStore.loadMarketStatus(),
         marketStore.loadRates(),
+        portfolioStore.loadCashAssets(),
       ])
       syncStore.persistStoreCache(authStore, portfolioStore, marketStore, quoteStore, 'static')
       lastRefreshResult.value = finishAsyncFlow(flow, 'fallback-load', error)

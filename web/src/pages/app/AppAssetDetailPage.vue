@@ -323,6 +323,7 @@ async function confirmDeleteAction() {
 }
 
 function openTrade(mode: TradeMode) {
+  console.log('[DEBUG Detail] openTrade called, mode:', mode, 'row:', row.value)
   if (!row.value) return
   tradeMode.value = mode
   showTradeModal.value = true
