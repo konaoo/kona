@@ -2,7 +2,6 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/shared/http'
 import { toNumber } from '@/shared/format'
-import { computeDisplayCostPrice } from '@/shared/costBasis'
 import { resolveErrorMessage } from '@/shared/errorText'
 import { useLedgerScopeStore } from '@/stores/ledgerScope'
 import { usePortfolioStore } from '@/stores/portfolio'
@@ -120,11 +119,7 @@ const isFundAdjustTarget = computed(() => {
   const assetType = String(selectedStock.value?.asset_type || '').toLowerCase()
   return marketType === 'fund' || assetType === 'fund'
 })
-const currentDisplayCostPrice = computed(() => computeDisplayCostPrice(
-  currentRawCostPrice.value,
-  currentHoldingQty.value,
-  currentAdjustment.value,
-))
+// removed unused currentDisplayCostPrice definition
 const adjustValueStep = computed(() => {
   if (adjustType.value === 'quantity') return isFundAdjustTarget.value ? '0.0001' : '0.01'
   if (adjustType.value === 'costPrice') return (selectedStock.value?.digits || 2) >= 4 ? '0.0001' : '0.01'
@@ -301,7 +296,7 @@ function formatAdjustInputValue(value: number, digits: number): string {
 function syncAdjustInputDefault() {
   const holdingQty = currentHoldingQty.value
   if (adjustType.value === 'costPrice') {
-    adjustValue.value = formatAdjustInputValue(currentDisplayCostPrice.value, selectedStock.value?.digits || 2)
+    adjustValue.value = formatAdjustInputValue(currentRawCostPrice.value, selectedStock.value?.digits || 2)
     return
   }
   if (adjustType.value === 'quantity') {
@@ -332,7 +327,7 @@ function resolveAdjustPayload():
     if (!Number.isFinite(parsedInput)) return { error: '请输入有效成本价' }
     return {
       qty: holdingQty,
-      price: parsedInput + currentAdj / holdingQty,
+      price: parsedInput,
       adjustment: currentAdj,
     }
   }
