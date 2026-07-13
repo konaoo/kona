@@ -138,7 +138,7 @@ function formatDateTime(raw: unknown): string {
   return `${y}-${m}-${d} ${hh}:${mm}`
 }
 
-function tradeTypeLabel(item: Record<string, any>): string {
+function normalizeTradeType(item: Record<string, any>): string {
   const text = String(item.type || item.action || '')
     .trim()
     .toLowerCase()
@@ -147,19 +147,105 @@ function tradeTypeLabel(item: Record<string, any>): string {
   if (text === 'modify') return '修正'
   if (text === 'dividend') return '分红'
   if (text === 'fee') return '手续费'
-  return text || '-'
+  if (text === 'tax') return '税金'
+  const raw = String(item.type || item.action || '').trim()
+  if (raw === '手动调整') {
+    const note = String(item.note || '').trim()
+    if (note.includes('成本')) return '成本修正'
+    if (note.includes('数量')) return '数量修正'
+  }
+  return raw || '-'
 }
 
-function tradeQtyLabel(item: Record<string, any>): string {
-  const qty = toNumber(item.qty)
+function tradeTypeLabel(item: Record<string, any>): string {
+  return normalizeTradeType(item)
+}
+
+function formatQty(value: unknown): string {
+  const qty = toNumber(value)
   if (!Number.isFinite(qty)) return '-'
   return qty.toLocaleString('zh-CN')
 }
 
-function tradePriceLabel(item: Record<string, any>): string {
-  const price = toNumber(item.price)
-  if (!Number.isFinite(price)) return '-'
-  return price.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+function formatPricePlain(value: unknown): string {
+  const price = toNumber(value)
+  if (!Number.isFinite(price) || price <= 0) return '-'
+  return price.toLocaleString('zh-CN', {
+    minimumFractionDigits: price < 10 ? 3 : 2,
+    maximumFractionDigits: 4
+  })
+}
+
+function tradeDetailLabel(item: Record<string, any>): string {
+  const type = normalizeTradeType(item)
+  const note = String(item.note || '').trim()
+  if (type === '买入' || type === '加仓' || type === '卖出' || type === '减仓') {
+    const price = formatPricePlain(item.price)
+    const qty = formatQty(item.qty)
+    const parts = [`${price} × ${qty}股`]
+    const pnl = toNumber(item.pnl)
+    if ((type === '卖出' || type === '减仓') && Number.isFinite(pnl) && pnl !== 0) {
+      parts.push(`盈亏 ${formatSignedMoney(pnl, row.value?.curr)}`)
+    }
+    return parts.join(' · ')
+  }
+
+  if (type === '成本修正') {
+    const before = formatPricePlain(item.before_price)
+    const after = formatPricePlain(item.after_price)
+    const base = before !== '-' || after !== '-' ? `成本价 ${before} -> ${after}` : ''
+    return [base, note].filter(Boolean).join(' · ') || '成本价已修正'
+  }
+
+  if (type === '数量修正') {
+    const before = formatQty(item.before_qty)
+    const after = formatQty(item.after_qty)
+    const base = before !== '-' || after !== '-' ? `持仓数量 ${before}股 -> ${after}股` : ''
+    return [base, note].filter(Boolean).join(' · ') || '持仓数量已修正'
+  }
+
+  if (type === '持仓修正' || type === '初始持仓') {
+    const parts: string[] = []
+    const beforePrice = formatPricePlain(item.before_price)
+    const afterPrice = formatPricePlain(item.after_price)
+    const beforeQty = formatQty(item.before_qty)
+    const afterQty = formatQty(item.after_qty)
+    if (beforePrice !== '-' || afterPrice !== '-') {
+      parts.push(`成本价 ${beforePrice} -> ${afterPrice}`)
+    }
+    if (beforeQty !== '-' || afterQty !== '-') {
+      parts.push(`持仓数量 ${beforeQty}股 -> ${afterQty}股`)
+    }
+    if (note) parts.push(note)
+    return parts.join(' · ') || '持仓信息已修正'
+  }
+
+  return note || '-'
+}
+
+function tradeAmountLabel(item: Record<string, any>): string {
+  const type = normalizeTradeType(item)
+  const amount = toNumber(item.amount)
+  if (!Number.isFinite(amount) || amount === 0) {
+    return ['成本修正', '数量修正', '持仓修正', '初始持仓', '手动调整'].includes(type)
+      ? '--'
+      : formatSignedMoney(0, row.value?.curr)
+  }
+  if (type === '卖出' || type === '减仓' || type === '手续费' || type === '税金') {
+    return formatSignedMoney(-Math.abs(amount), row.value?.curr)
+  }
+  if (type === '买入' || type === '加仓' || type === '分红') {
+    return formatSignedMoney(Math.abs(amount), row.value?.curr)
+  }
+  return formatSignedMoney(amount, row.value?.curr)
+}
+
+function tradeAmountClass(item: Record<string, any>): 'up' | 'dn' | 'flat' {
+  const type = normalizeTradeType(item)
+  if (type === '买入' || type === '加仓' || type === '分红') return 'up'
+  if (type === '卖出' || type === '减仓') return 'dn'
+  const amount = toNumber(item.amount)
+  return valueClass(amount)
 }
 
 function truncateAssetName(name: string): string {
@@ -172,21 +258,20 @@ function truncateAssetName(name: string): string {
 async function loadTransactions() {
   txLoading.value = true
   try {
-    const payload = await api.get<Record<string, any>[]>('/api/transactions?days=3650')
-    const target = code.value.trim().toLowerCase()
-    const list = (Array.isArray(payload) ? payload : [])
-      .filter(
-        item =>
-          String(item.code || '')
-            .trim()
-            .toLowerCase() === target
-      )
-      .sort((a, b) => {
-        const at = new Date(String(a.time || a.date || a.created_at || '')).getTime()
-        const bt = new Date(String(b.time || b.date || b.created_at || '')).getTime()
-        return bt - at
-      })
-    txList.value = list
+    const targetCode = String(row.value?.code || code.value).trim()
+    if (!targetCode) {
+      txList.value = []
+      return
+    }
+    const params = new URLSearchParams({ code: targetCode })
+    const ledgerId = row.value?.ledger_id
+    if (ledgerId != null && Number.isFinite(Number(ledgerId))) {
+      params.set('ledger_id', String(ledgerId))
+    }
+    const payload = await api.get<{ records?: Record<string, any>[] }>(
+      `/api/portfolio/transactions?${params.toString()}`
+    )
+    txList.value = Array.isArray(payload?.records) ? payload.records : []
   } catch (error) {
     console.error('Failed to load investment transactions', error)
     txList.value = []
@@ -365,26 +450,25 @@ onMounted(() => {
           <div v-if="txLoading" class="tx-empty">正在加载交易记录…</div>
           <div v-else-if="txList.length === 0" class="tx-empty">暂无交易记录</div>
           <div v-else class="tx-list">
-            <div class="tx-row tx-row-head">
-              <div class="tx-col tx-col-head time">时间</div>
-              <div class="tx-col tx-col-head type">类型</div>
-              <div class="tx-col tx-col-head qty">数量</div>
-              <div class="tx-col tx-col-head price">单价</div>
-              <div class="tx-col tx-col-head pnl">盈亏</div>
-            </div>
             <div
               v-for="item in txList"
               :key="String(item.id || `${item.time || item.date}-${item.type}-${item.qty}`)"
-              class="tx-row"
+              class="tx-item"
             >
-              <div class="tx-col time">
-                {{ formatDateTime(item.time || item.date || item.created_at) }}
-              </div>
-              <div class="tx-col type">{{ tradeTypeLabel(item) }}</div>
-              <div class="tx-col qty">{{ tradeQtyLabel(item) }}</div>
-              <div class="tx-col price">{{ tradePriceLabel(item) }}</div>
-              <div class="tx-col pnl" :class="valueClass(item.pnl)">
-                {{ item.pnl == null ? '-' : formatSignedMoney(item.pnl, row.curr) }}
+              <span class="tx-dot" :class="tradeAmountClass(item)"></span>
+              <div class="tx-body">
+                <div class="tx-line-main">
+                  <div class="tx-type">{{ tradeTypeLabel(item) }}</div>
+                  <div class="tx-amount" :class="tradeAmountClass(item)">
+                    {{ tradeAmountLabel(item) }}
+                  </div>
+                </div>
+                <div class="tx-line-sub">
+                  <div class="tx-detail">{{ tradeDetailLabel(item) }}</div>
+                  <div class="tx-time">
+                    {{ formatDateTime(item.time || item.date || item.created_at) }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -644,51 +728,87 @@ onMounted(() => {
   flex-direction: column;
 }
 
-.tx-row:first-child {
-  border-top: 1px solid var(--surface-divider);
-}
-
-.tx-row {
-  display: grid;
-  grid-template-columns: 1.7fr 0.75fr 0.85fr 0.95fr 1.1fr;
+.tx-item {
+  display: flex;
   gap: 12px;
-  padding: 11px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--surface-divider);
-  align-items: center;
+  align-items: flex-start;
 }
 
-.tx-row-head {
-  padding: 9px 0 10px;
+.tx-item:first-child {
   border-top: 1px solid var(--surface-divider);
-  background: color-mix(in srgb, var(--surface-soft) 55%, transparent);
 }
 
-.tx-col {
-  font-size: 12.5px;
+.tx-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--sub);
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+
+.tx-dot.up {
+  background: var(--red);
+}
+
+.tx-dot.dn {
+  background: var(--green);
+}
+
+.tx-dot.flat {
+  background: var(--sub);
+}
+
+.tx-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.tx-line-main,
+.tx-line-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.tx-line-sub {
+  margin-top: 4px;
+}
+
+.tx-type {
+  min-width: 0;
   color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tx-col.time {
-  color: var(--sub);
-}
-
-.tx-col.qty,
-.tx-col.price,
-.tx-col.pnl {
+.tx-amount {
   font-family: 'JetBrains Mono', monospace;
-  text-align: right;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-.tx-col-head {
-  font-size: 11px;
-  font-weight: 700;
+.tx-detail {
+  min-width: 0;
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-time {
   color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .detail-empty,
@@ -810,17 +930,18 @@ onMounted(() => {
     height: 52px;
   }
 
-  .tx-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 7px 10px;
-    padding: 10px 0;
+  .tx-line-main,
+  .tx-line-sub {
+    align-items: flex-start;
   }
 
-  .tx-col.type,
-  .tx-col.qty,
-  .tx-col.price,
-  .tx-col.pnl {
-    text-align: left;
+  .tx-line-sub {
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .tx-time {
+    font-size: 11px;
   }
 }
 </style>
