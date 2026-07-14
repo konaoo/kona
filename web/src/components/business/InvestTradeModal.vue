@@ -967,7 +967,6 @@ onUnmounted(() => {
                   <input
                     type="text"
                     class="num-input"
-                    style="text-align: left; padding: 0 12px; font-family: inherit;"
                     v-model="note"
                     placeholder="如：7月分红、富途盈亏分析补录"
                   />
