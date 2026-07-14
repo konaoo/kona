@@ -44,6 +44,7 @@ const qty = ref('')
 const amount = ref('')
 const adjustType = ref<AdjustType>('costPrice')
 const adjustValue = ref('')
+const note = ref('')
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const adjustTypeOptions: Array<{ value: AdjustType; label: string }> = [
@@ -207,6 +208,7 @@ function applyModeDefaults() {
     amount.value = ''
     adjustType.value = 'costPrice'
     adjustValue.value = ''
+    note.value = ''
     return
   }
 
@@ -217,6 +219,7 @@ function applyModeDefaults() {
     amount.value = ''
     adjustType.value = 'costPrice'
     syncAdjustInputDefault()
+    note.value = ''
     return
   }
 
@@ -224,6 +227,7 @@ function applyModeDefaults() {
   qty.value = ''
   amount.value = ''
   adjustValue.value = ''
+  note.value = ''
 }
 
 function resetForm() {
@@ -237,6 +241,7 @@ function resetForm() {
   amount.value = ''
   adjustType.value = 'costPrice'
   adjustValue.value = ''
+  note.value = ''
   isAcctDropdownOpen.value = false
   isCreateSheetOpen.value = false
   isCurrDropdownOpen.value = false
@@ -682,6 +687,7 @@ async function handleConfirm() {
           event_type: adjustType.value,
           amount: amountValue,
           curr: selectedStock.value.currency,
+          note: note.value.trim(),
         }
         const ledgerId = resolveSelectedLedgerId()
         if (ledgerId != null) {
@@ -693,6 +699,7 @@ async function handleConfirm() {
           code: selectedStock.value.code,
           qty: payload.qty,
           price: payload.price,
+          note: note.value.trim(),
         }
         const ledgerId = resolveSelectedLedgerId()
         if (ledgerId != null) {
@@ -950,6 +957,20 @@ onUnmounted(() => {
                 <div class="num-label">{{ adjustInputLabel }}</div>
                 <div class="num-wrap">
                   <input type="number" class="num-input" v-model="adjustValue" placeholder="0.00" :step="adjustValueStep" />
+                </div>
+              </div>
+            </div>
+            <div class="inputs-row adjust-row" style="margin-top: 14px;">
+              <div class="num-field" style="width: 100%;">
+                <div class="num-label">备注 (可选)</div>
+                <div class="num-wrap">
+                  <input
+                    type="text"
+                    class="num-input"
+                    style="text-align: left; padding: 0 12px; font-family: inherit;"
+                    v-model="note"
+                    placeholder="如：7月分红、富途盈亏分析补录"
+                  />
                 </div>
               </div>
             </div>
