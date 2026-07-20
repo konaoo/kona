@@ -530,10 +530,24 @@ def _persist_late_effective_date_settlements(
             for item in (asset_day_breakdowns_by_date.get(effective_date) or [])
             if str(item.get("market") or "").strip().lower() in impacted_markets
         ]
+        late_asset_codes = {
+            str(item.get("code") or "").strip()
+            for item in late_asset_items
+            if str(item.get("code") or "").strip()
+        }
         asset_items = [
             item
             for item in existing_asset_items
-            if str(item.get("market") or "").strip().lower() not in impacted_markets
+            if (
+                str(item.get("market") or "").strip().lower() not in impacted_markets
+                # 晚到净值只会带回实际发生变化的基金。保留当天原有的
+                # 零收益行，避免回填时把仍在持有、但净值未变的基金删掉。
+                or (
+                    str(item.get("code") or "").strip() not in late_asset_codes
+                    and abs(float(item.get("day_pnl") or 0.0)) < 0.005
+                    and abs(float(item.get("day_base") or 0.0)) < 0.005
+                )
+            )
         ]
         asset_items.extend(late_asset_items)
         total_day_pnl = round(sum(float(v or 0.0) for v in market_map.values()), 2)

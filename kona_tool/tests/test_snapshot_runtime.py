@@ -24,6 +24,7 @@ class _FakeDb:
         self.synced_dates = []
         self.synced_ledger_dates = []
         self.snapshot_dates = {"2026-03-13"}
+        self.asset_breakdown_rows = {}
 
     def save_daily_snapshot(self, stats, user_id, snapshot_date=None):
         self.saved_stats.append({"stats": stats, "user_id": user_id, "snapshot_date": snapshot_date})
@@ -74,7 +75,7 @@ class _FakeDb:
         return {market: 0.0 for market in ("a", "hk", "us", "fund", "unallocated")}
 
     def get_daily_snapshot_asset_breakdown_rows(self, *, date_str, user_id=None, ledger_id=None):
-        return []
+        return [dict(item) for item in self.asset_breakdown_rows.get((date_str, ledger_id), [])]
 
 
 class _FakeLogger:
@@ -261,6 +262,42 @@ class SnapshotRuntimeTests(unittest.TestCase):
         self.assertTrue(all(item.get("replace_existing") is True for item in prior_day_calls))
         self.assertEqual({item["market"] for item in prior_day_calls[0]["items"]}, {"us", "fund"})
         self.assertTrue(all(item["snapshot_date"] == "2026-03-27" for item in prior_day_calls))
+
+    def test_late_settlement_keeps_existing_zero_rows_in_impacted_market(self):
+        stats = {
+            "snapshot_date": "2026-03-27",
+            "snapshot_day_pnl": 0.0,
+            "snapshot_day_pnl_by_market": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0, "unallocated": 0.0},
+            "day_pnl_breakdowns_by_date": {
+                "2026-03-26": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": -200.0},
+                "2026-03-27": {"a": 0.0, "hk": 0.0, "us": 0.0, "fund": 0.0},
+            },
+            "asset_day_breakdowns_by_date": {
+                "2026-03-26": [
+                    {"code": "f_changed", "name": "有变化基金", "market": "fund", "curr": "CNY", "day_pnl": -200.0, "day_base": 2000.0},
+                ],
+                "2026-03-27": [],
+            },
+            "now_utc": datetime(2026, 3, 27, 12, 0, tzinfo=timezone.utc),
+        }
+        self.db.snapshot_dates.add("2026-03-26")
+        self.db.asset_breakdown_rows[("2026-03-26", None)] = [
+            {"code": "sh_600000", "name": "浦发银行", "market": "a", "curr": "CNY", "day_pnl": 0.0, "day_base": 0.0},
+            {"code": "f_zero", "name": "净值未变基金", "market": "fund", "curr": "CNY", "day_pnl": 0.0, "day_base": 0.0},
+            {"code": "f_stale", "name": "旧基金收益", "market": "fund", "curr": "CNY", "day_pnl": 50.0, "day_base": 500.0},
+        ]
+
+        with patch("core.snapshot.get_market_statuses", return_value={}):
+            ok = persist_snapshot_stats(self.db, self.logger, stats, user_id="u_late")
+
+        self.assertTrue(ok)
+        prior_day_call = next(
+            item for item in self.db.saved_asset_breakdowns if item["date_str"] == "2026-03-26"
+        )
+        self.assertEqual(
+            {item["code"] for item in prior_day_call["items"]},
+            {"sh_600000", "f_zero", "f_changed"},
+        )
 
     def test_persist_ledger_snapshot_stats_backfills_prior_date_with_full_day_breakdown(self):
         stats = {
