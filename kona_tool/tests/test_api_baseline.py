@@ -647,7 +647,7 @@ class ApiBaselineTests(unittest.TestCase):
         self.assertAlmostEqual(float(stats.get('day_pnl') or 0.0), 0.0, places=2)
         self.assertAlmostEqual(float(stats.get('snapshot_day_pnl') or 0.0), 0.0, places=2)
 
-    def test_calculate_stats_keeps_zero_row_for_otc_fund_when_nav_date_missing(self):
+    def test_calculate_stats_does_not_fake_zero_row_for_otc_fund_when_nav_date_missing(self):
         add_resp = self.client.post('/api/portfolio/add', json={
             'code': 'f_110018',
             'name': '增强回报',
@@ -674,10 +674,7 @@ class ApiBaselineTests(unittest.TestCase):
                         )
 
         rows = (stats.get('asset_day_breakdowns_by_date') or {}).get('2026-03-23') or []
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].get('code'), 'f_110018')
-        self.assertAlmostEqual(float(rows[0].get('day_pnl') or 0.0), 0.0, places=2)
-        self.assertAlmostEqual(float(rows[0].get('day_base') or 0.0), 0.0, places=2)
+        self.assertEqual(rows, [])
 
     def test_take_snapshot_updates_prior_day_pnl_when_settling_latest_prior_us_and_fund_breakdowns(self):
         conn = app_module.db.get_connection()
