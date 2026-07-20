@@ -5,6 +5,7 @@
 
 import logging
 import re
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
@@ -15,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 _FIDELITY_HISTORY_SHARE_CLASS_IDS = {
     "LU1116320737": "GBESU/G",
+}
+
+# Morningstar 的日净值接口比 Fidelity 香港页更稳定。这里的标识已按基金
+# ISIN 核对，避免把不同份额的净值混用。
+_MORNINGSTAR_HISTORY_IDS = {
+    "LU1116320737": "F00000UKBR]2]0]FOUSD$$ALL",
 }
 
 
@@ -145,6 +152,51 @@ def get_fidelity_history_points(clean_code: str, limit: int = 20) -> List[Dict[s
         return points[-max(2, int(limit)) :] if points else []
     except Exception as e:
         logger.warning(f"Fidelity fund history API error for {clean_code}: {e}")
+        return []
+
+
+def get_morningstar_history_points(clean_code: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """读取已核对份额的 Morningstar 每日确认净值。"""
+    isin = str(clean_code or "").strip().upper()
+    instrument_id = _MORNINGSTAR_HISTORY_IDS.get(isin)
+    if not instrument_id:
+        return []
+    history_days = max(90, int(limit) * 5)
+
+    try:
+        r = monitored_http_get(
+            "morningstar_fund_history",
+            "https://tools.morningstar.es/api/rest.svc/timeseries_price/t92wz0sj7c",
+            params={
+                "currencyId": "USD",
+                "idtype": "Morningstar",
+                "frequency": "daily",
+                "outputType": "JSON",
+                "startDate": (date.today() - timedelta(days=history_days)).isoformat(),
+                "id": instrument_id,
+            },
+            headers={
+                "User-Agent": config.HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Accept": "application/json, text/plain, */*",
+            },
+            timeout=config.API_TIMEOUT,
+        )
+        if r.status_code != 200:
+            return []
+
+        payload = r.json() or {}
+        securities = ((payload.get("TimeSeries") or {}).get("Security") or [])
+        history_rows = (securities[0] or {}).get("HistoryDetail") if securities else []
+        points: List[Dict[str, Any]] = []
+        for item in history_rows or []:
+            nav_date = normalize_nav_date((item or {}).get("EndDate"))
+            value = safe_float((item or {}).get("Value"))
+            if not nav_date or value <= 0:
+                continue
+            points.append({"date": nav_date, "value": value})
+        return points[-max(2, int(limit)) :] if points else []
+    except Exception as e:
+        logger.warning(f"Morningstar fund history API error for {clean_code}: {e}")
         return []
 
 
@@ -492,6 +544,11 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
 
     主要用于 968xxx 这类 F10 历史接口回空的海外基金。
     """
+    if is_isin_format(clean_code):
+        points = get_morningstar_history_points(clean_code, limit)
+        if points:
+            return points
+
     try:
         url = f"https://overseas.1234567.com.cn/f10/FundJz/{clean_code}"
         headers = {

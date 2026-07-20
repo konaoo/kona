@@ -10,7 +10,11 @@ if str(KONA_TOOL) not in sys.path:
     sys.path.insert(0, str(KONA_TOOL))
 
 from snapshot_runtime import create_snapshot_runtime  # noqa: E402
-from core.snapshot import _persist_ledger_snapshot_stats, persist_snapshot_stats  # noqa: E402
+from core.snapshot import (  # noqa: E402
+    _ensure_snapshot_date_asset_breakdowns,
+    _persist_ledger_snapshot_stats,
+    persist_snapshot_stats,
+)
 
 
 class _FakeDb:
@@ -149,6 +153,22 @@ class SnapshotRuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.db.partial_breakdowns), 0)
         self.assertEqual(len(self.db.synced_dates), 1)
         self.assertEqual(self.db.synced_dates[0]["date_str"], "2026-03-13")
+
+    def test_snapshot_does_not_create_zero_row_when_fund_nav_is_unavailable(self):
+        items = _ensure_snapshot_date_asset_breakdowns(
+            {},
+            portfolio=[
+                {"code": "f_110018", "name": "增强回报", "qty": 100.0, "curr": "CNY"},
+                {"code": "sh600000", "name": "浦发银行", "qty": 100.0, "curr": "CNY"},
+            ],
+            snapshot_date="2026-03-27",
+            unresolved_nav_codes={"f_110018"},
+        )
+
+        self.assertEqual(
+            [item["code"] for item in items["2026-03-27"]],
+            ["sh600000"],
+        )
 
     def test_async_snapshot_uses_sync_path_in_testing_mode(self):
         testing_runtime = create_snapshot_runtime(

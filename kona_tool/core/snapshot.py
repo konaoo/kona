@@ -365,6 +365,7 @@ def _ensure_snapshot_date_asset_breakdowns(
     *,
     portfolio: List[Dict[str, Any]],
     snapshot_date: str,
+    unresolved_nav_codes: set[str] | None = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     if not snapshot_date:
         return asset_day_breakdowns_by_date
@@ -380,11 +381,12 @@ def _ensure_snapshot_date_asset_breakdowns(
         if str((item or {}).get("code") or "").strip()
     }
 
+    unresolved_codes = {str(code or "").strip() for code in (unresolved_nav_codes or set())}
     missing_items: List[Dict[str, Any]] = []
     for asset in portfolio or []:
         code = str((asset or {}).get("code") or "").strip()
         qty = float((asset or {}).get("qty") or 0.0)
-        if not code or qty <= 0 or code in existing_codes:
+        if not code or qty <= 0 or code in existing_codes or code in unresolved_codes:
             continue
         market = market_from_asset(asset)
         if market not in DEFAULT_MARKETS:
@@ -930,6 +932,7 @@ def _calculate_portfolio_stats_direct(
         code: get_fund_latest_nav_date(code)
         for code in otc_fund_codes
     } if otc_fund_codes else {}
+    unresolved_nav_codes: set[str] = set()
     for asset in portfolio:
         code = asset['code']
         qty = float(asset['qty'])
@@ -977,6 +980,7 @@ def _calculate_portfolio_stats_direct(
             if not nav_date and len(price_data) >= 5:
                 nav_date = str(price_data[4] or "").strip() or None
             effective_date = resolve_fund_nav_effective_date(nav_date)
+            has_confirmed_nav = price_data[0] > 0 and price_data[1] > 0
             display_effective_date = _resolve_display_fund_effective_date(
                 now_utc=now_utc,
                 market_statuses=market_statuses,
@@ -991,13 +995,10 @@ def _calculate_portfolio_stats_direct(
                     )
                 if effective_date else 0.0
             )
-            if (
-                effective_date
-                and cur_price > 0
-                and yclose_ref > 0
-                and effective_qty > 0
-                and abs(cur_price - yclose_ref) / yclose_ref >= 1e-9
-            ):
+            if not effective_date or not has_confirmed_nav:
+                # 取价失败时不能伪造“净值不变”的 0，后续历史源恢复后再回填。
+                unresolved_nav_codes.add(code)
+            elif effective_qty > 0 and abs(cur_price - yclose_ref) / yclose_ref >= 1e-9:
                 item_day_pnl = (cur_price - yclose_ref) * effective_qty * rate
                 item_day_base = yclose_ref * effective_qty * rate
                 _add_market_breakdown(day_pnl_breakdowns_by_date, effective_date, market, item_day_pnl)
@@ -1028,6 +1029,18 @@ def _calculate_portfolio_stats_direct(
                         display_effective_date,
                         yclose_ref * effective_qty * rate,
                     )
+            elif effective_qty > 0:
+                # 已确认的两日净值相同也要留下资产明细，供收益日历显示为 0。
+                _add_asset_day_breakdown(
+                    asset_day_breakdowns_by_date,
+                    effective_date=effective_date,
+                    code=code,
+                    name=str(asset.get("name") or code),
+                    market=market,
+                    curr=curr,
+                    day_pnl=0.0,
+                    day_base=0.0,
+                )
         else:
             effective_date = _resolve_snapshot_exchange_effective_date(
                 market=market,
@@ -1162,6 +1175,7 @@ def _calculate_portfolio_stats_direct(
         normalized_asset_breakdowns,
         portfolio=portfolio,
         snapshot_date=snapshot_date,
+        unresolved_nav_codes=unresolved_nav_codes,
     )
 
     return {

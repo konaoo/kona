@@ -53,6 +53,29 @@ class TestFundSourcePriority(unittest.TestCase):
             ],
         )
 
+    def test_morningstar_history_parser_reads_confirmed_nav_rows(self):
+        from core.fund import get_morningstar_history_points
+
+        payload = {
+            "TimeSeries": {
+                "Security": [{"HistoryDetail": [
+                    {"EndDate": "2026-03-23", "Value": "9.23"},
+                    {"EndDate": "2026-03-24", "Value": "9.16"},
+                    {"EndDate": "2026-03-25", "Value": "9.22"},
+                ]}]
+            }
+        }
+        with patch("core.fund.monitored_http_get", return_value=_JsonResp(payload)):
+            points = get_morningstar_history_points("LU1116320737", limit=2)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-24", "value": 9.16},
+                {"date": "2026-03-25", "value": 9.22},
+            ],
+        )
+
     def test_otc_fund_prefers_f10_confirmed_nav(self):
         with patch("core.fund.get_fund_eastmoney_f10", return_value=(1.5904, 1.5225, 0.0679, 4.46, None)) as f10_mock, patch(
             "core.fund.get_fund_tencent_jj",
@@ -209,7 +232,33 @@ class TestFundSourcePriority(unittest.TestCase):
             ],
         )
 
-    def test_overseas_history_falls_back_to_fidelity_for_isin(self):
+    def test_overseas_history_prefers_morningstar_for_isin(self):
+        morningstar_payload = {
+            "TimeSeries": {
+                "Security": [{"HistoryDetail": [
+                    {"EndDate": "2026-03-23", "Value": "9.23"},
+                    {"EndDate": "2026-03-24", "Value": "9.16"},
+                    {"EndDate": "2026-03-25", "Value": "9.22"},
+                ]}]
+            }
+        }
+        with patch("core.fund.monitored_http_get", return_value=_JsonResp(morningstar_payload)) as request_mock, patch(
+            "core.fund.get_fidelity_history_points"
+        ) as fidelity_mock:
+            points = get_fund_overseas_history_points("LU1116320737", limit=3)
+
+        self.assertEqual(
+            points,
+            [
+                {"date": "2026-03-23", "value": 9.23},
+                {"date": "2026-03-24", "value": 9.16},
+                {"date": "2026-03-25", "value": 9.22},
+            ],
+        )
+        self.assertEqual(request_mock.call_args.args[0], "morningstar_fund_history")
+        fidelity_mock.assert_not_called()
+
+    def test_overseas_history_falls_back_to_fidelity_when_morningstar_unavailable(self):
         fidelity_payload = {
             "items": [
                 {"date": "2026-03-25", "nav": "9.22"},
@@ -219,7 +268,7 @@ class TestFundSourcePriority(unittest.TestCase):
         }
         with patch(
             "core.fund.monitored_http_get",
-            side_effect=[_TextResp("<html><body>empty</body></html>"), _JsonResp(fidelity_payload)],
+            side_effect=[_TextResp("", status_code=503), _TextResp("<html><body>empty</body></html>"), _JsonResp(fidelity_payload)],
         ):
             points = get_fund_overseas_history_points("LU1116320737", limit=3)
 
