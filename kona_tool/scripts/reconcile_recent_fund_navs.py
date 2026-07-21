@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-path", default=str(ROOT / "portfolio.db"), help="数据库路径")
     parser.add_argument("--user-id", default="", help="只处理指定用户")
     parser.add_argument("--ledger-id", type=int, help="只处理指定账本")
+    parser.add_argument("--verify-existing", action="store_true", help="连现有明细也重新核验；只适合人工排查")
     return parser.parse_args()
 
 
@@ -160,20 +161,30 @@ def build_repairs(
     days: int,
     user_id: str = "",
     ledger_id: int | None = None,
+    verify_existing: bool = False,
 ) -> tuple[list[tuple[str, int, FundNavRepair]], list[str]]:
     dates = list(iter_dates(days))
     start_date, end_date = dates[0], dates[-1]
     repairs: list[tuple[str, int, FundNavRepair]] = []
     warnings: list[str] = []
+    history_cache: Dict[str, Dict[str, float]] = {}
     for uid, lid in load_ledgers_with_snapshots(db, start_date=start_date, end_date=end_date, user_id=user_id, ledger_id=ledger_id):
         assets = load_fund_assets(db, user_id=uid, ledger_id=lid, start_date=start_date, end_date=end_date)
         for code, asset in assets.items():
-            history = nav_map_from_points(get_asset_trend(code, asset["name"], points=60, market_hint="fund").get("points") or [])
+            existing_by_date = {date_str: load_existing_rows(db, user_id=uid, ledger_id=lid, date_str=date_str).get(code) for date_str in dates}
+            candidate_dates = dates if verify_existing else [date_str for date_str, row in existing_by_date.items() if row is None]
+            if not candidate_dates:
+                continue
+            if code not in history_cache:
+                history_cache[code] = nav_map_from_points(
+                    get_asset_trend(code, asset["name"], points=60, market_hint="fund").get("points") or []
+                )
+            history = history_cache[code]
             if len(history) < 2:
                 warnings.append(f"{uid}/{lid} {code}: 未拿到至少两个确认净值，跳过")
                 continue
-            for date_str in dates:
-                existing = load_existing_rows(db, user_id=uid, ledger_id=lid, date_str=date_str).get(code)
+            for date_str in candidate_dates:
+                existing = existing_by_date[date_str]
                 qty = db.get_position_qty_as_of_effective_date(code, date_str, user_id=uid, ledger_id=lid)
                 fx_rate = derive_historical_fx(
                     db=db, user_id=uid, ledger_id=lid, code=code, curr=asset["curr"], nav_by_date=history, target_date=date_str
@@ -243,7 +254,13 @@ def apply_repairs(db: DatabaseManager, repairs: list[tuple[str, int, FundNavRepa
 def main() -> int:
     args = parse_args()
     db = DatabaseManager(args.db_path)
-    repairs, warnings = build_repairs(db, days=args.days, user_id=args.user_id, ledger_id=args.ledger_id)
+    repairs, warnings = build_repairs(
+        db,
+        days=args.days,
+        user_id=args.user_id,
+        ledger_id=args.ledger_id,
+        verify_existing=args.verify_existing,
+    )
     for warning in warnings:
         print(f"跳过: {warning}")
     print(f"检查完成: 候选修复 {len(repairs)} 条，模式={'写入' if args.apply else '只检查'}")
