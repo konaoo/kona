@@ -239,7 +239,7 @@ def apply_repairs(db: DatabaseManager, repairs: list[tuple[str, int, FundNavRepa
             snapshot_date=date_str, source=SOURCE, confidence=1.0,
         ):
             raise RuntimeError(f"基金市场汇总写入失败: {uid}/{lid}/{date_str}")
-        if not db.sync_ledger_daily_snapshot_day_pnl_from_breakdown(date_str, user_id=uid, ledger_id=lid):
+        if not db.sync_ledger_daily_snapshot_day_pnl_from_breakdown(date_str=date_str, user_id=uid, ledger_id=lid):
             raise RuntimeError(f"账本日收益同步失败: {uid}/{lid}/{date_str}")
 
     for uid, date_str in sorted(changed_user_dates):
