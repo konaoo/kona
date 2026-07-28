@@ -47,8 +47,9 @@ class AnalysisScreenService:
             user_id=user_id,
             ledger_id=ledger_id,
         )
-        overview = self._build_overview(
+        realtime_adjustment = self._build_realtime_adjustment(
             realtime_today=realtime_today,
+            local_now=local_now,
             user_id=user_id,
             ledger_id=ledger_id,
         )
@@ -69,6 +70,13 @@ class AnalysisScreenService:
             realtime_today=realtime_today,
             local_now=local_now,
             time_type=time_type,
+            realtime_adjustment=realtime_adjustment,
+        )
+        overview = self._build_overview(
+            realtime_today=realtime_today,
+            user_id=user_id,
+            ledger_id=ledger_id,
+            realtime_adjustment=realtime_adjustment,
         )
 
         return {
@@ -111,6 +119,7 @@ class AnalysisScreenService:
         realtime_today: Dict[str, Any],
         user_id: str | None,
         ledger_id: int | None,
+        realtime_adjustment: Dict[str, Any],
     ) -> Dict[str, Any]:
         totals = realtime_today.get("totals") or {}
         day_payload: Dict[str, Any]
@@ -129,12 +138,73 @@ class AnalysisScreenService:
                 "source": "snapshot",
             }
 
-        return {
+        overview = {
             "day": day_payload,
             "month": self.db.get_pnl_overview("month", user_id, ledger_id=ledger_id),
             "year": self.db.get_pnl_overview("year", user_id, ledger_id=ledger_id),
             "all": self.db.get_pnl_overview("all", user_id, ledger_id=ledger_id),
         }
+        if not realtime_adjustment.get("applied"):
+            return overview
+
+        for period in ("month", "year"):
+            overview[period] = self._apply_delta_to_pnl_payload(
+                overview[period],
+                realtime_adjustment["delta"],
+            )
+        if realtime_adjustment.get("total_pnl") is not None:
+            overview["all"] = self._apply_exact_pnl_to_payload(
+                overview["all"],
+                realtime_adjustment["total_pnl"],
+            )
+        return overview
+
+    def _build_realtime_adjustment(
+        self,
+        *,
+        realtime_today: Dict[str, Any],
+        local_now: datetime,
+        user_id: str | None,
+        ledger_id: int | None,
+    ) -> Dict[str, Any]:
+        """只让真正属于今天的实时值覆盖当天快照。"""
+        totals = realtime_today.get("totals") or {}
+        effective_date = str(realtime_today.get("effective_date") or "").strip()[:10]
+        if not effective_date or effective_date != local_now.strftime("%Y-%m-%d"):
+            return {"applied": False}
+        try:
+            realtime_day_pnl = round(float(totals.get("day_pnl") or 0.0), 2)
+        except (TypeError, ValueError):
+            return {"applied": False}
+
+        snapshot_day = self.db.get_pnl_overview("day", user_id, ledger_id=ledger_id)
+        snapshot_day_pnl = round(float(snapshot_day.get("pnl") or 0.0), 2)
+        try:
+            total_pnl = round(float(totals["total_pnl"]), 2) if totals.get("total_pnl") is not None else None
+        except (TypeError, ValueError):
+            total_pnl = None
+        return {
+            "applied": True,
+            "effective_date": effective_date,
+            "delta": round(realtime_day_pnl - snapshot_day_pnl, 2),
+            "total_pnl": total_pnl,
+        }
+
+    @staticmethod
+    def _apply_delta_to_pnl_payload(payload: Dict[str, Any], delta: float) -> Dict[str, Any]:
+        result = dict(payload or {})
+        pnl = round(float(result.get("pnl") or 0.0) + float(delta or 0.0), 2)
+        base = float(result.get("base_value") or 0.0)
+        result.update({"pnl": pnl, "pnl_rate": round(pnl / base * 100, 2) if base > 0 else 0.0, "source": "realtime_adjusted"})
+        return result
+
+    @staticmethod
+    def _apply_exact_pnl_to_payload(payload: Dict[str, Any], pnl: float) -> Dict[str, Any]:
+        result = dict(payload or {})
+        base = float(result.get("base_value") or 0.0)
+        value = round(float(pnl or 0.0), 2)
+        result.update({"pnl": value, "pnl_rate": round(value / base * 100, 2) if base > 0 else 0.0, "source": "realtime"})
+        return result
 
     def _normalize_calendar(
         self,
@@ -143,6 +213,7 @@ class AnalysisScreenService:
         realtime_today: Dict[str, Any],
         local_now: datetime,
         time_type: str,
+        realtime_adjustment: Dict[str, Any],
     ) -> Dict[str, Any]:
         result = deepcopy(payload)
         result.setdefault("items", [])
@@ -156,12 +227,12 @@ class AnalysisScreenService:
             "total_rate": result.get("total_rate"),
         }
 
-        if time_type == "day":
+        if realtime_adjustment.get("applied"):
             result = self._apply_realtime_today_to_calendar(
                 payload=result,
                 summary=summary,
-                realtime_today=realtime_today,
-                local_now=local_now,
+                time_type=time_type,
+                realtime_adjustment=realtime_adjustment,
             )
         else:
             result["summary"] = summary
@@ -173,14 +244,14 @@ class AnalysisScreenService:
         *,
         payload: Dict[str, Any],
         summary: Dict[str, Any],
-        realtime_today: Dict[str, Any],
-        local_now: datetime,
+        time_type: str,
+        realtime_adjustment: Dict[str, Any],
     ) -> Dict[str, Any]:
         period = payload.get("period") or {}
         period_year = int(period.get("year") or 0)
         period_month = int(period.get("month") or 0)
-        effective_date = str(realtime_today.get("effective_date") or "").strip()
-        if not realtime_today or not effective_date or period_year <= 0 or period_month <= 0:
+        effective_date = str(realtime_adjustment.get("effective_date") or "").strip()
+        if not effective_date:
             payload["summary"] = summary
             return payload
 
@@ -190,29 +261,40 @@ class AnalysisScreenService:
             payload["summary"] = summary
             return payload
 
-        if effective_local.year != period_year or effective_local.month != period_month:
+        items = list(payload.get("items") or [])
+        delta = float(realtime_adjustment.get("delta") or 0.0)
+        if time_type == "day":
+            if effective_local.year != period_year or effective_local.month != period_month:
+                payload["summary"] = summary
+                return payload
+            target_label = f"{period_month}-{effective_local.day}"
+            for item in items:
+                if str(item.get("label") or "") == target_label:
+                    item["pnl"] = round(float(item.get("pnl") or 0.0) + delta, 2)
+                    break
+            else:
+                items.append({"label": target_label, "pnl": round(delta, 2)})
+        elif time_type == "month":
+            if effective_local.year != period_year:
+                payload["summary"] = summary
+                return payload
+            target_label = f"{effective_local.month}月"
+            for item in items:
+                if str(item.get("label") or "") == target_label:
+                    item["pnl"] = round(float(item.get("pnl") or 0.0) + delta, 2)
+                    break
+        elif time_type == "year":
+            target_label = str(effective_local.year)
+            for item in items:
+                if str(item.get("label") or "") == target_label:
+                    item["pnl"] = round(float(item.get("pnl") or 0.0) + delta, 2)
+                    break
+        else:
             payload["summary"] = summary
             return payload
 
-        totals = realtime_today.get("totals") or {}
-        realtime_pnl = round(float(totals.get("day_pnl") or 0.0), 2)
-        items = list(payload.get("items") or [])
-        target_label = f"{period_month}-{effective_local.day}"
-        original_pnl = 0.0
-        replaced = False
-        for item in items:
-            if str(item.get("label") or "") != target_label:
-                continue
-            original_pnl = float(item.get("pnl") or 0.0)
-            item["pnl"] = realtime_pnl
-            replaced = True
-            break
-        if not replaced:
-            items.append({"label": target_label, "pnl": realtime_pnl})
-
         base_value = float(payload.get("base_value") or 0.0)
-        raw_total = float(payload.get("total_pnl") or 0.0)
-        adjusted_total = round(raw_total - original_pnl + realtime_pnl, 2)
+        adjusted_total = round(float(payload.get("total_pnl") or 0.0) + delta, 2)
         adjusted_rate = round(adjusted_total / base_value * 100, 2) if base_value > 0 else 0.0
         payload["items"] = items
         payload["total_pnl"] = adjusted_total
@@ -225,10 +307,8 @@ class AnalysisScreenService:
         payload["today_override"] = {
             "applied": True,
             "effective_date": effective_date[:10],
-            "status": self._resolve_today_status(
-                realtime_today=realtime_today,
-                local_now=local_now,
-            ),
+            "status": "ready",
+            "delta": delta,
         }
         return payload
 

@@ -1478,6 +1478,7 @@ class AnalysisApiTests(unittest.TestCase):
                     'day_pnl': 88.0,
                     'day_pnl_rate': 8.8,
                     'day_pnl_base': 1000.0,
+                    'total_pnl': 158.0,
                 },
             },
         ), patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
@@ -1492,10 +1493,84 @@ class AnalysisApiTests(unittest.TestCase):
         self.assertIn('realtime_today', payload)
         self.assertEqual(((payload.get('meta') or {}).get('today_status')), 'ready')
         self.assertAlmostEqual(float((((payload.get('overview') or {}).get('day') or {}).get('pnl') or 0.0)), 88.0)
+        self.assertAlmostEqual(float((((payload.get('overview') or {}).get('month') or {}).get('pnl') or 0.0)), 98.0)
+        self.assertAlmostEqual(float((((payload.get('overview') or {}).get('year') or {}).get('pnl') or 0.0)), 98.0)
+        self.assertAlmostEqual(float((((payload.get('overview') or {}).get('all') or {}).get('pnl') or 0.0)), 158.0)
         self.assertAlmostEqual(
             float((((payload.get('calendar') or {}).get('summary') or {}).get('total_pnl') or 0.0)),
             98.0,
         )
+
+    def test_analysis_screen_adjusts_current_month_calendar_with_realtime_delta(self):
+        fixed_now = datetime(2026, 3, 28, 10, 0, 0)
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES
+            ('2026-03-01', 1, 1000, 0, 0, 0, 10, 10, '', '2026-03-01 10:00:00'),
+            ('2026-03-28', 1, 1000, 0, 0, 0, 100, 30, '', '2026-03-28 10:00:00')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.realtime_today_service.RealtimeTodayService.build_payload',
+            return_value={
+                'effective_date': '2026-03-28',
+                'totals': {
+                    'day_pnl': 88.0,
+                    'day_pnl_rate': 8.8,
+                    'day_pnl_base': 1000.0,
+                },
+            },
+        ), patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            resp = self.client.get('/api/analysis/screen?type=month&year=2026')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        calendar = payload.get('calendar') or {}
+        march = next(item for item in calendar.get('items') or [] if item.get('label') == '3月')
+        self.assertAlmostEqual(float(march.get('pnl') or 0.0), 98.0)
+        self.assertAlmostEqual(float((calendar.get('summary') or {}).get('total_pnl') or 0.0), 98.0)
+
+    def test_analysis_screen_keeps_historical_calendar_on_snapshot_values(self):
+        fixed_now = datetime(2026, 3, 28, 10, 0, 0)
+        conn = app_module.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO daily_snapshots
+            (date, total_asset, total_invest, total_cash, total_other, total_liability, total_pnl, day_pnl, user_id, updated_at)
+            VALUES ('2025-03-28', 1, 1000, 0, 0, 0, 50, 20, '', '2025-03-28 10:00:00')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            'core.realtime_today_service.RealtimeTodayService.build_payload',
+            return_value={
+                'effective_date': '2026-03-28',
+                'totals': {
+                    'day_pnl': 88.0,
+                    'day_pnl_rate': 8.8,
+                    'day_pnl_base': 1000.0,
+                },
+            },
+        ), patch('core.db_analysis._get_datetime_now', return_value=fixed_now):
+            resp = self.client.get('/api/analysis/screen?type=month&year=2025')
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        calendar = payload.get('calendar') or {}
+        march = next(item for item in calendar.get('items') or [] if item.get('label') == '3月')
+        self.assertAlmostEqual(float(march.get('pnl') or 0.0), 20.0)
+        self.assertAlmostEqual(float((calendar.get('summary') or {}).get('total_pnl') or 0.0), 20.0)
+        self.assertNotIn('today_override', calendar)
 
     def test_analysis_screen_invalid_calendar_period_returns_400(self):
         resp = self.client.get('/api/analysis/screen?type=day&year=2026&month=13')
