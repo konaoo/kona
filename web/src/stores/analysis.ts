@@ -213,6 +213,33 @@ export const useAnalysisStore = defineStore('analysis', () => {
 
   const pickerSelectedMonth = computed(() => selectedDayMonth.value)
 
+  const selectableDayPeriods = computed(() => {
+    return selectableDayYears.value.flatMap((year) => {
+      return getDayMonths(year).map((month) => ({ year, month }))
+    })
+  })
+
+  const selectedDayPeriodIndex = computed(() => {
+    return selectableDayPeriods.value.findIndex((period) => (
+      period.year === selectedDayYear.value && period.month === selectedDayMonth.value
+    ))
+  })
+
+  const canGoToPreviousDayMonth = computed(() => selectedDayPeriodIndex.value > 0)
+
+  const canGoToNextDayMonth = computed(() => {
+    const now = new Date()
+    const selectedYear = selectedDayYear.value
+    const selectedMonth = selectedDayMonth.value
+    if (!selectedYear || !selectedMonth) return false
+    if (selectedYear > now.getFullYear() || (
+      selectedYear === now.getFullYear() && selectedMonth >= now.getMonth() + 1
+    )) {
+      return false
+    }
+    return selectedDayPeriodIndex.value >= 0 && selectedDayPeriodIndex.value < selectableDayPeriods.value.length - 1
+  })
+
   const filteredRankItems = computed(() => {
     const source = rankType.value === 'profit' ? rank.gain : rank.loss
     return [...(source || [])].slice(0, 10)
@@ -548,6 +575,19 @@ export const useAnalysisStore = defineStore('analysis', () => {
     void loadCalendar().then(() => persistAnalysisCache())
   }
 
+  function moveDayMonth(direction: -1 | 1) {
+    const currentIndex = selectedDayPeriodIndex.value
+    const targetIndex = currentIndex + direction
+    const target = selectableDayPeriods.value[targetIndex]
+    if (!target) return
+    if (direction > 0 && !canGoToNextDayMonth.value) return
+
+    selectedDayYear.value = target.year
+    selectedDayMonth.value = target.month
+    clearCalendarDetail()
+    void loadCalendar().then(() => persistAnalysisCache())
+  }
+
   function onCalendarTypeChange(nextType: AnalysisCalendarType) {
     calendarType.value = nextType
     if (nextType === 'day') ensureDaySelection()
@@ -658,6 +698,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
     pickerSelectedYear,
     pickerMonths,
     pickerSelectedMonth,
+    canGoToPreviousDayMonth,
+    canGoToNextDayMonth,
     filteredRankItems,
     calendarSummaryLabel,
     calendarGrid,
@@ -672,6 +714,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     reload,
     onPickYear,
     onPickMonth,
+    moveDayMonth,
     onCalendarTypeChange,
     initialize,
   }

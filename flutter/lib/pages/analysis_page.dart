@@ -831,6 +831,56 @@ class _AnalysisPageState extends State<AnalysisPage>
     return false;
   }
 
+  List<DateTime> get _selectableDayPeriods {
+    final periods = <DateTime>[];
+    for (final year in _selectableDayYears) {
+      for (final month in _selectableMonthsByYear[year] ?? const <int>[]) {
+        periods.add(DateTime(year, month));
+      }
+    }
+    periods.sort();
+    return periods;
+  }
+
+  int get _selectedDayPeriodIndex {
+    if (_selectedDayYear == null || _selectedDayMonth == null) return -1;
+    return _selectableDayPeriods.indexWhere(
+      (period) =>
+          period.year == _selectedDayYear && period.month == _selectedDayMonth,
+    );
+  }
+
+  bool get _canGoToPreviousDayMonth => _selectedDayPeriodIndex > 0;
+
+  bool get _canGoToNextDayMonth {
+    final now = DateTime.now();
+    final selectedYear = _selectedDayYear;
+    final selectedMonth = _selectedDayMonth;
+    if (selectedYear == null || selectedMonth == null) return false;
+    if (selectedYear > now.year ||
+        (selectedYear == now.year && selectedMonth >= now.month)) {
+      return false;
+    }
+    final index = _selectedDayPeriodIndex;
+    return index >= 0 && index < _selectableDayPeriods.length - 1;
+  }
+
+  void _moveCalendarMonth(int direction) {
+    final targetIndex = _selectedDayPeriodIndex + direction;
+    final periods = _selectableDayPeriods;
+    if (targetIndex < 0 || targetIndex >= periods.length) return;
+    if (direction > 0 && !_canGoToNextDayMonth) return;
+
+    final target = periods[targetIndex];
+    _hideDatePicker();
+    setState(() {
+      _selectedDayYear = target.year;
+      _selectedDayMonth = target.month;
+      _clearCalendarDetail();
+    });
+    _loadCalendar();
+  }
+
   void _changePeriod(String period) {
     setState(() => _currentPeriod = period);
     if (period != 'day') {
@@ -1265,7 +1315,9 @@ class _AnalysisPageState extends State<AnalysisPage>
       key: const Key('calendar-header-controls-row'),
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        if (_calendarTimeType != 'year')
+        if (_calendarTimeType == 'day')
+          _buildCalendarMonthNavigation()
+        else if (_calendarTimeType != 'year')
           _buildCalendarPeriodPicker()
         else
           const SizedBox.shrink(),
@@ -1304,6 +1356,34 @@ class _AnalysisPageState extends State<AnalysisPage>
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarMonthNavigation() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const Key('calendar-previous-month-button'),
+          tooltip: '上一个月',
+          onPressed: _canGoToPreviousDayMonth
+              ? () => _moveCalendarMonth(-1)
+              : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+          iconSize: 20,
+          visualDensity: VisualDensity.compact,
+        ),
+        _buildCalendarPeriodPicker(),
+        if (_canGoToNextDayMonth)
+          IconButton(
+            key: const Key('calendar-next-month-button'),
+            tooltip: '下一个月',
+            onPressed: () => _moveCalendarMonth(1),
+            icon: const Icon(Icons.chevron_right_rounded),
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+          ),
       ],
     );
   }

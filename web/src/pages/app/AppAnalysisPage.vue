@@ -29,43 +29,61 @@
           <div class="section-label">收益日历</div>
         </div>
         <div class="calendar-controls">
-           <div class="calendar-picker-wrap" style="position: relative;">
-              <button class="cal-period-btn" v-if="calendarType !== 'year'" @click="showDatePicker = !showDatePicker">
-                {{ calendarPeriodButtonText }}
-                <span class="cal-arrow">{{ showDatePicker ? '▲' : '▼' }}</span>
-              </button>
-              <span class="cal-period-btn" v-else>历史年度</span>
+           <div class="calendar-period-navigation">
+             <button
+               v-if="calendarType === 'day' && canGoToPreviousDayMonth"
+               class="calendar-nav-btn"
+               type="button"
+               aria-label="上一个月"
+               title="上一个月"
+               @click="moveCalendarMonth(-1)"
+             >&lsaquo;</button>
+             <div class="calendar-picker-wrap" style="position: relative;">
+                <button class="cal-period-btn" v-if="calendarType !== 'year'" @click="showDatePicker = !showDatePicker">
+                  {{ calendarPeriodButtonText }}
+                  <span class="cal-arrow">{{ showDatePicker ? '▲' : '▼' }}</span>
+                </button>
+                <span class="cal-period-btn" v-else>历史年度</span>
 
-              <!-- 日期选择器下拉面板 -->
-              <div class="date-picker-dropdown" v-if="showDatePicker && calendarType !== 'year'">
-                <div class="dp-columns">
-                  <div class="dp-col">
-                    <div class="dp-col-title">年</div>
-                    <div class="dp-list">
-                      <button
-                        v-for="y in pickerYears"
-                        :key="y"
-                        class="dp-item"
-                        :class="{ active: y === pickerSelectedYear }"
-                        @click="onPickYear(y)"
-                      >{{ y }}</button>
+                <!-- 日期选择器下拉面板 -->
+                <div class="date-picker-dropdown" v-if="showDatePicker && calendarType !== 'year'">
+                  <div class="dp-columns">
+                    <div class="dp-col">
+                      <div class="dp-col-title">年</div>
+                      <div class="dp-list">
+                        <button
+                          v-for="y in pickerYears"
+                          :key="y"
+                          class="dp-item"
+                          :class="{ active: y === pickerSelectedYear }"
+                          @click="onPickYear(y)"
+                        >{{ y }}</button>
+                      </div>
                     </div>
-                  </div>
-                  <div class="dp-divider"></div>
-                  <div class="dp-col" v-if="calendarType === 'day'">
-                    <div class="dp-col-title">月</div>
-                    <div class="dp-list">
-                      <button
-                        v-for="m in pickerMonths"
-                        :key="m"
-                        class="dp-item"
-                        :class="{ active: m === pickerSelectedMonth }"
-                        @click="onPickMonth(m)"
-                      >{{ m }}月</button>
+                    <div class="dp-divider" v-if="calendarType === 'day'"></div>
+                    <div class="dp-col" v-if="calendarType === 'day'">
+                      <div class="dp-col-title">月</div>
+                      <div class="dp-list">
+                        <button
+                          v-for="m in pickerMonths"
+                          :key="m"
+                          class="dp-item"
+                          :class="{ active: m === pickerSelectedMonth }"
+                          @click="onPickMonth(m)"
+                        >{{ m }}月</button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+             </div>
+             <button
+               v-if="calendarType === 'day' && canGoToNextDayMonth"
+               class="calendar-nav-btn"
+               type="button"
+               aria-label="下一个月"
+               title="下一个月"
+               @click="moveCalendarMonth(1)"
+             >&rsaquo;</button>
            </div>
            <div class="view-tabs mini-segment">
               <button class="view-tab" :class="{ active: calendarType === 'day' }" @click="onCalendarTypeChange('day')">日</button>
@@ -211,6 +229,8 @@ const {
   pickerSelectedYear,
   pickerMonths,
   pickerSelectedMonth,
+  canGoToPreviousDayMonth,
+  canGoToNextDayMonth,
   filteredRankItems,
   calendarSummaryLabel,
   calendarGrid,
@@ -232,6 +252,11 @@ function onPickYear(year: number) {
 function onPickMonth(month: number) {
   showDatePicker.value = false
   analysisStore.onPickMonth(month)
+}
+
+function moveCalendarMonth(direction: -1 | 1) {
+  showDatePicker.value = false
+  analysisStore.moveDayMonth(direction)
 }
 
 const toNum = toNumber
@@ -569,6 +594,40 @@ onBeforeUnmount(() => {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(91, 141, 239, 0.05));
   border-color: rgba(91, 141, 239, 0.3);
 }
+
+.calendar-period-navigation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-nav-btn {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0 0 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.calendar-nav-btn:hover {
+  border-color: rgba(63, 140, 255, 0.5);
+  background: rgba(63, 140, 255, 0.12);
+}
+
+[data-theme="light"] .calendar-nav-btn {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.03);
+}
+
 .cal-arrow {
   font-size: 9px;
   opacity: 0.5;

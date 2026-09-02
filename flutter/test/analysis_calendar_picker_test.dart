@@ -161,6 +161,27 @@ void main() {
     expect(find.text('2025年01月'), findsOneWidget);
   });
 
+  testWidgets('日视图可用箭头切换前后月份', (tester) async {
+    await tester.pumpWidget(
+      buildTestPage(
+        calendarLoader: ({required timeType, year, month}) async =>
+            calendarResponse(timeType: timeType, year: year, month: month),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年03月'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('calendar-previous-month-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年02月'), findsOneWidget);
+    expect(find.byKey(const Key('calendar-next-month-button')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('calendar-next-month-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年03月'), findsOneWidget);
+  });
+
   testWidgets('月视图仅显示年份滚轮', (tester) async {
     await tester.pumpWidget(
       buildTestPage(
