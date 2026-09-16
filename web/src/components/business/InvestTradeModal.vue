@@ -97,13 +97,14 @@ async function loadAccounts() {
 }
 const isAcctDropdownOpen = ref(false)
 const isCreateSheetOpen = ref(false)
-const createAcctType = ref('cash')
 const createCurr = ref('CNY')
 const isCurrDropdownOpen = ref(false)
 const newAcctName = ref('')
 const newAcctBalance = ref('')
 const nameErr = ref('')
 const amountErr = ref('')
+const createError = ref('')
+const isCreatingAccount = ref(false)
 
 const currencies = [
   { code: 'CNY', name: '人民币', flag: '🇨🇳' },
@@ -553,37 +554,60 @@ const openCreateSheet = () => {
   isCreateSheetOpen.value = true
 }
 
-const closeCreateSheet = () => {
+const resetCreateSheet = () => {
   isCreateSheetOpen.value = false
   isCurrDropdownOpen.value = false
   newAcctName.value = ''
   newAcctBalance.value = ''
-  createAcctType.value = 'cash'
   createCurr.value = 'CNY'
   nameErr.value = ''
   amountErr.value = ''
+  createError.value = ''
 }
 
-const confirmCreateAcct = () => {
+const closeCreateSheet = () => {
+  if (isCreatingAccount.value) return
+  resetCreateSheet()
+}
+
+const confirmCreateAcct = async () => {
   let valid = true
   if (!newAcctName.value.trim()) { nameErr.value = '请输入账户名称'; valid = false } else { nameErr.value = '' }
   if (!newAcctBalance.value || Number(newAcctBalance.value) < 0) { amountErr.value = '请输入金额'; valid = false } else { amountErr.value = '' }
   if (!valid) return
 
-  const typeIconMap: Record<string, string> = { cash: '💰', other: '📦', debt: '💳' }
-  const typeBgMap: Record<string, string> = { cash: 'rgba(62,207,130,0.12)', other: 'rgba(91,141,239,0.12)', debt: 'rgba(240,90,85,0.12)' }
-  const fmt = Number(newAcctBalance.value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-  const newAcct = {
-    id: `acct_${Date.now()}`,
-    name: newAcctName.value.trim(),
-    amount: `${fmt} ${createCurr.value}`,
-    icon: typeIconMap[createAcctType.value] || '💰',
-    iconBg: typeBgMap[createAcctType.value] || 'rgba(62,207,130,0.12)',
-  }
+  const portfolioStore = usePortfolioStore()
+  const name = newAcctName.value.trim()
+  const amountValue = Number(newAcctBalance.value)
+  const curr = createCurr.value
+  const existingIds = new Set((portfolioStore.cashAssets || []).map(item => Number(item?.id)))
 
-  accounts.value.push(newAcct)
-  selectedAccount.value = newAcct
-  closeCreateSheet()
+  isCreatingAccount.value = true
+  createError.value = ''
+  try {
+    await api.post('/api/cash_assets/add', { name, amount: amountValue, curr })
+    await portfolioStore.loadCashAssets()
+
+    const createdAccount = (portfolioStore.cashAssets || []).find(item => {
+      return !existingIds.has(Number(item?.id))
+        && String(item?.name || '').trim() === name
+        && Number(item?.amount) === amountValue
+        && String(item?.curr || '').toUpperCase() === curr
+    })
+
+    if (!createdAccount || !Number.isInteger(Number(createdAccount.id))) {
+      createError.value = '账户已创建，但列表刷新失败。请关闭后重新打开再选择该账户。'
+      return
+    }
+
+    await loadAccounts()
+    selectedAccount.value = createdAccount
+    resetCreateSheet()
+  } catch (error) {
+    createError.value = extractErrorMessage(error, '创建账户失败，请稍后重试')
+  } finally {
+    isCreatingAccount.value = false
+  }
 }
 
 const syncAmount = () => {
@@ -630,8 +654,13 @@ async function handleConfirm() {
   searchError.value = ''
 
   try {
-    const isExternal = (!selectedAccount.value || selectedAccount.value.id === -999)
-    const cashId = isExternal ? null : selectedAccount.value.id
+    const cashId = Number(selectedAccount.value?.id)
+    const isExternal = cashId === -999
+
+    if (!isExternal && (!Number.isInteger(cashId) || cashId <= 0)) {
+      searchError.value = '请先选择有效的现金账户，或选择外部资金'
+      return
+    }
 
     if (!isEditMode.value) {
       const p = parseFloat(price.value)
@@ -993,21 +1022,13 @@ onUnmounted(() => {
         <div class="create-header">
           <div>
             <div class="create-title">添加资金账户</div>
-            <div class="create-sub">账户名称和金额为必填项</div>
+            <div class="create-sub">创建后可直接用于买入资产</div>
           </div>
-          <button class="close-btn" @click="closeCreateSheet" style="flex-shrink:0;margin-top:2px;">
+          <button class="close-btn" @click="closeCreateSheet" :disabled="isCreatingAccount" style="flex-shrink:0;margin-top:2px;">
             <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>
           </button>
         </div>
         <div class="create-body">
-          <div class="create-field">
-            <div class="create-field-label">账户类型</div>
-            <div class="acct-type-tabs">
-              <div class="acct-type-tab cash" :class="{ active: createAcctType === 'cash' }" @click="createAcctType = 'cash'">💰 现金资产</div>
-              <div class="acct-type-tab other" :class="{ active: createAcctType === 'other' }" @click="createAcctType = 'other'">📦 其他资产</div>
-              <div class="acct-type-tab debt" :class="{ active: createAcctType === 'debt' }" @click="createAcctType = 'debt'">💳 我的负债</div>
-            </div>
-          </div>
           <div class="create-field">
             <div class="create-field-label">币种</div>
             <div class="curr-wrap">
@@ -1050,10 +1071,11 @@ onUnmounted(() => {
             </div>
             <div class="field-err" :class="{ show: amountErr }">{{ amountErr }}</div>
           </div>
+          <div class="field-err" :class="{ show: createError }">{{ createError }}</div>
         </div>
         <div class="create-actions">
-          <button class="create-btn create-btn-cancel" @click="closeCreateSheet">取消</button>
-          <button class="create-btn create-btn-confirm" @click="confirmCreateAcct">创建账户</button>
+          <button class="create-btn create-btn-cancel" @click="closeCreateSheet" :disabled="isCreatingAccount">取消</button>
+          <button class="create-btn create-btn-confirm" @click="confirmCreateAcct" :disabled="isCreatingAccount">{{ isCreatingAccount ? '创建中...' : '创建账户' }}</button>
         </div>
       </div>
     </div>
