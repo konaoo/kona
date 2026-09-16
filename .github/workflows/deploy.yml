@@ -81,6 +81,7 @@ jobs:
               - 'web/**'
               - 'scripts/deploy/upload_web_artifact.sh'
               - 'scripts/deploy/apply_web_artifact.sh'
+              - '.github/workflows/deploy.yml'
             flutter:
               - 'flutter/**'
 
