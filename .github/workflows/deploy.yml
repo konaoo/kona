@@ -353,7 +353,8 @@ jobs:
           path: /tmp/kona-web-artifact
 
       - name: Upload Web artifact to server (with retries)
-        timeout-minutes: 4
+        # 上传脚本会进行 3 次、每次最多 90 秒的传输重试；4 分钟会在最后一次重试尚未完成时强制中断。
+        timeout-minutes: 8
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
