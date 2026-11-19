@@ -1,5 +1,17 @@
 # kona_tool 测试地图
 
+## 统一执行方式
+
+GitHub 当前使用标准库 `unittest`，新增回归测试应继承 `unittest.TestCase`，参数组合用 `subTest` 或独立测试方法。不要只定义顶层测试函数，也不要依赖未安装的测试库，否则可能加载失败或未被发现。
+
+在仓库根目录运行：
+
+```bash
+PYTHONPATH=kona_tool python3 -m unittest discover -s kona_tool/tests -p 'test_*.py' -v
+```
+
+本地其他测试工具的通过结果，不能替代上述与 GitHub 相同的完整检查。
+
 这份文档不是讲怎么写测试，而是讲：
 
 `现在这些测试文件，分别在保什么。`
