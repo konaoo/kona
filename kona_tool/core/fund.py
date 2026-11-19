@@ -249,7 +249,7 @@ def get_fund_tiantian_price(fund_code: str) -> Tuple[float, float, float, float,
     except Exception as e:
         logger.warning(f"Tiantian fund API error for {fund_code}: {e}")
 
-    return 0.0, 0.0, 0.0, 0.0, None, None
+    return 0.0, 0.0, 0.0, 0.0, None
 
 
 @retry_on_failure(max_retries=2, delay=0.5)
@@ -351,16 +351,16 @@ def get_fund_tencent_jj(clean_code: str) -> Tuple[float, float, float, float, Op
         url = f"https://qt.gtimg.cn/q={symbol}"
         r = monitored_http_get("tencent_fund_jj", url, headers=config.HEADERS, timeout=config.API_TIMEOUT)
         if r.status_code != 200:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         text = str(r.text or "")
         match = re.search(r'v_[^=]+="([^"]*)"', text)
         if not match:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         fields = match.group(1).split("~")
         if len(fields) < 9:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, None
 
         curr = safe_float(fields[5]) if len(fields) > 5 else 0.0
         yclose_from_feed = safe_float(fields[6]) if len(fields) > 6 else 0.0
@@ -557,7 +557,7 @@ def get_fund_overseas_history_points(clean_code: str, limit: int = 20) -> List[D
         }
         r = monitored_http_get("overseas_fund_history", url, headers=headers, timeout=config.API_TIMEOUT)
         if r.status_code != 200:
-            return []
+            return get_fidelity_history_points(clean_code, limit) if is_isin_format(clean_code) else []
 
         html = str(r.text or "")
         rows = re.findall(
@@ -661,7 +661,7 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float, Optional[str]
     clean_code = re.sub(r"[^0-9]", "", code_str)
 
     if not clean_code:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, None
 
     logger.debug(f"Fetching fund price for {code}")
 
@@ -693,4 +693,4 @@ def get_fund_price(code: str) -> Tuple[float, float, float, float, Optional[str]
         return price, yclose, amt, chg, nav_date
 
     logger.warning(f"Failed to get price for fund {code}")
-    return 0.0, 0.0, 0.0, 0.0, None, None
+    return 0.0, 0.0, 0.0, 0.0, None

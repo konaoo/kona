@@ -90,6 +90,11 @@ core/
 - 判断 A 股 / 港股 / 美股 / 基金
 - 判断市场对应交易日和开闭市状态
 
+历史 `f_` 股票和明确场内基金的别名规则统一在 `parser.py` 的
+`normalize_exchange_code_alias / exchange_fund_candidates / exchange_code_aliases`。
+取价、搜索、新增身份和别名查重复用这些规则；数据库中的历史代码不因此被批量改写。
+`price.py` 的 `is_nav_fund_code` 统一判断是否等待场外基金净值，供实时指标、读侧、快照和分析使用。
+
 这部分是后面所有价格、收益、快照计算的前提。
 
 ### 3.2 价格系统

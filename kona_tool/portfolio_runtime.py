@@ -17,6 +17,7 @@ import time
 from typing import Any, Callable, Dict
 
 from flask import jsonify
+from core.parser import exchange_fund_candidates, normalize_exchange_code_alias
 
 
 class PortfolioRuntime:
@@ -53,21 +54,12 @@ class PortfolioRuntime:
         self._exchange_fund_probe_cache: Dict[str, Dict[str, Any]] = {}
 
     def exchange_fund_candidates(self, code: str) -> list[str]:
-        lower = str(code or "").strip().lower()
-        if not lower.startswith("f_"):
-            return []
-        suffix = lower[2:].strip()
-        if not re.fullmatch(r"\d{6}", suffix):
-            return []
-        if suffix.startswith("11") and not suffix.startswith(("511",)):
-            return []
-        if suffix.startswith(("15", "16", "18")):
-            return [f"sz{suffix}"]
-        if suffix.startswith(("50", "51", "52", "56", "58", "511")):
-            return [f"sh{suffix}"]
-        return []
+        return exchange_fund_candidates(code)
 
     def resolve_exchange_tradable_fund_code(self, code: str) -> str:
+        resolved = normalize_exchange_code_alias(code)
+        if resolved != code:
+            return resolved
         candidates = self.exchange_fund_candidates(code)
         if not candidates:
             return code

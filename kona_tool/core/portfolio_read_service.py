@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Tuple
 
 from .portfolio_metrics import build_portfolio_items_with_metrics
-from .price import is_exchange_fund_code
+from .price import is_nav_fund_code
 from .request_trace import trace_request_stage
 
 
@@ -83,7 +83,7 @@ class PortfolioReadService:
         nav_date_codes = [
             code
             for code in dict.fromkeys(codes)
-            if code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+            if is_nav_fund_code(code)
         ]
         if nav_date_codes:
             with trace_request_stage("portfolio.nav_dates", code_count=len(nav_date_codes)):

@@ -420,6 +420,8 @@ Web 入口壳子现在也已经单独拎出一组：
 
 ### 2.6 价格缓存与容灾
 
+- `test_source_health_backoff.py`：海外失败源分级冷却、403/429、每个 worker 的恢复探测、超时计数和可用备用源隔离；不验证跨 worker 协调。
+
 这组测试保的是“取价失败时别直接炸”：
 
 - [test_price_cache.py](/Users/kona/Desktop/kaka/kona_repo/kona_tool/tests/test_price_cache.py)
@@ -441,6 +443,8 @@ Web 入口壳子现在也已经单独拎出一组：
 `这组是价格系统的抗打击能力。`
 
 ### 2.7 快照、收益和分析口径
+
+- `test_fund_nav_reconcile.py`、`test_fund_nav_reconcile_script.py`：缺行、未核验的零收益（含非零基数）、确认平盘、目标日净值未发布、日常入口按来源识别待核验行及避免重复请求。测试中的模拟后续净值不是线上官方数据。
 
 这组直接关系到你最在意的数字：
 

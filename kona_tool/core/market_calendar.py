@@ -427,12 +427,17 @@ def get_previous_trading_day(market: str, target_date: Any) -> Optional[date]:
 
 
 def market_from_asset(asset: Any) -> str:
+    from .parser import normalize_exchange_code_alias
+
     if isinstance(asset, str):
         code = asset
         asset_type = ""
     else:
         code = str((asset or {}).get("code", "")).strip()
         asset_type = str((asset or {}).get("asset_type", "")).strip().lower()
+
+    if normalize_exchange_code_alias(code) != code:
+        return "a"
 
     # 场内 ETF（asset_type=fund 但代码不以 f_/ft_ 开头）按 A 股市场处理：
     # 它们在 A 股交易所交易，共享交易时段和结算周期。

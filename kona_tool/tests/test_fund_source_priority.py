@@ -281,6 +281,14 @@ class TestFundSourcePriority(unittest.TestCase):
             ],
         )
 
+    def test_overseas_http_error_still_tries_fidelity_history(self):
+        expected = [{"date": "2026-11-17", "value": 9.9}]
+        with patch("core.fund.get_morningstar_history_points", return_value=[]), patch(
+            "core.fund.monitored_http_get", return_value=_TextResp("blocked", status_code=403)
+        ), patch("core.fund.get_fidelity_history_points", return_value=expected) as fallback:
+            self.assertEqual(get_fund_overseas_history_points("LU1116320737", limit=3), expected)
+        fallback.assert_called_once_with("LU1116320737", 3)
+
     def test_get_fund_latest_nav_date_supports_ft_isin_code(self):
         fund_module._nav_date_cache.clear()
         with patch(

@@ -12,7 +12,8 @@ from .day_pnl_attribution import resolve_fund_nav_effective_date
 from .fund import get_fund_latest_nav_date
 from .market_calendar import get_previous_trading_day
 from .market_calendar import get_market_statuses, market_from_asset
-from .price import is_exchange_fund_code
+from .price import is_exchange_fund_code, is_nav_fund_code
+from .parser import normalize_exchange_code_alias
 from .snapshot import _market_trading_day_now, _resolve_snapshot_exchange_effective_date
 from .trend import _fetch_fund_history_points, _fetch_stock_history_points
 
@@ -1018,7 +1019,7 @@ class AnalysisAssetBreakdownService:
 
     def _normalize_market(self, item: Dict[str, Any]) -> str:
         code = str(item.get("code") or "").strip()
-        if is_exchange_fund_code(code):
+        if is_exchange_fund_code(code) or normalize_exchange_code_alias(code) != code:
             return "a"
         market = str(item.get("market") or item.get("asset_type") or "").strip().lower()
         if market in DEFAULT_MARKETS:
@@ -1028,7 +1029,7 @@ class AnalysisAssetBreakdownService:
 
     def _is_otc_fund(self, item: Dict[str, Any]) -> bool:
         code = str(item.get("code") or "").strip()
-        return code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+        return is_nav_fund_code(code)
 
     def _rate_to_cny(self, curr: str, rates: Dict[str, float]) -> float:
         code = str(curr or "CNY").strip().upper()

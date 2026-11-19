@@ -1,0 +1,25 @@
+# 系统日志由 rsyslog 写入；轮转后通知它重新打开文件。
+/var/log/messages /var/log/secure /var/log/cron /var/log/maillog /var/log/spooler {
+    daily
+    maxsize 100M
+    rotate 14
+    compress
+    missingok
+    notifempty
+    create 0600 root root
+    sharedscripts
+    postrotate
+        /usr/bin/systemctl kill -s HUP rsyslog.service
+    endscript
+}
+
+# 定时脚本每次打开日志，不需要重启后台服务。
+/var/log/kona_snapshot.log /var/log/kona_fund_nav_reconcile.log /var/log/kona_price_alert_report.log {
+    daily
+    maxsize 20M
+    rotate 14
+    compress
+    missingok
+    notifempty
+    create 0600 root root
+}

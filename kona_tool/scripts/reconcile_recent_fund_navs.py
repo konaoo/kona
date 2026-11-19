@@ -15,8 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.db import DatabaseManager
-from core.fund_nav_reconcile import FundNavRepair, nav_map_from_points, plan_fund_nav_repair, round_amount
-from core.price import is_exchange_fund_code
+from core.fund_nav_reconcile import FundNavRepair, nav_map_from_points, needs_nav_verification, plan_fund_nav_repair, round_amount
+from core.price import is_nav_fund_code
 from core.trend import get_asset_trend
 
 
@@ -105,8 +105,7 @@ def load_fund_assets(
 
 
 def _is_otc_fund(code: str) -> bool:
-    normalized = str(code or "").strip().lower()
-    return normalized.startswith(("f_", "ft_")) and not is_exchange_fund_code(normalized)
+    return is_nav_fund_code(code)
 
 
 def load_existing_rows(db: DatabaseManager, *, user_id: str, ledger_id: int, date_str: str) -> Dict[str, Dict[str, Any]]:
@@ -172,7 +171,7 @@ def build_repairs(
         assets = load_fund_assets(db, user_id=uid, ledger_id=lid, start_date=start_date, end_date=end_date)
         for code, asset in assets.items():
             existing_by_date = {date_str: load_existing_rows(db, user_id=uid, ledger_id=lid, date_str=date_str).get(code) for date_str in dates}
-            candidate_dates = dates if verify_existing else [date_str for date_str, row in existing_by_date.items() if row is None]
+            candidate_dates = dates if verify_existing else [date_str for date_str, row in existing_by_date.items() if needs_nav_verification(row)]
             if not candidate_dates:
                 continue
             if code not in history_cache:
@@ -185,6 +184,9 @@ def build_repairs(
                 continue
             for date_str in candidate_dates:
                 existing = existing_by_date[date_str]
+                if date_str not in history:
+                    warnings.append(f"{uid}/{lid} {code}/{date_str}: 目标日确认净值尚不可用，保留原值待复核")
+                    continue
                 qty = db.get_position_qty_as_of_effective_date(code, date_str, user_id=uid, ledger_id=lid)
                 fx_rate = derive_historical_fx(
                     db=db, user_id=uid, ledger_id=lid, code=code, curr=asset["curr"], nav_by_date=history, target_date=date_str

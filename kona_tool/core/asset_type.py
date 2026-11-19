@@ -4,6 +4,7 @@
 """
 import re
 import logging
+from .parser import normalize_exchange_code_alias
 try:
     from core.fund import is_isin_format
 except ImportError:
@@ -36,7 +37,7 @@ def infer_asset_type(code: str, name: str = '') -> str:
     根据代码 + 名称推断资产类型
     返回: a / us / hk / fund
     """
-    c = (code or '').strip()
+    c = normalize_exchange_code_alias(code)
     if not c:
         return 'a'
     lower = c.lower()
@@ -89,12 +90,16 @@ def infer_category_type(code: str, name: str = '', asset_type: str = '') -> str:
     - 交易代码仍可走 sh/sz 场内链路
     - 但场内 ETF / LOF / REIT 这类基金产品，统计时仍归到 fund
     """
+    resolved = normalize_exchange_code_alias(code)
+    if resolved != str(code or '').strip() and resolved.startswith(('sh60', 'sh68')):
+        return 'a'
     normalized_asset_type = str(asset_type or '').strip().lower()
     if normalized_asset_type in {'us', 'hk'}:
         return normalized_asset_type
     if normalized_asset_type == 'fund':
         return 'fund'
 
+    code = normalize_exchange_code_alias(code)
     if str(code or '').strip().lower().startswith(('f_', 'ft_')):
         return 'fund'
 

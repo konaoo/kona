@@ -191,12 +191,20 @@ def monitored_http_get(
         resp = requests.get(url, params=params, headers=headers, timeout=timeout)
         duration_ms = (time.monotonic() - start) * 1000
         ok = resp.status_code == 200
+        retry_after = 0.0
+        if resp.status_code == 429:
+            try:
+                retry_after = max(0.0, float(resp.headers.get("Retry-After", "0")))
+            except (TypeError, ValueError):
+                pass
         source_health.record(
             source=source,
             success=ok,
             duration_ms=duration_ms,
             timeout=False,
             error=f"status={resp.status_code}" if not ok else "",
+            status_code=resp.status_code,
+            retry_after_seconds=retry_after,
         )
         return resp
     except Timeout as e:

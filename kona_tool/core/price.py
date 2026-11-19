@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_com
 import config
 from .stock import get_stock_price, get_isin_metadata, _normalize_quote_code
 from .fund import get_fund_price, is_isin_format
+from .parser import exchange_fund_candidates, normalize_exchange_code_alias
 from .source_health import source_health
 from .utils import monitored_http_get
 from .utils import safe_float
@@ -239,21 +240,7 @@ def get_price_source_health() -> Dict[str, Dict[str, Any]]:
 
 
 def _exchange_fund_candidates(code: str) -> List[str]:
-    lower = str(code or "").strip().lower()
-    if not lower.startswith("f_"):
-        return []
-    suffix = lower[2:].strip()
-    if not re.fullmatch(r"\d{6}", suffix):
-        return []
-    # 11xxxx 里既有场外基金，也有沪市场内 ETF（如 511xxx）。
-    # 只对已知场内段做交易所候选，避免把普通场外基金误纠正。
-    if suffix.startswith("11") and not suffix.startswith(("511",)):
-        return []
-    if suffix.startswith(("15", "16", "18")):
-        return [f"sz{suffix}"]
-    if suffix.startswith(("50", "51", "52", "56", "58", "511")):
-        return [f"sh{suffix}"]
-    return []
+    return exchange_fund_candidates(code)
 
 
 def is_exchange_fund_code(code: str) -> bool:
@@ -295,7 +282,20 @@ def is_exchange_fund_code(code: str) -> bool:
     return False
 
 
+def is_nav_fund_code(code: str) -> bool:
+    """真正等待净值的代码，不把历史股票/场内基金别名算进去。"""
+    raw = str(code or "").strip()
+    return (
+        raw.lower().startswith(("f_", "ft_"))
+        and normalize_exchange_code_alias(raw) == raw
+        and not is_exchange_fund_code(raw)
+    )
+
+
 def _map_fund_code_to_exchange_if_tradable(code: str) -> str:
+    resolved = normalize_exchange_code_alias(code)
+    if resolved != str(code or "").strip():
+        return resolved
     candidates = _exchange_fund_candidates(code)
     if not candidates:
         return str(code or "")
@@ -345,7 +345,7 @@ def get_price(code: str, use_cache: bool = True) -> Tuple[float, float, float, f
 
     _mark_metric("network_fetch")
 
-    if code.startswith('f_'):
+    if code.lower().startswith('f_'):
         mapped_code = _map_fund_code_to_exchange_if_tradable(code)
         if mapped_code != code:
             price_data = get_stock_price(mapped_code)

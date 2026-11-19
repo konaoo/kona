@@ -11,6 +11,12 @@ from typing import Dict, Any
 import config
 
 
+_OVERSEAS_SOURCES = {
+    "morningstar_fund_history", "fidelity_fund_history", "ft_fund", "ft_metadata",
+    "marketscreener_fund", "marketscreener_fund_api", "yahoo_us_history", "stooq_us_history",
+}
+
+
 class SourceHealth:
     def __init__(self, fail_threshold: int = 3, cooldown_seconds: int = 30):
         self._fail_threshold = max(1, fail_threshold)
@@ -30,6 +36,10 @@ class SourceHealth:
                 "last_ok_at": "",
                 "last_fail_at": "",
                 "circuit_open_until": 0.0,
+                "circuit_trips": 0,
+                "probe_until": 0.0,
+                "skipped": 0,
+                "last_status_code": None,
             }
         return self._stats[source]
 
@@ -48,7 +58,14 @@ class SourceHealth:
     def can_attempt(self, source: str) -> bool:
         with self._lock:
             info = self._ensure(source)
-            return time.time() >= float(info.get("circuit_open_until", 0.0))
+            now = time.time()
+            if now < max(info["circuit_open_until"], info["probe_until"]):
+                info["skipped"] += 1
+                return False
+            if source in _OVERSEAS_SOURCES and info["circuit_trips"]:
+                # 冷却结束只放行一个探测；租约防止异常中断后永久锁住。
+                info["probe_until"] = now + max(30.0, float(config.API_TIMEOUT) * 2)
+            return True
 
     def record(
         self,
@@ -57,11 +74,15 @@ class SourceHealth:
         duration_ms: float = 0.0,
         timeout: bool = False,
         error: str = "",
+        status_code: int | None = None,
+        retry_after_seconds: float = 0.0,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         fail_threshold, cooldown_seconds = self._policy(source)
         with self._lock:
             info = self._ensure(source)
+            info["probe_until"] = 0.0
+            info["last_status_code"] = status_code
             if success:
                 info["ok"] += 1
                 info["consecutive_fail"] = 0
@@ -70,6 +91,7 @@ class SourceHealth:
                 old = float(info.get("latency_avg_ms", 0.0))
                 info["latency_avg_ms"] = duration_ms if old <= 0 else (old * 0.8 + duration_ms * 0.2)
                 info["circuit_open_until"] = 0.0
+                info["circuit_trips"] = 0
                 return
 
             info["fail"] += 1
@@ -78,7 +100,17 @@ class SourceHealth:
             info["last_error"] = error[:160]
             if timeout:
                 info["timeout"] += 1
-            if info["consecutive_fail"] >= fail_threshold:
+            blocked = status_code in (403, 429)
+            if info["consecutive_fail"] >= fail_threshold or (source in _OVERSEAS_SOURCES and blocked):
+                if source in _OVERSEAS_SOURCES:
+                    info["circuit_trips"] += 1
+                    base = max(cooldown_seconds, config.OVERSEAS_SOURCE_COOLDOWN_SECONDS)
+                    cooldown_seconds = min(
+                        config.OVERSEAS_SOURCE_MAX_COOLDOWN_SECONDS,
+                        max(base * (2 ** min(info["circuit_trips"] - 1, 6)),
+                            config.OVERSEAS_SOURCE_BLOCKED_COOLDOWN_SECONDS if blocked else 0,
+                            retry_after_seconds),
+                    )
                 info["circuit_open_until"] = time.time() + cooldown_seconds
 
     def snapshot(self) -> Dict[str, Dict[str, Any]]:

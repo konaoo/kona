@@ -4,6 +4,7 @@ import time
 import gzip
 import sqlite3
 import errno
+import os
 from pathlib import Path
 import unittest
 
@@ -22,6 +23,45 @@ def _load_module(path: Path, module_name: str):
 
 
 class BackupRestoreScriptTests(unittest.TestCase):
+    def test_repair_backups_compress_exact_bytes_keep_manual_and_latest(self):
+        module = _load_module(BACKUP_SCRIPT, "repair_backup_test")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            payload = b"historical database bytes" * 200
+            names = ["portfolio-before-manual-fix.db", "portfolio-before-fund-nav-reconcile-20260101.db",
+                     "portfolio-before-fund-nav-reconcile-20260102.db"]
+            for i, name in enumerate(names):
+                path = root / name
+                path.write_bytes(payload)
+                stamp = time.time() - (40 - i) * 86400
+                os.utime(path, (stamp, stamp))
+            active = root / "portfolio-before-fund-nav-reconcile-active.db"
+            active.write_bytes(b"being written")
+            other = root / "portfolio.db"
+            other.write_bytes(b"live db")
+            result = module.maintain_repair_backups(str(root))
+            self.assertEqual(len(result["compressed"]), 3)
+            self.assertEqual(len(result["deleted"]), 1)
+            for name in (names[0], names[2]):
+                with gzip.open(root / (name + ".gz"), "rb") as data:
+                    self.assertEqual(data.read(), payload)
+            self.assertTrue(active.exists())
+            self.assertEqual(other.read_bytes(), b"live db")
+
+    def test_existing_compressed_target_never_overwritten(self):
+        module = _load_module(BACKUP_SCRIPT, "repair_backup_collision_test")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "portfolio-before-manual.db"
+            source.write_bytes(b"original")
+            stamp = time.time() - 7200
+            os.utime(source, (stamp, stamp))
+            target = source.with_suffix(".db.gz")
+            target.write_bytes(b"existing")
+            with self.assertRaises(FileExistsError):
+                module.maintain_repair_backups(tmpdir)
+            self.assertEqual(source.read_bytes(), b"original")
+            self.assertEqual(target.read_bytes(), b"existing")
+
     def test_scripts_exist(self):
         self.assertTrue(BACKUP_SCRIPT.exists(), f"missing script: {BACKUP_SCRIPT}")
         self.assertTrue(RESTORE_SCRIPT.exists(), f"missing script: {RESTORE_SCRIPT}")

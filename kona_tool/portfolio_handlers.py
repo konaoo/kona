@@ -10,6 +10,7 @@ from flask import g, jsonify, request
 from werkzeug.datastructures import FileStorage
 
 from core import portfolio_ocr
+from core.parser import exchange_code_aliases
 from core.request_trace import trace_request_stage
 
 
@@ -87,6 +88,18 @@ def create_portfolio_payload_handlers(
 
     def _invalid_ledger_response():
         return jsonify({"error": "Invalid ledger_id", "code": "INVALID_LEDGER_ID"}), 400
+
+    def _existing_alias_code(code, user_id, ledger_id):
+        aliases = exchange_code_aliases(code)
+        if len(aliases) < 2:
+            return code, None
+        # 不跨账本猜测归属，不自动合并两条已有持仓。
+        if ledger_id is None and not user_id:
+            ledger_id = 0
+        existing = [alias for alias in aliases if db.get_asset(alias, user_id, ledger_id=ledger_id)]
+        if len(existing) > 1:
+            return code, (jsonify({"error": "同一账本存在多条别名持仓，请先核对", "code": "AMBIGUOUS_ASSET_ALIAS"}), 409)
+        return (existing[0] if existing else code), None
 
     def _rate_to_cny(curr: str, rates: dict | None) -> float:
         currency = str(curr or "CNY").strip().upper() or "CNY"
@@ -339,6 +352,10 @@ def create_portfolio_payload_handlers(
             return _invalid_ledger_response()
         if ledger_id is None and user_id:
             ledger_id = db.get_default_ledger_id(user_id)
+
+        data['code'], alias_error = _existing_alias_code(data['code'], user_id, ledger_id)
+        if alias_error:
+            return alias_error
 
         with trace_request_stage("portfolio.add.write", asset_type=data.get('asset_type')):
             success = db.add_asset(data, user_id, ledger_id=ledger_id)
@@ -893,6 +910,10 @@ def create_portfolio_payload_handlers(
             return _invalid_ledger_response()
         if bwc_ledger_id is None and user_id:
             bwc_ledger_id = db.get_default_ledger_id(user_id)
+
+        code, alias_error = _existing_alias_code(code, user_id, bwc_ledger_id)
+        if alias_error:
+            return alias_error
 
         with trace_request_stage("portfolio.buy_with_cash.write"):
             detail = db.buy_asset_with_cash(

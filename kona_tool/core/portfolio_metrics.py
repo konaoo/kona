@@ -8,7 +8,8 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .market_calendar import market_from_asset
-from .price import is_exchange_fund_code
+from .price import is_exchange_fund_code, is_nav_fund_code
+from .parser import normalize_exchange_code_alias
 
 
 def _to_float(value, default: float = 0.0) -> float:
@@ -111,6 +112,8 @@ def build_portfolio_items_with_metrics(
             market = market_from_asset(item)
 
         is_exchange_fund = is_exchange_fund_code(code)
+        if normalize_exchange_code_alias(code) != code and not is_exchange_fund:
+            market = "a"
         status_market = "a" if is_exchange_fund else market
         status = market_statuses.get(status_market, {}) if isinstance(market_statuses, dict) else {}
         market_open = bool(status.get("open"))
@@ -133,7 +136,7 @@ def build_portfolio_items_with_metrics(
         quoted_current_price = _first_positive([quote_price, quote_yclose])
         current_price = _first_positive([quoted_current_price, raw_cost_price])
 
-        nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund
+        nav_update_pending = is_nav_fund_code(code)
         latest_nav_date = str((latest_nav_dates or {}).get(code) or "").strip() or quote_date or None
         quote_ready = quote_price > 0
         quote_pending = (not nav_update_pending) and (not quote_ready)

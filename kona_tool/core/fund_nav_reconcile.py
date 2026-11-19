@@ -33,6 +33,15 @@ def previous_nav_date(nav_by_date: Dict[str, float], date_str: str) -> str | Non
     return max(candidates) if candidates else None
 
 
+def needs_nav_verification(existing: Dict[str, Any] | None) -> bool:
+    """零收益只有经历史净值对账且有基数才算核验过，来源标签不能当净值证据。"""
+    if existing is None:
+        return True
+    if abs(float(existing.get("day_pnl") or 0.0)) >= 0.005:
+        return False
+    return existing.get("source") != "fund_nav_reconcile" or float(existing.get("day_base") or 0.0) <= 0
+
+
 @dataclass(frozen=True)
 class FundNavRepair:
     date_str: str
@@ -81,7 +90,8 @@ def plan_fund_nav_repair(
     old_day_base = round_amount(existing.get("day_base")) if existing else None
 
     # 没有明细行时，连零收益也要落一行，页面才能明确展示为 0 而不是“漏了”。
-    if existing and abs(old_day_pnl - day_pnl) < 0.01 and abs(old_day_base - day_base) < 0.01:
+    if (existing and abs(old_day_pnl - day_pnl) < 0.01 and abs(old_day_base - day_base) < 0.01
+            and not needs_nav_verification(existing)):
         return None
 
     return FundNavRepair(

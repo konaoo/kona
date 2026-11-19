@@ -9,6 +9,46 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 
+def exchange_fund_candidates(code: str) -> list[str]:
+    """历史 f_ 场内基金的候选；16 开头仍需验证是否可交易。"""
+    lower = str(code or "").strip().lower()
+    if not re.fullmatch(r"f_\d{6}", lower):
+        return []
+    suffix = lower[2:]
+    if suffix.startswith(("15", "16", "18")):
+        return [f"sz{suffix}"]
+    if suffix.startswith(("50", "51", "52", "56", "58")):
+        return [f"sh{suffix}"]
+    return []
+
+
+def normalize_exchange_code_alias(code: str) -> str:
+    """只纠偏明确的交易所号段，不改普通场外基金和有歧义的 LOF。"""
+    raw = str(code or "").strip()
+    lower = raw.lower()
+    if not re.fullmatch(r"f_\d{6}", lower):
+        return raw
+    suffix = lower[2:]
+    # 仅覆盖不与场外基金混淆的沪市股票段，不能把 f_000001 等改成股票。
+    if suffix.startswith(("60", "68")):
+        return f"sh{suffix}"
+    candidates = exchange_fund_candidates(lower)
+    if candidates and not suffix.startswith("16"):
+        return candidates[0]
+    return raw
+
+
+def exchange_code_aliases(code: str) -> list[str]:
+    """明确号段的双向别名；供入口查找旧持仓，不用于批量改码。"""
+    raw = str(code or "").strip()
+    canonical = normalize_exchange_code_alias(raw)
+    if re.fullmatch(r"(?:sh|sz)\d{6}", canonical):
+        legacy = f"f_{canonical[2:]}"
+        if normalize_exchange_code_alias(legacy) == canonical:
+            return list(dict.fromkeys((raw, canonical, legacy)))
+    return [raw] if raw else []
+
+
 def _forced_currency_by_code(code: str) -> Optional[str]:
     """按规范化代码强制币种（市场规则优先）。"""
     if not code:
@@ -44,7 +84,7 @@ def parse_code(raw_code: str, curr: str = "") -> Dict[str, str]:
     if not raw_code:
         return {"code": "", "curr": ""}
     
-    code = raw_code.strip()
+    code = normalize_exchange_code_alias(raw_code)
     curr = curr.strip().upper() if curr else ""
     
     # 如果是纯数字

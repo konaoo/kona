@@ -21,7 +21,7 @@ from .market_calendar import (
     is_trading_day,
     market_from_asset,
 )
-from .price import batch_get_prices, get_forex_rates, is_exchange_fund_code
+from .price import batch_get_prices, get_forex_rates, is_exchange_fund_code, is_nav_fund_code
 
 logger = logging.getLogger(__name__)
 DEFAULT_MARKETS = ["a", "hk", "us", "fund"]
@@ -926,7 +926,7 @@ def _calculate_portfolio_stats_direct(
     )
     otc_fund_codes = [
         code for code in codes
-        if str(code or "").lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+        if is_nav_fund_code(code)
     ]
     latest_nav_dates = {
         code: get_fund_latest_nav_date(code)
@@ -971,7 +971,7 @@ def _calculate_portfolio_stats_direct(
             market = "a"
         # 场外基金（f_/ft_ 开头且非场内 ETF）白天净值尚未更新，
         # 价格源返回的是昨日净值，算出来是昨天的涨跌而非今天的，必须跳过
-        nav_update_pending = code.lower().startswith(("f_", "ft_")) and not is_exchange_fund_code(code)
+        nav_update_pending = is_nav_fund_code(code)
         item_float_pnl = (cur_price - cost) * qty * rate
         item_total_pnl = item_float_pnl + (adj * rate)
 
